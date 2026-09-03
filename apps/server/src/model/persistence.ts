@@ -12,6 +12,7 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
+import type { GameState } from "../domain/game/game-state.js";
 import type { SessionVerificationData } from "../ports/system.js";
 
 export const StorageRevisionSchema = v.pipe(
@@ -45,6 +46,7 @@ export type RoomRecord = Readonly<{
   phase: RoomPhase;
   hostPlayerId: PlayerId;
   players: readonly PlayerRecord[];
+  game: GameState | null;
   roomRevision: RoomRevision;
   storageRevision: StorageRevision;
   createdAt: ServerTime;

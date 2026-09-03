@@ -68,6 +68,8 @@ export const PROTOCOL_ERROR_CODES = [
   "ROOM_NOT_JOINABLE",
   "HOST_ONLY",
   "INVALID_PHASE",
+  "NOT_ENOUGH_PLAYERS",
+  "PLAYERS_NOT_CONNECTED",
   "STALE_ROOM_REVISION",
   "STALE_GAME_REVISION",
   "REQUEST_ID_REUSED",
@@ -209,6 +211,15 @@ export const StateSyncCommandSchema = v.strictObject({
 });
 export type StateSyncCommand = v.InferOutput<typeof StateSyncCommandSchema>;
 
+export const GameStartCommandSchema = v.strictObject({
+  kind: v.literal("game:start"),
+  protocolVersion: ProtocolVersionSchema,
+  requestId: RequestIdSchema,
+  expectedRoomRevision: RoomRevisionSchema,
+  payload: v.strictObject({}),
+});
+export type GameStartCommand = v.InferOutput<typeof GameStartCommandSchema>;
+
 export const Phase2ClientCommandSchema = v.variant("kind", [
   SessionBootstrapCommandSchema,
   RoomCreateCommandSchema,
@@ -219,6 +230,16 @@ export const Phase2ClientCommandSchema = v.variant("kind", [
 export type Phase2ClientCommand = v.InferOutput<
   typeof Phase2ClientCommandSchema
 >;
+
+export const ClientCommandSchema = v.variant("kind", [
+  SessionBootstrapCommandSchema,
+  RoomCreateCommandSchema,
+  RoomJoinCommandSchema,
+  SessionResumeCommandSchema,
+  StateSyncCommandSchema,
+  GameStartCommandSchema,
+]);
+export type KnownClientCommand = v.InferOutput<typeof ClientCommandSchema>;
 
 type AckSuccess<TData> = {
   requestId: RequestId;

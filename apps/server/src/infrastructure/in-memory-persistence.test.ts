@@ -15,9 +15,11 @@ import {
   type RoomId,
   type RoomRevision,
   type ServerTime,
+  type TileId,
 } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 
+import { createInitialGameState } from "../domain/game/game-state.js";
 import {
   createStorageRevision,
   createUnboundSessionRecord,
@@ -30,7 +32,7 @@ import {
 } from "../model/persistence.js";
 import type { RoomUnitOfWorkChangeSet } from "../ports/room-unit-of-work.js";
 import type { SessionVerificationData } from "../ports/system.js";
-import { FakeClock } from "./system.js";
+import { FakeClock, FakeIdGenerator } from "./system.js";
 import { InMemoryPersistence } from "./in-memory-persistence.js";
 
 function roomId(value: string): RoomId {
@@ -88,6 +90,7 @@ function roomFixture(options: RoomFixtureOptions = {}): RoomWriteCandidate {
         joinOrder: 0,
       },
     ],
+    game: null,
     roomRevision: roomRevision(options.roomRevision ?? 0),
     createdAt: serverTime(1_000),
     updatedAt: serverTime(options.updatedAt ?? 1_000),
@@ -920,7 +923,7 @@ test("persistence는 구조적 extra private field를 저장하거나 반환하�
   assert.equal("connectionStatus" in room, false);
   assert.equal("sessionToken" in room, false);
   assert.equal("rawToken" in room, false);
-  assert.equal("game" in room, false);
+  assert.equal(room.game, null);
   assert.equal("socketId" in (room.players[0] ?? {}), false);
 
   const clock = new FakeClock(1_000);
@@ -1008,4 +1011,161 @@ test("idempotency terminal result는 private 및 prototype-sensitive field를 �
     /server-private field/u,
   );
   assert.equal(await persistence.findById(roomId("room-a")), null);
+});
+
+test("PLAYING Room의 GameState deep copy는 caller mutation에서 persistence를 격리한다", async () => {
+  const persistence = new InMemoryPersistence();
+  const hostPlayerId = playerId("player-game-host");
+  const guestPlayerId = playerId("player-game-guest");
+  const players = [
+    {
+      playerId: hostPlayerId,
+      nickname: parse(NicknameSchema, "Host"),
+      joinOrder: 0,
+    },
+    {
+      playerId: guestPlayerId,
+      nickname: parse(NicknameSchema, "Guest"),
+      joinOrder: 1,
+    },
+  ];
+  const game = createInitialGameState({
+    playerIds: players.map((player) => player.playerId),
+    startedAt: serverTime(10_000),
+    idGenerator: new FakeIdGenerator(),
+    randomSource: { nextInt: () => 0 },
+  });
+  const usedBoardTileIds = new Set<TileId>();
+  const takeTileForSymbol = (symbol: string): TileId => {
+    const tile = [...game.tilesById.values()].find(
+      (candidate) =>
+        candidate.kind === "ORDINARY" &&
+        !usedBoardTileIds.has(candidate.tileId) &&
+        candidate.allowedSymbols.some(
+          (allowedSymbol) => allowedSymbol === symbol,
+        ),
+    );
+    if (tile === undefined) {
+      throw new Error(`Expected an ordinary Tile for ${symbol}.`);
+    }
+    usedBoardTileIds.add(tile.tileId);
+    return tile.tileId;
+  };
+  const giyeokTileId = takeTileForSymbol("ㄱ");
+  const firstATileId = takeTileForSymbol("ㅏ");
+  const nieunTileId = takeTileForSymbol("ㄴ");
+  const secondATileId = takeTileForSymbol("ㅏ");
+  const gameWithBoard = {
+    ...game,
+    consonantBag: game.consonantBag.filter(
+      (tileId) => !usedBoardTileIds.has(tileId),
+    ),
+    vowelBag: game.vowelBag.filter(
+      (tileId) => !usedBoardTileIds.has(tileId),
+    ),
+    racks: new Map(
+      [...game.racks].map(([id, rack]) => [
+        id,
+        rack.filter((tileId) => !usedBoardTileIds.has(tileId)),
+      ]),
+    ),
+    board: {
+      wordGroups: [
+        {
+          groupId: "group-game-isolation",
+          syllables: [
+            {
+              choseong: [
+                { tileId: giyeokTileId, assignedSymbol: "ㄱ" },
+              ],
+              jungseong: [
+                { tileId: firstATileId, assignedSymbol: "ㅏ" },
+              ],
+              jongseong: [],
+            },
+            {
+              choseong: [
+                { tileId: nieunTileId, assignedSymbol: "ㄴ" },
+              ],
+              jungseong: [
+                { tileId: secondATileId, assignedSymbol: "ㅏ" },
+              ],
+              jongseong: [],
+            },
+          ],
+        },
+      ],
+    },
+  };
+  const created = await persistence.createIfAbsent({
+    roomId: roomId("room-game-isolation"),
+    roomCode: roomCode("BCDEFG"),
+    phase: "PLAYING",
+    hostPlayerId,
+    players,
+    game: gameWithBoard,
+    roomRevision: roomRevision(1),
+    createdAt: serverTime(1_000),
+    updatedAt: serverTime(10_000),
+  });
+  assert.equal(created.status, "CREATED");
+  if (created.status !== "CREATED" || created.room.game === null) {
+    throw new Error("Expected a persisted PLAYING Room.");
+  }
+  const baseline = await persistence.findById(created.room.roomId);
+  assert.ok(baseline?.game);
+
+  const nestedRack = [...created.room.game.racks.values()].find(
+    (rack) => rack.length > 0,
+  );
+  const ordinaryTile = [...created.room.game.tilesById.values()].find(
+    (tile) => tile.kind === "ORDINARY",
+  );
+  const boardPlacement =
+    created.room.game.board.wordGroups[0]?.syllables[0]?.choseong[0];
+  assert.ok(nestedRack);
+  assert.ok(ordinaryTile?.kind === "ORDINARY");
+  assert.ok(boardPlacement);
+
+  assert.throws(() =>
+    Reflect.apply(Array.prototype.pop, nestedRack, []),
+  );
+  assert.throws(() =>
+    Reflect.apply(Array.prototype.push, ordinaryTile.allowedSymbols, ["X"]),
+  );
+  assert.equal(Reflect.set(boardPlacement, "assignedSymbol", "ㅎ"), false);
+  assert.equal(Reflect.set(created.room.game.turn, "turnNumber", 99), false);
+  assert.throws(() =>
+    Reflect.apply(Array.prototype.pop, created.room.game?.vowelBag, []),
+  );
+
+  Reflect.apply(Map.prototype.clear, created.room.game.racks, []);
+  Reflect.apply(Map.prototype.clear, created.room.game.tilesById, []);
+  Reflect.apply(
+    Map.prototype.clear,
+    created.room.game.initialMeldCompleted,
+    [],
+  );
+  assert.throws(() =>
+    Reflect.apply(Array.prototype.pop, created.room.game?.consonantBag, []),
+  );
+  assert.throws(() =>
+    Reflect.apply(Array.prototype.pop, created.room.game?.turnOrder, []),
+  );
+  assert.throws(() =>
+    Reflect.apply(
+      Array.prototype.push,
+      created.room.game?.board.wordGroups,
+      [{ groupId: "mutated", syllables: [] }],
+    ),
+  );
+  assert.equal(
+    Reflect.set(created.room.game.rulesConfig, "turnDurationMs", 1),
+    false,
+  );
+
+  assert.deepEqual(
+    await persistence.findById(created.room.roomId),
+    baseline,
+  );
 });

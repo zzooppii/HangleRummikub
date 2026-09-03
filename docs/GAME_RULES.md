@@ -10,8 +10,9 @@
 - Phase 8(순수 Hangul·Unicode 조합): **완료** (2026-09-03)
 - Phase 9(Test DictionaryProvider): **완료** (2026-09-03)
 - Phase 10(Board와 순수 RuleEngine): **완료** (2026-09-03)
+- Phase 11(Game start와 권한별 상태 동기화): **완료** (2026-09-03)
 
-공식 physical Tile inventory와 디지털 symbol 표현의 canonical 기준은 C-22와 C-23이다. Phase 8은 Hangul composer를 구현했고 Phase 9는 아래 승인된 fixture를 `test-dictionary-v1` adapter로 구현했다. Phase 10은 server-only Board·Tile validation descriptor와 순수 RuleEngine을 구현했다. canonical GameState, full RulesConfig, game:start와 gameplay mutation·transport/UI는 아직 없다.
+공식 physical Tile inventory와 디지털 symbol 표현의 canonical 기준은 C-22와 C-23이다. Phase 8은 Hangul composer를 구현했고 Phase 9는 아래 승인된 fixture를 `test-dictionary-v1` adapter로 구현했다. Phase 10은 server-only Board·Tile validation descriptor와 순수 RuleEngine을 구현했다. Phase 11은 exact inventory로 canonical GameState와 immutable RulesConfig를 만들고 `game:start`, Player별 PLAYING projection과 최소 web 상태를 연결했다. Submit·draw·timeout 같은 Game 시작 이후 mutation은 아직 없다.
 
 규칙 문장에서 “해야 한다”, “허용한다”, “거절한다”는 서버 판정에 적용되는 규범적 표현이다. 예시는 규칙을 설명하지만 규범 문장을 대체하지 않는다.
 
@@ -649,11 +650,12 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 ### Server validation implication
 
 - 모든 gameplay 판정은 Room의 live global config가 아니라 Game snapshot을 참조한다.
-- Phase 8 이후 구현은 version별 immutable inventory definition을 참조하되 이번 Phase 7B에서는 TypeScript constant를 만들지 않는다.
+- Phase 11의 `createDefaultRulesConfig()`는 `hangul-rummikub-rules-v1`, `test-dictionary-v1`, `hangul-tile-inventory-v1`, `hangul-joker-rules-v1`과 위 수치를 새 Game에 복제·동결한다.
+- repository는 반환값과 저장값 사이에 nested collection을 공유하지 않도록 RulesConfig와 GameState를 명시적으로 복제한다.
 
 ## C-22. Canonical physical Tile inventory
 
-이 표가 repository 안의 exact inventory 수량에 대한 유일한 canonical table이다. `Quantity`는 physical family 전체 수량이며 `Allowed Symbols` 각각의 수량이 아니다. identifier는 향후 구현 방향을 설명하는 문서 이름일 뿐 아직 TypeScript identifier가 아니다.
+이 표가 repository 안의 exact inventory 수량에 대한 유일한 canonical table이다. `Quantity`는 physical family 전체 수량이며 `Allowed Symbols` 각각의 수량이 아니다. Phase 11의 `CANONICAL_TILE_INVENTORY_V1`은 이 표의 `Physical Type`, bag, quantity와 allowed symbol을 동일한 identifier로 구현한다.
 
 | Physical Type | Bag | Quantity | Allowed Symbols | Rotation/Assignment | Source |
 | --- | --- | ---: | --- | --- | --- |
@@ -731,7 +733,7 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 
 ### Normative rule
 
-- **DIGITAL_MVP_POLICY:** 향후 `PhysicalTileDefinition`은 최소 `physicalType`, `bagKind`, `quantity`, `allowedSymbols` 의미를 갖는다. 이 항목은 representation 결정이며 아직 TypeScript type은 아니다.
+- **DIGITAL_MVP_POLICY:** `PhysicalTileDefinition`은 최소 `physicalType`, `sourceBag`, `quantity`, `kind`와 ordinary Tile의 `allowedSymbols` 의미를 갖는다.
 - **IMPLEMENTATION_INVARIANT:** physical Tile identity와 placement interpretation을 분리한다. tileId는 `assignedSymbol`이나 rotation angle을 encode하지 않는다.
 - **IMPLEMENTATION_INVARIANT:** `assignedSymbol`은 TurnDraft 또는 Board placement에만 존재하며 서버는 ordinary Tile에서 `assignedSymbol ∈ allowedSymbols`를 검증한다. CSS degree는 `assignedSymbol`에서 파생하는 presentation metadata일 뿐 authority가 아니다.
 - **DIGITAL_MVP_POLICY:** 쌍자음 ㄲ, ㄸ, ㅃ, ㅆ, ㅉ은 dedicated physical Tile 하나로만 표현한다. ordinary 자음 두 개를 합쳐 쌍자음을 만들 수 없다.
@@ -805,6 +807,36 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 - 조합 결과를 NFC normalize해 완성형 word를 산출한다.
 - client가 함께 보낸 display word가 있더라도 서버 계산 결과를 대체하지 못한다.
 
+## C-24. Game start 연결 조건과 첫 Turn 번호
+
+### Normative rule
+
+- **DIGITAL_MVP_POLICY:** `game:start`는 Room phase가 `LOBBY`이고 등록 Player가 2~4명이며 모든 등록 Player의 authoritative presence가 `CONNECTED`일 때만 허용한다.
+- **DIGITAL_MVP_POLICY:** 시작 요청 actor는 현재 Host여야 한다. Ready 기능은 사용하지 않으며 시작 순간 CONNECTED인 일부 Player만 선별해 Game 참가자로 snapshot하지 않는다.
+- **IMPLEMENTATION_INVARIANT:** transport는 요청 payload가 아니라 current-primary socket binding에서 `roomId`와 `actorPlayerId`를 도출한다. 이 binding의 유효성은 live Room/Game/idempotency state를 바꾸기 직전의 UnitOfWork precondition에서도 다시 확인하며, 교체되었거나 인증되지 않은 socket은 시작 command 권한이 없다.
+- **IMPLEMENTATION_INVARIANT (digital implementation semantics):** server-random `turnOrder`의 첫 Player가 맡는 첫 Turn의 `turnNumber`는 `1`이다.
+- **IMPLEMENTATION_INVARIANT:** `game:start` 성공은 Room phase, canonical GameState와 accepted idempotency result를 하나의 Room UnitOfWork에서 commit한다.
+
+### 정상 예
+
+- Host와 다른 Player 한 명이 모두 CONNECTED인 2인 Lobby에서 Host의 current-primary socket이 최신 `roomRevision`으로 요청하면 시작 조건을 충족한다.
+- 시작 시 `turnOrder = [P2, P1]`이면 첫 Turn은 `activePlayerId = P2`, `turnNumber = 1`이다.
+- 성공 acknowledgement가 유실되어 같은 Room/Player scope, `requestId`, payload fingerprint로 재전송하면 새 Tile이나 Turn을 만들지 않고 기존 non-secret 결과를 replay한다.
+
+### 거절·edge case
+
+- 한 명뿐인 Lobby의 시작은 `NOT_ENOUGH_PLAYERS`로 거절한다.
+- 등록 Player 중 한 명이라도 OFFLINE이면 `PLAYERS_NOT_CONNECTED`로 거절하며 그 Player를 제외하고 시작하지 않는다.
+- non-Host 요청은 `HOST_ONLY`, `LOBBY`가 아닌 Room은 `INVALID_PHASE`, 오래된 `expectedRoomRevision`은 `STALE_ROOM_REVISION`으로 거절한다.
+- 같은 `requestId`를 다른 fingerprint에 재사용하면 `REQUEST_ID_REUSED`로 거절하고, 이미 시작된 Room에 새 `requestId`로 다시 요청하면 `INVALID_PHASE`로 거절한다.
+
+### Server validation implication
+
+- `GameStartService`는 Room별 직렬화 경계 안에서 최신 Room과 `PlayerPresenceReader`를 다시 읽어 phase, Host, 인원, revision과 모든 Player의 CONNECTED 상태를 검증한다. transport가 캡처한 current-primary authorization은 candidate와 idempotency record를 만든 뒤 live state를 교체하는 바로 직전에 동기 precondition으로 재검증한다.
+- 거절된 요청은 Room phase, Room/Game/storage revision, Tile, rack, bag과 idempotency state를 변경하지 않는다.
+- 성공하면 exact inventory 156개, bag별 shuffle·7/7 배분, immutable turnOrder와 첫 Turn을 생성해 `roomRevision + 1`, 새 `gameRevision = 0`, `storageRevision + 1`을 원자적으로 반영한다.
+- `startedAt`은 server Clock 값이고 첫 `deadlineAt = startedAt + 60_000`, `gameDeadlineAt = startedAt + 1_500_000`이다. Phase 11은 deadline을 저장하지만 timeout을 실행하지 않는다.
+
 ---
 
 # PHASE_7_GATE_RESULT
@@ -815,6 +847,7 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 - **Phase 8 composition implementation:** COMPLETE (2026-09-03)
 - **Phase 9 test dictionary implementation:** COMPLETE (2026-09-03)
 - **Phase 10 Board/RuleEngine implementation:** COMPLETE (2026-09-03)
+- **Phase 11 Game start/state projection implementation:** COMPLETE (2026-09-03)
 
 공식 exact consonant/vowel inventory, 두 Joker의 physical bag handling, rotation family, physical identity와 assignedSymbol 분리, 쌍자음·복합모음·겹받침 표현, Joker one-position replacement, 초기 7/7 draw semantics, 전체 156개 합계와 Phase 8 input/output semantics를 모두 확정했다. Tile representation에 관한 Phase 7B 미확정 항목은 없다.
 
@@ -825,12 +858,6 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 # TO_BE_CONFIRMED
 
 현재 공식 근거나 제품 정책이 충분하지 않아 남아 있는 항목이다. 관련 구현 Phase 전에 별도 결정한다.
-
-## TBC-B. game:start 연결 조건
-
-- 2명 이상이면 OFFLINE 참가자가 있어도 Host가 시작할 수 있는가
-- 시작 순간 CONNECTED인 Player만 Game 참가자로 snapshot할 것인가
-- Phase 11 game:start 구현 전에 확정한다.
 
 ## TBC-C. Production dictionary dataset
 
@@ -883,6 +910,6 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 
 ## 다음 결정 절차
 
-1. Phase 7 gate, Phase 8 Hangul composition, Phase 9 test dictionary와 Phase 10 Board/RuleEngine 구현은 완료되었다.
-2. 다음 작업은 Roadmap Phase 11의 Game start와 권한별 상태 동기화다.
-3. Phase 10 RuleEngine은 validation-only 경계이며 canonical GameState mutation, game:start, turn/deadline, CAS, gameplay transport와 UI를 구현하지 않았다.
+1. Phase 7 gate, Phase 8 Hangul composition, Phase 9 test dictionary, Phase 10 Board/RuleEngine과 Phase 11 Game start/state projection 구현은 완료되었다.
+2. 다음 작업은 Roadmap Phase 12의 Client TurnDraft다.
+3. Phase 11은 Game 시작 상태와 첫 deadline을 만들지만 TurnDraft, Submit, draw, timeout 실행, score와 종료는 구현하지 않았다.

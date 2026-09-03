@@ -21,11 +21,12 @@ import {
   LobbyStateSnapshotProjector,
   type RoomPresenceReadPort,
 } from "./lobby-state-snapshot-projector.js";
+import { createInitialGameState } from "../domain/game/game-state.js";
 import {
   createStorageRevision,
   type RoomRecord,
 } from "../model/persistence.js";
-import { FakeClock } from "../infrastructure/system.js";
+import { FakeClock, FakeIdGenerator } from "../infrastructure/system.js";
 
 function roomId(value: string): RoomId {
   return parse(RoomIdSchema, value);
@@ -55,10 +56,26 @@ function roomFixture(): RoomRecord {
         joinOrder: 1,
       },
     ],
+    game: null,
     roomRevision: parse(RoomRevisionSchema, 3),
     storageRevision: createStorageRevision(8),
     createdAt: parse(ServerTimeSchema, 1_000),
     updatedAt: parse(ServerTimeSchema, 2_000),
+  };
+}
+
+function playingRoomFixture(): RoomRecord {
+  const lobby = roomFixture();
+  return {
+    ...lobby,
+    phase: "PLAYING",
+    game: createInitialGameState({
+      playerIds: lobby.players.map((player) => player.playerId),
+      startedAt: parse(ServerTimeSchema, 5_000),
+      idGenerator: new FakeIdGenerator(),
+      randomSource: { nextInt: () => 0 },
+    }),
+    roomRevision: parse(RoomRevisionSchema, lobby.roomRevision + 1),
   };
 }
 
@@ -218,3 +235,101 @@ test("Lobby projector는 Room에 없는 self Player projection을 거절한다",
   assert.equal(presenceRead, false);
 });
 
+test("PLAYING projection은 public Game과 각 self의 private rack만 분리한다", async () => {
+  const room = playingRoomFixture();
+  const guest = room.players[1];
+  assert.ok(guest);
+  const presenceReader: RoomPresenceReadPort = {
+    readRoomPresence: async () => ({
+      presenceVersion: parse(PresenceVersionSchema, 4),
+      connectionStatusByPlayerId: new Map(
+        room.players.map((player) => [player.playerId, "CONNECTED"] as const),
+      ),
+    }),
+  };
+  const projector = new LobbyStateSnapshotProjector({
+    clock: new FakeClock(9_000),
+    presenceReader,
+  });
+
+  const hostSnapshot = await projector.project({
+    room,
+    selfPlayerId: room.hostPlayerId,
+  });
+  const guestSnapshot = await projector.project({
+    room,
+    selfPlayerId: guest.playerId,
+  });
+  assert.equal("game" in hostSnapshot, true);
+  assert.equal("game" in guestSnapshot, true);
+  if (!("game" in hostSnapshot) || !("game" in guestSnapshot)) {
+    throw new Error("Expected PLAYING snapshots.");
+  }
+
+  assert.equal(hostSnapshot.versions.gameRevision, 0);
+  assert.equal(hostSnapshot.self.rack.length, 14);
+  assert.equal(guestSnapshot.self.rack.length, 14);
+  assert.deepEqual(hostSnapshot.game, guestSnapshot.game);
+  assert.deepEqual(
+    hostSnapshot.room.players.map((player) => ({
+      rackCount: player.rackCount,
+      initialMeldCompleted: player.initialMeldCompleted,
+    })),
+    [
+      { rackCount: 14, initialMeldCompleted: false },
+      { rackCount: 14, initialMeldCompleted: false },
+    ],
+  );
+  assert.deepEqual(hostSnapshot.game.bagCounts, {
+    consonant: 81,
+    vowel: 47,
+  });
+
+  const hostRackIds = new Set(
+    hostSnapshot.self.rack.map((tile) => tile.tileId),
+  );
+  const guestRackIds = new Set(
+    guestSnapshot.self.rack.map((tile) => tile.tileId),
+  );
+  assert.equal(
+    [...hostRackIds].some((tileId) => guestRackIds.has(tileId)),
+    false,
+  );
+  assert.equal(validateStateSnapshot(hostSnapshot).ok, true);
+  assert.equal(validateStateSnapshot(guestSnapshot).ok, true);
+});
+
+test("PLAYING snapshot은 bag 순서, 다른 rack, canonical private field를 노출하지 않는다", async () => {
+  const room = playingRoomFixture();
+  const projector = new LobbyStateSnapshotProjector({
+    clock: new FakeClock(9_000),
+    presenceReader: {
+      readRoomPresence: async () => ({
+        presenceVersion: parse(PresenceVersionSchema, 1),
+        connectionStatusByPlayerId: new Map(),
+      }),
+    },
+  });
+  const snapshot = await projector.project({
+    room,
+    selfPlayerId: room.hostPlayerId,
+  });
+  const forbidden = new Set([
+    "consonantBag",
+    "vowelBag",
+    "tilesById",
+    "racks",
+    "storageRevision",
+    "sessionToken",
+    "verificationData",
+    "tokenHash",
+    "socketId",
+    "connectionGeneration",
+    "idempotency",
+    "randomSource",
+  ]);
+
+  for (const key of collectKeys(snapshot)) {
+    assert.equal(forbidden.has(key), false, `forbidden key: ${key}`);
+  }
+});

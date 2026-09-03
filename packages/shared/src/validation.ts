@@ -5,8 +5,8 @@ import {
   BootstrapSessionAckSchema,
   BrowserStoredPlayerSessionSchema,
   BoundPlayerCredentialSchema,
+  ClientCommandSchema,
   ErrorDtoSchema,
-  Phase2ClientCommandSchema,
   PROTOCOL_VERSION,
   ProtocolVersionSchema,
   RevisionSchema,
@@ -15,7 +15,8 @@ import {
   createRoomScopedAckSchema,
   createUnscopedAckSchema,
   type ErrorDto,
-  type Phase2ClientCommand,
+  type GameStartCommand,
+  type KnownClientCommand,
   type ProtocolErrorCode,
   type RoomCreateCommand,
   type RoomJoinCommand,
@@ -24,6 +25,7 @@ import {
   type StateSyncCommand,
 } from "./protocol.js";
 import {
+  GameStartAckSchema,
   RoomCreateAckSchema,
   RoomJoinAckSchema,
   SessionBootstrapAckSchema,
@@ -31,6 +33,7 @@ import {
   StateSnapshotDeliveryDataSchema,
   StateSnapshotEventSchema,
   StateSyncAckSchema,
+  TurnStartedEventSchema,
 } from "./realtime.js";
 import {
   NicknameSchema,
@@ -38,7 +41,11 @@ import {
   RoomCodeSchema,
 } from "./identifiers.js";
 import {
+  LobbyStateSnapshotSchema,
+  PlayingStateSnapshotSchema,
   StateSnapshotSchema,
+  type LobbyStateSnapshot,
+  type PlayingStateSnapshot,
   type StateSnapshot,
 } from "./projections.js";
 
@@ -164,7 +171,7 @@ function hasInvalidRoomCode(input: Record<string, unknown>): boolean {
 
 export function validateClientCommand(
   input: unknown,
-): RuntimeValidationResult<Phase2ClientCommand> {
+): RuntimeValidationResult<KnownClientCommand> {
   if (isRecord(input)) {
     const protocolResult = validateProtocolVersion(input.protocolVersion);
 
@@ -196,7 +203,7 @@ export function validateClientCommand(
   }
 
   return validateSchema(
-    Phase2ClientCommandSchema,
+    ClientCommandSchema,
     input,
     validationError("INVALID_PAYLOAD", "Command payload is invalid.", false),
   );
@@ -309,6 +316,29 @@ export function validateStateSyncCommand(
       error: validationError(
         "INVALID_PAYLOAD",
         "State sync command is invalid.",
+        false,
+      ),
+    } satisfies RuntimeValidationResult<never>;
+  }
+
+  return { ok: true, value: result.value };
+}
+
+export function validateGameStartCommand(
+  input: unknown,
+): RuntimeValidationResult<GameStartCommand> {
+  const result = validateClientCommand(input);
+
+  if (!result.ok) {
+    return result;
+  }
+
+  if (result.value.kind !== "game:start") {
+    return {
+      ok: false,
+      error: validationError(
+        "INVALID_PAYLOAD",
+        "Game start command is invalid.",
         false,
       ),
     } satisfies RuntimeValidationResult<never>;
@@ -453,6 +483,18 @@ export function validateStateSyncAck(input: unknown) {
   );
 }
 
+export function validateGameStartAck(input: unknown) {
+  return validateSchema(
+    GameStartAckSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Game start acknowledgement is invalid.",
+      false,
+    ),
+  );
+}
+
 export function validateErrorDto(input: unknown) {
   return validateSchema(
     ErrorDtoSchema,
@@ -468,6 +510,34 @@ export function validateStateSnapshot(
     StateSnapshotSchema,
     input,
     validationError("INVALID_PAYLOAD", "State snapshot is invalid.", false),
+  );
+}
+
+export function validateLobbyStateSnapshot(
+  input: unknown,
+): RuntimeValidationResult<LobbyStateSnapshot> {
+  return validateSchema(
+    LobbyStateSnapshotSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Lobby state snapshot is invalid.",
+      false,
+    ),
+  );
+}
+
+export function validatePlayingStateSnapshot(
+  input: unknown,
+): RuntimeValidationResult<PlayingStateSnapshot> {
+  return validateSchema(
+    PlayingStateSnapshotSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Playing state snapshot is invalid.",
+      false,
+    ),
   );
 }
 
@@ -490,6 +560,18 @@ export function validateStateSnapshotEvent(input: unknown) {
     validationError(
       "INVALID_PAYLOAD",
       "State snapshot event is invalid.",
+      false,
+    ),
+  );
+}
+
+export function validateTurnStartedEvent(input: unknown) {
+  return validateSchema(
+    TurnStartedEventSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Turn started event is invalid.",
       false,
     ),
   );

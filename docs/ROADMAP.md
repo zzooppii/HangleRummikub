@@ -331,7 +331,7 @@ Definition of Done:
 - Phase 8 `composeWord`와 Phase 9 async `DictionaryProvider.lookup`을 연결하고 composition, fixture miss, provider `ERROR | TIMEOUT`을 구분된 domain error로 반환한다.
 - 입력을 mutate하거나 GameState, rack, turn, revision을 commit하지 않는다. actor 인증, deadline/CAS, game:start, gameplay Socket.IO와 UI는 Phase 10에 추가하지 않았다.
 
-### Phase 11. Game start와 권한별 상태 동기화
+### Phase 11. Game start와 권한별 상태 동기화 — COMPLETE
 
 목표: 서버가 Game을 만들고 Tile을 배분해 첫 turn을 시작한다.
 
@@ -355,6 +355,17 @@ Definition of Done:
 - projection test가 policy상 private인 rack/bag 정보와 token 유출을 탐지한다.
 - fixed random을 사용한 배분 test가 재현 가능하다.
 - start 성공이 `LOBBY → PLAYING`과 필요한 `roomRevision`/`gameRevision` 증가를 한 번만 commit한다.
+
+구현 결과 (2026-09-03):
+
+- `hangul-tile-inventory-v1`의 단일 runtime definition으로 ordinary consonant 94, ordinary vowel 60과 bag별 Joker 1개씩 총 156개의 unique physical Tile instance를 생성한다.
+- immutable `RulesConfig`와 canonical `GameState`가 2/3/4인 bag shuffle·7/7 deal, empty Board, Player별 initial meld false, server-random turnOrder, `turnNumber = 1`인 첫 Turn과 60초/25분 deadline을 생성한다.
+- `GameStartService`는 Room별 serialized boundary 안에서 current Host, 2~4인, 최신 `roomRevision`과 `PlayerPresenceReader` 기준 전원 CONNECTED를 검증한다. Ready 상태는 도입하지 않았다.
+- start success는 `LOBBY → PLAYING`, Room/Game revision, server-only storage revision과 non-secret accepted idempotency result를 하나의 `RoomUnitOfWork` CAS로 commit한다. captured current-primary authorization은 live state swap 직전 다시 검사해 in-flight socket replacement를 막고, retry는 Game을 재생성·재배분하지 않는다.
+- shared contract에 strict `game:start`, PLAYING snapshot union, private rack/public rack count와 `turn:started` advisory event를 추가했고 Socket.IO transport가 current-primary actor를 application service에 연결한다.
+- 각 Player snapshot은 public Board/turn/order/bag count와 자기 rack 상세만 포함한다. 다른 rack Tile, bag order, full tiles map, credential, connection/storage/idempotency 내부값은 보내지 않는다.
+- Lobby Host web control은 인원과 전원 presence를 UX에서 보조 확인하며, 성공 뒤 server snapshot 기반 최소 PLAYING 상태만 보여준다. TurnDraft·board interaction과 countdown은 추가하지 않았다.
+- PLAYING의 `session:resume`과 `state:sync`는 같은 gameId, rack, turnOrder와 first Turn을 projection해 Tile 재생성·재배분 없이 복구한다.
 
 ### Phase 12. Client TurnDraft
 

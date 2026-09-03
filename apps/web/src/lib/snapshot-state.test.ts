@@ -3,7 +3,9 @@ import test from "node:test";
 
 import {
   PROTOCOL_VERSION,
+  type PlayingStateSnapshot,
   type StateSnapshot,
+  validatePlayingStateSnapshot,
   validateStateSnapshot,
   validateStateVersions,
 } from "@hangul-rummikub/shared";
@@ -49,6 +51,62 @@ function snapshot(
   return result.value;
 }
 
+function playingSnapshot(): PlayingStateSnapshot {
+  const result = validatePlayingStateSnapshot({
+    protocolVersion: PROTOCOL_VERSION,
+    versions: {
+      roomRevision: 3,
+      gameRevision: 0,
+      presenceVersion: 4,
+    },
+    serverTime: 1_750_000_000_100,
+    room: {
+      roomId: "room_snapshot_test",
+      roomCode: "ABC234",
+      phase: "PLAYING",
+      players: [
+        {
+          playerId: "player_snapshot_test",
+          nickname: "혁상",
+          isHost: true,
+          connectionStatus: "CONNECTED",
+          rackCount: 0,
+          initialMeldCompleted: false,
+        },
+        {
+          playerId: "player_snapshot_guest",
+          nickname: "참가자",
+          isHost: false,
+          connectionStatus: "CONNECTED",
+          rackCount: 14,
+          initialMeldCompleted: false,
+        },
+      ],
+    },
+    game: {
+      gameId: "game_snapshot_test",
+      board: { wordGroups: [] },
+      turnOrder: ["player_snapshot_test", "player_snapshot_guest"],
+      turn: {
+        turnId: "turn_snapshot_test",
+        turnNumber: 1,
+        activePlayerId: "player_snapshot_test",
+        startedAt: 1_750_000_000_100,
+        deadlineAt: 1_750_000_060_100,
+      },
+      bagCounts: { consonant: 81, vowel: 47 },
+    },
+    self: { playerId: "player_snapshot_test", rack: [] },
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) {
+    throw new Error("Playing snapshot fixture must be valid.");
+  }
+
+  return result.value;
+}
+
 test("current snapshot이 없거나 roomRevision이 최신이면 적용한다", () => {
   assert.equal(decideSnapshotUpdate(null, snapshot(0, 0)), "APPLY");
   assert.equal(
@@ -60,6 +118,13 @@ test("current snapshot이 없거나 roomRevision이 최신이면 적용한다", 
 test("presenceVersion만 최신이어도 snapshot을 적용한다", () => {
   assert.equal(
     decideSnapshotUpdate(snapshot(2, 3), snapshot(2, 4)),
+    "APPLY",
+  );
+});
+
+test("LOBBY snapshot에서 canonical PLAYING snapshot으로 전이한다", () => {
+  assert.equal(
+    decideSnapshotUpdate(snapshot(2, 4), playingSnapshot()),
     "APPLY",
   );
 });
@@ -85,11 +150,12 @@ test("revision vector가 서로 비교 불가능하면 full sync를 요청한다
   );
 });
 
-test("Game 부재 null과 revision 숫자는 임의로 순서를 정하지 않는다", () => {
+test("LOBBY의 Game 부재에서 PLAYING revision 0으로 전이하면 적용한다", () => {
   const current = snapshot(2, 4).versions;
   const incomingResult = validateStateVersions({
-    ...current,
+    roomRevision: 3,
     gameRevision: 0,
+    presenceVersion: 4,
   });
 
   assert.equal(incomingResult.ok, true);
@@ -99,6 +165,25 @@ test("Game 부재 null과 revision 숫자는 임의로 순서를 정하지 않�
 
   assert.equal(
     compareStateVersions(current, incomingResult.value),
-    "REQUEST_SYNC",
+    "APPLY",
+  );
+});
+
+test("PLAYING revision에서 Game 부재로 돌아가는 오래된 vector는 무시한다", () => {
+  const lobbyVersions = snapshot(2, 4).versions;
+  const playingResult = validateStateVersions({
+    roomRevision: 3,
+    gameRevision: 0,
+    presenceVersion: 4,
+  });
+
+  assert.equal(playingResult.ok, true);
+  if (!playingResult.ok) {
+    throw new Error("State versions fixture must be valid.");
+  }
+
+  assert.equal(
+    compareStateVersions(playingResult.value, lobbyVersions),
+    "IGNORE_STALE",
   );
 });

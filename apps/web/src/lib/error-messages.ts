@@ -11,6 +11,9 @@ const USER_ERROR_MESSAGES = {
   ROOM_FULL: "방이 가득 찼습니다. 다른 방을 이용해주세요.",
   ROOM_NOT_JOINABLE: "현재 참가할 수 없는 방입니다.",
   HOST_ONLY: "방장만 실행할 수 있는 요청입니다.",
+  NOT_ENOUGH_PLAYERS: "게임을 시작하려면 참가자가 2명 이상이어야 합니다.",
+  PLAYERS_NOT_CONNECTED:
+    "모든 참가자가 접속 중일 때 게임을 시작할 수 있습니다.",
   INVALID_PHASE: "현재 방 상태에서는 실행할 수 없습니다.",
   STALE_ROOM_REVISION: "방 상태가 변경되었습니다. 최신 상태를 불러옵니다.",
   STALE_GAME_REVISION: "게임 상태가 변경되었습니다. 최신 상태를 불러옵니다.",

@@ -1,6 +1,16 @@
 import * as v from "valibot";
 
-import { StateSnapshotSchema } from "./projections.js";
+import {
+  GameIdSchema,
+  PlayerIdSchema,
+  TurnIdSchema,
+} from "./identifiers.js";
+import {
+  PlayingStateSnapshotSchema,
+  PlayingStateVersionsSchema,
+  StateSnapshotSchema,
+  TurnNumberSchema,
+} from "./projections.js";
 import {
   BootstrapSessionAckSchema,
   ErrorDtoSchema,
@@ -12,6 +22,7 @@ import {
   type SessionReplacedNotification,
 } from "./protocol.js";
 import type {
+  GameStartCommand,
   RoomCreateCommand,
   RoomJoinCommand,
   SessionBootstrapCommand,
@@ -69,6 +80,20 @@ export type SessionResumeAck = v.InferOutput<typeof SessionResumeAckSchema>;
 export const StateSyncAckSchema = createSnapshotCommandAckSchema();
 export type StateSyncAck = v.InferOutput<typeof StateSyncAckSchema>;
 
+export const GameStartAckDataSchema = v.strictObject({
+  snapshot: PlayingStateSnapshotSchema,
+});
+export type GameStartAckData = v.InferOutput<
+  typeof GameStartAckDataSchema
+>;
+
+export const GameStartAckSchema = v.union([
+  UncorrelatedFailureAckSchema,
+  UnscopedAckFailureSchema,
+  createRoomScopedAckSchema(GameStartAckDataSchema),
+]);
+export type GameStartAck = v.InferOutput<typeof GameStartAckSchema>;
+
 export const StateSnapshotEventSchema = v.strictObject({
   kind: v.literal("state:snapshot"),
   protocolVersion: ProtocolVersionSchema,
@@ -79,6 +104,26 @@ export const StateSnapshotEventSchema = v.strictObject({
 export type StateSnapshotEvent = v.InferOutput<
   typeof StateSnapshotEventSchema
 >;
+
+export const TurnStartedEventPayloadSchema = v.strictObject({
+  gameId: GameIdSchema,
+  turnId: TurnIdSchema,
+  turnNumber: TurnNumberSchema,
+  activePlayerId: PlayerIdSchema,
+  deadlineAt: ServerTimeSchema,
+});
+export type TurnStartedEventPayload = v.InferOutput<
+  typeof TurnStartedEventPayloadSchema
+>;
+
+export const TurnStartedEventSchema = v.strictObject({
+  kind: v.literal("turn:started"),
+  protocolVersion: ProtocolVersionSchema,
+  versions: PlayingStateVersionsSchema,
+  serverTime: ServerTimeSchema,
+  payload: TurnStartedEventPayloadSchema,
+});
+export type TurnStartedEvent = v.InferOutput<typeof TurnStartedEventSchema>;
 
 export type SocketAcknowledgement<TAck> = (ack: TAck) => void;
 
@@ -103,9 +148,14 @@ export interface ClientToServerEvents {
     command: StateSyncCommand,
     acknowledge: SocketAcknowledgement<StateSyncAck>,
   ) => void;
+  "game:start": (
+    command: GameStartCommand,
+    acknowledge: SocketAcknowledgement<GameStartAck>,
+  ) => void;
 }
 
 export interface ServerToClientEvents {
   "state:snapshot": (event: StateSnapshotEvent) => void;
+  "turn:started": (event: TurnStartedEvent) => void;
   "session:replaced": (event: SessionReplacedNotification) => void;
 }

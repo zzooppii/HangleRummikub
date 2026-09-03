@@ -1,8 +1,16 @@
-import { PROTOCOL_VERSION } from "@hangul-rummikub/shared";
+import {
+  PROTOCOL_VERSION,
+  validatePlayingStateSnapshot,
+} from "@hangul-rummikub/shared";
 
 import { useLobbyApp } from "./app/use-lobby-app.js";
+import { PlayingScreen } from "./features/game/PlayingScreen.js";
 import { HomeScreen } from "./features/lobby/HomeScreen.js";
 import { LobbyScreen } from "./features/lobby/LobbyScreen.js";
+import {
+  getGameStartControl,
+  type GameStartControl,
+} from "./lib/game-start.js";
 import { createInvitationUrl } from "./lib/room-url.js";
 import type { RealtimeConnectionState } from "./lib/realtime-client.js";
 
@@ -42,6 +50,37 @@ export function App() {
       window.location.origin,
       app.snapshot.room.roomCode,
     );
+    const playingSnapshot = validatePlayingStateSnapshot(app.snapshot);
+
+    if (playingSnapshot.ok) {
+      return (
+        <div data-protocol-version={PROTOCOL_VERSION}>
+          <PlayingScreen
+            snapshot={playingSnapshot.value}
+            connectionLabel={connectionLabel}
+            connectionTone={connection.tone}
+            errorMessage={app.errorMessage}
+            sessionReplaced={app.sessionReplaced}
+            onGoHome={app.goHome}
+          />
+        </div>
+      );
+    }
+
+    const snapshotControl = getGameStartControl(
+      app.snapshot,
+      app.gameStartPending || app.operationLabel !== null,
+    );
+    const gameStartControl: GameStartControl =
+      snapshotControl.isHost &&
+      snapshotControl.canStart &&
+      (app.connectionState !== "CONNECTED" || app.sessionReplaced)
+        ? {
+            isHost: true,
+            canStart: false,
+            guidance: "서버에 연결되면 게임을 시작할 수 있습니다.",
+          }
+        : snapshotControl;
 
     return (
       <div data-protocol-version={PROTOCOL_VERSION}>
@@ -53,7 +92,9 @@ export function App() {
           errorMessage={app.errorMessage}
           copyMessage={app.copyMessage}
           sessionReplaced={app.sessionReplaced}
+          gameStartControl={gameStartControl}
           onCopyInvitation={() => app.copyInvitation(invitationUrl)}
+          onStartGame={app.startGame}
           onGoHome={app.goHome}
         />
       </div>

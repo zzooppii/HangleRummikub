@@ -4,6 +4,7 @@ import {
   validateRoomCode,
   type BrowserStoredPlayerSession,
   type ErrorDto,
+  type GameStartCommand,
   type Nickname,
   type RoomCode,
   type RoomCreateAck,
@@ -15,6 +16,10 @@ import {
 import { useEffect, useRef, useState } from "react";
 
 import { getUserErrorMessage } from "../lib/error-messages.js";
+import {
+  createOrReuseGameStartCommand,
+  getGameStartControl,
+} from "../lib/game-start.js";
 import {
   createRealtimeClient,
   RealtimeClientError,
@@ -38,7 +43,10 @@ import {
   writeStoredPlayerSession,
   type PendingRoomOperation,
 } from "../lib/session-storage.js";
-import { decideSnapshotUpdate } from "../lib/snapshot-state.js";
+import {
+  compareStateVersions,
+  decideSnapshotUpdate,
+} from "../lib/snapshot-state.js";
 
 const STALE_SESSION_MESSAGE =
   "이 방의 연결 정보가 더 이상 유효하지 않습니다. 새 방을 만들거나 다시 참가해주세요.";
@@ -62,10 +70,12 @@ export type LobbyAppState = Readonly<{
   errorMessage: string | null;
   copyMessage: string | null;
   sessionReplaced: boolean;
+  gameStartPending: boolean;
   setNickname: (value: string) => void;
   setRoomCodeInput: (value: string) => void;
   createRoom: () => void;
   joinRoom: () => void;
+  startGame: () => void;
   copyInvitation: (invitationUrl: string) => void;
   goHome: () => void;
 }>;
@@ -129,6 +139,14 @@ function clientFailureMessage(error: unknown): string {
   }
 }
 
+function isRetryableGameStartFailure(error: unknown): boolean {
+  return (
+    error instanceof RealtimeClientError &&
+    (error.code === "ACKNOWLEDGEMENT_TIMEOUT" ||
+      error.code === "NOT_CONNECTED")
+  );
+}
+
 export function useLobbyApp(): LobbyAppState {
   const initialRoute = parseAppPathname(window.location.pathname);
   const [route, setRoute] = useState<AppRoute>(initialRoute);
@@ -141,6 +159,7 @@ export function useLobbyApp(): LobbyAppState {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [sessionReplaced, setSessionReplaced] = useState(false);
+  const [gameStartPending, setGameStartPending] = useState(false);
 
   const routeRef = useRef<AppRoute>(initialRoute);
   const snapshotRef = useRef<StateSnapshot | null>(null);
@@ -152,7 +171,16 @@ export function useLobbyApp(): LobbyAppState {
   const resumeRetryRequestedRef = useRef(false);
   const syncFlightRef = useRef<Promise<void> | null>(null);
   const syncRetryRequestedRef = useRef(false);
+  const gameStartFlightRef = useRef<Promise<void> | null>(null);
+  const pendingGameStartCommandRef = useRef<GameStartCommand | null>(null);
+  const gameStartRetryRequestedRef = useRef(false);
   const sessionReplacedRef = useRef(false);
+
+  function clearPendingGameStartRequest(): void {
+    pendingGameStartCommandRef.current = null;
+    gameStartRetryRequestedRef.current = false;
+    setGameStartPending(false);
+  }
 
   function updateRoute(nextRoute: AppRoute): void {
     routeRef.current = nextRoute;
@@ -247,6 +275,7 @@ export function useLobbyApp(): LobbyAppState {
         if (!acknowledgement.ok) {
           if (isStaleSessionError(acknowledgement.error)) {
             clearStoredPlayerSession(window.sessionStorage);
+            clearPendingGameStartRequest();
             updateSnapshot(null);
             setErrorMessage(STALE_SESSION_MESSAGE);
             return;
@@ -296,8 +325,101 @@ export function useLobbyApp(): LobbyAppState {
       return;
     }
 
-    if (applyOrderedSnapshot(incomingSnapshot, session) === "REQUEST_SYNC") {
+    const application = applyOrderedSnapshot(incomingSnapshot, session);
+    if (application === "REQUEST_SYNC") {
       void requestLatestSnapshot();
+    } else if (
+      application === "CURRENT" &&
+      incomingSnapshot.room.phase === "PLAYING"
+    ) {
+      clearPendingGameStartRequest();
+    }
+  }
+
+  async function executeGameStartCommand(
+    command: GameStartCommand,
+  ): Promise<void> {
+    if (gameStartFlightRef.current !== null) {
+      return gameStartFlightRef.current;
+    }
+
+    const client = clientRef.current;
+    const session = storedSessionForCurrentRoute();
+    if (
+      client === null ||
+      !client.connected ||
+      session === null ||
+      sessionReplacedRef.current
+    ) {
+      setErrorMessage("서버에 연결되지 않았습니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    pendingGameStartCommandRef.current = command;
+    setGameStartPending(true);
+    setOperationLabel("게임 시작 요청 중...");
+    setErrorMessage(null);
+
+    const flight = (async () => {
+      try {
+        const acknowledgement = await client.startGame(command);
+        pendingGameStartCommandRef.current = null;
+
+        if (!acknowledgement.ok) {
+          setErrorMessage(getUserErrorMessage(acknowledgement.error.code));
+          if (
+            acknowledgement.error.code === "STALE_ROOM_REVISION" ||
+            acknowledgement.error.code === "INVALID_PHASE"
+          ) {
+            void requestLatestSnapshot();
+          }
+          return;
+        }
+
+        const application = applyOrderedSnapshot(
+          acknowledgement.data.snapshot,
+          session,
+        );
+        if (application === "CURRENT") {
+          setErrorMessage(null);
+        } else if (application === "REQUEST_SYNC") {
+          void requestLatestSnapshot();
+        }
+      } catch (error: unknown) {
+        if (!isRetryableGameStartFailure(error)) {
+          pendingGameStartCommandRef.current = null;
+          if (
+            error instanceof RealtimeClientError &&
+            error.code === "INVALID_SERVER_RESPONSE"
+          ) {
+            void requestLatestSnapshot();
+          }
+        }
+        setErrorMessage(clientFailureMessage(error));
+      }
+    })();
+
+    gameStartFlightRef.current = flight;
+    try {
+      await flight;
+    } finally {
+      if (gameStartFlightRef.current === flight) {
+        gameStartFlightRef.current = null;
+        setGameStartPending(false);
+        setOperationLabel(null);
+      }
+    }
+
+    const retryRequestedWhileActive = gameStartRetryRequestedRef.current;
+    gameStartRetryRequestedRef.current = false;
+    const pendingCommand = pendingGameStartCommandRef.current;
+    if (
+      retryRequestedWhileActive &&
+      pendingCommand !== null &&
+      client.connected &&
+      !sessionReplacedRef.current
+    ) {
+      await executeGameStartCommand(pendingCommand);
     }
   }
 
@@ -334,6 +456,7 @@ export function useLobbyApp(): LobbyAppState {
         if (!acknowledgement.ok) {
           if (isStaleSessionError(acknowledgement.error)) {
             clearStoredPlayerSession(window.sessionStorage);
+            clearPendingGameStartRequest();
             updateSnapshot(null);
             setErrorMessage(STALE_SESSION_MESSAGE);
             return;
@@ -409,6 +532,8 @@ export function useLobbyApp(): LobbyAppState {
       setErrorMessage(INVALID_SERVER_STATE_MESSAGE);
       return;
     }
+
+    clearPendingGameStartRequest();
 
     const sessionStored = writeStoredPlayerSession(
       window.sessionStorage,
@@ -617,6 +742,19 @@ export function useLobbyApp(): LobbyAppState {
       resumeRetryRequestedRef.current = false;
       await resumeCurrentSession();
     }
+
+    const pendingGameStartCommand = pendingGameStartCommandRef.current;
+    if (pendingGameStartCommand === null || sessionReplacedRef.current) {
+      return;
+    }
+
+    if (gameStartFlightRef.current !== null) {
+      gameStartRetryRequestedRef.current = true;
+      await gameStartFlightRef.current;
+      return;
+    }
+
+    await executeGameStartCommand(pendingGameStartCommand);
   }
 
   useEffect(() => {
@@ -632,6 +770,21 @@ export function useLobbyApp(): LobbyAppState {
     const unsubscribeSnapshot = client.subscribeSnapshot((event) => {
       receiveSnapshot(event.payload.snapshot);
     });
+    const unsubscribeTurnStarted = client.subscribeTurnStarted((event) => {
+      const currentSnapshot = snapshotRef.current;
+      if (currentSnapshot === null) {
+        void requestLatestSnapshot();
+        return;
+      }
+
+      const decision = compareStateVersions(
+        currentSnapshot.versions,
+        event.versions,
+      );
+      if (decision === "APPLY" || decision === "REQUEST_SYNC") {
+        void requestLatestSnapshot();
+      }
+    });
     const unsubscribeReplaced = client.subscribeSessionReplaced(() => {
       sessionReplacedRef.current = true;
       setSessionReplaced(true);
@@ -639,6 +792,7 @@ export function useLobbyApp(): LobbyAppState {
       setErrorMessage(null);
       clearStoredPlayerSession(window.sessionStorage);
       clearPendingRoomOperation(window.sessionStorage);
+      clearPendingGameStartRequest();
     });
     const unsubscribeProtocolIssue = client.subscribeProtocolIssue(() => {
       setErrorMessage(INVALID_SERVER_STATE_MESSAGE);
@@ -677,6 +831,7 @@ export function useLobbyApp(): LobbyAppState {
         (nextRoute.kind !== "ROOM" ||
           nextRoute.roomCode !== currentSnapshot.room.roomCode)
       ) {
+        clearPendingGameStartRequest();
         updateSnapshot(null);
         client.disconnect();
         client.connect();
@@ -696,6 +851,7 @@ export function useLobbyApp(): LobbyAppState {
       unsubscribeConnection();
       unsubscribeConnected();
       unsubscribeSnapshot();
+      unsubscribeTurnStarted();
       unsubscribeReplaced();
       unsubscribeProtocolIssue();
       client.destroy();
@@ -805,6 +961,38 @@ export function useLobbyApp(): LobbyAppState {
     }
   }
 
+  function startGame(): void {
+    if (
+      gameStartFlightRef.current !== null ||
+      resumeFlightRef.current !== null ||
+      entryFlightRef.current !== null ||
+      operationLabel !== null
+    ) {
+      return;
+    }
+
+    const currentSnapshot = snapshotRef.current;
+    const client = clientRef.current;
+    if (
+      currentSnapshot === null ||
+      !getGameStartControl(currentSnapshot, false).canStart
+    ) {
+      return;
+    }
+    if (client === null || !client.connected || sessionReplacedRef.current) {
+      setErrorMessage("서버에 연결되지 않았습니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    const command = createOrReuseGameStartCommand(
+      pendingGameStartCommandRef.current,
+      currentSnapshot.versions.roomRevision,
+      createRequestId,
+    );
+    pendingGameStartCommandRef.current = command;
+    void executeGameStartCommand(command);
+  }
+
   function goHome(): void {
     if (sessionReplacedRef.current) {
       clearStoredPlayerSession(window.sessionStorage);
@@ -815,6 +1003,7 @@ export function useLobbyApp(): LobbyAppState {
     }
 
     updateSnapshot(null);
+    clearPendingGameStartRequest();
     setErrorMessage(null);
     setCopyMessage(null);
     if (window.location.pathname !== "/") {
@@ -836,10 +1025,12 @@ export function useLobbyApp(): LobbyAppState {
     errorMessage,
     copyMessage,
     sessionReplaced,
+    gameStartPending,
     setNickname,
     setRoomCodeInput,
     createRoom,
     joinRoom,
+    startGame,
     copyInvitation,
     goHome,
   };

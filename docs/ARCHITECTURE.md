@@ -20,7 +20,7 @@
 
 ### 2.1 계획된 monorepo
 
-아래는 단계적으로 구현할 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. Phase 9에서는 versioned deterministic test dictionary adapter를 infrastructure 경계에 추가했다. Phase 10에서는 server-only Board·Tile validation model과 async pure RuleEngine을 domain 경계에 추가했다. 나머지 디렉터리는 해당 Roadmap 단계에서 필요할 때 생성한다.
+아래는 단계적으로 구현할 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. Phase 9에서는 versioned deterministic test dictionary adapter를 infrastructure 경계에 추가했고 Phase 10에서는 server-only Board·Tile validation model과 async pure RuleEngine을 domain 경계에 추가했다. Phase 11은 canonical inventory/GameState, `GameStartService`, player별 PLAYING projection, `game:start` transport와 최소 web Playing 화면을 연결했다. 나머지 구조는 해당 Roadmap 단계에서 필요할 때 생성한다.
 
 ```text
 /
@@ -118,6 +118,8 @@ Socket.IO handler 안에서 Room state를 직접 수정하거나 게임 규칙�
 - commit 후 player별 projection 생성과 event 발행
 - Host/disconnect/retention 같은 policy 호출
 
+Phase 11의 `GameStartService`는 `RoomRepository`, `RoomUnitOfWork`, `PlayerPresenceReader`, `Clock`, `RandomSource`와 `IdGenerator` port를 조합한다. current-primary actor 확인은 transport에, presence의 socket 세부사항은 infrastructure에 남기고 application은 Room/Player identifier와 공개 connection status만 다룬다.
+
 ### 3.4 Domain layer
 
 - `Room`과 `Game` state machine
@@ -144,6 +146,7 @@ Domain API는 가능한 한 plain serializable data를 받고 새 state 또는 �
 | `IdGenerator` | room/player/game/turn/tile ID 생성 | process adapter | 동일 contract 유지 |
 | `RoomCodeGenerator` | 짧은 code 후보 생성 | process adapter | 동일 contract 유지 |
 | `SessionTokenIssuer` | opaque token 발급·hash | process adapter | managed secret/KMS 고려 가능 |
+| `PlayerPresenceReader` | Room의 현재 presence version과 Player별 CONNECTED/OFFLINE read model | `ConnectionRegistryPresenceReader` | shared presence store/read model |
 | `TurnScheduler` | active deadline마다 timeout command를 at-least-once enqueue | in-process timer + overdue sweeper | Redis-backed job/lease |
 | `RealtimePublisher` | player별 projection 전달 | Socket.IO | multi-node Socket.IO adapter |
 
@@ -181,7 +184,7 @@ Room
   phase: LOBBY | PLAYING | FINISHED
   hostPlayerId
   players: ordered durable Player records
-  game: GameState | absent
+  game: GameState | null
   roomRevision
   storageRevision
   createdAt / updatedAt
@@ -197,11 +200,18 @@ GameState
   gameId
   gameRevision
   immutable RulesConfig snapshot
+    rulesVersion: hangul-rummikub-rules-v1
+    dictionaryVersion: test-dictionary-v1
     tileInventoryVersion: hangul-tile-inventory-v1
+    minPlayers: 2 / maxPlayers: 4
+    turnDurationMs: 60000 / gameDurationMs: 1500000
+    initialRack: consonants 7 / vowels 7
+    initialMeld: minimumTileCount 6 / minimumWordSyllables 2
+    timeoutPenaltyTileCount: 3
+    jokerRulesVersion: hangul-joker-rules-v1
   tilesById: tileId -> immutable physical Tile instance
-  bags:
-    consonants: server-ordered tileId collection
-    vowels: server-ordered tileId collection
+  consonantBag: server-ordered tileId collection
+  vowelBag: server-ordered tileId collection
   racks: playerId -> tileId collection
   board: ordered WordGroup collection
     WordGroup:
@@ -209,10 +219,7 @@ GameState
       ordered Tile placements with assignedSymbol
       explicit choseong/jungseong/jongseong segmentation
       explicit one-position Joker assignments
-  playerGameStatus:
-    initialMeldCompleted
-    forfeit
-    consecutiveOfflineTimeouts
+  initialMeldCompleted: playerId -> boolean
   turnOrder: immutable shuffled playerId collection
   turn:
     turnId
@@ -222,8 +229,6 @@ GameState
     deadlineAt
   gameStartedAt
   gameDeadlineAt
-  stalemate tracking
-  result: absent or server-computed result
 ```
 
 - conceptual `PhysicalTileDefinition`은 `physicalType`, source `bagKind`, `quantity`, `allowedSymbols`를 분리한다. exact 행과 합계는 GAME_RULES C-22를 따른다.
@@ -232,12 +237,14 @@ GameState
 - WordGroup의 syllable segmentation은 각 physical placement를 choseong, jungseong, optional jongseong role에 명시적으로 연결한다. 복합모음과 겹받침은 GAME_RULES C-23의 exact component sequence만 허용한다.
 - 하나의 `tileId`는 최종 Board 전체에 최대 한 번만 나타나며 모든 Tile은 정확히 하나의 WordGroup, rack 또는 bag 같은 허용 위치에 속해야 한다.
 - WordGroup collection의 표시 순서는 UI 안정성을 위한 것이고 낱말 유효성에는 영향을 주지 않는다.
-- `RulesConfig`는 최소한 rules/dictionary version, `tileInventoryVersion = hangul-tile-inventory-v1`, 60초 turn, 25분 Game, 시작 rack 7/7, initial meld 최소 Tile 6개·최소 2음절, timeout penalty 3개, 최대 4명과 Joker 규칙 reference를 snapshot할 수 있어야 한다.
+- Phase 11의 `RulesConfig`는 위 version과 수치를 frozen snapshot으로 생성하며 repository clone 뒤에도 동일 값과 nested isolation을 유지한다.
+- forfeit, consecutive offline timeout, stalemate tracking과 result는 정책은 확정됐지만 Phase 11 GameState에는 넣지 않았다. 각각을 실제로 변경하는 후속 Phase에서 canonical field를 추가한다.
 - 구현된 Phase 8 composition은 명시된 syllable role별 `tileId + assignedSymbol`에서 word 내부 중복 physical reference를 거절하고, two-position component를 먼저 하나의 logical V/T로 collapse한다. Compatibility Jamo를 명시적 Unicode modern Hangul L/V/T index table에 mapping해 precomposed NFC word를 계산하며 문자열을 단순 concatenate/normalize하지 않는다.
 - Phase 10의 `Board`는 ordered `WordGroup` collection이고 각 group은 unique `groupId`와 Phase 8 syllable/component 구조를 사용한다. `OrdinaryTileDescriptor`와 `JokerTileDescriptor`는 full Game Tile entity가 아니라 RuleEngine 입력의 physical assignment 검증용 server-only descriptor다.
 - async `validateProposedBoard(ValidateBoardInput)`은 canonical/proposed Board, readonly `tilesById`, actor rack tileId 집합, initial meld 상태, `RuleValidationPolicy`와 `DictionaryProvider`를 받아 `BoardValidationResult`를 반환한다. 성공 값은 group별 `composedWords`, `newlyUsedRackTileIds`, `recoveredJokerTileIds`, `completesInitialMeld`만 포함한다.
 - RuleEngine은 Board 구조와 Tile reference·assignment·conservation·ownership을 먼저 확인하고, initial meld 또는 rearrangement와 Joker recovery를 검증한 다음 Phase 8 `composeWord`와 Phase 9 `DictionaryProvider.lookup`을 실행한다. 같은 word의 여러 group은 허용하되 groupId와 tileId uniqueness는 유지한다.
 - RuleEngine은 입력 collection이나 canonical state를 mutate하지 않고 candidate를 commit하지 않는다. actor 인증, Room/Game phase, turn/deadline/revision, rack mutation, CAS와 다음 turn/result 계산은 이 경계 밖이다.
+- Phase 11의 `createInitialGameState`는 C-22 runtime definition에서 156개의 unique Tile instance를 만들고 consonant/vowel pool과 Player 목록을 각각 server `RandomSource` 기반 Fisher–Yates로 shuffle한다. Player마다 각 bag에서 7개씩 배분한 뒤 empty Board, 모든 Player의 `initialMeldCompleted = false`, `gameRevision = 0`, `turnNumber = 1`인 첫 Turn과 Game deadline을 생성하며 Tile conservation을 확인한다.
 - 저장 state는 plain data와 명시적인 schema/rules version을 가져야 한다. socket, timer handle, framework object를 직렬화 state에 넣지 않는다.
 
 ### 4.4 Connection과 Session state
@@ -284,27 +291,31 @@ Canonical Room/Game
         └── projectFor(player C) ──> public state + C rack/private fields
 ```
 
-Phase 2 shared wire snapshot:
+Phase 11 shared wire snapshot은 Room phase로 구분되는 union이다.
 
 ```text
 StateSnapshot
-  protocolVersion
-  versions:
-    roomRevision
-    gameRevision: revision | null
-    presenceVersion
-  serverTime
-  room: PublicRoomView             # roomId, roomCode, phase, ordered players
-    players: PublicPlayerView[]    # playerId, nickname, isHost, connectionStatus
-  self: PrivatePlayerView
+  LobbyStateSnapshot
+    versions.gameRevision: null
+    room.phase: LOBBY
+    room.players: identity / Host / presence
+    self.playerId
+  | PlayingStateSnapshot
+    versions.gameRevision: non-negative integer
+    room.phase: PLAYING
+    room.players: Lobby public fields + rackCount + initialMeldCompleted
+    game: gameId / public Board / turnOrder / current turn / bagCounts
+    self: playerId + private rack Tile views
 ```
 
 - Lobby에서 Game이 아직 없으면 `StateVersions.gameRevision`은 `null`이며 `0` sentinel로 부재를 나타내지 않는다.
 - `PublicPlayerView.connectionStatus`는 `CONNECTED | OFFLINE`이고 `PublicRoomView.players` 배열 순서가 공개 표시 순서다.
-- Phase 2의 `PrivatePlayerView`에는 현재 `playerId`만 있다. gameplay DTO를 실제로 추가하는 Phase에서는 본인 rack 상세, initial meld 완료 상태, connection 상태와 forfeit 여부를 self projection에 추가하며 raw credential은 넣지 않는다.
-- Phase 7A visibility policy에 따라 future public gameplay projection에는 Board 전체, active Player, turn deadline/order, 각 Player의 rack 개수·initial meld 요약, Game phase/result와 자음·모음 bag 잔여 개수를 포함한다.
+- `PlayingPublicPlayerView`는 각 Player의 rack 개수와 initial meld 완료 여부를 공개하고, `PlayingPrivatePlayerView`만 현재 Player의 ordered rack Tile 상세를 포함한다. ordinary rack Tile은 tileId, kind, physicalType, sourceBag과 allowedSymbols를, Joker는 같은 identifier/meta 중 applicable field만 가진다.
+- `PublicGameView`는 Board 전체, active Player를 포함한 current turn과 deadline, immutable turnOrder와 consonant/vowel bag 잔여 개수를 공개한다. Phase 11에서 아직 존재하지 않는 forfeit/result field는 가짜 값으로 추가하지 않는다.
 - 상대 rack 상세, bag 순서, future draw Tile과 server random state는 public DTO에 넣지 않는다. `sessionToken`, token hash, `socketId`, `connectionGeneration`, bootstrap credential, server-only `storageRevision`, repository 내부 정보는 public/private 어느 snapshot에도 넣지 않는다.
 - Socket.IO room 전체로 동일 snapshot을 broadcast하지 않는다. 공개 변화 알림 뒤 각 Player에게 projection을 보내거나, 처음부터 socket별 snapshot을 emit한다.
+
+`LobbyStateSnapshotProjector`는 이름을 유지하면서 LOBBY와 PLAYING 두 projection을 모두 생성한다. PLAYING에서는 canonical `tilesById`와 rack을 self view로만 변환하며 다른 Player와 bag에는 count만 남긴다. resume과 `state:sync`도 이 projector를 사용하므로 GameState를 재생성하거나 turnOrder/rack을 다시 배분하지 않는다.
 
 MVP는 patch protocol보다 full snapshot을 우선한다. 최대 4명 규모에서는 단순성과 복구 가능성이 더 중요하다. 이후 측정 결과가 필요할 때 scoped-version delta를 추가할 수 있다.
 
@@ -366,15 +377,18 @@ canonical code는 `ABCDEFGHJKMNPQRSTUVWXYZ23456789` alphabet의 uppercase ASCII 
 
 `game:start` command는 Room mutation 경계 안에서 다음을 검증한다.
 
-- session이 유효하고 actor가 `hostPlayerId`와 같은가
+- transport가 current-primary socket binding에서 도출한 actor가 `hostPlayerId`와 같은가
 - Room phase가 `LOBBY`인가
 - 등록 Player 수가 2~4명인가
-- 규칙상 필요한 추가 시작 조건이 충족되는가
-- 이미 처리한 `requestId`가 아닌가
+- `PlayerPresenceReader` 기준 모든 등록 Player가 `CONNECTED`인가
+- `expectedRoomRevision`이 최신 Room과 같은가
+- Room/Player scope의 `requestId`가 신규이거나 동일 fingerprint의 accepted retry인가
 
-성공 시 서버는 확정된 `RulesConfig` snapshot을 Game에 연결하고, Player 목록을 server-side `RandomSource`로 한 번 shuffle해 immutable `turnOrder`를 만든다. `hangul-tile-inventory-v1`의 physical family별 quantity만큼 unique tileId를 생성하고 source bag에 넣어 각각 shuffle한다. 각 Player에게 consonant bag 7회와 vowel bag 7회를 배분한다. bag 소속 Joker가 나오면 그 7회 중 하나이며 별도 8번째 Tile이 아니다. 그 뒤 turnOrder 첫 Player의 `turnId`, `startedAt`, `deadlineAt = startedAt + 60초`와 `gameDeadlineAt = gameStartedAt + 25분`을 만들고 Room을 `PLAYING`으로 한 번에 commit한다.
+성공 시 서버는 확정된 `RulesConfig` snapshot을 Game에 연결하고, Player 목록을 server-side `RandomSource`로 한 번 shuffle해 immutable `turnOrder`를 만든다. `hangul-tile-inventory-v1`의 physical family별 quantity만큼 unique tileId를 생성하고 source bag에 넣어 각각 shuffle한다. 각 Player에게 consonant bag 7회와 vowel bag 7회를 배분한다. bag 소속 Joker가 나오면 그 7회 중 하나이며 별도 8번째 Tile이 아니다. 그 뒤 turnOrder 첫 Player의 `turnId`, `turnNumber = 1`, `startedAt`, `deadlineAt = startedAt + 60초`와 `gameDeadlineAt = gameStartedAt + 25분`을 만든다.
 
-exact inventory와 Joker 시작 배분은 GAME_RULES C-02/C-22에서 확정되었다. disconnected Player가 있는 상태의 시작 허용 여부는 여전히 GAME_RULES TBC-B이며 Phase 11 `game:start` 구현 전에 결정해야 한다.
+`GameStartService`는 위 생성을 같은 Room의 serialized lane에서 수행하고 `Room phase = PLAYING`, 새 GameState, `roomRevision + 1`, 초기 `gameRevision = 0`, server-only `storageRevision + 1`과 non-secret accepted idempotency result를 하나의 `RoomUnitOfWork` CAS로 commit한다. UoW는 transport가 캡처한 current-primary authorization을 live state swap 직전 동기 precondition으로 다시 확인하므로, command 처리 도중 새 primary로 교체된 socket은 candidate를 commit할 수 없다. 같은 scope/request/fingerprint retry는 기존 result를 replay해 shuffle·deal을 반복하지 않고, 다른 fingerprint는 `REQUEST_ID_REUSED`, 새 request의 중복 start는 `INVALID_PHASE`다. commit 후 snapshot 또는 `turn:started` delivery가 실패해도 canonical Game을 rollback하지 않으며 retry, resume 또는 `state:sync`로 회복한다.
+
+exact inventory와 Joker 시작 배분은 GAME_RULES C-02/C-22, 연결 조건과 첫 Turn 번호는 C-24를 따른다. 한 명이라도 OFFLINE이면 `PLAYERS_NOT_CONNECTED`, 한 명뿐이면 `NOT_ENOUGH_PLAYERS`로 state 변경 없이 거절한다. Ready 상태는 도입하지 않는다.
 
 ### 7.2 Playing
 
@@ -470,7 +484,7 @@ Phase 5의 composition root는 `createApplicationRuntime()` 호출마다 독립�
 
 ## 9. Socket.IO protocol 개념
 
-Phase 5는 아래 event 중 `session:bootstrap`, `room:create`, `room:join`, `session:resume`, `state:sync`의 browser-safe wire contract와 Socket.IO listener를 실제로 연결했다. 그 밖의 event와 gameplay command는 해당 Roadmap 단계에서 구현한다.
+Phase 5는 `session:bootstrap`, `room:create`, `room:join`, `session:resume`, `state:sync`를 연결했고 Phase 11은 `game:start` command와 `turn:started` advisory event를 추가했다. 그 밖의 gameplay command와 event는 해당 Roadmap 단계에서 구현한다.
 
 첫 `protocolVersion`은 `1`이다. 모든 Phase 2 client command가 이를 명시하며 server는 호환 가능한 version만 session/bootstrap/resume command에 허용한다. 구형 client에는 secret 없는 `INCOMPATIBLE_PROTOCOL` 응답과 향후 reload/update UX를 제공한다.
 
@@ -573,6 +587,8 @@ bootstrap ack와 Room을 찾기 전의 오류에는 존재하지 않는 version�
 | `server:error` | 특정 command ack에 묶이지 않은 복구 가능한 transport/server 오류 |
 
 MVP에서는 독립 event 수를 줄이고 `state:snapshot`을 중심으로 구현할 수 있다. advisory event는 state source가 아니며 transport 도착 순서 대신 envelope의 scoped versions로 해석한다.
+
+Phase 11 `game:start`는 required `expectedRoomRevision`과 strict empty payload를 사용한다. client가 playerId, turnOrder, Tile, random seed나 rack을 지정하지 못하며, current-primary binding에서 actor를 얻는다. 성공 acknowledgement는 requester의 최신 `PlayingStateSnapshot`을 가진 Room-scoped ack이고, commit 뒤 Room의 각 active primary socket에는 각자 projection한 `state:snapshot`과 동일 first-turn metadata의 `turn:started`를 보낸다.
 
 ### 9.4 Scoped version 처리
 
@@ -763,6 +779,7 @@ Phase 3의 `InMemoryPersistence`는 process 내부 Map 기반 adapter다.
 
 - 하나의 private backing state가 Room ID/code index, session verification index, scope/request idempotency index를 함께 소유한다.
 - `RoomRepository`는 code와 internal ID index를 관리하고, 입력 저장 및 조회 반환 시 detached copy를 사용한다.
+- Phase 11에서 RoomRecord가 nullable `GameState`를 포함하므로 adapter는 `tilesById`, bag/rack 배열, Board, initial meld map, turnOrder, Turn과 nested RulesConfig까지 명시적으로 복제한다. caller가 조회 결과를 바꾸어 canonical Game을 우회 변경할 수 없다.
 - `RoomUnitOfWork.commit(changeSet)`은 declarative change set에 필요한 Room candidate, session binding/cleanup, accepted idempotency record를 별도 Map copy에 먼저 완성한 뒤 backing state reference를 한 번만 교체한다. failure injection이나 precondition 실패 시 live state는 바뀌지 않는다.
 - create의 `storageRevision`은 adapter가 `0`으로 부여한다. replace는 expected `roomRevision`과 expected server-only `storageRevision`을 각각 CAS하고 성공 시에만 `storageRevision`을 1 증가시킨다.
 - code 예약과 정원 확인/추가는 이 unit-of-work 안에서 재검사한다. 예외 시 기존 Map/index를 유지하고 partial entry를 노출하지 않는다.
@@ -874,7 +891,7 @@ https://game.example/
 
 ## 15. 테스트 경계
 
-- Domain unit test: fixed `Clock`, seeded/fake `RandomSource`, test `DictionaryProvider`로 state transition과 invariant를 검증하며, Phase 10 RuleEngine은 deterministic provider와 readonly Board 입력으로 validation-only 동작을 검증
+- Domain unit test: fixed `Clock`, seeded/fake `RandomSource`, test `DictionaryProvider`로 state transition과 invariant를 검증하며, Phase 10 RuleEngine은 deterministic provider와 readonly Board 입력으로 validation-only 동작을 검증하고 Phase 11은 exact inventory, 2/3/4인 deal, Tile conservation, turnOrder와 첫 deadline을 검증
 - Repository contract test: code 충돌, capacity race, scoped-version CAS, session lookup
 - Application test: authorization, idempotency, candidate discard, timeout race
 - Socket integration test: bootstrap/create/join/start/resume, 잘못된 token, stale scoped version, duplicate request와 lost ack
@@ -888,7 +905,6 @@ https://game.example/
 
 | 미확정 결정 | 영향을 받는 component |
 | --- | --- |
-| game:start 시 OFFLINE 참가자 포함 여부 | start validation, participant snapshot |
 | production dictionary dataset·license·exact 어휘 범위 | `DictionaryProvider`, version storage |
 | Lobby 비-Host explicit leave와 Room retention/code 재사용 | session/Room cleanup, generator, abuse controls |
 | command/Submit 운영 한도 | transport validation, rate limiting |

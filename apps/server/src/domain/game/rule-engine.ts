@@ -14,6 +14,7 @@ import type {
   TileDescriptor,
   WordGroup,
 } from "./board.js";
+import { isJokerAllowedSymbol } from "./tile-inventory.js";
 
 export type RuleValidationPolicy = Readonly<{
   minimumWordSyllables: number;
@@ -135,42 +136,6 @@ type BoardAnalysis = Readonly<{
 type InternalResult<T> =
   | Readonly<{ ok: true; value: T }>
   | Readonly<{ ok: false; error: BoardValidationError }>;
-
-const JOKER_ONE_POSITION_SYMBOLS: ReadonlySet<string> = new Set([
-  "ㄱ",
-  "ㄲ",
-  "ㄴ",
-  "ㄷ",
-  "ㄸ",
-  "ㄹ",
-  "ㅁ",
-  "ㅂ",
-  "ㅃ",
-  "ㅅ",
-  "ㅆ",
-  "ㅇ",
-  "ㅈ",
-  "ㅉ",
-  "ㅊ",
-  "ㅋ",
-  "ㅌ",
-  "ㅍ",
-  "ㅎ",
-  "ㅏ",
-  "ㅐ",
-  "ㅑ",
-  "ㅒ",
-  "ㅓ",
-  "ㅔ",
-  "ㅕ",
-  "ㅖ",
-  "ㅗ",
-  "ㅛ",
-  "ㅜ",
-  "ㅠ",
-  "ㅡ",
-  "ㅣ",
-]);
 
 export async function validateProposedBoard(
   input: ValidateBoardInput,
@@ -479,7 +444,7 @@ function validateTileAssignments(
       continue;
     }
 
-    if (!JOKER_ONE_POSITION_SYMBOLS.has(placement.component.assignedSymbol)) {
+    if (!isJokerAllowedSymbol(placement.component.assignedSymbol)) {
       return failure({
         code: "JOKER_RULE_VIOLATION",
         reason: "INVALID_ASSIGNMENT",

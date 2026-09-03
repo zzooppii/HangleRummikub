@@ -8,6 +8,7 @@ import {
   RoomCodeSchema,
   RoomIdSchema,
   SessionTokenSchema,
+  validateGameStartAck,
   validateRoomCreateAck,
   validateRoomJoinAck,
   validateSessionBootstrapAck,
@@ -15,10 +16,12 @@ import {
   validateSessionResumeAck,
   validateStateSnapshotEvent,
   validateStateSyncAck,
+  validateTurnStartedEvent,
   type ClientToServerEvents,
-  type ConnectionStatus,
+  type GameStartAck,
+  type GameStartCommand,
   type Nickname,
-  type PlayerId,
+  type PlayingStateSnapshot,
   type RequestId,
   type RoomCode,
   type RoomCreateAck,
@@ -37,6 +40,7 @@ import {
   type StateSnapshotEvent,
   type StateSyncAck,
   type StateSyncCommand,
+  type TurnStartedEvent,
 } from "@hangul-rummikub/shared";
 import {
   io as createSocketClient,
@@ -44,11 +48,13 @@ import {
 } from "socket.io-client";
 import { parse } from "valibot";
 
+import { GameStartService } from "../application/game-start-service.js";
 import { LobbyStateSnapshotProjector } from "../application/lobby-state-snapshot-projector.js";
 import { RoomSessionApplicationService } from "../application/room-session-service.js";
 import { SessionResumeService } from "../application/session-resume-service.js";
 import type { ApplicationRuntime } from "../composition-root.js";
 import { ConnectionRegistry } from "../infrastructure/connection-registry.js";
+import { ConnectionRegistryPresenceReader } from "../infrastructure/connection-registry-presence-reader.js";
 import { InMemoryPersistence } from "../infrastructure/in-memory-persistence.js";
 import { KeyedSerialExecutor } from "../infrastructure/keyed-serial-executor.js";
 import {
@@ -56,7 +62,11 @@ import {
   NodeCryptoSessionTokenIssuer,
   SystemClock,
 } from "../infrastructure/system.js";
-import type { RoomCodeGenerator } from "../ports/system.js";
+import type {
+  PlayerPresenceReader,
+  RoomPresenceReadModel,
+} from "../ports/player-presence-reader.js";
+import type { RandomSource, RoomCodeGenerator } from "../ports/system.js";
 import { createHttpServer } from "../server.js";
 
 const NETWORK_TIMEOUT_MS = 5_000;
@@ -69,10 +79,15 @@ interface RawClientToServerEvents {
     command: unknown,
     acknowledge: (ack: SessionBootstrapAck) => void,
   ) => void;
+  "game:start": (
+    command: unknown,
+    acknowledge: (ack: GameStartAck) => void,
+  ) => void;
 }
 
 type RawClient = SocketIoClient<ServerToClientEvents, RawClientToServerEvents>;
 type SnapshotCommandAck =
+  | GameStartAck
   | RoomCreateAck
   | RoomJoinAck
   | SessionResumeAck
@@ -90,6 +105,7 @@ type TestHarness = Readonly<{
 type ClientObserver = Readonly<{
   snapshots: StateSnapshotEvent[];
   replacements: SessionReplacedNotification[];
+  turnStarts: TurnStartedEvent[];
 }>;
 
 type HostedRoom = Readonly<{
@@ -138,10 +154,78 @@ class SequenceRoomCodeGenerator implements RoomCodeGenerator {
   }
 }
 
+class ZeroRandomSource implements RandomSource {
+  nextInt(maxExclusive: number): number {
+    if (!Number.isSafeInteger(maxExclusive) || maxExclusive <= 0) {
+      throw new RangeError("maxExclusive must be positive.");
+    }
+    return 0;
+  }
+}
+
+class InjectableFailurePresenceReader implements PlayerPresenceReader {
+  #successfulReadsBeforeFailure: number | null = null;
+  #nextReadBarrier:
+    | Readonly<{
+        markEntered(): void;
+        releasePromise: Promise<void>;
+      }>
+    | null = null;
+
+  constructor(private readonly delegate: PlayerPresenceReader) {}
+
+  failAfterSuccessfulReads(count: number): void {
+    if (!Number.isSafeInteger(count) || count < 0) {
+      throw new RangeError("Failure countdown must be non-negative.");
+    }
+    this.#successfulReadsBeforeFailure = count;
+  }
+
+  blockNextRead(): Readonly<{
+    entered: Promise<void>;
+    release(): void;
+  }> {
+    if (this.#nextReadBarrier !== null) {
+      throw new Error("A presence read is already blocked.");
+    }
+
+    let markEntered = (): void => {};
+    let release = (): void => {};
+    const entered = new Promise<void>((resolve) => {
+      markEntered = resolve;
+    });
+    const releasePromise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.#nextReadBarrier = { markEntered, releasePromise };
+    return { entered, release };
+  }
+
+  async readRoomPresence(roomId: RoomId): Promise<RoomPresenceReadModel> {
+    const barrier = this.#nextReadBarrier;
+    if (barrier !== null) {
+      this.#nextReadBarrier = null;
+      barrier.markEntered();
+      await barrier.releasePromise;
+    }
+
+    if (this.#successfulReadsBeforeFailure !== null) {
+      if (this.#successfulReadsBeforeFailure === 0) {
+        this.#successfulReadsBeforeFailure = null;
+        throw new Error("Injected projection delivery failure.");
+      }
+      this.#successfulReadsBeforeFailure -= 1;
+    }
+
+    return this.delegate.readRoomPresence(roomId);
+  }
+}
+
 type DeterministicRuntime = Readonly<{
   runtime: ApplicationRuntime;
   tokenIssuer: NodeCryptoSessionTokenIssuer;
   roomCodeGenerator: SequenceRoomCodeGenerator;
+  presenceReader: InjectableFailurePresenceReader;
 }>;
 
 function createDeterministicRuntime(): DeterministicRuntime {
@@ -153,47 +237,47 @@ function createDeterministicRuntime(): DeterministicRuntime {
     roomCode("ABCDEF"),
     roomCode("BCDEFG"),
   ]);
+  const idGenerator = new FakeIdGenerator();
+  const roomMutationExecutor = new KeyedSerialExecutor<RoomId>();
+  const presenceReader = new InjectableFailurePresenceReader(
+    new ConnectionRegistryPresenceReader(connectionRegistry),
+  );
   const roomSessionService = new RoomSessionApplicationService({
     roomRepository: persistence,
     sessionRepository: persistence,
     idempotencyRepository: persistence,
     roomUnitOfWork: persistence,
     clock,
-    idGenerator: new FakeIdGenerator(),
+    idGenerator,
     roomCodeGenerator,
     sessionTokenIssuer: tokenIssuer,
-    roomMutationExecutor: new KeyedSerialExecutor<RoomId>(),
+    roomMutationExecutor,
   });
   const sessionResumeService = new SessionResumeService({
     sessionRepository: persistence,
     roomRepository: persistence,
     sessionTokenIssuer: tokenIssuer,
   });
+  const gameStartService = new GameStartService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    presenceReader,
+    clock,
+    idGenerator,
+    randomSource: new ZeroRandomSource(),
+  });
   const snapshotProjector = new LobbyStateSnapshotProjector({
     clock,
-    presenceReader: {
-      async readRoomPresence(targetRoomId) {
-        const connectionStatusByPlayerId = new Map<
-          PlayerId,
-          ConnectionStatus
-        >();
-        for (const binding of connectionRegistry.listActiveBindings(
-          targetRoomId,
-        )) {
-          connectionStatusByPlayerId.set(binding.playerId, "CONNECTED");
-        }
-        return {
-          presenceVersion: connectionRegistry.getPresenceVersion(targetRoomId),
-          connectionStatusByPlayerId,
-        };
-      },
-    },
+    presenceReader,
   });
 
   return {
     runtime: {
       clock,
       connectionRegistry,
+      gameStartService,
       persistence,
       roomSessionService,
       sessionResumeService,
@@ -201,6 +285,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
     },
     tokenIssuer,
     roomCodeGenerator,
+    presenceReader,
   };
 }
 
@@ -356,6 +441,7 @@ function observeClient(
 ): ClientObserver {
   const snapshots: StateSnapshotEvent[] = [];
   const replacements: SessionReplacedNotification[] = [];
+  const turnStarts: TurnStartedEvent[] = [];
 
   socket.on("state:snapshot", (event) => {
     snapshots.push(event);
@@ -365,8 +451,12 @@ function observeClient(
     replacements.push(event);
     networkPayloads.push(event);
   });
+  socket.on("turn:started", (event) => {
+    turnStarts.push(event);
+    networkPayloads.push(event);
+  });
 
-  return { snapshots, replacements };
+  return { snapshots, replacements, turnStarts };
 }
 
 function emitWithAck<TAck>(
@@ -435,6 +525,15 @@ function emitStateSync(
   });
 }
 
+function emitGameStart(
+  socket: TypedClient,
+  command: GameStartCommand,
+): Promise<GameStartAck> {
+  return emitWithAck("game:start", (acknowledge) => {
+    socket.emit("game:start", command, acknowledge);
+  });
+}
+
 async function waitForValue<TValue>(
   label: string,
   read: () => TValue | null,
@@ -442,6 +541,24 @@ async function waitForValue<TValue>(
   const deadline = Date.now() + NETWORK_TIMEOUT_MS;
   while (Date.now() < deadline) {
     const value = read();
+    if (value !== null) {
+      return value;
+    }
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, POLL_INTERVAL_MS);
+    });
+  }
+
+  throw new Error(`Timed out waiting for ${label}.`);
+}
+
+async function waitForAsyncValue<TValue>(
+  label: string,
+  read: () => Promise<TValue | null>,
+): Promise<TValue> {
+  const deadline = Date.now() + NETWORK_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const value = await read();
     if (value !== null) {
       return value;
     }
@@ -486,6 +603,15 @@ function waitForReplacement(
   );
 }
 
+function waitForTurnStarted(
+  observer: ClientObserver,
+  predicate: (event: TurnStartedEvent) => boolean,
+): Promise<TurnStartedEvent> {
+  return waitForValue("matching turn:started event", () =>
+    takeMatching(observer.turnStarts, predicate),
+  );
+}
+
 function requireBootstrapSuccess(ack: SessionBootstrapAck): SessionToken {
   assert.equal(validateSessionBootstrapAck(ack).ok, true);
   assert.equal(ack.ok, true);
@@ -504,6 +630,17 @@ function requireSnapshotSuccess(ack: SnapshotCommandAck): StateSnapshot {
   assert.equal(ack.scope, "ROOM");
   assert.deepEqual(ack.versions, ack.data.snapshot.versions);
   return ack.data.snapshot;
+}
+
+function requirePlayingSnapshot(
+  snapshot: StateSnapshot,
+): PlayingStateSnapshot {
+  assert.equal(snapshot.room.phase, "PLAYING");
+  assert.equal(snapshot.versions.gameRevision, 0);
+  if (!("game" in snapshot)) {
+    throw new Error("Expected a PLAYING StateSnapshot.");
+  }
+  return snapshot;
 }
 
 function requireFailureCode(
@@ -553,6 +690,31 @@ async function createHostedRoom(
   return { socket, observer, sessionToken: token, snapshot };
 }
 
+async function joinHostedRoom(
+  harness: TestHarness,
+  host: HostedRoom,
+  guestName: string,
+): Promise<HostedRoom> {
+  const socket = await connectTypedClient(harness);
+  const observer = observeClient(socket, harness.networkPayloads);
+  const token = await bootstrap(socket, `${guestName}-bootstrap`);
+  const ack = await emitJoin(socket, {
+    kind: "room:join",
+    protocolVersion: PROTOCOL_VERSION,
+    requestId: requestId(`${guestName}-join`),
+    payload: {
+      bootstrapCredential: { sessionToken: token },
+      nickname: nickname(guestName),
+      roomCode: host.snapshot.room.roomCode,
+    },
+  });
+  assert.equal(validateRoomJoinAck(ack).ok, true);
+  harness.networkPayloads.push(ack);
+  const snapshot = requireSnapshotSuccess(ack);
+
+  return { socket, observer, sessionToken: token, snapshot };
+}
+
 function playerStatus(snapshot: StateSnapshot, playerId: string) {
   return snapshot.room.players.find((player) => player.playerId === playerId)
     ?.connectionStatus;
@@ -570,6 +732,20 @@ function collectObjectKeys(value: unknown): readonly string[] {
     key,
     ...collectObjectKeys(Reflect.get(value, key)),
   ]);
+}
+
+function collectStringValues(value: unknown): readonly string[] {
+  if (typeof value === "string") {
+    return [value];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap(collectStringValues);
+  }
+  if (typeof value !== "object" || value === null) {
+    return [];
+  }
+
+  return Object.values(value).flatMap(collectStringValues);
 }
 
 function assertNoNetworkSecrets(
@@ -820,6 +996,17 @@ test(
         assert.equal(validateStateSyncAck(oldSyncAck).ok, true);
         harness.networkPayloads.push(oldSyncAck);
         requireFailureCode(oldSyncAck, "UNAUTHENTICATED");
+
+        const oldStartAck = await emitGameStart(host.socket, {
+          kind: "game:start",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("replaced-old-start"),
+          expectedRoomRevision: host.snapshot.versions.roomRevision,
+          payload: {},
+        });
+        assert.equal(validateGameStartAck(oldStartAck).ok, true);
+        harness.networkPayloads.push(oldStartAck);
+        requireFailureCode(oldStartAck, "UNAUTHENTICATED");
 
         host.socket.disconnect();
         if (oldSocketId !== undefined) {
@@ -1199,6 +1386,527 @@ test(
         if (!invalidTokenAck.ok && !wrongRoomAck.ok) {
           assert.deepEqual(invalidTokenAck.error, wrongRoomAck.error);
         }
+      } finally {
+        await stopServer(harness);
+      }
+    });
+
+    await context.test("game:start payload, authentication, minimum Player gate는 LOBBY를 변경하지 않는다", async () => {
+      const harness = await startServer();
+      try {
+        const host = await createHostedRoom(harness, "StartHost");
+
+        const onePlayerAck = await emitGameStart(host.socket, {
+          kind: "game:start",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("one-player-start"),
+          expectedRoomRevision: host.snapshot.versions.roomRevision,
+          payload: {},
+        });
+        assert.equal(validateGameStartAck(onePlayerAck).ok, true);
+        requireFailureCode(onePlayerAck, "NOT_ENOUGH_PLAYERS");
+
+        const unboundSocket = await connectTypedClient(harness);
+        const unauthenticatedAck = await emitGameStart(unboundSocket, {
+          kind: "game:start",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("unauthenticated-start"),
+          expectedRoomRevision: host.snapshot.versions.roomRevision,
+          payload: {},
+        });
+        assert.equal(validateGameStartAck(unauthenticatedAck).ok, true);
+        requireFailureCode(unauthenticatedAck, "UNAUTHENTICATED");
+
+        const rawSocket = await connectRawClient(harness);
+        const malformedAck = await emitWithAck<GameStartAck>(
+          "malformed game:start",
+          (acknowledge) => {
+            rawSocket.emit(
+              "game:start",
+              {
+                kind: "game:start",
+                protocolVersion: PROTOCOL_VERSION,
+                requestId: "malformed-game-start",
+                payload: {},
+              },
+              acknowledge,
+            );
+          },
+        );
+        assert.equal(validateGameStartAck(malformedAck).ok, true);
+        requireFailureCode(malformedAck, "INVALID_PAYLOAD");
+
+        const syncAck = await emitStateSync(
+          host.socket,
+          stateSyncCommand("start-gate-state-sync"),
+        );
+        const unchanged = requireSnapshotSuccess(syncAck);
+        assert.equal(unchanged.room.phase, "LOBBY");
+        assert.equal(unchanged.versions.roomRevision, 0);
+        assert.equal(unchanged.versions.gameRevision, null);
+      } finally {
+        await stopServer(harness);
+      }
+    });
+
+    await context.test("game:start는 Host, current revision, 모든 Player CONNECTED를 검증한다", async () => {
+      const harness = await startServer();
+      try {
+        const host = await createHostedRoom(harness, "GateHost");
+        const guest = await joinHostedRoom(harness, host, "GateGuest");
+        const lobbyRevision = guest.snapshot.versions.roomRevision;
+
+        const nonHostAck = await emitGameStart(guest.socket, {
+          kind: "game:start",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("non-host-start"),
+          expectedRoomRevision: lobbyRevision,
+          payload: {},
+        });
+        assert.equal(validateGameStartAck(nonHostAck).ok, true);
+        requireFailureCode(nonHostAck, "HOST_ONLY");
+
+        const staleAck = await emitGameStart(host.socket, {
+          kind: "game:start",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("stale-start"),
+          expectedRoomRevision: host.snapshot.versions.roomRevision,
+          payload: {},
+        });
+        assert.equal(validateGameStartAck(staleAck).ok, true);
+        requireFailureCode(staleAck, "STALE_ROOM_REVISION");
+
+        guest.socket.disconnect();
+        await waitForSnapshot(
+          host.observer,
+          (event) =>
+            event.payload.snapshot.room.phase === "LOBBY" &&
+            playerStatus(
+              event.payload.snapshot,
+              guest.snapshot.self.playerId,
+            ) === "OFFLINE",
+        );
+
+        const offlineAck = await emitGameStart(host.socket, {
+          kind: "game:start",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("offline-player-start"),
+          expectedRoomRevision: lobbyRevision,
+          payload: {},
+        });
+        assert.equal(validateGameStartAck(offlineAck).ok, true);
+        requireFailureCode(offlineAck, "PLAYERS_NOT_CONNECTED");
+
+        const syncAck = await emitStateSync(
+          host.socket,
+          stateSyncCommand("offline-start-state-sync"),
+        );
+        const unchanged = requireSnapshotSuccess(syncAck);
+        assert.equal(unchanged.room.phase, "LOBBY");
+        assert.equal(unchanged.versions.roomRevision, lobbyRevision);
+        assert.equal(unchanged.versions.gameRevision, null);
+      } finally {
+        await stopServer(harness);
+      }
+    });
+
+    await context.test("Host game:start는 개인별 PLAYING snapshot과 turn:started를 fan-out하고 재시도에서 redeal하지 않는다", async () => {
+      const deterministic = createDeterministicRuntime();
+      const harness = await startServer(deterministic.runtime);
+      try {
+        const host = await createHostedRoom(harness, "PlayHost");
+        const guest = await joinHostedRoom(harness, host, "PlayGuest");
+        const startCommand: GameStartCommand = {
+          kind: "game:start",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("successful-game-start"),
+          expectedRoomRevision: guest.snapshot.versions.roomRevision,
+          payload: {},
+        };
+
+        const startAck = await emitGameStart(host.socket, startCommand);
+        assert.equal(validateGameStartAck(startAck).ok, true);
+        harness.networkPayloads.push(startAck);
+        const started = requirePlayingSnapshot(
+          requireSnapshotSuccess(startAck),
+        );
+        assert.equal(started.versions.roomRevision, 2);
+        assert.equal(started.versions.gameRevision, 0);
+        assert.equal(started.room.players.length, 2);
+        assert.ok(
+          started.room.players.every(
+            (player) =>
+              player.connectionStatus === "CONNECTED" &&
+              player.rackCount === 14 &&
+              player.initialMeldCompleted === false,
+          ),
+        );
+        assert.equal(started.game.board.wordGroups.length, 0);
+        assert.equal(started.game.bagCounts.consonant, 81);
+        assert.equal(started.game.bagCounts.vowel, 47);
+        assert.equal(started.game.turnOrder.length, 2);
+        assert.equal(new Set(started.game.turnOrder).size, 2);
+        assert.equal(started.game.turn.turnNumber, 1);
+        assert.equal(
+          started.game.turn.activePlayerId,
+          started.game.turnOrder[0],
+        );
+        assert.equal(
+          started.game.turn.deadlineAt - started.game.turn.startedAt,
+          60_000,
+        );
+        assert.equal(started.self.rack.length, 14);
+
+        const [hostSnapshotEvent, guestSnapshotEvent, hostTurn, guestTurn] =
+          await Promise.all([
+            waitForSnapshot(
+              host.observer,
+              (event) => event.payload.snapshot.room.phase === "PLAYING",
+            ),
+            waitForSnapshot(
+              guest.observer,
+              (event) => event.payload.snapshot.room.phase === "PLAYING",
+            ),
+            waitForTurnStarted(
+              host.observer,
+              (event) => event.payload.gameId === started.game.gameId,
+            ),
+            waitForTurnStarted(
+              guest.observer,
+              (event) => event.payload.gameId === started.game.gameId,
+            ),
+          ]);
+        assert.equal(validateStateSnapshotEvent(hostSnapshotEvent).ok, true);
+        assert.equal(validateStateSnapshotEvent(guestSnapshotEvent).ok, true);
+        assert.equal(validateTurnStartedEvent(hostTurn).ok, true);
+        assert.equal(validateTurnStartedEvent(guestTurn).ok, true);
+
+        const hostView = requirePlayingSnapshot(
+          hostSnapshotEvent.payload.snapshot,
+        );
+        const guestView = requirePlayingSnapshot(
+          guestSnapshotEvent.payload.snapshot,
+        );
+        assert.deepEqual(hostView.game, guestView.game);
+        assert.deepEqual(hostView.room, guestView.room);
+        assert.equal(hostView.self.playerId, host.snapshot.self.playerId);
+        assert.equal(guestView.self.playerId, guest.snapshot.self.playerId);
+        assert.equal(hostView.self.rack.length, 14);
+        assert.equal(guestView.self.rack.length, 14);
+        const hostRackTileIds = new Set(
+          hostView.self.rack.map((tile) => tile.tileId),
+        );
+        assert.ok(
+          guestView.self.rack.every(
+            (tile) => !hostRackTileIds.has(tile.tileId),
+          ),
+        );
+        const guestWireStringValues = new Set(collectStringValues(guestView));
+        for (const tileId of hostRackTileIds) {
+          assert.equal(guestWireStringValues.has(tileId), false);
+        }
+        assert.deepEqual(hostTurn.payload, guestTurn.payload);
+        assert.equal(hostTurn.payload.turnNumber, 1);
+
+        const replayAck = await emitGameStart(host.socket, startCommand);
+        assert.equal(validateGameStartAck(replayAck).ok, true);
+        const replayed = requirePlayingSnapshot(
+          requireSnapshotSuccess(replayAck),
+        );
+        assert.equal(replayed.game.gameId, started.game.gameId);
+        assert.equal(replayed.game.turn.turnId, started.game.turn.turnId);
+        assert.deepEqual(replayed.game.turnOrder, started.game.turnOrder);
+        assert.deepEqual(replayed.self.rack, started.self.rack);
+        assert.deepEqual(replayed.game.bagCounts, started.game.bagCounts);
+
+        const secondStartAck = await emitGameStart(host.socket, {
+          ...startCommand,
+          requestId: requestId("new-start-after-playing"),
+          expectedRoomRevision: started.versions.roomRevision,
+        });
+        assert.equal(validateGameStartAck(secondStartAck).ok, true);
+        requireFailureCode(secondStartAck, "INVALID_PHASE");
+
+        const lateSocket = await connectTypedClient(harness);
+        const lateToken = await bootstrap(lateSocket, "late-bootstrap");
+        const lateJoinAck = await emitJoin(lateSocket, {
+          kind: "room:join",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("late-join"),
+          payload: {
+            bootstrapCredential: { sessionToken: lateToken },
+            nickname: nickname("LateGuest"),
+            roomCode: started.room.roomCode,
+          },
+        });
+        assert.equal(validateRoomJoinAck(lateJoinAck).ok, true);
+        requireFailureCode(lateJoinAck, "ROOM_NOT_JOINABLE");
+
+        assertNoNetworkSecrets(harness.networkPayloads, [
+          host.sessionToken,
+          guest.sessionToken,
+          lateToken,
+        ]);
+        for (const payload of harness.networkPayloads) {
+          const keys = new Set(collectObjectKeys(payload));
+          for (const forbiddenKey of [
+            "consonantBag",
+            "idempotency",
+            "racks",
+            "rulesConfig",
+            "tilesById",
+            "vowelBag",
+          ]) {
+            assert.equal(keys.has(forbiddenKey), false, forbiddenKey);
+          }
+        }
+      } finally {
+        await stopServer(harness);
+      }
+    });
+
+    await context.test("in-flight game:start 중 Host primary가 교체되면 commit과 idempotency를 모두 거절한다", async () => {
+      const deterministic = createDeterministicRuntime();
+      const harness = await startServer(deterministic.runtime);
+      try {
+        const host = await createHostedRoom(harness, "RaceHost");
+        const guest = await joinHostedRoom(harness, host, "RaceGuest");
+        const lobbyRevision = guest.snapshot.versions.roomRevision;
+        const command: GameStartCommand = {
+          kind: "game:start",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("in-flight-replaced-start"),
+          expectedRoomRevision: lobbyRevision,
+          payload: {},
+        };
+
+        const presenceRead = deterministic.presenceReader.blockNextRead();
+        const oldStartAcknowledgement = emitGameStart(host.socket, command);
+        await presenceRead.entered;
+
+        const replacementSocket = await connectTypedClient(harness);
+        observeClient(replacementSocket, harness.networkPayloads);
+        const replacementAck = await emitResume(replacementSocket, {
+          kind: "session:resume",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("replace-during-start"),
+          payload: {
+            credential: {
+              roomCode: host.snapshot.room.roomCode,
+              sessionToken: host.sessionToken,
+            },
+            lastSeenVersions: host.snapshot.versions,
+          },
+        });
+        assert.equal(validateSessionResumeAck(replacementAck).ok, true);
+        requireSnapshotSuccess(replacementAck);
+        const replaced = await waitForReplacement(host.observer);
+        assert.equal(validateSessionReplacedNotification(replaced).ok, true);
+
+        presenceRead.release();
+        const rejectedStart = await oldStartAcknowledgement;
+        assert.equal(validateGameStartAck(rejectedStart).ok, true);
+        requireFailureCode(rejectedStart, "UNAUTHENTICATED");
+
+        const persisted = await deterministic.runtime.persistence.findById(
+          host.snapshot.room.roomId,
+        );
+        assert.ok(persisted);
+        assert.equal(persisted.phase, "LOBBY");
+        assert.equal(persisted.game, null);
+        assert.equal(persisted.roomRevision, lobbyRevision);
+        assert.deepEqual(
+          await deterministic.runtime.persistence.classify(
+            `room-player:${persisted.roomId}:${host.snapshot.self.playerId}`,
+            command.requestId,
+            JSON.stringify(["game:start", command.expectedRoomRevision]),
+          ),
+          { status: "MISS" },
+        );
+      } finally {
+        await stopServer(harness);
+      }
+    });
+
+    await context.test("game:start commit 뒤 projection delivery 실패는 Game을 rollback하지 않고 동일 요청 replay로 복구한다", async () => {
+      const deterministic = createDeterministicRuntime();
+      const harness = await startServer(deterministic.runtime);
+      try {
+        const host = await createHostedRoom(harness, "FailHost");
+        const guest = await joinHostedRoom(harness, host, "FailGuest");
+        await Promise.all([
+          waitForSnapshot(
+            host.observer,
+            (event) => event.payload.snapshot.room.players.length === 2,
+          ),
+          waitForSnapshot(
+            guest.observer,
+            (event) => event.payload.snapshot.room.players.length === 2,
+          ),
+        ]);
+
+        const command: GameStartCommand = {
+          kind: "game:start",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("delivery-failure-start"),
+          expectedRoomRevision: guest.snapshot.versions.roomRevision,
+          payload: {},
+        };
+        let firstAcknowledgement: GameStartAck | null = null;
+        deterministic.presenceReader.failAfterSuccessfulReads(1);
+        host.socket.emit("game:start", command, (acknowledgement) => {
+          firstAcknowledgement = acknowledgement;
+        });
+
+        const committed = await waitForAsyncValue(
+          "committed Game after delivery failure",
+          async () => {
+            const room = await deterministic.runtime.persistence.findById(
+              host.snapshot.room.roomId,
+            );
+            return room?.phase === "PLAYING" && room.game !== null ? room : null;
+          },
+        );
+        assert.equal(firstAcknowledgement, null);
+        assert.equal(committed.roomRevision, guest.snapshot.versions.roomRevision + 1);
+        assert.equal(committed.storageRevision, 2);
+        assert.ok(committed.game);
+
+        const replayAck = await emitGameStart(host.socket, command);
+        assert.equal(validateGameStartAck(replayAck).ok, true);
+        const replayed = requirePlayingSnapshot(
+          requireSnapshotSuccess(replayAck),
+        );
+        assert.equal(replayed.game.gameId, committed.game.gameId);
+        assert.equal(replayed.game.turn.turnId, committed.game.turn.turnId);
+        assert.deepEqual(
+          replayed.self.rack,
+          committed.game.racks
+            .get(replayed.self.playerId)
+            ?.map((tileId) => {
+              const tile = committed.game?.tilesById.get(tileId);
+              if (tile === undefined) {
+                throw new Error("Expected committed rack Tile.");
+              }
+              return tile.kind === "JOKER"
+                ? {
+                    tileId: tile.tileId,
+                    kind: tile.kind,
+                    physicalType: tile.physicalType,
+                    sourceBag: tile.sourceBag,
+                  }
+                : {
+                    tileId: tile.tileId,
+                    kind: tile.kind,
+                    physicalType: tile.physicalType,
+                    sourceBag: tile.sourceBag,
+                    allowedSymbols: [...tile.allowedSymbols],
+                  };
+            }),
+        );
+        assert.deepEqual(
+          await deterministic.runtime.persistence.findById(committed.roomId),
+          committed,
+        );
+      } finally {
+        await stopServer(harness);
+      }
+    });
+
+    await context.test("PLAYING session resume/state:sync은 동일 Game, Player, rack, turnOrder를 복구하고 redeal하지 않는다", async () => {
+      const deterministic = createDeterministicRuntime();
+      const harness = await startServer(deterministic.runtime);
+      try {
+        const host = await createHostedRoom(harness, "ResumeHost");
+        const guest = await joinHostedRoom(harness, host, "ResumeGuest");
+        const startAck = await emitGameStart(host.socket, {
+          kind: "game:start",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("resume-game-start"),
+          expectedRoomRevision: guest.snapshot.versions.roomRevision,
+          payload: {},
+        });
+        const hostStarted = requirePlayingSnapshot(
+          requireSnapshotSuccess(startAck),
+        );
+        const guestStartedEvent = await waitForSnapshot(
+          guest.observer,
+          (event) => event.payload.snapshot.room.phase === "PLAYING",
+        );
+        const guestStarted = requirePlayingSnapshot(
+          guestStartedEvent.payload.snapshot,
+        );
+
+        guest.socket.disconnect();
+        const offlineEvent = await waitForSnapshot(
+          host.observer,
+          (event) =>
+            event.payload.snapshot.room.phase === "PLAYING" &&
+            playerStatus(
+              event.payload.snapshot,
+              guestStarted.self.playerId,
+            ) === "OFFLINE",
+        );
+        const offline = requirePlayingSnapshot(
+          offlineEvent.payload.snapshot,
+        );
+        assert.equal(
+          offline.versions.roomRevision,
+          hostStarted.versions.roomRevision,
+        );
+        assert.equal(
+          offline.versions.gameRevision,
+          hostStarted.versions.gameRevision,
+        );
+
+        const resumedSocket = await connectTypedClient(harness);
+        const resumedObserver = observeClient(
+          resumedSocket,
+          harness.networkPayloads,
+        );
+        const resumeAck = await emitResume(resumedSocket, {
+          kind: "session:resume",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("playing-session-resume"),
+          payload: {
+            credential: {
+              roomCode: guestStarted.room.roomCode,
+              sessionToken: guest.sessionToken,
+            },
+            lastSeenVersions: offline.versions,
+          },
+        });
+        assert.equal(validateSessionResumeAck(resumeAck).ok, true);
+        const resumed = requirePlayingSnapshot(
+          requireSnapshotSuccess(resumeAck),
+        );
+        assert.equal(resumed.self.playerId, guestStarted.self.playerId);
+        assert.equal(resumed.room.players.length, 2);
+        assert.equal(resumed.game.gameId, guestStarted.game.gameId);
+        assert.deepEqual(resumed.game.turn, guestStarted.game.turn);
+        assert.deepEqual(resumed.game.turnOrder, guestStarted.game.turnOrder);
+        assert.deepEqual(resumed.game.bagCounts, guestStarted.game.bagCounts);
+        assert.deepEqual(resumed.self.rack, guestStarted.self.rack);
+        assert.equal(
+          playerStatus(resumed, guestStarted.self.playerId),
+          "CONNECTED",
+        );
+        await waitForSnapshot(
+          resumedObserver,
+          (event) => event.payload.snapshot.room.phase === "PLAYING",
+        );
+
+        const syncAck = await emitStateSync(
+          resumedSocket,
+          stateSyncCommand("playing-state-sync"),
+        );
+        assert.equal(validateStateSyncAck(syncAck).ok, true);
+        const synced = requirePlayingSnapshot(
+          requireSnapshotSuccess(syncAck),
+        );
+        assert.equal(synced.game.gameId, guestStarted.game.gameId);
+        assert.deepEqual(synced.game.turnOrder, guestStarted.game.turnOrder);
+        assert.deepEqual(synced.self.rack, guestStarted.self.rack);
       } finally {
         await stopServer(harness);
       }

@@ -6,6 +6,7 @@ import type {
 } from "@hangul-rummikub/shared";
 import { BOOTSTRAP_SESSION_TTL_MS } from "@hangul-rummikub/shared";
 
+import { cloneGameState } from "../domain/game/game-state.js";
 import {
   createStorageRevision,
   incrementStorageRevision,
@@ -31,6 +32,7 @@ import type {
   RoomRepository,
 } from "../ports/room-repository.js";
 import type {
+  RoomUnitOfWorkCommitPrecondition,
   RoomUnitOfWork,
   RoomUnitOfWorkChangeSet,
   RoomUnitOfWorkFailure,
@@ -136,12 +138,20 @@ function cloneRoomWriteCandidate(
   requireNonNegativeSafeInteger(candidate.createdAt, "createdAt");
   requireNonNegativeSafeInteger(candidate.updatedAt, "updatedAt");
 
+  if (candidate.phase === "LOBBY" && candidate.game !== null) {
+    throw new TypeError("A LOBBY Room must not contain a GameState.");
+  }
+  if (candidate.phase === "PLAYING" && candidate.game === null) {
+    throw new TypeError("A PLAYING Room must contain a GameState.");
+  }
+
   return Object.freeze({
     roomId: candidate.roomId,
     roomCode: candidate.roomCode,
     phase: candidate.phase,
     hostPlayerId: candidate.hostPlayerId,
     players: Object.freeze(candidate.players.map(clonePlayerRecord)),
+    game: candidate.game === null ? null : cloneGameState(candidate.game),
     roomRevision: candidate.roomRevision,
     createdAt: candidate.createdAt,
     updatedAt: candidate.updatedAt,
@@ -159,6 +169,7 @@ function persistRoom(
     phase: detached.phase,
     hostPlayerId: detached.hostPlayerId,
     players: detached.players,
+    game: detached.game,
     roomRevision: detached.roomRevision,
     storageRevision: cloneStorageRevision(storageRevision),
     createdAt: detached.createdAt,
@@ -706,6 +717,7 @@ export class InMemoryPersistence
 
   async commit(
     changeSet: RoomUnitOfWorkChangeSet,
+    precondition?: RoomUnitOfWorkCommitPrecondition,
   ): Promise<RoomUnitOfWorkResult> {
     const existing = classifyIdempotency(
       this.#state,
@@ -753,6 +765,13 @@ export class InMemoryPersistence
       changeSet.idempotency,
     );
     this.#onCommitCheckpoint?.("AFTER_IDEMPOTENCY_WRITE");
+
+    if (precondition !== undefined && !precondition.isSatisfied()) {
+      return {
+        status: "PRECONDITION_FAILED",
+        reason: "COMMIT_PRECONDITION_FAILED",
+      };
+    }
 
     this.#state = nextState;
     return {

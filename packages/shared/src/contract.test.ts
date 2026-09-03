@@ -10,6 +10,8 @@ import {
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LENGTH,
   type ClientToServerEvents,
+  type GameStartAck,
+  type PlayingStateSnapshot,
   type RoomCreateAck,
   RoomPhaseSchema,
   SessionReplacedNotificationSchema,
@@ -20,8 +22,12 @@ import {
   validateBrowserStoredPlayerSession,
   validateClientCommand,
   validateErrorDto,
+  validateGameStartAck,
+  validateGameStartCommand,
+  validateLobbyStateSnapshot,
   validateNickname,
   validateProtocolVersion,
+  validatePlayingStateSnapshot,
   validateRevision,
   validateRoomCreateAck,
   validateRoomCreateCommand,
@@ -40,6 +46,7 @@ import {
   validateStateSyncAck,
   validateStateSyncCommand,
   validateStateVersions,
+  validateTurnStartedEvent,
   validateUnscopedAck,
 } from "./index.js";
 
@@ -98,6 +105,92 @@ function createRoomScopedSnapshotSuccess() {
     serverTime: 1_750_000_000_000,
     versions: createVersions(),
     data: createSnapshotDeliveryData(),
+  };
+}
+
+function createPlayingSnapshot() {
+  return {
+    protocolVersion: PROTOCOL_VERSION,
+    versions: {
+      roomRevision: 3,
+      gameRevision: 0,
+      presenceVersion: 3,
+    },
+    serverTime: 1_750_000_000_000,
+    room: {
+      roomId: "room_123",
+      roomCode: "ABCD23",
+      phase: "PLAYING",
+      players: [
+        {
+          playerId: "player_123",
+          nickname: "혁상",
+          isHost: true,
+          connectionStatus: "CONNECTED",
+          rackCount: 2,
+          initialMeldCompleted: false,
+        },
+        {
+          playerId: "player_456",
+          nickname: "Harvey",
+          isHost: false,
+          connectionStatus: "CONNECTED",
+          rackCount: 2,
+          initialMeldCompleted: false,
+        },
+      ],
+    },
+    game: {
+      gameId: "game_123",
+      board: {
+        wordGroups: [
+          {
+            groupId: "group_123",
+            syllables: [
+              {
+                choseong: [
+                  { tileId: "tile_board_1", assignedSymbol: "ㄱ" },
+                ],
+                jungseong: [
+                  { tileId: "tile_board_2", assignedSymbol: "ㅏ" },
+                ],
+                jongseong: [],
+              },
+            ],
+          },
+        ],
+      },
+      turnOrder: ["player_123", "player_456"],
+      turn: {
+        turnId: "turn_123",
+        turnNumber: 1,
+        activePlayerId: "player_123",
+        startedAt: 1_750_000_000_000,
+        deadlineAt: 1_750_000_060_000,
+      },
+      bagCounts: {
+        consonant: 81,
+        vowel: 47,
+      },
+    },
+    self: {
+      playerId: "player_123",
+      rack: [
+        {
+          tileId: "tile_self_ordinary",
+          kind: "ORDINARY",
+          physicalType: "GIYEOK_NIEUN",
+          sourceBag: "CONSONANT",
+          allowedSymbols: ["ㄱ", "ㄴ"],
+        },
+        {
+          tileId: "tile_self_joker",
+          kind: "JOKER",
+          physicalType: "JOKER",
+          sourceBag: "VOWEL",
+        },
+      ],
+    },
   };
 }
 
@@ -332,7 +425,7 @@ test("command validator가 잘못된 kind, protocol과 불필요한 field를 거
       name: "unknown command",
       expectedCode: "INVALID_PAYLOAD",
       command: {
-        kind: "game:start",
+        kind: "game:unknown",
         protocolVersion: PROTOCOL_VERSION,
         requestId: "request_unknown",
         payload: {},
@@ -969,7 +1062,7 @@ test("StateSnapshot delivery ack와 event는 strict하고 secret-free다", () =>
   }
 });
 
-test("Socket.IO event map은 다섯 command ack와 두 server event를 연결한다", () => {
+test("Socket.IO event map은 기존 command ack와 server event를 연결한다", () => {
   const parsedCommand = validateRoomCreateCommand({
     kind: "room:create",
     protocolVersion: PROTOCOL_VERSION,
@@ -1022,4 +1115,526 @@ test("Socket.IO event map은 다섯 command ack와 두 server event를 연결한
   if (parsedReplacement.ok) {
     replacementListener(parsedReplacement.value);
   }
+});
+
+test("Phase 11 game start 오류 code는 safe public DTO로 검증된다", () => {
+  for (const code of ["NOT_ENOUGH_PLAYERS", "PLAYERS_NOT_CONNECTED"] as const) {
+    const result = validateErrorDto({
+      code,
+      message: "The game cannot start yet.",
+      recoverable: true,
+    });
+
+    assert.equal(result.ok, true);
+    if (result.ok) {
+      assert.equal(result.value.code, code);
+    }
+  }
+});
+
+test("game:start는 room revision과 strict empty payload만 받는다", () => {
+  const command = {
+    kind: "game:start",
+    protocolVersion: PROTOCOL_VERSION,
+    requestId: "request_game_start",
+    expectedRoomRevision: 2,
+    payload: {},
+  };
+  const parsed = validateGameStartCommand(command);
+
+  assert.equal(parsed.ok, true);
+  assert.equal(validateClientCommand(command).ok, true);
+  if (parsed.ok) {
+    assert.equal(parsed.value.kind, "game:start");
+    assert.equal(parsed.value.expectedRoomRevision, 2);
+  }
+
+  const invalidCommands: unknown[] = [
+    { ...command, actorPlayerId: "player_123" },
+    { ...command, expectedGameRevision: 0 },
+    { ...command, randomSeed: 7 },
+    { ...command, expectedRoomRevision: -1 },
+    { ...command, payload: { playerId: "player_123" } },
+    { ...command, payload: { turnOrder: ["player_123"] } },
+    { ...command, payload: { tileIds: ["tile_123"] } },
+  ];
+  const { expectedRoomRevision: _expectedRoomRevision, ...withoutRevision } =
+    command;
+
+  invalidCommands.push(withoutRevision);
+  for (const invalidCommand of invalidCommands) {
+    assert.equal(validateGameStartCommand(invalidCommand).ok, false);
+  }
+});
+
+test("LOBBY와 PLAYING snapshot은 phase, game revision, game view를 함께 구분한다", () => {
+  const lobby = createSnapshot();
+  const playing = createPlayingSnapshot();
+  const lobbyResult = validateLobbyStateSnapshot(lobby);
+  const playingResult = validatePlayingStateSnapshot(playing);
+
+  assert.equal(lobbyResult.ok, true);
+  assert.equal(playingResult.ok, true);
+  assert.equal(validateStateSnapshot(lobby).ok, true);
+  assert.equal(validateStateSnapshot(playing).ok, true);
+
+  function summarize(snapshot: PlayingStateSnapshot): string {
+    return `${snapshot.game.gameId}:${snapshot.game.turn.turnNumber}:${snapshot.self.rack.length}`;
+  }
+
+  if (playingResult.ok) {
+    assert.equal(summarize(playingResult.value), "game_123:1:2");
+  }
+
+  assert.equal(
+    validateStateSnapshot({
+      ...lobby,
+      versions: { ...lobby.versions, gameRevision: 0 },
+    }).ok,
+    false,
+  );
+  assert.equal(
+    validateStateSnapshot({ ...lobby, game: playing.game }).ok,
+    false,
+  );
+  assert.equal(
+    validateStateSnapshot({
+      ...playing,
+      versions: { ...playing.versions, gameRevision: null },
+    }).ok,
+    false,
+  );
+  const { game: _game, ...playingWithoutGame } = playing;
+  assert.equal(validateStateSnapshot(playingWithoutGame).ok, false);
+  assert.equal(validateLobbyStateSnapshot(playing).ok, false);
+  assert.equal(validatePlayingStateSnapshot(lobby).ok, false);
+});
+
+test("PLAYING projection은 public summary와 본인 rack detail만 허용한다", () => {
+  const playing = createPlayingSnapshot();
+  const withOtherRack = {
+    ...playing,
+    room: {
+      ...playing.room,
+      players: playing.room.players.map((player) =>
+        player.playerId === "player_456"
+          ? { ...player, rack: [{ tileId: "private_other_tile" }] }
+          : player,
+      ),
+    },
+  };
+  const withBagOrder = {
+    ...playing,
+    game: {
+      ...playing.game,
+      bagCounts: {
+        ...playing.game.bagCounts,
+        consonantTileIds: ["future_draw_tile"],
+      },
+    },
+  };
+  const withTilesById = {
+    ...playing,
+    game: {
+      ...playing.game,
+      tilesById: { tile_hidden: { physicalType: "HIDDEN" } },
+    },
+  };
+  const withRackAssignment = {
+    ...playing,
+    self: {
+      ...playing.self,
+      rack: playing.self.rack.map((tile) => ({
+        ...tile,
+        assignedSymbol: "must-not-live-on-a-rack-tile",
+      })),
+    },
+  };
+  const withMismatchedRackCount = {
+    ...playing,
+    room: {
+      ...playing.room,
+      players: playing.room.players.map((player) =>
+        player.playerId === playing.self.playerId
+          ? { ...player, rackCount: player.rackCount + 1 }
+          : player,
+      ),
+    },
+  };
+  const withDuplicateTurnOrder = {
+    ...playing,
+    game: {
+      ...playing.game,
+      turnOrder: ["player_123", "player_123"],
+    },
+  };
+
+  for (const [name, input] of [
+    ["other rack", withOtherRack],
+    ["bag order", withBagOrder],
+    ["tilesById", withTilesById],
+    ["rack assignment", withRackAssignment],
+    ["rack count mismatch", withMismatchedRackCount],
+    ["duplicate turn order", withDuplicateTurnOrder],
+  ] as const) {
+    assert.equal(validatePlayingStateSnapshot(input).ok, false, name);
+  }
+
+  assert.equal(
+    validatePlayingStateSnapshot({
+      ...playing,
+      game: {
+        ...playing.game,
+        turn: { ...playing.game.turn, turnNumber: 0 },
+      },
+    }).ok,
+    false,
+  );
+  assert.equal(
+    validatePlayingStateSnapshot({
+      ...playing,
+      self: {
+        ...playing.self,
+        rack: playing.self.rack.map((tile) =>
+          tile.kind === "JOKER"
+            ? { ...tile, allowedSymbols: ["ㄱ"] }
+            : tile,
+        ),
+      },
+    }).ok,
+    false,
+  );
+});
+
+test("public Board runtime contract는 canonical syllable 구조와 식별자 유일성을 강제한다", () => {
+  const playing = createPlayingSnapshot();
+  const validSyllable = {
+    choseong: [{ tileId: "tile_choseong", assignedSymbol: "ㄱ" }],
+    jungseong: [{ tileId: "tile_jungseong", assignedSymbol: "ㅏ" }],
+    jongseong: [],
+  };
+  const snapshotWithGroups = (wordGroups: readonly unknown[]) => ({
+    ...playing,
+    game: {
+      ...playing.game,
+      board: { wordGroups },
+    },
+  });
+  const groupWithSyllable = (syllable: unknown) => ({
+    groupId: "group_structure",
+    syllables: [syllable],
+  });
+
+  const malformedCases: readonly Readonly<{
+    name: string;
+    wordGroups: readonly unknown[];
+  }>[] = [
+    {
+      name: "empty WordGroup",
+      wordGroups: [{ groupId: "group_empty", syllables: [] }],
+    },
+    {
+      name: "missing choseong",
+      wordGroups: [
+        groupWithSyllable({ ...validSyllable, choseong: [] }),
+      ],
+    },
+    {
+      name: "multiple choseong components",
+      wordGroups: [
+        groupWithSyllable({
+          ...validSyllable,
+          choseong: [
+            ...validSyllable.choseong,
+            { tileId: "tile_choseong_2", assignedSymbol: "ㄴ" },
+          ],
+        }),
+      ],
+    },
+    {
+      name: "missing jungseong",
+      wordGroups: [
+        groupWithSyllable({ ...validSyllable, jungseong: [] }),
+      ],
+    },
+    {
+      name: "three jungseong components",
+      wordGroups: [
+        groupWithSyllable({
+          ...validSyllable,
+          jungseong: [
+            { tileId: "tile_vowel_1", assignedSymbol: "ㅗ" },
+            { tileId: "tile_vowel_2", assignedSymbol: "ㅏ" },
+            { tileId: "tile_vowel_3", assignedSymbol: "ㅣ" },
+          ],
+        }),
+      ],
+    },
+    {
+      name: "unsupported compound jungseong order",
+      wordGroups: [
+        groupWithSyllable({
+          ...validSyllable,
+          jungseong: [
+            { tileId: "tile_vowel_1", assignedSymbol: "ㅏ" },
+            { tileId: "tile_vowel_2", assignedSymbol: "ㅗ" },
+          ],
+        }),
+      ],
+    },
+    {
+      name: "three jongseong components",
+      wordGroups: [
+        groupWithSyllable({
+          ...validSyllable,
+          jongseong: [
+            { tileId: "tile_final_1", assignedSymbol: "ㄹ" },
+            { tileId: "tile_final_2", assignedSymbol: "ㄱ" },
+            { tileId: "tile_final_3", assignedSymbol: "ㅅ" },
+          ],
+        }),
+      ],
+    },
+    {
+      name: "unsupported final cluster",
+      wordGroups: [
+        groupWithSyllable({
+          ...validSyllable,
+          jongseong: [
+            { tileId: "tile_final_1", assignedSymbol: "ㅅ" },
+            { tileId: "tile_final_2", assignedSymbol: "ㄱ" },
+          ],
+        }),
+      ],
+    },
+    {
+      name: "choseong-only consonant in jongseong role",
+      wordGroups: [
+        groupWithSyllable({
+          ...validSyllable,
+          jongseong: [
+            { tileId: "tile_wrong_final_role", assignedSymbol: "ㄸ" },
+          ],
+        }),
+      ],
+    },
+    {
+      name: "vowel in choseong role",
+      wordGroups: [
+        groupWithSyllable({
+          ...validSyllable,
+          choseong: [{ tileId: "tile_wrong_role", assignedSymbol: "ㅏ" }],
+        }),
+      ],
+    },
+    {
+      name: "consonant in jungseong role",
+      wordGroups: [
+        groupWithSyllable({
+          ...validSyllable,
+          jungseong: [{ tileId: "tile_wrong_role", assignedSymbol: "ㄱ" }],
+        }),
+      ],
+    },
+    {
+      name: "unsupported assigned symbol",
+      wordGroups: [
+        groupWithSyllable({
+          ...validSyllable,
+          choseong: [{ tileId: "tile_unknown_symbol", assignedSymbol: "A" }],
+        }),
+      ],
+    },
+    {
+      name: "duplicate groupId",
+      wordGroups: [
+        { groupId: "group_duplicate", syllables: [validSyllable] },
+        {
+          groupId: "group_duplicate",
+          syllables: [
+            {
+              choseong: [
+                { tileId: "tile_second_choseong", assignedSymbol: "ㄴ" },
+              ],
+              jungseong: [
+                { tileId: "tile_second_jungseong", assignedSymbol: "ㅏ" },
+              ],
+              jongseong: [],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      name: "duplicate tileId",
+      wordGroups: [
+        groupWithSyllable({
+          ...validSyllable,
+          jungseong: [
+            {
+              tileId: "tile_choseong",
+              assignedSymbol: "ㅏ",
+            },
+          ],
+        }),
+      ],
+    },
+  ];
+
+  for (const fixture of malformedCases) {
+    assert.equal(
+      validatePlayingStateSnapshot(snapshotWithGroups(fixture.wordGroups)).ok,
+      false,
+      fixture.name,
+    );
+  }
+});
+
+test("public Board runtime contract는 지원되는 복합모음과 겹받침을 허용한다", () => {
+  const playing = createPlayingSnapshot();
+  const result = validatePlayingStateSnapshot({
+    ...playing,
+    game: {
+      ...playing.game,
+      board: {
+        wordGroups: [
+          {
+            groupId: "group_compound",
+            syllables: [
+              {
+                choseong: [
+                  { tileId: "tile_compound_initial", assignedSymbol: "ㄱ" },
+                ],
+                jungseong: [
+                  { tileId: "tile_compound_vowel_1", assignedSymbol: "ㅗ" },
+                  { tileId: "tile_compound_vowel_2", assignedSymbol: "ㅏ" },
+                ],
+                jongseong: [
+                  { tileId: "tile_compound_final_1", assignedSymbol: "ㄱ" },
+                  { tileId: "tile_compound_final_2", assignedSymbol: "ㅅ" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(result.ok, true);
+});
+
+test("game:start ack와 turn:started event는 PLAYING projection만 전달한다", () => {
+  const snapshot = createPlayingSnapshot();
+  const ack = {
+    scope: "ROOM",
+    requestId: "request_game_start_ack",
+    ok: true,
+    serverTime: snapshot.serverTime,
+    versions: snapshot.versions,
+    data: { snapshot },
+  };
+  const parsedAck = validateGameStartAck(ack);
+
+  assert.equal(parsedAck.ok, true);
+
+  function activePlayer(acceptedAck: GameStartAck): string {
+    if (
+      acceptedAck.requestId === null ||
+      acceptedAck.scope === "UNSCOPED" ||
+      !acceptedAck.ok
+    ) {
+      return "failure";
+    }
+
+    return acceptedAck.data.snapshot.game.turn.activePlayerId;
+  }
+
+  if (parsedAck.ok) {
+    assert.equal(activePlayer(parsedAck.value), "player_123");
+  }
+
+  assert.equal(
+    validateGameStartAck({
+      ...ack,
+      data: { snapshot: createSnapshot() },
+    }).ok,
+    false,
+  );
+  assert.equal(
+    validateGameStartAck({
+      ...ack,
+      data: { snapshot, sessionToken },
+    }).ok,
+    false,
+  );
+
+  const event = {
+    kind: "turn:started",
+    protocolVersion: PROTOCOL_VERSION,
+    versions: snapshot.versions,
+    serverTime: snapshot.serverTime,
+    payload: {
+      gameId: snapshot.game.gameId,
+      turnId: snapshot.game.turn.turnId,
+      turnNumber: snapshot.game.turn.turnNumber,
+      activePlayerId: snapshot.game.turn.activePlayerId,
+      deadlineAt: snapshot.game.turn.deadlineAt,
+    },
+  };
+  const parsedEvent = validateTurnStartedEvent(event);
+
+  assert.equal(parsedEvent.ok, true);
+  assert.equal(
+    validateTurnStartedEvent({
+      ...event,
+      versions: { ...event.versions, gameRevision: null },
+    }).ok,
+    false,
+  );
+  assert.equal(
+    validateTurnStartedEvent({
+      ...event,
+      payload: { ...event.payload, rack: snapshot.self.rack },
+    }).ok,
+    false,
+  );
+  assert.equal(
+    validateTurnStartedEvent({
+      ...event,
+      payload: { ...event.payload, turnNumber: 0 },
+    }).ok,
+    false,
+  );
+
+  const commandResult = validateGameStartCommand({
+    kind: "game:start",
+    protocolVersion: PROTOCOL_VERSION,
+    requestId: "request_event_map_game_start",
+    expectedRoomRevision: 2,
+    payload: {},
+  });
+  let acknowledged = false;
+  const startHandler: ClientToServerEvents["game:start"] = (
+    command,
+    acknowledge,
+  ) => {
+    assert.equal(command.kind, "game:start");
+    if (parsedAck.ok) {
+      acknowledge(parsedAck.value);
+    }
+  };
+  const turnListener: ServerToClientEvents["turn:started"] = (received) => {
+    assert.equal(received.payload.turnId, "turn_123");
+  };
+
+  if (commandResult.ok) {
+    startHandler(commandResult.value, () => {
+      acknowledged = true;
+    });
+  }
+  if (parsedEvent.ok) {
+    turnListener(parsedEvent.value);
+  }
+  assert.equal(acknowledged, true);
 });

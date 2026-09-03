@@ -1,5 +1,7 @@
 import type { StateSnapshot } from "@hangul-rummikub/shared";
 
+import type { GameStartControl } from "../../lib/game-start.js";
+
 export type LobbyScreenProps = Readonly<{
   snapshot: StateSnapshot;
   invitationUrl: string;
@@ -8,7 +10,9 @@ export type LobbyScreenProps = Readonly<{
   errorMessage: string | null;
   copyMessage: string | null;
   sessionReplaced: boolean;
+  gameStartControl: GameStartControl;
   onCopyInvitation: () => void;
+  onStartGame: () => void;
   onGoHome: () => void;
 }>;
 
@@ -114,6 +118,23 @@ export function LobbyScreen(props: LobbyScreenProps) {
           <p className="waiting-copy">
             참가자 상태는 서버에서 실시간으로 동기화됩니다.
           </p>
+
+          <div className="game-start-panel">
+            {props.gameStartControl.isHost ? (
+              <button
+                className="primary-button"
+                type="button"
+                disabled={!props.gameStartControl.canStart}
+                aria-describedby="game-start-guidance"
+                onClick={props.onStartGame}
+              >
+                게임 시작
+              </button>
+            ) : null}
+            <p id="game-start-guidance" className="game-start-guidance">
+              {props.gameStartControl.guidance}
+            </p>
+          </div>
         </section>
       </div>
 

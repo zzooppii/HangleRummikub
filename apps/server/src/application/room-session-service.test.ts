@@ -30,6 +30,7 @@ import {
   type ApplicationResult,
   type BootstrapSessionSuccessData,
 } from "./room-session-service.js";
+import { createInitialGameState } from "../domain/game/game-state.js";
 import {
   type IdempotencyRecord,
   type RoomRecord,
@@ -250,6 +251,15 @@ async function seedRoom(
     phase: options.phase ?? "LOBBY",
     hostPlayerId: host.playerId,
     players,
+    game:
+      (options.phase ?? "LOBBY") === "LOBBY"
+        ? null
+        : createInitialGameState({
+            playerIds: players.map((player) => player.playerId),
+            startedAt: serverTime(500),
+            idGenerator: new FakeIdGenerator(),
+            randomSource: { nextInt: () => 0 },
+          }),
     roomRevision: roomRevision(options.roomRevision ?? 0),
     createdAt: serverTime(500),
     updatedAt: serverTime(500),
@@ -763,7 +773,10 @@ test("joinRoom은 Room 없음, non-LOBBY, full Room을 각각 안정적으로 �
   for (const phase of ["PLAYING", "FINISHED"] as const) {
     await context.test(`${phase} -> ROOM_NOT_JOINABLE`, async () => {
       const harness = createHarness();
-      const original = await seedRoom(harness.persistence, { phase });
+      const original = await seedRoom(harness.persistence, {
+        phase,
+        players: [{ nickname: "Host" }, { nickname: "Existing" }],
+      });
       const credential = await bootstrap(harness);
       requireError(
         await harness.service.joinRoom({

@@ -71,7 +71,18 @@ export type RoomUnitOfWorkFailure =
   | "SESSION_ALREADY_BOUND"
   | "SESSION_EXPIRED"
   | "PLAYER_NOT_FOUND"
-  | "SESSION_ROOM_MISMATCH";
+  | "SESSION_ROOM_MISMATCH"
+  | "COMMIT_PRECONDITION_FAILED";
+
+/**
+ * A process-local condition that must still hold at the instant an in-memory
+ * candidate becomes live. It is intentionally transport-agnostic: callers
+ * may use it for ephemeral authorization without exposing socket details to
+ * the application or persistence model.
+ */
+export type RoomUnitOfWorkCommitPrecondition = Readonly<{
+  isSatisfied(): boolean;
+}>;
 
 export type RoomUnitOfWorkResult =
   | {
@@ -84,5 +95,8 @@ export type RoomUnitOfWorkResult =
   | { status: "PRECONDITION_FAILED"; reason: RoomUnitOfWorkFailure };
 
 export interface RoomUnitOfWork {
-  commit(changeSet: RoomUnitOfWorkChangeSet): Promise<RoomUnitOfWorkResult>;
+  commit(
+    changeSet: RoomUnitOfWorkChangeSet,
+    precondition?: RoomUnitOfWorkCommitPrecondition,
+  ): Promise<RoomUnitOfWorkResult>;
 }

@@ -29,9 +29,13 @@ function compareRevision(
 function compareGameRevision(
   currentRevision: StateVersions["gameRevision"],
   incomingRevision: StateVersions["gameRevision"],
-): RevisionComparison | null {
-  if (currentRevision === null || incomingRevision === null) {
-    return currentRevision === incomingRevision ? 0 : null;
+): RevisionComparison {
+  if (currentRevision === null) {
+    return incomingRevision === null ? 0 : 1;
+  }
+
+  if (incomingRevision === null) {
+    return -1;
   }
 
   return compareRevision(currentRevision, incomingRevision);
@@ -45,10 +49,6 @@ export function compareStateVersions(
     currentVersions.gameRevision,
     incomingVersions.gameRevision,
   );
-
-  if (gameComparison === null) {
-    return "REQUEST_SYNC";
-  }
 
   const comparisons: RevisionComparison[] = [
     compareRevision(

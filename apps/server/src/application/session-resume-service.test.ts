@@ -57,6 +57,7 @@ function roomCandidate(
       nickname: parse(NicknameSchema, player.nickname),
       joinOrder,
     })),
+    game: null,
     roomRevision: parse(RoomRevisionSchema, 0),
     createdAt: parse(ServerTimeSchema, 1_000),
     updatedAt: parse(ServerTimeSchema, 1_000),
@@ -291,6 +292,7 @@ test("resumeSession은 Room에 없는 stale bound Player를 SESSION_NOT_FOUND로
       players: [fixture.room.players[0]].flatMap((player) =>
         player === undefined ? [] : [player],
       ),
+      game: fixture.room.game,
       roomRevision: parse(
         RoomRevisionSchema,
         fixture.room.roomRevision + 1,
@@ -340,4 +342,3 @@ test("resumeSession은 repository 예외를 secret 없는 INTERNAL_ERROR로 변�
     assert.equal(result.error.message.includes(fixture.sessionToken), false);
   }
 });
-
