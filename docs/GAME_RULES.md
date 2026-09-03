@@ -5,10 +5,10 @@
 이 문서는 서버가 판정해야 하는 한글 워드 게임 규칙과 웹 MVP 운영 정책의 규범적 기준이다.
 
 - Phase 7A(MVP gameplay 규칙 확정): **완료**
-- Phase 7B(공식 Tile inventory와 symbol 표현 확정): **필수, 미완료**
-- Roadmap Phase 7 전체: **미완료**
+- Phase 7B(공식 Tile inventory와 symbol 표현 확정): **완료** (2026-09-03)
+- Roadmap Phase 7 전체: **완료**
 
-Phase 7B 전에는 자모별 Tile 수량, 정확한 symbol universe, Joker 대체 범위를 코드나 TypeScript contract로 고정하지 않는다.
+공식 physical Tile inventory와 디지털 symbol 표현의 canonical 기준은 C-22와 C-23이다. Phase 7B는 문서 gate만 닫았으며 Tile, GameState, RulesConfig, Hangul composer의 TypeScript 구현은 아직 없다.
 
 규칙 문장에서 “해야 한다”, “허용한다”, “거절한다”는 서버 판정에 적용되는 규범적 표현이다. 예시는 규칙을 설명하지만 규범 문장을 대체하지 않는다.
 
@@ -22,16 +22,21 @@ Phase 7B 전에는 자모별 Tile 수량, 정확한 symbol universe, Joker 대�
 
 하나의 항목에 여러 source type이 있으면 각 규칙 문장 옆에 종류를 따로 표시한다. 디지털 adaptation을 공식 규칙인 것처럼 표현하지 않는다.
 
-## 3. 공식 근거
+## 3. 근거 matrix
 
-2026-09-03에 다음 자료를 확인했다.
+2026-09-03에 아래 원문을 직접 확인했다. exact inventory를 secondary source로 확정하지 않았다.
 
-- [공식 한글워드 게임방법](https://www.rummikub.co.kr/default/sub1/sub15.php): 목표, 시작 패, 첫 등록, 재조합, 제한시간, 가져오기, Joker, 종료와 점수
-- [공식 한글워드 제품정보](https://www.rummikub.co.kr/default/sub3/sub33.php): 자음 94개, 모음 60개, Joker 2개와 자음·모음 주머니
-- [공식 한글워드 설명서 게시물](https://www.rummikub.co.kr/default/sub5/sub51.php?com_board_basic=read_form&com_board_id=12&com_board_idx=36): 인쇄용 공식 설명서 원문
-- [국립한글박물관 웹진의 한글워드 소개](https://www.hangeul.go.kr/webzine/202608/sub2_2.html): 2~4명, 전체 구성 합계, 시작 Tile과 목표의 교차 확인
+| ID | source | 등급 | 확인한 내용 | 확인 방법 | 확인일 |
+| --- | --- | --- | --- | --- | --- |
+| S-01 | [공식 한글워드 게임방법](https://www.rummikub.co.kr/default/sub1/sub15.php) | official | 목표, 시작 배분, 첫 등록, 재조합, 제한시간, 가져오기, Joker, 종료와 점수 | 공식 웹페이지 직접 확인 | 2026-09-03 |
+| S-02 | [공식 한글워드 제품정보](https://www.rummikub.co.kr/default/sub3/sub33.php) | official | 두벌식 키보드 자판 기반, ordinary consonant 94개, ordinary vowel 60개, Joker 2개, 자음·모음 bag 분리 | 공식 웹페이지 직접 확인 | 2026-09-03 |
+| S-03 | [공식 설명서 게시물](https://www.rummikub.co.kr/default/sub5/sub51.php?com_board_basic=read_form&com_board_id=12&com_board_idx=36)의 [첨부 PDF](https://www.rummikub.co.kr/chtml/board.php?template=bizdemo58906&com_board_basic=file_download&com_board_id=12&com_board_idx=36&com_board_file_seq=0) `한글워드 인쇄출력버전.pdf` (`루미큐브_한글워드 타일 룰북(제품용)`) | official primary | 1쪽의 자음군 95개·모음군 61개에 Joker가 각 1개 포함됨과 category별 배분·bag 절차, 2쪽의 회전 규칙, 3~4쪽의 Joker·복합 자모 실제 예 | 첨부 PDF 4쪽을 300 DPI로 전부 렌더링해 육안 대조. 내려받은 파일 SHA-256: `d27282fdd4f4c7b90e33575d787923f35e4e1827fc66bc986f68f6c092668a62` | 2026-09-03 |
+| S-04 | [루미큐브 공식쇼핑몰 한글워드 제품 페이지](https://rummikubshop.co.kr/product/%EB%A3%A8%EB%AF%B8%ED%81%90%EB%B8%8C-%ED%95%9C%EA%B8%80%EC%9B%8C%EB%93%9C-rummikub-hangul-word/486/)의 [공식 원본 구성 이미지](https://rummikubshop.co.kr/web/upload/NNEditor/20251126/EC8381EC84B8.jpg) | official sales channel | physical family별 exact quantity와 표시 도형을 S-03 및 S-02 합계와 교차 확인 | 제품 상세 원본 이미지를 원본 해상도로 확인 | 2026-09-03 |
+| U-01 | [Unicode Standard 17.0, Core Specification §3.12](https://www.unicode.org/versions/Unicode17.0.0/core-spec/chapter-3/) | technical primary | modern Hangul L/V/T repertoire, conjoining jamo 기반 조합과 NFC 관계 | Phase 8 구현 불변 조건의 근거로 확인 | 2026-09-03 |
+| U-02 | [Unicode 17.0 `Jamo.txt`](https://www.unicode.org/Public/17.0.0/ucd/Jamo.txt) | technical primary | modern choseong/jungseong/jongseong short-name와 범위 | Phase 8 mapping 교차 확인 | 2026-09-03 |
+| U-03 | [Unicode Standard 17.0, Core Specification §18.6](https://www.unicode.org/versions/Unicode17.0.0/core-spec/chapter-18/) | technical primary | Compatibility Jamo가 spacing, nonconjoining character라는 구분 | Compatibility glyph 단순 NFC 조합 금지의 근거로 확인 | 2026-09-03 |
 
-공식 설명서에 있는 개별 Tile 도표는 Phase 7B에서 별도로 대조한다. 이번 문서는 표를 눈대중으로 전사하거나 추측하지 않는다.
+S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 95개와 모음군 61개로 적는다. S-02의 94/60/2 표기와 모순이 아니라 `94 + 1`, `60 + 1`이라는 동일 구성의 서로 다른 집계 방식이다. 검색 과정에서 판매 페이지·블로그 같은 secondary 자료도 발견했지만 규범적 확정에는 사용하지 않았다.
 
 ---
 
@@ -70,26 +75,30 @@ Phase 7B 전에는 자모별 Tile 수량, 정확한 symbol universe, Joker 대�
 
 ### Normative rule
 
-- **OFFICIAL_BASE_RULE:** 전체 구성의 알려진 합계는 consonant Tile 94개, vowel Tile 60개, Joker 2개, 총 156개다.
-- **OFFICIAL_BASE_RULE:** 자음과 모음은 별도의 bag으로 관리한다.
-- **OFFICIAL_BASE_RULE:** 각 Player는 기본 시작 rack으로 consonant Tile 7개와 vowel Tile 7개, 총 14개를 받는다.
+- **OFFICIAL_BASE_RULE:** 전체 구성은 ordinary consonant Tile 94개, ordinary vowel Tile 60개, Joker 2개, 총 156개다. exact physical family와 quantity는 C-22의 canonical inventory table을 따른다.
+- **OFFICIAL_BASE_RULE:** 자음군 95개는 ordinary consonant 94개와 Joker 1개, 모음군 61개는 ordinary vowel 60개와 Joker 1개로 구성되며 서로 다른 bag으로 관리한다.
+- **OFFICIAL_BASE_RULE:** 게임 준비 때 자음군과 모음군을 각각 섞어 각 Player에게 자음군 7개와 모음군 7개를 나눠 주고, 남은 자음군과 모음군을 각각 해당 bag에 넣는다.
+- **DIGITAL_MVP_POLICY:** 서버는 이를 각 Joker를 포함한 consonant/vowel physical pool별 shuffle과 각 pool의 7회 draw로 구현한다. affiliated Joker가 나오면 7회 중 하나로 세며 특정 symbol 비율을 보장하지 않는다.
 - **IMPLEMENTATION_INVARIANT:** 모든 실제 Tile 인스턴스는 표시 symbol이 같아도 서로 다른 opaque tileId를 가진다.
+- **IMPLEMENTATION_INVARIANT:** bag이나 rack에 있는 회전형 ordinary Tile은 아직 `assignedSymbol`을 갖지 않는다. 의미 symbol은 placement에서만 정한다.
 
 ### 정상 예
 
-- 같은 “ㄱ” Tile 두 개가 존재하면 서로 다른 tileId를 가진 독립 인스턴스다.
-- 게임 시작 배분 결과의 자음 7개와 모음 7개는 서버가 각 bag에서 선택한다.
+- 같은 `GIYEOK_NIEUN_ROTATION` family Tile 두 개가 존재하면 서로 다른 tileId를 가진 독립 인스턴스다.
+- consonant bag의 초기 7회 중 그 bag 소속 Joker가 나오면 ordinary consonant 6개와 Joker 1개로 7개가 완료된다.
+- 한 Player가 같은 회전 family를 여러 개 받아도 서버가 다른 symbol Tile로 바꾸어 보정하지 않는다.
 
 ### 거절·edge case
 
-- 94/60/2 합계만으로 개별 자모 수량을 역산하지 않는다.
-- Joker가 시작 배분에 포함되는 bag과 방식은 Phase 7B 전에는 확정하지 않는다.
+- Joker를 7회 배분 뒤 별도로 더해 8번째 consonant 또는 vowel Tile로 주지 않는다.
+- physical family quantity를 `allowedSymbols` 각각의 quantity로 오해하지 않는다. `GIYEOK_NIEUN_ROTATION` 12개는 ㄱ 12개와 ㄴ 12개가 아니다.
 - tileId 없이 화면 문자만으로 Tile 소유권을 판정하지 않는다.
 
 ### Server validation implication
 
-- Phase 7B의 inventory 검증 전에는 실제 bag 생성과 배분 코드를 구현하지 않는다.
-- Game 시작 시 Tile conservation과 tileId uniqueness를 검증할 수 있어야 한다.
+- Game 시작 시 C-22의 inventory version으로 physical Tile instance를 정확히 한 번 생성하고 bag별 합계 95/61과 전체 156을 검증한다.
+- server RandomSource로 각 bag의 physical tileId를 shuffle한 뒤 Player마다 정확히 7회씩 draw한다.
+- Game 시작과 이후 모든 mutation에서 Tile conservation과 tileId uniqueness를 검증할 수 있어야 한다.
 
 ## C-03. Board와 WordGroup
 
@@ -409,8 +418,11 @@ Phase 7B 전에는 자모별 Tile 수량, 정확한 symbol universe, Joker 대�
 
 ### Normative rule
 
-- **OFFICIAL_BASE_RULE:** Joker는 하나의 Tile을 대신할 수 있다.
-- **DIGITAL_MVP_POLICY:** Board의 모든 Joker placement에는 현재 대체하는 실제 symbol assignment가 명시되어야 한다.
+- **OFFICIAL_BASE_RULE:** Joker는 어떤 Tile이든 대체해 사용할 수 있다.
+- **OFFICIAL_BASE_RULE:** consonant bag에 Joker 1개, vowel bag에 Joker 1개가 속한다.
+- **DIGITAL_MVP_POLICY:** 두 source bag의 Joker는 기능상 동일하며, Joker 하나는 C-22의 ordinary physical Tile 한 자리만 대신한다. exact replacement symbol universe는 consonant 19개 `ㄱ ㄲ ㄴ ㄷ ㄸ ㄹ ㅁ ㅂ ㅃ ㅅ ㅆ ㅇ ㅈ ㅉ ㅊ ㅋ ㅌ ㅍ ㅎ`와 one-position vowel 14개 `ㅏ ㅐ ㅑ ㅒ ㅓ ㅔ ㅕ ㅖ ㅗ ㅛ ㅜ ㅠ ㅡ ㅣ`다.
+- **DIGITAL_MVP_POLICY:** 두 physical Tile이 필요한 복합모음이나 겹받침 전체를 Joker 하나로 대신할 수 없다. Joker는 그 구성 위치 중 하나만 대신할 수 있다.
+- **DIGITAL_MVP_POLICY:** Board의 모든 Joker placement에는 현재 대체하는 `assignedSymbol`과 syllable role이 명시되어야 한다.
 - **OFFICIAL_BASE_RULE:** 자신의 rack Joker는 initial meld에 사용할 수 있다.
 - **OFFICIAL_BASE_RULE:** Board Joker가 대체하는 Tile을 사용할 수 있으면 그 Joker를 회수할 수 있다.
 - **OFFICIAL_BASE_RULE:** 회수한 Joker는 rack에 보관하지 않고 같은 turn에 다른 유효 WordGroup에 즉시 사용해야 한다.
@@ -420,17 +432,21 @@ Phase 7B 전에는 자모별 Tile 수량, 정확한 symbol universe, Joker 대�
 
 ### 정상 예
 
-- Board Joker가 ㄱ을 대신하고 있을 때 actor가 요구되는 실제 ㄱ Tile을 사용해 Joker를 회수한 뒤 같은 Submit에서 다른 유효 낱말에 배치한다.
+- Board Joker가 ㄱ을 대신하고 있을 때 actor가 ㄱ으로 사용할 수 있는 실제 Tile을 사용해 Joker를 회수한 뒤 같은 Submit에서 다른 유효 낱말에 배치한다.
+- `ㅗ + Joker(assignedSymbol = ㅏ)` 두 자리로 복합모음 ㅘ를 표현할 수 있다.
+- 어느 bag에서 나온 Joker든 `assignedSymbol = ㄴ` 또는 `assignedSymbol = ㅐ`처럼 one-position symbol을 대신할 수 있다.
 
 ### 거절·edge case
 
 - 회수한 Joker를 rack에 남기거나 assignment 없이 Board에 두면 거절한다.
 - initialMeldCompleted가 false인 Player가 Board Joker를 건드리면 거절한다.
-- Joker가 대체할 exact symbol universe는 Phase 7B 전에는 확정하지 않는다.
+- Joker 하나에 `assignedSymbol = ㅘ`를 부여하거나 Joker 하나만으로 ㄳ 전체를 표현하면 거절한다.
+- replacement assignment가 C-22 ordinary Tile의 어떤 `allowedSymbols`에도 속하지 않으면 거절한다.
 
 ### Server validation implication
 
-- before/after Joker 위치, 대체 Tile, 회수와 재사용을 한 candidate Board 안에서 함께 검증한다.
+- before/after Joker 위치, one-position 대체 assignment, syllable role, 회수와 재사용을 한 candidate Board 안에서 함께 검증한다.
+- Joker의 source bag은 inventory conservation을 위해 보존하되 replacement authorization 조건으로 사용하지 않는다.
 
 ## C-16. Hangul·Unicode와 Dictionary policy
 
@@ -443,23 +459,27 @@ Phase 7B 전에는 자모별 Tile 수량, 정확한 symbol universe, Joker 대�
 - **DIGITAL_MVP_POLICY:** MVP 구현 단계는 versioned test dictionary를 사용한다. 이는 production 한국어 사전이라고 주장하지 않는다.
 - **DIGITAL_MVP_POLICY:** provider unavailable/error는 TEMPORARILY_UNAVAILABLE 성격의 recoverable failure이며 canonical state를 바꾸지 않는다.
 - **DIGITAL_MVP_POLICY:** 사전 확인 중 server turn deadline을 연장하거나 멈추지 않는다.
-- **IMPLEMENTATION_INVARIANT:** pure composition layer가 rule-defined Tile symbol sequence와 syllable segmentation으로 NFC Hangul word를 만든다.
+- **IMPLEMENTATION_INVARIANT:** pure composition layer는 `physical tileId + assignedSymbol + explicit syllable role/segmentation`을 C-23의 허용 sequence로 검증하고, 이를 logical Unicode choseong/jungseong/jongseong으로 바꾼 뒤 NFC 완성형 Hangul word를 만든다.
+- **IMPLEMENTATION_INVARIANT:** 문서에서 쓰는 `ㄱ`, `ㅘ`, `ㄳ` 같은 Hangul Compatibility Jamo glyph를 단순 연결한 뒤 `String.prototype.normalize("NFC")`가 음절을 만들어 준다고 가정하지 않는다. Phase 8은 syllable role에 맞는 conjoining jamo 또는 동등한 명시적 조합 알고리즘을 사용한다.
+- **IMPLEMENTATION_INVARIANT:** `ㅘ = ㅗ + ㅏ`, `ㄳ = ㄱ + ㅅ` 표기는 physical Tile component expansion이다. Unicode canonical decomposition을 뜻하지 않는다.
 - **IMPLEMENTATION_INVARIANT:** browser 표시 문자열, client가 조합한 word 문자열 또는 단순 string concatenation을 규칙 결과로 신뢰하지 않는다.
 
 ### 정상 예
 
-- 동일한 Unicode 의미의 입력은 NFC canonical form으로 lookup한다.
+- 서버가 산출한 precomposed Hangul syllable과 canonically equivalent한 conjoining L/V/(T) sequence는 같은 최종 NFC lookup form을 갖는다.
 - Game 도중 dictionary data가 배포돼도 진행 중 Game은 snapshot된 dictionaryVersion을 유지한다.
 
 ### 거절·edge case
 
 - composition 결과가 완성형 Hangul word가 아니면 dictionary lookup 이전에 거절한다.
+- physical component sequence가 허용돼도 choseong/jungseong/jongseong role에 맞지 않으면 거절한다.
 - 고유명사, 방언, 신조어, 활용형의 exact inclusion은 production dataset 선택 전에는 확정하지 않는다.
 - 공식 실물 규칙은 사전 확인 동안 시간을 멈추지만 디지털 MVP는 deadline을 멈추지 않는다.
 
 ### Server validation implication
 
 - composition과 dictionary lookup은 server-side deterministic boundary로 둔다.
+- client가 주장한 final word를 비교 기준으로 삼지 않고 서버가 placement와 segmentation으로 다시 계산한다.
 - provider 장애와 “단어 없음”을 구분하되 내부 예외를 client에 노출하지 않는다.
 
 ### TEST_DICTIONARY_CANDIDATES
@@ -595,40 +615,191 @@ Phase 7B 전에는 자모별 Tile 수량, 정확한 symbol universe, Joker 대�
 - **DIGITAL_MVP_POLICY:** game:start는 해당 Game이 끝까지 사용할 immutable, versioned RulesConfig snapshot을 저장해야 한다.
 - **DIGITAL_MVP_POLICY:** 최소 항목은 rulesVersion, dictionaryVersion, turnDurationMs, gameDurationMs, initialRack.consonants, initialRack.vowels, initialMeld.minimumTileCount, initialMeld.minimumWordSyllables, timeoutPenaltyTileCount, maxPlayers, jokerRulesVersion/reference와 tileInventoryVersion이다.
 - **DIGITAL_MVP_POLICY:** 확정 값은 turnDurationMs 60000, gameDurationMs 1500000, initialRack 7/7, initialMeld minimumTileCount 6, minimumWordSyllables 2, timeoutPenaltyTileCount 3, maxPlayers 4다.
+- **DIGITAL_MVP_POLICY:** 최초 exact inventory document version은 `hangul-tile-inventory-v1`이며 C-22의 physical types, quantity, allowedSymbols와 bag affiliation 전체를 식별한다.
 - **IMPLEMENTATION_INVARIANT:** Game 도중 배포 설정이 바뀌어도 snapshot된 RulesConfig와 dictionaryVersion을 변경하지 않는다.
-- **IMPLEMENTATION_INVARIANT:** Phase 7B 전에는 가짜 production tileInventoryVersion이나 TypeScript RulesConfig를 만들지 않는다.
+- **IMPLEMENTATION_INVARIANT:** C-22의 구성 요소 하나라도 바꾸면 같은 tileInventoryVersion을 재사용하지 않는다.
 
 ### 정상 예
 
 - 서버 배포 뒤 새 Game은 새 rulesVersion을 사용할 수 있지만 이미 PLAYING인 Game은 시작 당시 snapshot을 유지한다.
+- `hangul-tile-inventory-v1` Game은 C-22와 다른 quantity나 allowedSymbols를 섞지 않는다.
 
 ### 거절·edge case
 
-- tile inventory가 확정되지 않은 상태에서 “v1” 같은 임시 production version을 만들지 않는다.
+- inventory를 바꾸고도 `hangul-tile-inventory-v1`을 유지하면 거절한다.
 - client가 RulesConfig 값을 바꾸어 Submit해도 서버 snapshot을 대체하지 않는다.
 
 ### Server validation implication
 
 - 모든 gameplay 판정은 Room의 live global config가 아니라 Game snapshot을 참조한다.
+- Phase 8 이후 구현은 version별 immutable inventory definition을 참조하되 이번 Phase 7B에서는 TypeScript constant를 만들지 않는다.
+
+## C-22. Canonical physical Tile inventory
+
+이 표가 repository 안의 exact inventory 수량에 대한 유일한 canonical table이다. `Quantity`는 physical family 전체 수량이며 `Allowed Symbols` 각각의 수량이 아니다. identifier는 향후 구현 방향을 설명하는 문서 이름일 뿐 아직 TypeScript identifier가 아니다.
+
+| Physical Type | Bag | Quantity | Allowed Symbols | Rotation/Assignment | Source |
+| --- | --- | ---: | --- | --- | --- |
+| `GIYEOK_NIEUN_ROTATION` | CONSONANT | 12 | ㄱ, ㄴ | 한 physical Tile을 회전해 둘 중 하나로 사용 | S-03 2쪽, S-04 |
+| `DIGEUT` | CONSONANT | 6 | ㄷ | dedicated, 고정 | S-04 |
+| `RIEUL` | CONSONANT | 6 | ㄹ | dedicated, 고정 | S-04 |
+| `MIEUM` | CONSONANT | 6 | ㅁ | dedicated, 고정 | S-04 |
+| `BIEUP` | CONSONANT | 6 | ㅂ | dedicated, 고정 | S-04 |
+| `SIOT` | CONSONANT | 6 | ㅅ | dedicated, 고정 | S-04 |
+| `IEUNG` | CONSONANT | 6 | ㅇ | dedicated, 고정 | S-04 |
+| `JIEUT` | CONSONANT | 6 | ㅈ | dedicated, 고정 | S-04 |
+| `CHIEUT` | CONSONANT | 6 | ㅊ | dedicated, 고정 | S-04 |
+| `KIEUK` | CONSONANT | 6 | ㅋ | dedicated, 고정 | S-04 |
+| `TIEUT` | CONSONANT | 6 | ㅌ | dedicated, 고정 | S-04 |
+| `PIEUP` | CONSONANT | 6 | ㅍ | dedicated, 고정 | S-04 |
+| `HIEUH` | CONSONANT | 6 | ㅎ | dedicated, 고정 | S-04 |
+| `SSANG_BIEUP` | CONSONANT | 2 | ㅃ | dedicated, 고정 | S-04 |
+| `SSANG_JIEUT` | CONSONANT | 2 | ㅉ | dedicated, 고정 | S-04 |
+| `SSANG_DIGEUT` | CONSONANT | 2 | ㄸ | dedicated, 고정 | S-04 |
+| `SSANG_GIYEOK` | CONSONANT | 2 | ㄲ | dedicated, 고정 | S-04 |
+| `SSANG_SIOT` | CONSONANT | 2 | ㅆ | dedicated, 고정 | S-04 |
+| `A_ROTATION` | VOWEL | 20 | ㅏ, ㅓ, ㅗ, ㅜ | 한 physical Tile을 회전해 넷 중 하나로 사용 | S-03 2쪽, S-04 |
+| `YA_ROTATION` | VOWEL | 20 | ㅑ, ㅕ, ㅛ, ㅠ | 한 physical Tile을 회전해 넷 중 하나로 사용 | S-03 2쪽, S-04 |
+| `I_EU_ROTATION` | VOWEL | 12 | ㅣ, ㅡ | 한 physical Tile을 회전해 둘 중 하나로 사용 | S-03 2쪽, S-04 |
+| `AE` | VOWEL | 2 | ㅐ | dedicated, 고정 | S-04 |
+| `E` | VOWEL | 2 | ㅔ | dedicated, 고정 | S-04 |
+| `YAE` | VOWEL | 2 | ㅒ | dedicated, 고정 | S-04 |
+| `YE` | VOWEL | 2 | ㅖ | dedicated, 고정 | S-04 |
+| `JOKER` | CONSONANT | 1 | C-15 one-position universe | source bag은 conservation metadata이며 replacement를 제한하지 않음 | 수량·bag: S-03 1쪽, S-04; 대체: S-03 3쪽 + C-15 DIGITAL_MVP_POLICY |
+| `JOKER` | VOWEL | 1 | C-15 one-position universe | source bag은 conservation metadata이며 replacement를 제한하지 않음 | 수량·bag: S-03 1쪽, S-04; 대체: S-03 3쪽 + C-15 DIGITAL_MVP_POLICY |
+
+### Inventory 합계
+
+- CONSONANT ordinary: `12 + (12 × 6) + (5 × 2) = 94`
+- VOWEL ordinary: `20 + 20 + 12 + (4 × 2) = 60`
+- JOKER: `1 + 1 = 2`
+- GRAND TOTAL: `94 + 60 + 2 = 156`
+- physical bag totals including affiliated Joker: CONSONANT `95`, VOWEL `61`
+
+### Normative rule
+
+- **OFFICIAL_BASE_RULE:** 표의 physical face/family 사실, quantity, 허용 회전과 bag별 Joker 구성이 공식 inventory다.
+- **DIGITAL_MVP_POLICY:** `Physical Type`의 영문 이름은 공식 제품 명칭이 아니라 이 프로젝트의 문서 식별자다. 한 inventory entry는 `(Physical Type, Bag)`으로 구분하므로 기능상 같은 `JOKER`가 bag별 한 행씩 존재한다.
+- **DIGITAL_MVP_POLICY:** 이 exact 구성의 inventory version은 `hangul-tile-inventory-v1`이다.
+- **IMPLEMENTATION_INVARIANT:** 각 quantity만큼 서로 다른 tileId를 가진 physical instance를 생성하며 `physicalType`, source `bagKind`와 tileId는 Game 동안 바꾸지 않는다.
+
+### 정상 예
+
+- `A_ROTATION` instance 하나를 한 placement에서 `assignedSymbol = ㅗ`로 사용할 수 있다.
+- `GIYEOK_NIEUN_ROTATION` 12개는 각각 독립 tileId를 갖고 각 placement에서 ㄱ 또는 ㄴ 중 하나로 해석된다.
+
+모음 physical mapping별 compact 예는 다음과 같다.
+
+| Physical Type | 정상 assignment | 거절 assignment |
+| --- | --- | --- |
+| `A_ROTATION` | ㅗ | ㅑ |
+| `YA_ROTATION` | ㅠ | ㅏ |
+| `I_EU_ROTATION` | ㅡ | ㅗ |
+| `AE` | ㅐ | ㅔ |
+| `E` | ㅔ | ㅐ |
+| `YAE` | ㅒ | ㅖ |
+| `YE` | ㅖ | ㅒ |
+
+### 거절·edge case
+
+- 위 예시 표의 거절 assignment처럼 physical definition의 `allowedSymbols` 밖 값을 부여하면 거절한다.
+- `GIYEOK_NIEUN_ROTATION` 12개를 ㄱ 12개와 ㄴ 12개, 총 24개로 생성하지 않는다.
+
+### Server validation implication
+
+- Tile factory는 version table의 행별 quantity와 전체 합계를 검증하고 중복 tileId를 만들지 않는다.
+- source bag affiliation은 draw/conservation에 사용하며 display rotation angle은 canonical state에 사용하지 않는다.
+
+## C-23. Physical Tile과 assignedSymbol 및 음절 표현
+
+### Normative rule
+
+- **DIGITAL_MVP_POLICY:** 향후 `PhysicalTileDefinition`은 최소 `physicalType`, `bagKind`, `quantity`, `allowedSymbols` 의미를 갖는다. 이 항목은 representation 결정이며 아직 TypeScript type은 아니다.
+- **IMPLEMENTATION_INVARIANT:** physical Tile identity와 placement interpretation을 분리한다. tileId는 `assignedSymbol`이나 rotation angle을 encode하지 않는다.
+- **IMPLEMENTATION_INVARIANT:** `assignedSymbol`은 TurnDraft 또는 Board placement에만 존재하며 서버는 ordinary Tile에서 `assignedSymbol ∈ allowedSymbols`를 검증한다. CSS degree는 `assignedSymbol`에서 파생하는 presentation metadata일 뿐 authority가 아니다.
+- **DIGITAL_MVP_POLICY:** 쌍자음 ㄲ, ㄸ, ㅃ, ㅆ, ㅉ은 dedicated physical Tile 하나로만 표현한다. ordinary 자음 두 개를 합쳐 쌍자음을 만들 수 없다.
+- **DIGITAL_MVP_POLICY:** 하나의 syllable은 required choseong, required jungseong, optional jongseong을 명시적으로 구분한다. client는 각 role이 사용하는 ordered physical tileId와 `assignedSymbol`을 제출해야 한다.
+- **IMPLEMENTATION_INVARIANT:** 하나의 physical tileId는 bag, 하나의 rack 또는 accepted Board의 정확히 한 placement에만 속한다. 두 자리 복합모음과 겹받침은 서로 다른 physical tileId 두 개를 소비하고 dedicated 쌍자음은 하나를 소비한다.
+
+### Modern Hangul role universe
+
+- choseong 19: `ㄱ ㄲ ㄴ ㄷ ㄸ ㄹ ㅁ ㅂ ㅃ ㅅ ㅆ ㅇ ㅈ ㅉ ㅊ ㅋ ㅌ ㅍ ㅎ`; modern conjoining L range U+1100..U+1112
+- jungseong 21: `ㅏ ㅐ ㅑ ㅒ ㅓ ㅔ ㅕ ㅖ ㅗ ㅘ ㅙ ㅚ ㅛ ㅜ ㅝ ㅞ ㅟ ㅠ ㅡ ㅢ ㅣ`; modern conjoining V range U+1161..U+1175
+- non-empty single jongseong 16: `ㄱ ㄲ ㄴ ㄷ ㄹ ㅁ ㅂ ㅅ ㅆ ㅇ ㅈ ㅊ ㅋ ㅌ ㅍ ㅎ`
+- cluster jongseong 11: `ㄳ ㄵ ㄶ ㄺ ㄻ ㄼ ㄽ ㄾ ㄿ ㅀ ㅄ`
+- single과 cluster를 합친 non-empty modern conjoining T range는 U+11A8..U+11C2의 27개다. Unicode의 `TCount = 28`은 no-final index 0과 실제 T 27개를 함께 센 값이며 no-final은 자모나 Tile symbol이 아니다.
+- ㄸ, ㅃ, ㅉ은 modern choseong에는 있지만 modern jongseong에는 없다. jongseong이 없는 음절도 valid하다.
+
+위 repertoire는 official inventory의 physical quantity가 아니라 Phase 8 조합 입력을 제한하는 Unicode modern Hangul 범위다. U-01과 U-02를 근거로 한 **IMPLEMENTATION_INVARIANT**다.
+
+### Jungseong physical component mapping
+
+| Logical jungseong | Required ordered physical assignedSymbols | Source type |
+| --- | --- | --- |
+| ㅏ, ㅓ, ㅗ, ㅜ | 같은 symbol 하나 (`A_ROTATION`) | OFFICIAL_BASE_RULE |
+| ㅑ, ㅕ, ㅛ, ㅠ | 같은 symbol 하나 (`YA_ROTATION`) | OFFICIAL_BASE_RULE |
+| ㅣ, ㅡ | 같은 symbol 하나 (`I_EU_ROTATION`) | OFFICIAL_BASE_RULE |
+| ㅐ, ㅔ, ㅒ, ㅖ | 같은 symbol의 dedicated Tile 하나 | OFFICIAL_BASE_RULE |
+| ㅘ | ㅗ + ㅏ | DIGITAL_MVP_POLICY; S-03 4쪽 official example와 일치 |
+| ㅙ | ㅗ + ㅐ | DIGITAL_MVP_POLICY |
+| ㅚ | ㅗ + ㅣ | DIGITAL_MVP_POLICY |
+| ㅝ | ㅜ + ㅓ | DIGITAL_MVP_POLICY |
+| ㅞ | ㅜ + ㅔ | DIGITAL_MVP_POLICY |
+| ㅟ | ㅜ + ㅣ | DIGITAL_MVP_POLICY |
+| ㅢ | ㅡ + ㅣ | DIGITAL_MVP_POLICY |
+
+Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 대신하지 않는다. 예를 들어 `ㅑ + ㅣ`을 ㅒ로 인정하지 않는다.
+
+### Jongseong cluster physical component mapping
+
+| Logical jongseong | Required ordered physical assignedSymbols |
+| --- | --- |
+| ㄳ | ㄱ + ㅅ |
+| ㄵ | ㄴ + ㅈ |
+| ㄶ | ㄴ + ㅎ |
+| ㄺ | ㄹ + ㄱ |
+| ㄻ | ㄹ + ㅁ |
+| ㄼ | ㄹ + ㅂ |
+| ㄽ | ㄹ + ㅅ |
+| ㄾ | ㄹ + ㅌ |
+| ㄿ | ㄹ + ㅍ |
+| ㅀ | ㄹ + ㅎ |
+| ㅄ | ㅂ + ㅅ |
+
+이 11개 exact two-position mapping은 **DIGITAL_MVP_POLICY**다. S-03 3쪽의 ㄺ official example, two-set physical inventory와 U-01/U-02의 modern jongseong repertoire에 맞춘다. 임의의 두 자음을 cluster로 인정하지 않는다.
+
+### 정상 예
+
+- `가` syllable은 choseong `ㄱ` Tile 한 자리와 jungseong `ㅏ` Tile 한 자리를 명시한다.
+- `한`은 `ㅎ` / `ㅏ` / single jongseong `ㄴ`, `글`은 `ㄱ` / `ㅡ` / single jongseong `ㄹ`로 분절한다.
+- ㅘ와 ㄳ은 각각 서로 다른 physical Tile 두 개를 소비하고, ㄲ은 dedicated Tile 한 개를 소비한다.
+
+### 거절·edge case
+
+- 동일 tileId를 한 syllable의 두 component나 여러 syllable에 재사용하면 거절한다.
+- 두 ordinary ㄱ Tile을 choseong ㄲ로, `ㅑ + ㅣ`을 jungseong ㅒ로, ㄸ을 jongseong으로 해석하면 거절한다.
+- client가 syllable boundary 없이 flat Tile sequence와 완성 word 문자열만 보내 서버가 경계를 추측하게 하지 않는다.
+
+### Server validation implication
+
+- Phase 8 입력은 `tileId + assignedSymbol` component와 explicit syllable roles를 받아 exact component 형식, input 내부 tileId 중복과 role universe를 검증한다. `physicalType`별 `allowedSymbols` 적합성, Game 내 Tile 존재·소유권과 전체 Board conservation 판정은 Phase 10 inventory/RuleEngine 책임이다.
+- mapping은 role-sensitive해야 한다. 같은 assigned glyph ㄱ도 choseong role에서는 U+1100 `ᄀ`, jongseong role에서는 U+11A8 `ᆨ`으로 바꾼다. Compatibility Jamo의 NFKC 변환에 role 결정을 맡기지 않는다.
+- two-position physical component는 Unicode composition 전에 하나의 logical conjoining jamo로 collapse한다. 예를 들어 `ㅗ + ㅏ`는 V U+116A `ᅪ`, `ㄱ + ㅅ`은 T U+11AA `ᆪ`가 된 뒤 하나의 modern conjoining L, V, optional T를 Hangul syllable로 조합한다.
+- 조합 결과를 NFC normalize해 완성형 word를 산출한다.
+- client가 함께 보낸 display word가 있더라도 서버 계산 결과를 대체하지 못한다.
 
 ---
 
-# PHASE_7B_REQUIRED
+# PHASE_7_GATE_RESULT
 
-## PENDING_TILE_INVENTORY_TABLE
+- **Phase 7A:** COMPLETE
+- **Phase 7B:** COMPLETE (2026-09-03)
+- **Phase 7 overall:** COMPLETE
+- **Phase 8 composition implementation:** COMPLETE (2026-09-03)
 
-다음 항목은 공식 근거를 추가로 확보하고 상호 대조한 뒤 Phase 7B에서만 확정한다.
+공식 exact consonant/vowel inventory, 두 Joker의 physical bag handling, rotation family, physical identity와 assignedSymbol 분리, 쌍자음·복합모음·겹받침 표현, Joker one-position replacement, 초기 7/7 draw semantics, 전체 156개 합계와 Phase 8 input/output semantics를 모두 확정했다. Tile representation에 관한 Phase 7B 미확정 항목은 없다.
 
-- 자모별 정확한 Tile symbol 목록
-- 각 symbol별 정확한 수량
-- 쌍자음 Tile의 정확한 목록
-- 이중·복합모음 Tile의 정확한 목록
-- 회전해 다른 자모로 사용할 수 있는 physical Tile 규칙
-- Joker가 대체할 수 있는 exact symbol universe
-- 시작 consonant 7 / vowel 7 배분에서 Joker의 bag 소속과 배분 방식
-- exact tileInventoryVersion과 versioning 근거
-
-Phase 7B 산출물에는 공식 원문 위치, 판독 근거, symbol canonical representation, 분류별·전체 합계 교차 검산을 포함해야 한다. C-02의 94/60/2/156 합계와 일치하지 않으면 구현 전에 차이를 해결한다.
+`PHASE_7A_CORRECTION`: 실질 수정 없음. 공식 PDF는 Phase 7A의 bag depletion, 25분 종료, scoring과 Joker gameplay 방향에 충돌하지 않았다. C-02의 “consonant 7 + vowel 7”을 bag별 7회 draw이고 소속 Joker가 그 안에 포함된다는 뜻으로 명확히 했을 뿐이다.
 
 ---
 
@@ -681,14 +852,14 @@ Phase 7A에서 공식 근거나 제품 정책이 충분하지 않아 남긴 항�
 
 # 기존 TBC 추적
 
-| 기존 항목 | Phase 7A 결과 |
+| 기존 항목 | Phase 7 결과 |
 | --- | --- |
-| TBC-01 Tile inventory | 전체 합계와 시작 7/7만 C-02 확정, exact table은 PHASE_7B_REQUIRED |
-| TBC-02 시작 rack/Joker | 7 consonant + 7 vowel은 C-02 확정, Joker bag/배분은 Phase 7B |
-| TBC-03 Hangul composition | architecture 방향은 C-16 확정, exact symbol/조합 표는 Phase 7B |
+| TBC-01 Tile inventory | C-22 canonical exact table과 `hangul-tile-inventory-v1`으로 해소 |
+| TBC-02 시작 rack/Joker | C-02에서 bag별 7회 draw와 bag 소속 Joker 포함 의미로 해소 |
+| TBC-03 Hangul composition | C-16과 C-23에서 physical component, role, logical jamo, NFC 경계로 해소 |
 | TBC-04 낱말 길이 | 최소 2음절을 C-03에 확정 |
 | TBC-05 initial meld | C-05에 확정 |
-| TBC-06 Joker | gameplay 방향은 C-15 확정, exact 대체 symbol은 Phase 7B |
+| TBC-06 Joker | C-15에서 exact one-position symbol universe, granularity와 bag affiliation으로 해소 |
 | TBC-07 rearrangement | C-06에 확정 |
 | TBC-08 draw/pass | C-08에 확정 |
 | TBC-09 turn 제한시간/timeout | C-14에 확정 |
@@ -699,7 +870,6 @@ Phase 7A에서 공식 근거나 제품 정책이 충분하지 않아 남긴 항�
 
 ## 다음 결정 절차
 
-1. 다음 작업은 Phase 7B만 수행한다.
-2. Phase 7B 공식 inventory가 C-02 합계와 일치하는지 검산한다.
-3. symbol representation과 Joker exact universe를 문서로 확정한다.
-4. 그 뒤에만 Phase 8의 Tile model을 설계한다.
+1. Phase 7 gate는 완료되었다.
+2. 다음 작업은 Roadmap Phase 8의 순수 Hangul·Unicode 조합만 수행한다.
+3. Phase 8은 C-22/C-23을 구현 입력으로 사용하되 GameState, RuleEngine, transport나 UI를 선행 구현하지 않는다.

@@ -2,7 +2,7 @@
 
 ## 1. 목적과 설계 원칙
 
-이 문서는 한글 루미큐브 MVP의 client/server/shared 경계, 상태 수명주기, 실시간 protocol, 원자적 검증, 재접속, 배포 및 확장 지점을 정의한다. Phase 7A에서 확정한 gameplay 수치와 정책은 [GAME_RULES.md](./GAME_RULES.md)를 규범적 source로 삼으며, Phase 7B가 필요한 exact Tile inventory와 symbol 표현은 그 전까지 architecture나 code에 고정하지 않는다.
+이 문서는 한글 루미큐브 MVP의 client/server/shared 경계, 상태 수명주기, 실시간 protocol, 원자적 검증, 재접속, 배포 및 확장 지점을 정의한다. Phase 7에서 확정한 gameplay 수치, exact Tile inventory와 symbol 표현은 [GAME_RULES.md](./GAME_RULES.md)를 규범적 source로 삼는다. exact inventory table은 그 문서의 C-22에만 두고 여기서는 구조 경계만 정의한다.
 
 핵심 원칙은 다음과 같다.
 
@@ -20,7 +20,7 @@
 
 ### 2.1 계획된 monorepo
 
-아래는 단계적으로 구현할 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했으며, 나머지 디렉터리는 해당 Roadmap 단계에서 필요할 때 생성한다.
+아래는 단계적으로 구현할 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. 나머지 디렉터리는 해당 Roadmap 단계에서 필요할 때 생성한다.
 
 ```text
 /
@@ -36,7 +36,7 @@
 │           ├── model/          # server-only persistence record와 value type
 │           ├── transport/      # HTTP/Socket.IO adapters and runtime validation
 │           ├── application/    # commands/use cases and authorization orchestration
-│           ├── domain/         # Room, Game, RuleEngine, state transitions
+│           ├── domain/         # 순수 domain; 현재 hangul/composition.ts 구현
 │           ├── ports/          # repositories, clock, random, dictionary, scheduler
 │           └── infrastructure/ # in-memory adapters, Socket.IO projection delivery
 └── packages/
@@ -127,6 +127,8 @@ Socket.IO handler 안에서 Room state를 직접 수정하거나 게임 규칙�
 
 Domain API는 가능한 한 plain serializable data를 받고 새 state 또는 구조화된 domain error를 반환하는 deterministic 함수로 만든다.
 
+현재 구현된 `apps/server/src/domain/hangul/composition.ts`는 `AssignedJamoComponent`, `SyllableCompositionInput`, `WordCompositionInput`을 입력으로 받아 `composeSyllable` 또는 `composeWord`에서 NFC 완성형 결과를 만든다. 예상 가능한 실패는 exception 대신 `HangulCompositionResult`의 `ok` discriminant와 server-only `HangulCompositionError`로 반환한다. 이 모듈은 transport, persistence, clock, random, dictionary를 import하지 않는다.
+
 ### 3.5 Port와 MVP adapter
 
 | Port | 책임 | MVP 구현 | 향후 구현 |
@@ -192,7 +194,8 @@ GameState
   gameId
   gameRevision
   immutable RulesConfig snapshot
-  tilesById
+    tileInventoryVersion: hangul-tile-inventory-v1
+  tilesById: tileId -> immutable physical Tile instance
   bags:
     consonants: server-ordered tileId collection
     vowels: server-ordered tileId collection
@@ -200,9 +203,9 @@ GameState
   board: ordered WordGroup collection
     WordGroup:
       stable groupId
-      ordered Tile placements
-      syllable segmentation
-      explicit Joker assignments
+      ordered Tile placements with assignedSymbol
+      explicit choseong/jungseong/jongseong segmentation
+      explicit one-position Joker assignments
   playerGameStatus:
     initialMeldCompleted
     forfeit
@@ -220,12 +223,14 @@ GameState
   result: absent or server-computed result
 ```
 
-- Tile은 `kind: CONSONANT | VOWEL | JOKER`와 규칙이 정한 표시/조합 정보를 가질 수 있다.
-- 같은 symbol을 가진 Tile이 여러 개 있어도 `tileId`는 모두 달라야 한다.
+- conceptual `PhysicalTileDefinition`은 `physicalType`, source `bagKind`, `quantity`, `allowedSymbols`를 분리한다. exact 행과 합계는 GAME_RULES C-22를 따른다.
+- physical Tile instance는 opaque `tileId`, immutable `physicalType`과 `sourceBagKind`를 가지며 현재 회전·symbol을 identity에 encode하지 않는다. 같은 physical type의 Tile이 여러 개여도 `tileId`는 모두 달라야 한다. 특히 두 `JOKER` instance의 source bag은 `sourceBagKind`로 구분한다.
+- `assignedSymbol`은 rack/bag identity가 아니라 draft/Board placement의 의미 값이다. ordinary Tile에서는 definition의 `allowedSymbols`에 속해야 하고 Joker에서는 GAME_RULES C-15의 one-position universe에 속해야 한다. CSS rotation degree는 파생 display metadata이지 canonical state가 아니다.
+- WordGroup의 syllable segmentation은 각 physical placement를 choseong, jungseong, optional jongseong role에 명시적으로 연결한다. 복합모음과 겹받침은 GAME_RULES C-23의 exact component sequence만 허용한다.
 - 하나의 `tileId`는 최종 Board 전체에 최대 한 번만 나타나며 모든 Tile은 정확히 하나의 WordGroup, rack 또는 bag 같은 허용 위치에 속해야 한다.
 - WordGroup collection의 표시 순서는 UI 안정성을 위한 것이고 낱말 유효성에는 영향을 주지 않는다.
-- `RulesConfig`는 최소한 rules/dictionary/inventory version, 60초 turn, 25분 Game, 시작 rack 7/7, initial meld 최소 Tile 6개·최소 2음절, timeout penalty 3개, 최대 4명과 Joker 규칙 reference를 snapshot할 수 있어야 한다.
-- exact Tile inventory, symbol representation과 Joker exact symbol universe는 Phase 7B 전까지 type이나 상수로 제한하지 않는다.
+- `RulesConfig`는 최소한 rules/dictionary version, `tileInventoryVersion = hangul-tile-inventory-v1`, 60초 turn, 25분 Game, 시작 rack 7/7, initial meld 최소 Tile 6개·최소 2음절, timeout penalty 3개, 최대 4명과 Joker 규칙 reference를 snapshot할 수 있어야 한다.
+- 구현된 Phase 8 composition은 명시된 syllable role별 `tileId + assignedSymbol`에서 word 내부 중복 physical reference를 거절하고, two-position component를 먼저 하나의 logical V/T로 collapse한다. Compatibility Jamo를 명시적 Unicode modern Hangul L/V/T index table에 mapping해 precomposed NFC word를 계산하며 문자열을 단순 concatenate/normalize하지 않는다. `physicalType`별 `allowedSymbols`, Game 내 Tile 존재·소유권과 Board 전체 conservation은 입력에 포함하지 않고 Phase 10 RuleEngine 경계에 남긴다.
 - 저장 state는 plain data와 명시적인 schema/rules version을 가져야 한다. socket, timer handle, framework object를 직렬화 state에 넣지 않는다.
 
 ### 4.4 Connection과 Session state
@@ -360,9 +365,9 @@ canonical code는 `ABCDEFGHJKMNPQRSTUVWXYZ23456789` alphabet의 uppercase ASCII 
 - 규칙상 필요한 추가 시작 조건이 충족되는가
 - 이미 처리한 `requestId`가 아닌가
 
-성공 시 서버는 확정된 `RulesConfig` snapshot을 Game에 연결하고, Player 목록을 server-side `RandomSource`로 한 번 shuffle해 immutable `turnOrder`를 만든다. 모든 Tile에 `tileId`를 부여하고 자음·모음 bag에서 각 Player에게 7개씩 배분한 뒤 turnOrder 첫 Player의 `turnId`, `startedAt`, `deadlineAt = startedAt + 60초`와 `gameDeadlineAt = gameStartedAt + 25분`을 만들고 Room을 `PLAYING`으로 한 번에 commit한다.
+성공 시 서버는 확정된 `RulesConfig` snapshot을 Game에 연결하고, Player 목록을 server-side `RandomSource`로 한 번 shuffle해 immutable `turnOrder`를 만든다. `hangul-tile-inventory-v1`의 physical family별 quantity만큼 unique tileId를 생성하고 source bag에 넣어 각각 shuffle한다. 각 Player에게 consonant bag 7회와 vowel bag 7회를 배분한다. bag 소속 Joker가 나오면 그 7회 중 하나이며 별도 8번째 Tile이 아니다. 그 뒤 turnOrder 첫 Player의 `turnId`, `startedAt`, `deadlineAt = startedAt + 60초`와 `gameDeadlineAt = gameStartedAt + 25분`을 만들고 Room을 `PLAYING`으로 한 번에 commit한다.
 
-실제 Tile inventory, Joker의 시작 배분 방식과 disconnected Player가 있는 상태의 시작 허용 여부는 Phase 7B 또는 남은 policy 결정이 선행되어야 한다. 그 전에는 `game:start`를 구현하지 않는다.
+exact inventory와 Joker 시작 배분은 GAME_RULES C-02/C-22에서 확정되었다. disconnected Player가 있는 상태의 시작 허용 여부는 여전히 GAME_RULES TBC-B이며 Phase 11 `game:start` 구현 전에 결정해야 한다.
 
 ### 7.2 Playing
 
@@ -609,8 +614,8 @@ expectedGameRevision
 turnId
 proposedBoard:
   ordered WordGroup collection
-  stable groupId and ordered tileId placements
-  syllable segmentation and explicit Joker assignments
+  stable groupId and ordered physical tileId placements with assignedSymbol
+  explicit syllable role/segmentation and one-position Joker assignments
 ```
 
 client가 계산한 next turn, rack, bag, score, winner는 제출하지 않거나 모두 무시한다.
@@ -876,7 +881,6 @@ https://game.example/
 
 | 미확정 결정 | 영향을 받는 component |
 | --- | --- |
-| exact Tile inventory, symbol·회전 규칙과 Joker 대체 universe | `RulesConfig`, tile factory, Hangul composition, start validation |
 | 동일 낱말 WordGroup 중복 허용 | RuleEngine, Submit validation |
 | game:start 시 OFFLINE 참가자 포함 여부 | start validation, participant snapshot |
 | production dictionary dataset·license·exact 어휘 범위 | `DictionaryProvider`, version storage |
@@ -884,4 +888,4 @@ https://game.example/
 | command/Submit 운영 한도 | transport validation, rate limiting |
 | rematch와 누적 match | result model, Room lifecycle |
 
-이 항목은 [GAME_RULES.md](./GAME_RULES.md)의 `PHASE_7B_REQUIRED`와 `TO_BE_CONFIRMED`에 동기화한다. 특히 Phase 7B 전에는 임시 symbol 목록이나 tileInventoryVersion을 production logic으로 만들지 않는다.
+이 항목은 [GAME_RULES.md](./GAME_RULES.md)의 `TO_BE_CONFIRMED`에 동기화한다. Tile inventory와 symbol representation은 같은 문서의 C-15/C-22/C-23이 canonical source이며 변경 시 새 inventory/rules version과 검증이 필요하다.

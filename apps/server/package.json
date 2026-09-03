@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "concurrently --kill-others-on-fail --names compile,serve --prefix-colors blue,green \"tsc --project tsconfig.build.json --watch --preserveWatchOutput\" \"node --watch dist/index.js\"",
     "typecheck": "tsc --project tsconfig.json",
-    "test": "tsc --project tsconfig.test.json && node --test .test-dist/*.test.js .test-dist/application/*.test.js .test-dist/infrastructure/*.test.js .test-dist/transport/*.test.js",
+    "test": "tsc --project tsconfig.test.json && node --test .test-dist/*.test.js .test-dist/application/*.test.js .test-dist/domain/hangul/*.test.js .test-dist/infrastructure/*.test.js .test-dist/transport/*.test.js",
     "build": "tsc --project tsconfig.build.json",
     "start": "node dist/index.js"
   },

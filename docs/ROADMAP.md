@@ -191,15 +191,15 @@ Definition of Done:
 - stale session과 server restart 유실을 사용자에게 이해 가능한 상태로 표시한다.
 - 게임 board나 fake gameplay를 아직 추가하지 않았다.
 
-### Phase 7. MVP gameplay 규칙 확정 gate — IN_PROGRESS
+### Phase 7. MVP gameplay 규칙 확정 gate — COMPLETE
 
 목표: game engine을 작성하기 전에 필요한 미확정 규칙을 결정한다.
 
 상태:
 
 - **Phase 7A complete (2026-09-03):** 공식 baseline과 digital-specific policy를 source type별로 구분해 확정했다.
-- **Phase 7B required:** exact Tile inventory와 symbol representation의 공식 근거 대조가 남아 있다.
-- **Phase 7 overall incomplete:** Phase 7B가 완료되기 전에는 Phase 8로 넘어가지 않는다.
+- **Phase 7B complete (2026-09-03):** 공식 PDF, 공식 제품 페이지와 공식 판매 채널의 원본 구성표를 대조해 exact Tile inventory와 symbol representation을 확정했다.
+- **Phase 7 overall complete:** inventory 합계 156, rotation family, Joker bag/one-position replacement, compound 자모와 Phase 8 composition semantics가 gate를 통과했다.
 
 #### Phase 7A. MVP gameplay 규칙 확정 — COMPLETE
 
@@ -222,15 +222,18 @@ Phase 7A Definition of Done:
 - Phase 7A에서 확정한 Board, timing, forfeit, visibility와 RulesConfig 방향을 architecture/spec에 동기화했다.
 - gameplay code, shared gameplay contract, Tile type과 dependency를 추가하지 않았다.
 
-#### Phase 7B. Official Tile inventory와 symbol representation — REQUIRED
+#### Phase 7B. Official Tile inventory와 symbol representation — COMPLETE
 
-남은 범위:
+완료 범위:
 
-- 자모별 exact symbol과 수량을 공식 원문에서 판독하고 전체 합계를 교차 검산
-- 쌍자음, 이중·복합모음과 회전 가능 physical Tile 규칙
-- Joker exact replacement symbol universe
-- 시작 7/7 배분에서 Joker의 bag 소속·처리
-- canonical symbol representation과 exact `tileInventoryVersion`
+- 공식 physical family별 exact quantity를 GAME_RULES C-22의 단일 canonical table로 기록
+- ordinary consonant 94, ordinary vowel 60, Joker 2, total 156 산술 및 공식 표 교차 검산
+- `ㄱ/ㄴ`, `ㅏ/ㅓ/ㅗ/ㅜ`, `ㅑ/ㅕ/ㅛ/ㅠ`, `ㅣ/ㅡ` rotation family 확정
+- physical Tile identity와 placement `assignedSymbol` 분리
+- dedicated 쌍자음, two-position 복합모음·겹받침과 explicit syllable role 확정
+- Joker one-position replacement universe와 consonant/vowel bag별 1개 소속 확정
+- 각 bag 7회 initial draw와 affiliated Joker 포함 의미 확정
+- canonical inventory version `hangul-tile-inventory-v1` 지정
 
 Phase 7 전체 Definition of Done:
 
@@ -241,9 +244,9 @@ Phase 7 전체 Definition of Done:
 - 남은 TBC는 영향을 받는 구현 Phase보다 먼저 결정하도록 명시했다.
 - 미확정 규칙을 임시 default로 대신하지 않았다.
 
-Phase 7B를 포함한 이 gate 전체를 통과하기 전에는 Phase 8 이후의 gameplay logic을 구현하지 않는다.
+Phase 7 gate가 Phase 8의 exact composition input semantics를 제공했으며, Phase 7B 자체에서는 gameplay code를 선행 구현하지 않았다.
 
-### Phase 8. 순수 Hangul·Unicode 조합
+### Phase 8. 순수 Hangul·Unicode 조합 — COMPLETE
 
 목표: UI와 network 없이 확정된 자모 sequence를 정규화하고 한글 낱말 표현으로 조합한다.
 
@@ -262,7 +265,16 @@ Definition of Done:
 - display용 변환과 validation용 canonical form의 관계가 문서와 test에서 일치한다.
 - 외부 dictionary 조회나 board mutation을 이 단계에 넣지 않았다.
 
-### Phase 9. Test DictionaryProvider
+구현 결과 (2026-09-03):
+
+- `apps/server/src/domain/hangul/composition.ts`에 `composeSyllable`, `composeWord`와 readonly composition input/output contract를 구현했다.
+- Compatibility Jamo를 명시적 Unicode L/V/T index로 mapping하며, 7개 복합모음과 11개 겹받침을 exact ordered two-component sequence로 해석한다.
+- 빈 word, role별 invalid composition과 word 내부 중복 `tileId`를 discriminated `HangulCompositionResult`로 반환한다.
+- table-driven unit test가 choseong 19종, jungseong 21종, single jongseong 16종, cluster 11종, invalid 조합, NFC와 determinism을 검증한다.
+- 이 구현은 `hangul-tile-inventory-v1`과 C-23의 고정된 composition semantics를 따른다. future rules version 선택은 caller가 명시적으로 분리해야 하며 같은 version을 의미 변경에 재사용하지 않는다.
+- physical type/allowed symbol, Game ownership·conservation, Joker Tile identity 및 one-position assignment 적합성, 최소 낱말 길이와 사전 판정은 후속 RuleEngine/Dictionary 단계의 책임으로 유지했다.
+
+### Phase 9. Test DictionaryProvider — READY
 
 목표: 외부 API 없이 versioned 테스트 단어 목록으로 deterministic한 낱말 판정을 제공한다.
 
@@ -499,7 +511,7 @@ Definition of Done:
 - Phase 1에서 임시 게임 규칙이나 mock Room 기능을 제품 코드로 넣지 않는다.
 - Phase 2 shared type을 이유로 server 전체 private entity를 client에 공유하지 않는다.
 - Phase 5에서 `socketId`를 `playerId`로 사용하지 않는다.
-- Phase 7B 완료 전에 자모별 Tile 수량, exact symbol universe, 회전 규칙, Joker 배분/대체 범위와 production `tileInventoryVersion`을 고정하지 않는다.
+- gameplay 구현은 GAME_RULES C-22/C-23의 canonical inventory 및 symbol representation과 달라지면 안 된다. inventory 구성 변경은 새 inventory/rules version, 문서와 test 갱신 없이 기존 `hangul-tile-inventory-v1`에 덮어쓰지 않는다.
 - Phase 12 client validator를 Phase 13 server validator의 대체물로 사용하지 않는다.
 - Phase 13에서 live state를 먼저 mutate한 뒤 error 시 수동 복원하지 않는다.
 - Phase 14 timeout callback이 current turn 재검증 없이 state를 바꾸지 않는다.

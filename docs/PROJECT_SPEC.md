@@ -2,9 +2,9 @@
 
 ## 1. 문서 상태
 
-- 문서 버전: `0.2-phase-7a-rules`
+- 문서 버전: `0.4-phase-8-hangul-composition`
 - 대상: 첫 번째 playable MVP
-- 구현 상태: Roadmap Phase 6의 browser Room 생성·참가·초대 URL·Lobby 표시와 `sessionStorage` 기반 resume UX까지 구현되었다. Phase 7A gameplay 규칙 문서 gate는 완료했지만 Phase 7B exact Tile inventory가 남아 있어 게임 시작과 gameplay code는 아직 없다.
+- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름과 Phase 7의 gameplay 규칙 gate에 이어, Phase 8의 server-only 순수 Hangul·Unicode composition module까지 구현되었다. Tile/GameState/RuleEngine, 게임 시작, gameplay transport/UI는 아직 없다.
 - 규칙 기준: 확정된 내용과 미확정 내용은 [GAME_RULES.md](./GAME_RULES.md)를 따른다.
 - 기술 구조 기준: [ARCHITECTURE.md](./ARCHITECTURE.md)를 따른다.
 
@@ -68,7 +68,9 @@
 | `Connection` | `socketId`로 식별되는 일시적인 Socket.IO 연결 |
 | `bootstrap credential` | Room/Player binding 전에 server가 직접 발급하는 5분 TTL의 `UNBOUND` session credential. create/join commit에서 room-scoped session으로 한 번만 승격된다. |
 | `sessionToken` | 재접속 시 Player 소유권을 증명하는 high-entropy opaque 비밀값. bound session은 Room의 in-memory lifetime을 따르며 별도 absolute expiry가 없다. |
-| `Tile` | 고유 `tileId`를 가진 실제 타일 인스턴스 |
+| `PhysicalTileDefinition` | physical type, source bag, quantity와 허용 `assignedSymbol`을 구분하는 versioned inventory 정의. exact table은 GAME_RULES C-22에 있다. |
+| `Tile` | 고유 opaque `tileId`, immutable physical type과 source bag을 가진 실제 타일 인스턴스. identity에 회전이나 현재 symbol을 encode하지 않는다. |
+| `assignedSymbol` | draft/Board placement에서 physical Tile이 현재 뜻하는 자모. server가 해당 physical definition 또는 Joker one-position universe에 대해 검증한다. |
 | `Board` | stable `groupId`를 가진 WordGroup들의 ordered collection. 2D crossword가 아니다. |
 | `WordGroup` | ordered Tile placement, syllable segmentation과 필요한 Joker assignment로 하나의 최종 낱말을 표현하는 단위 |
 | `RulesConfig` | game:start 시 snapshot되어 한 Game 동안 바뀌지 않는 rules/dictionary/inventory version과 수치 정책 |
@@ -102,7 +104,7 @@
 1. Host가 시작을 요청한다.
 2. 서버는 요청 socket에 연결된 Player가 Host인지, Room이 `LOBBY`인지, 플레이어 수가 2~4명인지 다시 검증한다.
 3. 서버는 Player 목록을 한 번 shuffle해 immutable turnOrder를 만들고 첫 Player를 정한다.
-4. Phase 7B에서 exact inventory와 Joker 배분을 확정한 뒤 자음 7개·모음 7개씩을 배분한다.
+4. `hangul-tile-inventory-v1`의 physical instance를 source bag별로 shuffle하고 consonant bag에서 7회, vowel bag에서 7회씩 배분한다. bag 소속 Joker는 해당 7회 중 하나로 센다.
 5. 서버는 immutable `RulesConfig`, 60초 turn deadline과 시작 시각부터 25분인 Game deadline을 snapshot하고 `PLAYING`으로 원자적으로 전이한다.
 
 ### 6.4 턴 실행
@@ -147,8 +149,8 @@
 | --- | --- |
 | `FR-GAME-001` | 서버는 `LOBBY`, `PLAYING`, `FINISHED` 상태와 허용 전이를 관리해야 한다. |
 | `FR-GAME-002` | 서버는 분리된 consonant/vowel bag, rack, ordered WordGroup Board, immutable shuffled turnOrder, active Player, 60초 turn deadline, 25분 Game deadline, initial meld/forfeit/stalemate 상태와 result를 관리해야 한다. |
-| `FR-GAME-003` | 모든 타일 인스턴스에는 고유 `tileId`가 있어야 하며 `CONSONANT`, `VOWEL`, `JOKER`를 표현할 수 있어야 한다. |
-| `FR-GAME-004` | 시작 rack은 consonant 7개와 vowel 7개이며 전체 공식 합계는 consonant 94, vowel 60, Joker 2다. 자모별 exact inventory와 Joker bag 배분은 Phase 7B 전까지 코드에 고정하지 않는다. |
+| `FR-GAME-003` | 모든 physical Tile 인스턴스에는 고유 opaque `tileId`와 immutable physical type이 있어야 한다. placement의 `assignedSymbol`과 display rotation은 identity에서 분리하고, server는 GAME_RULES C-22/C-23의 allowedSymbols와 syllable role을 검증해야 한다. |
+| `FR-GAME-004` | canonical inventory는 GAME_RULES C-22의 `hangul-tile-inventory-v1`이다. ordinary consonant 94, ordinary vowel 60, bag별 Joker 1개씩 총 2개로 전체 156개이며 시작 rack은 각 bag에서 7회씩 draw한다. 해당 bag Joker는 7개 안에 포함한다. |
 | `FR-GAME-005` | Player가 보내는 gameplay mutation은 현재 턴 Player만 요청할 수 있다. 검증된 server timeout command는 별도 actor로 처리한다. |
 | `FR-GAME-006` | 턴은 server Clock 기준 60초다. `receivedAt < deadlineAt`만 시간 조건을 통과하며 클라이언트 카운트다운은 표시용이다. |
 | `FR-GAME-007` | 낱말 판정은 Game에 고정된 `dictionaryVersion`의 `DictionaryProvider`가 NFC 완성형 Hangul word를 검증한다. MVP provider는 deterministic test dictionary이며 장애 시 state 불변의 recoverable failure로 처리하고 deadline을 연장하지 않는다. |
@@ -156,13 +158,14 @@
 | `FR-GAME-009` | initial meld는 자신의 rack Tile만 최소 6개 사용하고 각 WordGroup이 최소 2음절이어야 한다. 완료 뒤 normal turn에서는 기존 Board를 재조합할 수 있지만 자신의 rack Tile을 최소 1개 사용하고 모든 기존 Tile을 보존해야 한다. |
 | `FR-GAME-010` | 일반 draw는 Player가 bag 종류만 선택하고 서버가 Tile 1개를 선택한다. timeout은 Board 불변 상태에서 최대 3개의 server-random penalty Tile을 지급한다. |
 | `FR-GAME-011` | OFFLINE 상태에서 자기 turn timeout이 연속 2회인 Player와 PLAYING explicit leave Player는 forfeit하며 active rotation에서 제외하되 rack/result metadata를 보존한다. |
+| `FR-GAME-012` | dedicated 쌍자음은 physical Tile 하나, 허용된 복합모음과 겹받침은 서로 다른 physical Tile 두 개를 소비한다. Joker 하나는 ordinary physical Tile 한 자리만 대체하고 two-position composition 전체를 대체하지 않는다. |
 
 ### 7.3 Draft와 Submit
 
 | ID | 요구사항 |
 | --- | --- |
 | `FR-SUBMIT-001` | `TurnDraft`는 active Player의 client-only 상태다. invalid intermediate layout과 undo/reset을 허용하고 다른 Player에게 broadcast하지 않으며 새 `gameRevision`과 자동 merge하지 않는다. |
-| `FR-SUBMIT-002` | Submit payload는 stable groupId, ordered Tile placement, syllable segmentation과 Joker assignment를 가진 proposed WordGroup collection 전체 및 동시성 identifier만 전달한다. canonical rack/bag/score/active Player를 클라이언트 값으로 덮어쓰지 않는다. |
+| `FR-SUBMIT-002` | Submit payload는 stable groupId, ordered physical tileId placement와 `assignedSymbol`, explicit choseong/jungseong/jongseong segmentation, one-position Joker assignment를 가진 proposed WordGroup collection 전체 및 동시성 identifier만 전달한다. canonical rack/bag/score/active Player를 클라이언트 값으로 덮어쓰지 않는다. |
 | `FR-SUBMIT-003` | 서버는 payload schema와 크기, 인증된 actor, phase, `turnId`, deadline, `gameRevision`을 검증해야 한다. |
 | `FR-SUBMIT-004` | 서버는 모든 `tileId`의 존재와 유일성, 전체 tile conservation, 기존 board Tile의 규칙상 허용된 이동, 새 Tile의 active Player rack 소유권을 검증해야 한다. |
 | `FR-SUBMIT-005` | 서버는 확정된 initial meld, 재조합, 한글 조합, joker, 사전 규칙을 검증해야 한다. |
@@ -214,7 +217,7 @@
 - `socketId`, `connectionGeneration`, server-only `storageRevision`
 - 내부 repository 정보, server-only validation metadata와 내부 stack trace
 
-Phase 7B exact symbol 정보가 추가되더라도 이 공개 경계를 자동 확대하지 않는다.
+Exact physical definition과 `assignedSymbol` 정보는 기존 player-specific 공개 경계를 자동 확대하지 않는다. 상대 rack 상세, bag 순서와 future draw는 계속 비공개다.
 
 ## 9. 비기능 요구사항
 
@@ -293,5 +296,5 @@ Phase 7B exact symbol 정보가 추가되더라도 이 공개 경계를 자동 �
 - 동일 프로세스 안의 메모리 상태만 사용하므로 서버 restart 복구는 지원하지 않는다.
 - single replica만 지원한다. 공유 저장소 없이 replica를 늘리면 Room state와 connection routing이 갈라질 수 있다.
 - 테스트용 `DictionaryProvider`는 게임 메커니즘 검증용이며 실제 한국어 사전 완전성을 보장하지 않는다.
-- Phase 7A gameplay 정책은 확정됐지만 자모별 exact Tile inventory, symbol·회전 규칙, Joker exact universe와 시작 배분은 Phase 7B가 필요하다.
+- Phase 8 composer는 주어진 `assignedSymbol`과 syllable segmentation의 현대 한글 조합만 판정한다. Tile model, inventory/ownership/conservation validation, DictionaryProvider adapter, RuleEngine, GameState와 gameplay transport/UI는 아직 구현되지 않았다.
 - production dictionary dataset/license, Lobby 비-Host leave, Room retention, 동일 낱말 중복, start 시 OFFLINE 참가자 조건과 운영 한도는 아직 미확정이다.
