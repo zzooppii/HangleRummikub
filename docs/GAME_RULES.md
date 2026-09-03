@@ -13,8 +13,9 @@
 - Phase 11(Game start와 권한별 상태 동기화): **완료** (2026-09-03)
 - Phase 12(Client TurnDraft): **완료** (2026-09-03)
 - Phase 13(원자적 Submit pipeline): **완료** (2026-09-03)
+- Phase 14(Draw·Pass와 server timer): **완료** (2026-09-03)
 
-공식 physical Tile inventory와 디지털 symbol 표현의 canonical 기준은 C-22와 C-23이다. Phase 8은 Hangul composer를 구현했고 Phase 9는 아래 승인된 fixture를 `test-dictionary-v1` adapter로 구현했다. Phase 10은 server-only Board·Tile validation descriptor와 순수 RuleEngine을 구현했다. Phase 11은 exact inventory로 canonical GameState와 immutable RulesConfig를 만들고 `game:start`, Player별 PLAYING projection을 연결했다. Phase 12는 active Player의 browser-only TurnDraft editor를 연결했으며, Phase 13은 `turn:submit`의 server validation, candidate commit, next Turn과 rack-empty 종료를 연결했다. draw, no-draw turn end와 timeout 실행은 아직 구현하지 않았다.
+공식 physical Tile inventory와 디지털 symbol 표현의 canonical 기준은 C-22와 C-23이다. Phase 8은 Hangul composer를 구현했고 Phase 9는 아래 승인된 fixture를 `test-dictionary-v1` adapter로 구현했다. Phase 10은 server-only Board·Tile validation descriptor와 순수 RuleEngine을 구현했다. Phase 11은 exact inventory로 canonical GameState와 immutable RulesConfig를 만들고 `game:start`, Player별 PLAYING projection을 연결했다. Phase 12는 active Player의 browser-only TurnDraft editor를 연결했고 Phase 13은 원자적 `turn:submit`과 rack-empty 종료를 연결했다. Phase 14는 `turn:draw`, 두 bag이 모두 empty일 때의 `turn:pass`, server-authoritative timeout penalty와 다음 Turn scheduling을 연결했다. 25분 종료, stalemate와 offline forfeit는 아직 실행하지 않는다.
 
 규칙 문장에서 “해야 한다”, “허용한다”, “거절한다”는 서버 판정에 적용되는 규범적 표현이다. 예시는 규칙을 설명하지만 규범 문장을 대체하지 않는다.
 
@@ -299,6 +300,8 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 
 - bag 선택과 실제 Tile 선택을 구분하고 RandomSource는 서버에서만 사용한다.
 - accepted draw와 turn advance를 원자적으로 commit하고 requestId 재시도를 중복 적용하지 않는다.
+- accepted draw는 선택한 canonical bag의 끝에서 physical Tile 하나를 제거해 actor rack 끝에 추가하고 즉시 다음 Turn을 만든다. accepted pass는 rack, bag과 Board를 그대로 두고 다음 Turn만 만든다.
+- 두 결과 모두 `gameRevision`과 server-only `storageRevision`만 1씩 증가시키고 `roomRevision`은 유지한다. `BAG_EMPTY`, `PASS_NOT_ALLOWED`를 포함한 거절은 state와 version을 바꾸지 않는다.
 
 ## C-09. Nickname
 
@@ -441,7 +444,10 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 
 - turn 시작 시 deadlineAt을 한 번 저장하고 임의 reset하지 않는다.
 - timeout command와 늦은 Submit은 Room mutation serialization 및 turnId/gameRevision precondition으로 정확히 하나만 commit한다.
-- Phase 13은 Submit의 deadline admission과 새 Turn deadline 생성까지만 구현한다. 실제 timeout scheduling, penalty와 Submit/timeout 경합 실행은 Phase 14 범위다.
+- **IMPLEMENTATION_INVARIANT:** timer callback은 authority가 아니다. internal timeout command가 최신 Room의 `gameId`, `turnId`, `gameRevision`, canonical `deadlineAt` 일치와 `Clock.now() >= deadlineAt`을 모두 다시 확인하고, stale callback은 no-op으로 끝낸다.
+- **IMPLEMENTATION_INVARIANT:** `game:start`, non-terminal Submit, accepted draw/pass와 timeout이 새 Turn을 commit한 뒤 그 Turn을 in-process scheduler에 등록한다. terminal rack-empty Submit에는 새 timer를 만들지 않는다.
+- **IMPLEMENTATION_INVARIANT:** scheduler 등록은 최대 2회 시도하며, 이미 성공한 canonical commit을 등록 실패 때문에 rollback하지 않는다. active Turn을 읽는 별도 read boundary와 1,000ms 주기의 overdue sweeper가 유실된 timer를 at-least-once timeout command로 복구한다. 1,000ms는 gameplay rule이 아닌 in-process operating detail이다.
+- **IMPLEMENTATION_INVARIANT:** scheduler와 sweeper는 composition root가 명시적으로 시작·종료하며 shutdown 뒤 새 timeout work를 enqueue하지 않는다. process restart 시 Room/Game 자체가 사라지는 in-memory 제한은 그대로다.
 
 ## C-15. Joker
 
@@ -859,7 +865,7 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 - `GameStartService`는 Room별 직렬화 경계 안에서 최신 Room과 `PlayerPresenceReader`를 다시 읽어 phase, Host, 인원, revision과 모든 Player의 CONNECTED 상태를 검증한다. transport가 캡처한 current-primary authorization은 candidate와 idempotency record를 만든 뒤 live state를 교체하는 바로 직전에 동기 precondition으로 재검증한다.
 - 거절된 요청은 Room phase, Room/Game/storage revision, Tile, rack, bag과 idempotency state를 변경하지 않는다.
 - 성공하면 exact inventory 156개, bag별 shuffle·7/7 배분, immutable turnOrder와 첫 Turn을 생성해 `roomRevision + 1`, 새 `gameRevision = 0`, `storageRevision + 1`을 원자적으로 반영한다.
-- `startedAt`은 server Clock 값이고 첫 `deadlineAt = startedAt + 60_000`, `gameDeadlineAt = startedAt + 1_500_000`이다. Phase 11은 deadline을 저장하지만 timeout을 실행하지 않는다.
+- `startedAt`은 server Clock 값이고 첫 `deadlineAt = startedAt + 60_000`, `gameDeadlineAt = startedAt + 1_500_000`이다. Phase 14는 첫 Turn과 이후 non-terminal Turn을 scheduler에 등록하지만 25분 Game deadline 종료는 아직 실행하지 않는다.
 
 ---
 
@@ -874,6 +880,7 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 - **Phase 11 Game start/state projection implementation:** COMPLETE (2026-09-03)
 - **Phase 12 Client TurnDraft implementation:** COMPLETE (2026-09-03)
 - **Phase 13 atomic Submit pipeline implementation:** COMPLETE (2026-09-03)
+- **Phase 14 Draw/Pass/server timer implementation:** COMPLETE (2026-09-03)
 
 공식 exact consonant/vowel inventory, 두 Joker의 physical bag handling, rotation family, physical identity와 assignedSymbol 분리, 쌍자음·복합모음·겹받침 표현, Joker one-position replacement, 초기 7/7 draw semantics, 전체 156개 합계와 Phase 8 input/output semantics를 모두 확정했다. Tile representation에 관한 Phase 7B 미확정 항목은 없다.
 
@@ -936,6 +943,6 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 
 ## 다음 결정 절차
 
-1. Phase 7 gate부터 Phase 13 원자적 Submit pipeline까지 구현을 완료했다.
-2. 다음 작업은 Roadmap Phase 14의 draw, no-draw turn end와 server timer다.
-3. Phase 13은 accepted Submit의 Board/rack/meld/next Turn mutation과 rack-empty 종료만 제공한다. draw, no-draw turn end, timeout penalty/scheduler, 25분·stalemate·forfeit 종료는 구현하지 않았다.
+1. Phase 7 gate부터 Phase 14 Draw·Pass와 server timer까지 구현을 완료했다.
+2. 다음 작업은 Roadmap Phase 15의 disconnect, Host 이탈 policy와 Room cleanup이다.
+3. Phase 14는 60초 Turn timeout과 최대 3 Tile penalty까지 제공한다. 25분·stalemate·offline forfeit 종료, explicit leave와 Host succession/Room cleanup은 구현하지 않았다.

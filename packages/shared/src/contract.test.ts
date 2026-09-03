@@ -17,6 +17,8 @@ import {
   ROOM_CODE_LENGTH,
   type ClientToServerEvents,
   type GameStartAck,
+  type TurnDrawAck,
+  type TurnPassAck,
   type TurnSubmitAck,
   type PlayingStateSnapshot,
   type RoomCreateAck,
@@ -56,6 +58,10 @@ import {
   validateStateSyncCommand,
   validateStateVersions,
   validateTurnStartedEvent,
+  validateTurnDrawAck,
+  validateTurnDrawCommand,
+  validateTurnPassAck,
+  validateTurnPassCommand,
   validateTurnSubmitAck,
   validateTurnSubmitCommand,
   validateUnscopedAck,
@@ -1878,6 +1884,28 @@ function turnSubmitCommand(proposedBoard: unknown) {
   };
 }
 
+function turnDrawCommand(bagKind: unknown) {
+  return {
+    kind: "turn:draw",
+    protocolVersion: PROTOCOL_VERSION,
+    requestId: "request_turn_draw",
+    expectedGameRevision: 0,
+    turnId: "turn_123",
+    payload: { bagKind },
+  };
+}
+
+function turnPassCommand() {
+  return {
+    kind: "turn:pass",
+    protocolVersion: PROTOCOL_VERSION,
+    requestId: "request_turn_pass",
+    expectedGameRevision: 0,
+    turnId: "turn_123",
+    payload: {},
+  };
+}
+
 test("turn:submit command는 actor/derived state 없이 strict ProposedBoard만 받는다", () => {
   const proposedBoard = {
     wordGroups: [
@@ -2241,4 +2269,147 @@ test("turn:submit ack와 game:finished advisory는 typed, strict, secret-free다
     finishedListener(parsedEvent.value);
   }
   assert.equal(acknowledged, true);
+});
+
+test("turn:draw는 선택 bag만 받고 turn:pass는 strict empty payload만 받는다", () => {
+  for (const bagKind of ["CONSONANT", "VOWEL"] as const) {
+    const command = turnDrawCommand(bagKind);
+    const result = validateTurnDrawCommand(command);
+
+    assert.equal(result.ok, true);
+    assert.equal(validateClientCommand(command).ok, true);
+    if (result.ok) {
+      assert.equal(result.value.kind, "turn:draw");
+      assert.equal(result.value.payload.bagKind, bagKind);
+    }
+  }
+
+  const draw = turnDrawCommand("CONSONANT");
+  for (const invalid of [
+    turnDrawCommand("JOKER"),
+    turnDrawCommand("consonant"),
+    { ...draw, playerId: "player_spoofed" },
+    { ...draw, expectedGameRevision: -1 },
+    { ...draw, turnId: "" },
+    { ...draw, payload: {} },
+    { ...draw, payload: { bagKind: "CONSONANT", tileId: "tile_spoofed" } },
+    { ...draw, payload: { bagKind: "CONSONANT", nextPlayerId: "player_456" } },
+  ]) {
+    assert.equal(validateTurnDrawCommand(invalid).ok, false);
+  }
+
+  const pass = turnPassCommand();
+  const passResult = validateTurnPassCommand(pass);
+  assert.equal(passResult.ok, true);
+  assert.equal(validateClientCommand(pass).ok, true);
+  if (passResult.ok) {
+    assert.equal(passResult.value.kind, "turn:pass");
+    assert.deepEqual(passResult.value.payload, {});
+  }
+
+  for (const invalid of [
+    { ...pass, playerId: "player_spoofed" },
+    { ...pass, expectedGameRevision: -1 },
+    { ...pass, turnId: "" },
+    { ...pass, payload: { bagKind: "CONSONANT" } },
+    { ...pass, payload: { reason: "NO_MOVE" } },
+  ]) {
+    assert.equal(validateTurnPassCommand(invalid).ok, false);
+  }
+
+  assert.equal(validateTurnDrawCommand(pass).ok, false);
+  assert.equal(validateTurnPassCommand(draw).ok, false);
+});
+
+test("Phase 14 draw/pass error code는 safe ErrorDto로 직렬화된다", () => {
+  for (const code of ["BAG_EMPTY", "PASS_NOT_ALLOWED"] as const) {
+    const result = validateErrorDto({
+      code,
+      message: "The requested turn action was not accepted.",
+      recoverable: true,
+    });
+
+    assert.equal(result.ok, true);
+    if (result.ok) {
+      assert.equal(result.value.code, code);
+    }
+  }
+});
+
+test("turn:draw/pass ack와 Socket.IO event map은 PLAYING snapshot만 전달한다", () => {
+  const snapshot = createPlayingSnapshot();
+  const createAck = (requestId: string) => ({
+    scope: "ROOM" as const,
+    requestId,
+    ok: true as const,
+    serverTime: snapshot.serverTime,
+    versions: snapshot.versions,
+    data: { snapshot },
+  });
+  const drawAckResult = validateTurnDrawAck(createAck("request_draw_ack"));
+  const passAckResult = validateTurnPassAck(createAck("request_pass_ack"));
+
+  assert.equal(drawAckResult.ok, true);
+  assert.equal(passAckResult.ok, true);
+
+  for (const validate of [validateTurnDrawAck, validateTurnPassAck]) {
+    assert.equal(
+      validate({
+        ...createAck("request_invalid_phase_ack"),
+        data: { snapshot: createFinishedSnapshot() },
+      }).ok,
+      false,
+    );
+    assert.equal(
+      validate({
+        ...createAck("request_secret_ack"),
+        data: { snapshot, sessionToken },
+      }).ok,
+      false,
+    );
+    assert.equal(
+      validate({
+        ...createAck("request_derived_ack"),
+        data: { snapshot, drawnTileId: "tile_secret" },
+      }).ok,
+      false,
+    );
+  }
+
+  const parsedDraw = validateTurnDrawCommand(turnDrawCommand("VOWEL"));
+  const parsedPass = validateTurnPassCommand(turnPassCommand());
+  let drawAcknowledged = false;
+  let passAcknowledged = false;
+  const drawHandler: ClientToServerEvents["turn:draw"] = (
+    command,
+    acknowledge,
+  ) => {
+    assert.equal(command.payload.bagKind, "VOWEL");
+    if (drawAckResult.ok) {
+      acknowledge(drawAckResult.value);
+    }
+  };
+  const passHandler: ClientToServerEvents["turn:pass"] = (
+    command,
+    acknowledge,
+  ) => {
+    assert.deepEqual(command.payload, {});
+    if (passAckResult.ok) {
+      acknowledge(passAckResult.value);
+    }
+  };
+
+  if (parsedDraw.ok) {
+    drawHandler(parsedDraw.value, (received: TurnDrawAck) => {
+      drawAcknowledged = received.ok;
+    });
+  }
+  if (parsedPass.ok) {
+    passHandler(parsedPass.value, (received: TurnPassAck) => {
+      passAcknowledged = received.ok;
+    });
+  }
+
+  assert.equal(drawAcknowledged, true);
+  assert.equal(passAcknowledged, true);
 });

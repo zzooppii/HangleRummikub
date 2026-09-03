@@ -2,9 +2,9 @@
 
 ## 1. 문서 상태
 
-- 문서 버전: `0.9-phase-13-submit`
+- 문서 버전: `0.10-phase-14-turn-end`
 - 대상: 첫 번째 playable MVP
-- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름과 Phase 7의 gameplay 규칙 gate, Phase 8 Hangul composition, Phase 9 `TestDictionaryProvider`, Phase 10 Board RuleEngine, Phase 11 canonical Game start/state projection, Phase 12 browser-only TurnDraft에 이어 Phase 13의 원자적 `turn:submit`과 rack-empty 종료까지 구현되었다. draw, no-draw turn end와 server timeout은 아직 없다.
+- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름과 Phase 7 gameplay 규칙 gate, Phase 8 Hangul composition, Phase 9 `TestDictionaryProvider`, Phase 10 Board RuleEngine, Phase 11 canonical Game start/state projection, Phase 12 browser-only TurnDraft, Phase 13 원자적 `turn:submit`/rack-empty 종료에 이어 Phase 14의 `turn:draw`, empty-bag `turn:pass`, server timeout/penalty와 scheduling까지 구현되었다. 25분·stalemate·forfeit 종료는 아직 없다.
 - 규칙 기준: 확정된 내용과 미확정 내용은 [GAME_RULES.md](./GAME_RULES.md)를 따른다.
 - 기술 구조 기준: [ARCHITECTURE.md](./ARCHITECTURE.md)를 따른다.
 
@@ -116,6 +116,8 @@
 5. Socket transport는 command 도착 즉시 server `receivedAt`을 기록하고, 서버는 인증, 상태, 턴, `receivedAt < deadlineAt`, `gameRevision`, 타일 보존·소유권 및 확정된 게임 규칙을 검증한다.
 6. 성공 시 candidate Board/rack/meld와 다음 Turn 또는 rack-empty result를 accepted idempotency record와 한 번에 commit하고 Player별 새 projection을 전송한다. 다음 Turn의 시작 시각은 async validation 완료 뒤의 fresh server Clock을 사용한다.
 7. 실패 시 canonical state를 변경하거나 turn을 종료하지 않고 구조화된 거절 사유와 동기화에 필요한 정보를 반환한다. deadline 전에는 draft를 수정해 다시 Submit할 수 있다.
+8. active Player는 Submit 대신 CONSONANT/VOWEL bag에서 서버가 고른 Tile 하나를 draw해 즉시 Turn을 끝낼 수 있다. 두 bag이 모두 empty일 때만 no-draw `turn:pass`를 사용할 수 있다.
+9. server scheduler가 canonical deadline에 internal timeout command를 실행한다. 최신 Turn identity와 Clock을 다시 검증한 timeout만 Board를 유지한 채 최대 3 Tile penalty와 다음 Turn을 원자적으로 commit한다.
 
 ### 6.5 재접속
 
@@ -156,10 +158,12 @@
 | `FR-GAME-007` | 낱말 판정은 Game에 고정된 `dictionaryVersion`의 `DictionaryProvider`가 NFC 완성형 Hangul word를 검증한다. MVP provider는 GAME_RULES C-16의 승인된 30단어 `test-dictionary-v1` fixture이며 장애 시 state 불변의 recoverable failure로 처리하고 deadline을 연장하지 않는다. |
 | `FR-GAME-008` | 서버만 rack-empty, 25분 cap, stalemate 또는 active non-forfeit Player 1명 종료를 판정하고 `FINISHED`, score와 ranking을 계산한다. |
 | `FR-GAME-009` | initial meld는 자신의 rack Tile만 최소 6개 사용하고 각 WordGroup이 최소 2음절이어야 한다. 완료 뒤 normal turn에서는 기존 Board를 재조합할 수 있지만 자신의 rack Tile을 최소 1개 사용하고 모든 기존 Tile을 보존해야 한다. |
-| `FR-GAME-010` | 일반 draw는 Player가 bag 종류만 선택하고 서버가 Tile 1개를 선택한다. timeout은 Board 불변 상태에서 최대 3개의 server-random penalty Tile을 지급한다. |
+| `FR-GAME-010` | 일반 draw는 Player가 bag 종류만 선택하고 서버가 Tile 1개를 선택해 Turn을 즉시 끝낸다. 선택 bag만 empty이면 `BAG_EMPTY`, 두 bag 모두 empty일 때만 `turn:pass`를 허용하고 그 외에는 `PASS_NOT_ALLOWED`로 state 불변 거절한다. |
 | `FR-GAME-011` | OFFLINE 상태에서 자기 turn timeout이 연속 2회인 Player와 PLAYING explicit leave Player는 forfeit하며 active rotation에서 제외하되 rack/result metadata를 보존한다. |
 | `FR-GAME-012` | dedicated 쌍자음은 physical Tile 하나, 허용된 복합모음과 겹받침은 서로 다른 physical Tile 두 개를 소비한다. Joker 하나는 ordinary physical Tile 한 자리만 대체하고 two-position composition 전체를 대체하지 않는다. |
 | `FR-GAME-013` | 새 Game은 `gameRevision = 0`, empty Board, Player별 14 Tile rack과 `initialMeldCompleted = false`, server-random immutable turnOrder와 `turnNumber = 1`인 첫 Turn으로 시작한다. 성공은 `roomRevision + 1`, `storageRevision + 1`과 accepted idempotency result를 같은 atomic commit에 포함한다. |
+| `FR-GAME-014` | timeout은 socket presence와 무관한 internal command이며 canonical `gameId`/`turnId`/`gameRevision`/deadline과 server Clock을 다시 확인한다. 성공하면 Board와 meld를 유지하고 남은 bag에서 최대 3 Tile penalty를 지급해 다음 Turn으로 진행한다. |
+| `FR-GAME-015` | 모든 새 active Turn은 post-commit in-process timer에 등록하고 등록 실패는 commit을 rollback하지 않는다. 1초 overdue sweeper가 read-only active-turn view로 유실된 작업을 재생성하며 stale/duplicate callback은 no-op이어야 한다. |
 
 ### 7.3 Draft와 Submit
 
@@ -302,5 +306,5 @@ Exact physical definition과 `assignedSymbol` 정보는 기존 player-specific �
 - 동일 프로세스 안의 메모리 상태만 사용하므로 서버 restart 복구는 지원하지 않는다.
 - single replica만 지원한다. 공유 저장소 없이 replica를 늘리면 Room state와 connection routing이 갈라질 수 있다.
 - 테스트용 `DictionaryProvider`는 게임 메커니즘 검증용이며 실제 한국어 사전 완전성을 보장하지 않는다.
-- Phase 8 composer는 assigned jamo의 현대 한글 조합, Phase 9 provider는 NFC fixture membership, Phase 10 RuleEngine은 readonly proposed Board validation만 맡는다. Phase 11은 start 시 canonical GameState와 첫 deadline을 생성하고 Phase 12는 browser-memory TurnDraft를 편집하며 Phase 13은 유효한 Submit의 Board/rack/meld/next Turn mutation과 rack-empty score/finish를 원자적으로 commit한다. draw, no-draw turn end, timeout 실행과 25분·stalemate·forfeit 종료는 아직 구현하지 않았다.
+- Phase 8 composer는 assigned jamo의 현대 한글 조합, Phase 9 provider는 NFC fixture membership, Phase 10 RuleEngine은 readonly proposed Board validation만 맡는다. Phase 11~13은 Game start, browser TurnDraft와 Submit/rack-empty finish를 연결했고 Phase 14는 draw/pass, 60초 timeout penalty와 다음 Turn scheduling을 원자적으로 실행한다. 25분 cap, stalemate·forfeit 종료, explicit leave와 Host succession/Room cleanup은 아직 구현하지 않았다.
 - production dictionary dataset/license, Lobby 비-Host leave, Room retention과 운영 한도는 아직 미확정이다.

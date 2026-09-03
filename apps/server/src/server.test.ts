@@ -5,7 +5,10 @@ import test from "node:test";
 import { createHttpServer } from "./server.js";
 
 test("GET /health가 정상 상태를 반환한다", async () => {
-  const { httpServer, io } = createHttpServer();
+  const { httpServer, io, runtime } = createHttpServer();
+
+  assert.equal(runtime.turnScheduler.isRunning, true);
+  assert.equal(runtime.overdueTurnSweeper.isRunning, true);
 
   httpServer.listen(0, "127.0.0.1");
 
@@ -41,5 +44,7 @@ test("GET /health가 정상 상태를 반환한다", async () => {
       });
     }
   }
-});
 
+  assert.equal(runtime.turnScheduler.isRunning, false);
+  assert.equal(runtime.overdueTurnSweeper.isRunning, false);
+});

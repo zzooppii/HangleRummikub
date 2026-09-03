@@ -23,6 +23,8 @@ import {
   type SessionBootstrapCommand,
   type SessionResumeCommand,
   type StateSyncCommand,
+  type TurnDrawCommand,
+  type TurnPassCommand,
   type TurnSubmitCommand,
 } from "./protocol.js";
 import {
@@ -36,6 +38,8 @@ import {
   StateSnapshotEventSchema,
   StateSyncAckSchema,
   TurnStartedEventSchema,
+  TurnDrawAckSchema,
+  TurnPassAckSchema,
   TurnSubmitAckSchema,
 } from "./realtime.js";
 import {
@@ -375,6 +379,52 @@ export function validateTurnSubmitCommand(
   return { ok: true, value: result.value };
 }
 
+export function validateTurnDrawCommand(
+  input: unknown,
+): RuntimeValidationResult<TurnDrawCommand> {
+  const result = validateClientCommand(input);
+
+  if (!result.ok) {
+    return result;
+  }
+
+  if (result.value.kind !== "turn:draw") {
+    return {
+      ok: false,
+      error: validationError(
+        "INVALID_PAYLOAD",
+        "Turn draw command is invalid.",
+        false,
+      ),
+    } satisfies RuntimeValidationResult<never>;
+  }
+
+  return { ok: true, value: result.value };
+}
+
+export function validateTurnPassCommand(
+  input: unknown,
+): RuntimeValidationResult<TurnPassCommand> {
+  const result = validateClientCommand(input);
+
+  if (!result.ok) {
+    return result;
+  }
+
+  if (result.value.kind !== "turn:pass") {
+    return {
+      ok: false,
+      error: validationError(
+        "INVALID_PAYLOAD",
+        "Turn pass command is invalid.",
+        false,
+      ),
+    } satisfies RuntimeValidationResult<never>;
+  }
+
+  return { ok: true, value: result.value };
+}
+
 export function validateStateVersions(input: unknown) {
   return validateSchema(
     StateVersionsSchema,
@@ -530,6 +580,30 @@ export function validateTurnSubmitAck(input: unknown) {
     validationError(
       "INVALID_PAYLOAD",
       "Turn submit acknowledgement is invalid.",
+      false,
+    ),
+  );
+}
+
+export function validateTurnDrawAck(input: unknown) {
+  return validateSchema(
+    TurnDrawAckSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Turn draw acknowledgement is invalid.",
+      false,
+    ),
+  );
+}
+
+export function validateTurnPassAck(input: unknown) {
+  return validateSchema(
+    TurnPassAckSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Turn pass acknowledgement is invalid.",
       false,
     ),
   );

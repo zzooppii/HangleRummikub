@@ -22,6 +22,8 @@ test("주요 protocol error를 안정적인 한국어 UX message로 변환한다
     "PLAYERS_NOT_CONNECTED",
     "NOT_YOUR_TURN",
     "TURN_EXPIRED",
+    "BAG_EMPTY",
+    "PASS_NOT_ALLOWED",
     "INVALID_TILE_ACCESS",
     "INVALID_BOARD",
     "INVALID_HANGUL_COMPOSITION",
@@ -54,5 +56,13 @@ test("주요 protocol error를 안정적인 한국어 UX message로 변환한다
   assert.equal(
     getUserErrorMessage("RULE_VIOLATION"),
     "현재 게임 규칙에 맞지 않는 배치입니다.",
+  );
+  assert.equal(
+    getUserErrorMessage("BAG_EMPTY"),
+    "선택한 타일 주머니가 비어 있습니다.",
+  );
+  assert.equal(
+    getUserErrorMessage("PASS_NOT_ALLOWED"),
+    "타일이 남아 있어 아직 턴을 넘길 수 없습니다.",
   );
 });

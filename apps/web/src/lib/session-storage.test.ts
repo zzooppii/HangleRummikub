@@ -222,3 +222,33 @@ test("pending turn:submit은 Room entry sessionStorage 경계에서 복원되지
   assert.equal(readPendingRoomOperation(storage), null);
   assert.equal(storage.getItem(PENDING_ROOM_OPERATION_STORAGE_KEY), null);
 });
+
+test("pending turn:draw/pass는 sessionStorage가 아닌 page memory에만 남는다", () => {
+  for (const operation of [
+    {
+      kind: "turn:draw",
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "request_turn_draw_must_stay_in_page_memory",
+      expectedGameRevision: 0,
+      turnId: "turn_page_memory_only",
+      payload: { bagKind: "CONSONANT" },
+    },
+    {
+      kind: "turn:pass",
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "request_turn_pass_must_stay_in_page_memory",
+      expectedGameRevision: 0,
+      turnId: "turn_page_memory_only",
+      payload: {},
+    },
+  ]) {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      PENDING_ROOM_OPERATION_STORAGE_KEY,
+      JSON.stringify(operation),
+    );
+
+    assert.equal(readPendingRoomOperation(storage), null);
+    assert.equal(storage.getItem(PENDING_ROOM_OPERATION_STORAGE_KEY), null);
+  }
+});

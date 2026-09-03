@@ -20,7 +20,7 @@
 
 ### 2.1 계획된 monorepo
 
-아래는 단계적으로 구현할 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. Phase 9에서는 versioned deterministic test dictionary adapter를 infrastructure 경계에 추가했고 Phase 10에서는 server-only Board·Tile validation model과 async pure RuleEngine을 domain 경계에 추가했다. Phase 11은 canonical inventory/GameState, `GameStartService`, player별 PLAYING projection과 `game:start` transport를 연결했다. Phase 12는 `apps/web`에 browser-only TurnDraft model, pure immutable reducer와 board/rack editor를 추가했고 Phase 13은 `TurnSubmitService`, `turn:submit`, rack-empty terminal state와 FINISHED projection을 연결했다. 나머지 구조는 해당 Roadmap 단계에서 필요할 때 생성한다.
+아래는 단계적으로 구현할 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. Phase 9에서는 versioned deterministic test dictionary adapter를 infrastructure 경계에 추가했고 Phase 10에서는 server-only Board·Tile validation model과 async pure RuleEngine을 domain 경계에 추가했다. Phase 11은 canonical inventory/GameState, `GameStartService`, player별 PLAYING projection과 `game:start` transport를 연결했다. Phase 12는 `apps/web`에 browser-only TurnDraft editor를, Phase 13은 원자적 `turn:submit`과 rack-empty terminal state를 연결했다. Phase 14는 `TurnDrawService`, `TurnPassService`, internal `TurnTimeoutService`, in-process scheduler/overdue sweeper와 client countdown을 연결했다. 나머지 구조는 해당 Roadmap 단계에서 필요할 때 생성한다.
 
 ```text
 /
@@ -572,8 +572,9 @@ bootstrap ack와 Room을 찾기 전의 오류에는 존재하지 않는 version�
 | `game:start` | Host session | `LOBBY`에서 Game 시작 |
 | `turn:submit` | active Player session | proposed board 전체 제출 |
 | `turn:draw` | active Player session | 확정된 draw 규칙 실행 |
+| `turn:pass` | active Player session | 두 source bag이 모두 empty일 때 no-draw Turn 종료 |
 
-`turn:draw`는 선택한 CONSONANT/VOWEL bag에서 서버가 Tile 하나를 가져오고 turn을 종료한다. 일반 PASS command는 두 bag에 Tile이 남아 있는 동안 제공하지 않는다. 두 bag이 모두 empty일 때 허용하는 no-draw turn end의 exact transport shape는 Phase 14에서 `turn:draw`와 구분 가능한 최소 contract로 정하되, 별도 일반 PASS로 확대하지 않는다.
+Phase 14 `turn:draw`는 `requestId`, `expectedGameRevision`, `turnId`와 `bagKind: CONSONANT | VOWEL`만 받는다. client는 tileId나 draw 결과를 지정하지 않는다. `turn:pass`는 같은 concurrency field와 strict empty payload만 받으며 두 bag이 모두 empty일 때만 허용한다. 두 command의 성공 ack는 requester의 최신 PLAYING snapshot을 담고, 내부 accepted result에 있는 drawn/penalty tileId는 일반 event나 다른 Player에게 직접 전달하지 않는다.
 
 ### 9.3 예상 server → client event
 
@@ -634,7 +635,7 @@ Phase 13 `turn:submit`은 `requestId`, `expectedGameRevision`, `turnId`와 stric
 - ordinary Tile은 projection의 `allowedSymbols` 중 하나를 선택하고 Joker도 one-position symbol만 고른다. 복합모음과 겹받침은 서로 다른 physical Tile 두 개를 두 slot에 배치하며 가상 compound Tile을 만들지 않는다.
 - edit는 authoritative snapshot을 mutate하지 않는 immutable reducer를 통과한다. placement, move, symbol 변경과 구조 편집 전 상태를 최대 50개 보존해 undo하고, reset은 최신 canonical snapshot으로 fresh draft를 만든다.
 - desktop HTML drag와 pointer/touch click 기반 tap-to-place, Enter/Space keyboard activation은 모두 같은 reducer action을 사용한다. drag만을 유일한 조작으로 요구하지 않으며 React component나 client에 Hangul composer, DictionaryProvider 또는 authoritative RuleEngine을 복제하지 않는다.
-- draft edit, undo와 reset은 Socket.IO event를 emit하지 않으며 다른 Player에게 broadcast하지 않는다. Phase 13에서 명시적인 제출 control과 `turn:submit`만 추가했으며 `turn:draw`와 `turn:pass` control은 없다.
+- draft edit, undo와 reset은 Socket.IO event를 emit하지 않으며 다른 Player에게 broadcast하지 않는다. Phase 14의 Draw/Pass는 별도 명시적 Turn 종료 command이고 dirty draft Draw에는 폐기 확인을 거친다. gameplay mutation pending command는 page memory에서 Submit/Draw/Pass 공용 single-flight로 제한하며 refresh 뒤 자동 재전송하지 않는다.
 - incoming snapshot의 `gameId`, `gameRevision`, `turnId`가 base와 같으면 duplicate/presence-only 갱신에도 draft를 유지한다. 다른 game, 더 새로운 gameRevision, 다른 turn 또는 non-active 전환이면 자동 merge하지 않고 draft를 폐기해 최신 canonical snapshot에서 다시 시작한다.
 - 페이지가 살아 있는 일시적 disconnect에서는 memory draft를 유지할 수 있으나 resume 뒤 위 base identity를 다시 확인한다. full refresh에는 draft를 storage에 기록하지 않아 복구하지 않으며, `session:replaced`를 받으면 즉시 폐기하고 편집을 막는다.
 - draft에는 visibility policy상 actor에게 허용되지 않은 상대 rack이나 bag data가 존재하지 않는다.
@@ -656,6 +657,8 @@ client가 계산한 next turn, rack, bag, score, winner는 제출하지 않거�
 shared `ProposedBoard` runtime schema는 transport resource safety를 위해 WordGroup 최대 156개, group당 syllable 최대 156개, 전체 physical Tile reference 최대 156개를 허용한다. syllable component count는 choseong 1, jungseong 1~2, jongseong 0~2이며 groupId는 non-empty 최대 128자, assignedSymbol은 non-empty 최대 8자다. empty group, duplicate identifier/reference와 unsupported bounded symbol 같은 game-rule rejection은 이 구조 schema에서 억지로 판정하지 않고 RuleEngine에 맡긴다.
 
 browser는 draft를 mutate하지 않는 `serializeTurnDraft`로 slot의 `tileId + assignedSymbol`만 직렬화한다. acknowledgement 유실 동안 pending Submit command는 page memory에만 보관하고 동일 requestId/payload로 재시도한다. 성공 또는 더 새로운 authoritative snapshot이면 폐기하며 full refresh 뒤에는 저장하거나 자동 재전송하지 않는다.
+
+PLAYING 화면의 countdown은 snapshot `serverTime`과 수신 시 local time의 offset으로 estimated server time을 계산해 `deadlineAt`까지 남은 시간을 표시한다. interval은 표시만 갱신하며 0초가 되어도 client가 Turn을 변경하거나 timeout command를 보내지 않는다. 새 snapshot/resume마다 offset을 다시 맞추고 server timeout 결과 snapshot을 기다린다.
 
 ### 10.2 원자적 validation pipeline
 
@@ -732,6 +735,7 @@ Socket listener는 command 도착 즉시 runtime validation보다 먼저 server 
 - storage CAS가 경쟁으로 실패하면 최신 aggregate를 다시 읽는다. `gameRevision` 또는 적용되는 authorization/phase가 바뀌었으면 안전하게 거절하고, game state가 그대로인 unrelated metadata change뿐이면 candidate를 다시 만들고 전체 검증 후 bounded retry할 수 있다.
 - Submit/timeout이 종료 조건을 만들면 `gameRevision`, `roomRevision`, `storageRevision`과 `FINISHED` result를 같은 commit에서 갱신한다.
 - Phase 13 non-terminal Submit은 proposed Board, actor rack에서 `newlyUsedRackTileIds` 제거, 필요 시 initial meld flag, 새 Turn과 `gameRevision + 1`, `storageRevision + 1`을 commit하고 `roomRevision`은 유지한다. rack-empty Submit은 다음 Turn 없이 `turn = null`, rack-empty result, Room `FINISHED`와 세 revision 중 Room/Game/storage를 모두 1씩 증가시킨다.
+- Phase 14 accepted Draw/Pass/Timeout도 격리된 candidate와 accepted idempotency result를 같은 UoW로 commit한다. Draw는 선택 bag과 actor rack, Timeout은 최대 3 Tile penalty rack을 함께 바꾸고 Pass는 rack/Board/bag을 유지한다. 세 경로 모두 새 Turn과 `gameRevision + 1`, `storageRevision + 1`을 만들고 `roomRevision`은 유지한다.
 - CAS가 실패하면 candidate를 버리고 `STALE_GAME_REVISION`으로 처리한다.
 - 실패 시 candidate 폐기가 곧 rollback이며 별도의 역연산을 수행하지 않는다.
 - commit 후에만 realtime event를 발행한다.
@@ -750,6 +754,7 @@ DB 도입 후 accepted idempotency record와 outbox는 state와 같은 transacti
 - 같은 ID와 다른 payload는 `REQUEST_ID_REUSED`로 거절한다.
 - 특히 draw, start, submit, timeout처럼 타일이나 turn을 바꾸는 command는 반드시 idempotent해야 한다.
 - Phase 13 Submit scope는 authenticated Room/Player이고 fingerprint는 command kind, expected gameRevision, turnId와 ordered proposed Board의 group/syllable/role별 tileId·assignedSymbol을 포함한다. terminal record에는 Room/Game revision, `ADVANCED | FINISHED`, 다음 Turn 식별자 또는 rack-empty winner 같은 non-secret replay data만 저장한다.
+- Phase 14 Draw/Pass도 authenticated Room/Player scope를 사용한다. Draw fingerprint는 command kind, expected gameRevision, turnId와 bagKind를, Pass는 앞의 세 concurrency field를 포함해 accepted retry가 Tile이나 다음 Turn을 중복 생성하지 않게 한다. timeout은 deterministic internal identity와 최신 Turn stale validation을 함께 사용한다.
 
 cache 크기와 TTL은 운영 정책으로 정하지만, active Room의 정상적인 retry window보다 짧아 correctness를 깨지 않게 한다.
 
@@ -758,17 +763,18 @@ cache 크기와 TTL은 운영 정책으로 정하지만, active Room의 정상�
 `TurnScheduler`는 `roomId`, `gameId`, `turnId`, 예상 `gameRevision`, `deadlineAt`을 포함한 timeout command를 enqueue한다.
 
 - canonical `deadlineAt`이 authority이며 timer handle 자체는 authority가 아니다.
-- 새 turn commit 후 scheduler 등록을 시도한다. 등록 실패는 committed turn을 되돌리지 않고 즉시 retry queue와 monitoring에 기록한다.
-- in-memory overdue sweeper는 active Game의 deadline을 주기적으로 재검사하며, resume 및 새 Room command 처리 시에도 overdue turn을 확인한다. 개별 `setTimeout` 유실만으로 turn이 영구 정지되지 않게 한다.
+- `game:start`, non-terminal Submit, accepted Draw/Pass/Timeout의 새 turn commit 후 scheduler 등록을 최대 2회 시도한다. 등록 실패는 committed turn을 되돌리지 않고 safe diagnostic에 기록한다. rack-empty terminal Submit은 새 Turn을 schedule하지 않는다.
+- in-memory overdue sweeper는 repository Map을 노출하지 않는 `ActiveTurnReader`로 active Game deadline을 1,000ms마다 재검사한다. 개별 `setTimeout` 등록 실패·유실만으로 turn이 영구 정지되지 않게 한다.
 - scheduler는 at-least-once delivery를 제공하고 timeout command의 stale 검증과 idempotency가 중복 실행을 무해하게 만든다.
-- callback은 실행 시 current game/turn/`gameRevision`과 server `Clock`을 다시 검사한다.
+- callback은 실행 시 current game/turn/`gameRevision`/canonical deadline과 server `Clock`을 다시 검사한다. 이르게 실행된 callback은 mutate하지 않고 current deadline을 다시 등록한다.
 - 이미 다음 turn으로 넘어간 오래된 timer는 no-op다.
-- client Submit과 timeout은 같은 Room mutation lane에서 순서화된다.
+- client Submit/Draw/Pass와 timeout은 같은 Room mutation lane에서 순서화된다.
 - Socket listener는 server 수신 시각을 기록한다. `receivedAt >= deadlineAt`이면 expired이며 모든 code path에 같은 경계를 적용한다.
 - local `TestDictionaryProvider`는 immutable `test-dictionary-v1` fixture로 deterministic하게 동작하며 NFC-equivalent lookup만 같은 key로 취급한다.
 - 향후 async external dictionary를 쓰면 live state를 수정한 채 await하지 않는다. validation 후 commit 직전에 `gameRevision`/turn을 재검사하거나 command serialization 전략을 유지한다.
 - dictionary unavailable/error는 recoverable `TEMPORARILY_UNAVAILABLE` 성격으로 실패시키고 canonical state를 바꾸지 않는다. lookup 때문에 turn deadline을 연장하지 않는다.
 - persistent repository를 도입한 뒤에는 process 시작과 scheduler lease takeover 시 active `deadlineAt`을 scan해 누락된 timeout job을 복원한다. 메모리 MVP는 process restart 후 Room 자체가 없으므로 복원 대상도 없다.
+- scheduler와 sweeper는 module import 시 자동 시작하지 않는다. composition root가 server lifecycle에 맞춰 명시적으로 start/stop하며, shutdown은 timer/interval을 지우고 새 timeout enqueue를 차단한다.
 
 ## 11. Host와 Player disconnect 설계
 

@@ -55,7 +55,11 @@ import { FakeClock, FakeIdGenerator } from "../infrastructure/system.js";
 import { TestDictionaryProvider } from "../infrastructure/test-dictionary-provider.js";
 import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
 import type { RoomUnitOfWork } from "../ports/room-unit-of-work.js";
-import type { DictionaryProvider } from "../ports/system.js";
+import type {
+  DictionaryProvider,
+  ScheduledTurnDeadline,
+  TurnScheduler,
+} from "../ports/system.js";
 
 function roomId(value: string): RoomId {
   return parse(RoomIdSchema, value);
@@ -161,6 +165,18 @@ class MutableAuthorization {
   }
 }
 
+class RecordingTurnScheduler implements TurnScheduler {
+  readonly deadlines: ScheduledTurnDeadline[] = [];
+
+  async scheduleTimeout(deadline: ScheduledTurnDeadline): Promise<void> {
+    this.deadlines.push(deadline);
+  }
+
+  async cancelTimeout(): Promise<void> {
+    return;
+  }
+}
+
 type Harness = Readonly<{
   persistence: InMemoryPersistence;
   service: TurnSubmitService;
@@ -190,6 +206,7 @@ type HarnessOptions = Readonly<{
   unitOfWorkFactory?: (
     persistence: InMemoryPersistence,
   ) => RoomUnitOfWork;
+  turnScheduler?: TurnScheduler;
 }>;
 
 async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
@@ -295,6 +312,9 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
     ...(options.onCheckpoint === undefined
       ? {}
       : { onCheckpoint: options.onCheckpoint }),
+    ...(options.turnScheduler === undefined
+      ? {}
+      : { turnScheduler: options.turnScheduler }),
   };
   const service = new TurnSubmitService(serviceDependencies);
 
@@ -371,6 +391,25 @@ test("valid initial meld Submit은 Board/rack/meld/revision/next Turn을 원자�
   assert.equal(persisted.game.turn.startedAt, harness.clock.now());
   assert.equal(persisted.game.turn.deadlineAt, harness.clock.now() + 60_000);
   assert.equal(persisted.game.result, null);
+});
+
+test("advanced Submit은 next Turn을 scheduler에 등록한다", async () => {
+  const scheduler = new RecordingTurnScheduler();
+  const harness = await createHarness({ turnScheduler: scheduler });
+  const result = requireSuccess(
+    await harness.service.submit(submitInput(harness)),
+  );
+  assert.equal(result.outcome, "ADVANCED");
+  assert.equal(scheduler.deadlines.length, 1);
+  const persisted = await harness.persistence.findById(harness.room.roomId);
+  assert.ok(persisted?.game?.turn);
+  assert.deepEqual(scheduler.deadlines[0], {
+    roomId: persisted.roomId,
+    gameId: persisted.game.gameId,
+    turnId: persisted.game.turn.turnId,
+    expectedGameRevision: persisted.game.gameRevision,
+    deadlineAt: persisted.game.turn.deadlineAt,
+  });
 });
 
 test("2/3/4 Player Game은 turnOrder의 다음 Player를 순환한다", async (context) => {
@@ -966,6 +1005,7 @@ test("normal rearrangement은 existing Board를 보존하며 rack Tile 하나를
 });
 
 test("마지막 rack Tile Submit은 RACK_EMPTY result와 score를 같은 commit에 만든다", async () => {
+  const scheduler = new RecordingTurnScheduler();
   const bTiles = [0, 1, 2, 3].map((index) =>
     ordinaryTile(`b-${index}`, "MIEUM", "CONSONANT", ["ㅁ"]),
   );
@@ -986,6 +1026,7 @@ test("마지막 rack Tile Submit은 RACK_EMPTY result와 score를 같은 commit�
       [PLAYER_B, bTiles],
       [PLAYER_C, cTiles],
     ]),
+    turnScheduler: scheduler,
   });
   const success = requireSuccess(
     await harness.service.submit(submitInput(harness)),
@@ -1018,6 +1059,7 @@ test("마지막 rack Tile Submit은 RACK_EMPTY result와 score를 같은 commit�
     ],
     finishedAt: harness.clock.now(),
   });
+  assert.equal(scheduler.deadlines.length, 0);
 });
 
 test("2-player rack-empty score도 ordinary/Joker penalty를 계산한다", async () => {

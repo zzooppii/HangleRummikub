@@ -22,6 +22,8 @@ import {
   validateStateSnapshotEvent,
   validateStateSyncAck,
   validateTurnStartedEvent,
+  validateTurnDrawAck,
+  validateTurnPassAck,
   validateTurnSubmitAck,
   type ClientToServerEvents,
   type FinishedStateSnapshot,
@@ -51,6 +53,10 @@ import {
   type StateSyncCommand,
   type TileId,
   type TurnStartedEvent,
+  type TurnDrawAck,
+  type TurnDrawCommand,
+  type TurnPassAck,
+  type TurnPassCommand,
   type TurnSubmitAck,
   type TurnSubmitCommand,
 } from "@hangul-rummikub/shared";
@@ -64,7 +70,10 @@ import { GameStartService } from "../application/game-start-service.js";
 import { LobbyStateSnapshotProjector } from "../application/lobby-state-snapshot-projector.js";
 import { RoomSessionApplicationService } from "../application/room-session-service.js";
 import { SessionResumeService } from "../application/session-resume-service.js";
+import { TurnDrawService } from "../application/turn-draw-service.js";
+import { TurnPassService } from "../application/turn-pass-service.js";
 import { TurnSubmitService } from "../application/turn-submit-service.js";
+import { TurnTimeoutService } from "../application/turn-timeout-service.js";
 import type { ApplicationRuntime } from "../composition-root.js";
 import type {
   FinishedGameState,
@@ -77,7 +86,9 @@ import {
 import { ConnectionRegistry } from "../infrastructure/connection-registry.js";
 import { ConnectionRegistryPresenceReader } from "../infrastructure/connection-registry-presence-reader.js";
 import { InMemoryPersistence } from "../infrastructure/in-memory-persistence.js";
+import { InProcessTurnScheduler } from "../infrastructure/in-process-turn-scheduler.js";
 import { KeyedSerialExecutor } from "../infrastructure/keyed-serial-executor.js";
+import { OverdueTurnSweeper } from "../infrastructure/overdue-turn-sweeper.js";
 import { TestDictionaryProvider } from "../infrastructure/test-dictionary-provider.js";
 import type { RoomRecord } from "../model/persistence.js";
 import {
@@ -89,7 +100,11 @@ import type {
   PlayerPresenceReader,
   RoomPresenceReadModel,
 } from "../ports/player-presence-reader.js";
-import type { RandomSource, RoomCodeGenerator } from "../ports/system.js";
+import type {
+  RandomSource,
+  RoomCodeGenerator,
+  ScheduledTurnDeadline,
+} from "../ports/system.js";
 import { createHttpServer } from "../server.js";
 
 const NETWORK_TIMEOUT_MS = 5_000;
@@ -110,6 +125,14 @@ interface RawClientToServerEvents {
     command: unknown,
     acknowledge: (ack: TurnSubmitAck) => void,
   ) => void;
+  "turn:draw": (
+    command: unknown,
+    acknowledge: (ack: TurnDrawAck) => void,
+  ) => void;
+  "turn:pass": (
+    command: unknown,
+    acknowledge: (ack: TurnPassAck) => void,
+  ) => void;
 }
 
 type RawClient = SocketIoClient<ServerToClientEvents, RawClientToServerEvents>;
@@ -119,6 +142,8 @@ type SnapshotCommandAck =
   | RoomJoinAck
   | SessionResumeAck
   | StateSyncAck
+  | TurnDrawAck
+  | TurnPassAck
   | TurnSubmitAck;
 
 type ServerUnderTest = ReturnType<typeof createHttpServer>;
@@ -271,6 +296,25 @@ function createDeterministicRuntime(): DeterministicRuntime {
   const presenceReader = new InjectableFailurePresenceReader(
     new ConnectionRegistryPresenceReader(connectionRegistry),
   );
+  let acceptsTimeoutWork = false;
+  let turnTimeoutService: TurnTimeoutService | undefined;
+  const enqueueTimeout = async (
+    deadline: ScheduledTurnDeadline,
+  ): Promise<void> => {
+    if (!acceptsTimeoutWork || turnTimeoutService === undefined) {
+      return;
+    }
+    await turnTimeoutService.timeout(deadline);
+  };
+  const turnScheduler = new InProcessTurnScheduler({
+    clock,
+    onDeadline: enqueueTimeout,
+  });
+  const overdueTurnSweeper = new OverdueTurnSweeper({
+    activeTurnReader: persistence,
+    clock,
+    enqueueTimeout,
+  });
   const roomSessionService = new RoomSessionApplicationService({
     roomRepository: persistence,
     sessionRepository: persistence,
@@ -296,6 +340,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
     clock,
     idGenerator,
     randomSource: new ZeroRandomSource(),
+    turnScheduler,
   });
   const turnSubmitService = new TurnSubmitService({
     roomRepository: persistence,
@@ -305,6 +350,35 @@ function createDeterministicRuntime(): DeterministicRuntime {
     clock,
     idGenerator,
     dictionaryProvider: new TestDictionaryProvider(),
+    turnScheduler,
+  });
+  const turnDrawService = new TurnDrawService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    clock,
+    idGenerator,
+    turnScheduler,
+  });
+  const turnPassService = new TurnPassService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    clock,
+    idGenerator,
+    turnScheduler,
+  });
+  turnTimeoutService = new TurnTimeoutService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    clock,
+    idGenerator,
+    randomSource: new ZeroRandomSource(),
+    turnScheduler,
   });
   const snapshotProjector = new LobbyStateSnapshotProjector({
     clock,
@@ -320,7 +394,22 @@ function createDeterministicRuntime(): DeterministicRuntime {
       roomSessionService,
       sessionResumeService,
       snapshotProjector,
+      turnDrawService,
+      turnPassService,
+      turnScheduler,
       turnSubmitService,
+      turnTimeoutService,
+      overdueTurnSweeper,
+      start() {
+        acceptsTimeoutWork = true;
+        turnScheduler.start();
+        overdueTurnSweeper.start();
+      },
+      stop() {
+        acceptsTimeoutWork = false;
+        overdueTurnSweeper.stop();
+        turnScheduler.stop();
+      },
     },
     tokenIssuer,
     roomCodeGenerator,
@@ -587,6 +676,24 @@ function emitTurnSubmit(
   });
 }
 
+function emitTurnDraw(
+  socket: TypedClient,
+  command: TurnDrawCommand,
+): Promise<TurnDrawAck> {
+  return emitWithAck("turn:draw", (acknowledge) => {
+    socket.emit("turn:draw", command, acknowledge);
+  });
+}
+
+function emitTurnPass(
+  socket: TypedClient,
+  command: TurnPassCommand,
+): Promise<TurnPassAck> {
+  return emitWithAck("turn:pass", (acknowledge) => {
+    socket.emit("turn:pass", command, acknowledge);
+  });
+}
+
 async function waitForValue<TValue>(
   label: string,
   read: () => TValue | null,
@@ -846,6 +953,115 @@ async function startTwoPlayerRoom(
   ]);
 
   return { host, guest, snapshot };
+}
+
+async function seedBothBagsEmpty(
+  persistence: InMemoryPersistence,
+  roomIdValue: RoomId,
+  actorPlayerId: PlayerId,
+): Promise<RoomRecord & Readonly<{ game: PlayingGameState }>> {
+  const room = await persistence.findById(roomIdValue);
+  if (
+    room === null ||
+    room.phase !== "PLAYING" ||
+    room.game === null ||
+    room.game.turn === null ||
+    room.game.result !== null
+  ) {
+    throw new Error("A canonical PLAYING Room is required for pass setup.");
+  }
+  const game = room.game;
+  const actorRack = game.racks.get(actorPlayerId);
+  if (actorRack === undefined) {
+    throw new Error("Pass setup actor has no canonical rack.");
+  }
+  const racks = new Map(
+    [...game.racks].map(([playerIdValue, rack]) => [
+      playerIdValue,
+      Object.freeze(
+        playerIdValue === actorPlayerId
+          ? [...rack, ...game.consonantBag, ...game.vowelBag]
+          : [...rack],
+      ),
+    ] as const),
+  );
+  const candidateGame: PlayingGameState = Object.freeze({
+    ...game,
+    consonantBag: Object.freeze([]),
+    vowelBag: Object.freeze([]),
+    racks,
+  });
+  const result = await persistence.replace({
+    candidate: {
+      roomId: room.roomId,
+      roomCode: room.roomCode,
+      phase: "PLAYING",
+      hostPlayerId: room.hostPlayerId,
+      players: room.players,
+      game: candidateGame,
+      roomRevision: room.roomRevision,
+      createdAt: room.createdAt,
+      updatedAt: room.updatedAt,
+    },
+    expectedRoomRevision: room.roomRevision,
+    expectedStorageRevision: room.storageRevision,
+  });
+  if (
+    result.status !== "REPLACED" ||
+    result.room.game === null ||
+    result.room.game.turn === null ||
+    result.room.game.result !== null
+  ) {
+    throw new Error("Failed to persist deterministic empty-bag fixture.");
+  }
+  return result.room as RoomRecord & Readonly<{ game: PlayingGameState }>;
+}
+
+async function seedOverdueCurrentTurn(
+  persistence: InMemoryPersistence,
+  roomIdValue: RoomId,
+): Promise<RoomRecord & Readonly<{ game: PlayingGameState }>> {
+  const room = await persistence.findById(roomIdValue);
+  if (
+    room === null ||
+    room.phase !== "PLAYING" ||
+    room.game === null ||
+    room.game.turn === null ||
+    room.game.result !== null
+  ) {
+    throw new Error("A canonical PLAYING Room is required for timeout setup.");
+  }
+  const game: PlayingGameState = Object.freeze({
+    ...room.game,
+    turn: Object.freeze({
+      ...room.game.turn,
+      deadlineAt: room.game.turn.startedAt,
+    }),
+  });
+  const result = await persistence.replace({
+    candidate: {
+      roomId: room.roomId,
+      roomCode: room.roomCode,
+      phase: "PLAYING",
+      hostPlayerId: room.hostPlayerId,
+      players: room.players,
+      game,
+      roomRevision: room.roomRevision,
+      createdAt: room.createdAt,
+      updatedAt: room.updatedAt,
+    },
+    expectedRoomRevision: room.roomRevision,
+    expectedStorageRevision: room.storageRevision,
+  });
+  if (
+    result.status !== "REPLACED" ||
+    result.room.game === null ||
+    result.room.game.turn === null ||
+    result.room.game.result !== null
+  ) {
+    throw new Error("Failed to persist deterministic overdue Turn fixture.");
+  }
+  return result.room as RoomRecord & Readonly<{ game: PlayingGameState }>;
 }
 
 function findOrdinaryTileForSymbol(
@@ -1115,7 +1331,7 @@ function assertNoNetworkSecrets(
 
 test(
   "Socket.IO Room/Session transport integration",
-  { timeout: 60_000 },
+  { timeout: 90_000 },
   async (context) => {
     await context.test("bootstrap, Room create, Host snapshot, current state sync와 secret projection", async () => {
       const harness = await startServer();
@@ -2872,6 +3088,472 @@ test(
           ),
         );
         assert.deepEqual(sync.game.result, finished.game.result);
+        assertNoNetworkSecrets(harness.networkPayloads, [
+          host.sessionToken,
+          guest.sessionToken,
+        ]);
+      } finally {
+        await stopServer(harness);
+      }
+    });
+
+    await context.test("turn:draw는 한 Tile만 지급하고 개인별 snapshot, next Turn, idempotent replay를 제공한다", async () => {
+      const deterministic = createDeterministicRuntime();
+      const harness = await startServer(deterministic.runtime);
+      try {
+        const { host, guest, snapshot } = await startTwoPlayerRoom(
+          harness,
+          "DrawHost",
+          "DrawGuest",
+        );
+        const actor =
+          snapshot.game.turn.activePlayerId === host.snapshot.self.playerId
+            ? host
+            : guest;
+        const other = actor === host ? guest : host;
+        const actorBefore = requireAnyPlayingSnapshot(
+          requireSnapshotSuccess(
+            await emitStateSync(
+              actor.socket,
+              stateSyncCommand("draw-actor-before"),
+            ),
+          ),
+        );
+        const persistedBefore = await deterministic.runtime.persistence.findById(
+          snapshot.room.roomId,
+        );
+        assert.ok(persistedBefore?.game);
+
+        const rawSocket = await connectRawClient(harness);
+        const malformedAck = await emitWithAck<TurnDrawAck>(
+          "malformed turn:draw",
+          (acknowledge) => {
+            rawSocket.emit(
+              "turn:draw",
+              {
+                kind: "turn:draw",
+                protocolVersion: PROTOCOL_VERSION,
+                requestId: "malformed-draw",
+                expectedGameRevision: actorBefore.versions.gameRevision,
+                turnId: actorBefore.game.turn.turnId,
+                payload: {
+                  bagKind: "CONSONANT",
+                  tileId: "client-selected-tile",
+                },
+              },
+              acknowledge,
+            );
+          },
+        );
+        assert.equal(validateTurnDrawAck(malformedAck).ok, true);
+        requireFailureCode(malformedAck, "INVALID_PAYLOAD");
+        assert.deepEqual(
+          await deterministic.runtime.persistence.findById(
+            snapshot.room.roomId,
+          ),
+          persistedBefore,
+        );
+
+        const command: TurnDrawCommand = {
+          kind: "turn:draw",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("accepted-turn-draw"),
+          expectedGameRevision: actorBefore.versions.gameRevision,
+          turnId: actorBefore.game.turn.turnId,
+          payload: { bagKind: "CONSONANT" },
+        };
+        const acknowledgement = await emitTurnDraw(actor.socket, command);
+        assert.equal(validateTurnDrawAck(acknowledgement).ok, true);
+        harness.networkPayloads.push(acknowledgement);
+        const actorAfter = requireAnyPlayingSnapshot(
+          requireSnapshotSuccess(acknowledgement),
+        );
+        assert.equal(actorAfter.versions.gameRevision, 1);
+        assert.equal(
+          actorAfter.versions.roomRevision,
+          actorBefore.versions.roomRevision,
+        );
+        assert.equal(actorAfter.self.rack.length, actorBefore.self.rack.length + 1);
+        assert.equal(
+          actorAfter.game.bagCounts.consonant,
+          actorBefore.game.bagCounts.consonant - 1,
+        );
+        assert.equal(
+          actorAfter.game.bagCounts.vowel,
+          actorBefore.game.bagCounts.vowel,
+        );
+        assert.deepEqual(actorAfter.game.board, actorBefore.game.board);
+        assert.notEqual(
+          actorAfter.game.turn.activePlayerId,
+          actorBefore.game.turn.activePlayerId,
+        );
+
+        const [actorEvent, otherEvent, actorTurn, otherTurn] =
+          await Promise.all([
+            waitForSnapshot(
+              actor.observer,
+              (event) => event.versions.gameRevision === 1,
+            ),
+            waitForSnapshot(
+              other.observer,
+              (event) => event.versions.gameRevision === 1,
+            ),
+            waitForTurnStarted(
+              actor.observer,
+              (event) => event.versions.gameRevision === 1,
+            ),
+            waitForTurnStarted(
+              other.observer,
+              (event) => event.versions.gameRevision === 1,
+            ),
+          ]);
+        assert.equal(validateStateSnapshotEvent(actorEvent).ok, true);
+        assert.equal(validateStateSnapshotEvent(otherEvent).ok, true);
+        assert.equal(validateTurnStartedEvent(actorTurn).ok, true);
+        assert.equal(validateTurnStartedEvent(otherTurn).ok, true);
+        const otherView = requireAnyPlayingSnapshot(
+          otherEvent.payload.snapshot,
+        );
+        const drawnTile = actorAfter.self.rack.find(
+          (tile) =>
+            !actorBefore.self.rack.some(
+              (beforeTile) => beforeTile.tileId === tile.tileId,
+            ),
+        );
+        assert.ok(drawnTile);
+        assert.equal(
+          otherView.room.players.find(
+            (player) => player.playerId === actorAfter.self.playerId,
+          )?.rackCount,
+          actorAfter.self.rack.length,
+        );
+        assert.equal(
+          new Set(collectStringValues(otherView)).has(drawnTile.tileId),
+          false,
+        );
+
+        const persistedAfter = await deterministic.runtime.persistence.findById(
+          snapshot.room.roomId,
+        );
+        assert.ok(persistedAfter?.game);
+        assert.equal(
+          persistedAfter.storageRevision,
+          persistedBefore.storageRevision + 1,
+        );
+        assert.equal(persistedAfter.roomRevision, persistedBefore.roomRevision);
+
+        const replay = await emitTurnDraw(actor.socket, command);
+        assert.equal(validateTurnDrawAck(replay).ok, true);
+        const replaySnapshot = requireAnyPlayingSnapshot(
+          requireSnapshotSuccess(replay),
+        );
+        assert.deepEqual(replaySnapshot.self.rack, actorAfter.self.rack);
+        assert.equal(
+          replaySnapshot.game.turn.turnId,
+          actorAfter.game.turn.turnId,
+        );
+        assert.deepEqual(
+          await deterministic.runtime.persistence.findById(
+            snapshot.room.roomId,
+          ),
+          persistedAfter,
+        );
+
+        const conflict = await emitTurnDraw(actor.socket, {
+          ...command,
+          payload: { bagKind: "VOWEL" },
+        });
+        assert.equal(validateTurnDrawAck(conflict).ok, true);
+        requireFailureCode(conflict, "REQUEST_ID_REUSED");
+
+        actor.socket.disconnect();
+        await waitForSnapshot(
+          other.observer,
+          (event) =>
+            event.versions.gameRevision === 1 &&
+            playerStatus(
+              event.payload.snapshot,
+              actor.snapshot.self.playerId,
+            ) === "OFFLINE",
+        );
+        const resumedSocket = await connectTypedClient(harness);
+        const resumeAck = await emitResume(resumedSocket, {
+          kind: "session:resume",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("resume-after-turn-draw"),
+          payload: {
+            credential: {
+              roomCode: snapshot.room.roomCode,
+              sessionToken: actor.sessionToken,
+            },
+            lastSeenVersions: actorAfter.versions,
+          },
+        });
+        const resumed = requireAnyPlayingSnapshot(
+          requireSnapshotSuccess(resumeAck),
+        );
+        assert.deepEqual(resumed.self.rack, actorAfter.self.rack);
+        assert.deepEqual(resumed.game.bagCounts, actorAfter.game.bagCounts);
+        assert.equal(resumed.game.turn.turnId, actorAfter.game.turn.turnId);
+        assertNoNetworkSecrets(harness.networkPayloads, [
+          host.sessionToken,
+          guest.sessionToken,
+        ]);
+      } finally {
+        await stopServer(harness);
+      }
+    });
+
+    await context.test("turn:pass는 두 bag이 모두 empty일 때만 next Turn을 한 번 생성한다", async () => {
+      const deterministic = createDeterministicRuntime();
+      const harness = await startServer(deterministic.runtime);
+      try {
+        const { host, guest, snapshot } = await startTwoPlayerRoom(
+          harness,
+          "PassHost",
+          "PassGuest",
+        );
+        const actor =
+          snapshot.game.turn.activePlayerId === host.snapshot.self.playerId
+            ? host
+            : guest;
+        const other = actor === host ? guest : host;
+        const command: TurnPassCommand = {
+          kind: "turn:pass",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("turn-pass-not-allowed"),
+          expectedGameRevision: snapshot.versions.gameRevision,
+          turnId: snapshot.game.turn.turnId,
+          payload: {},
+        };
+        const beforeReject = await deterministic.runtime.persistence.findById(
+          snapshot.room.roomId,
+        );
+        const rejected = await emitTurnPass(actor.socket, command);
+        assert.equal(validateTurnPassAck(rejected).ok, true);
+        requireFailureCode(rejected, "PASS_NOT_ALLOWED");
+        assert.deepEqual(
+          await deterministic.runtime.persistence.findById(
+            snapshot.room.roomId,
+          ),
+          beforeReject,
+        );
+
+        const seeded = await seedBothBagsEmpty(
+          deterministic.runtime.persistence,
+          snapshot.room.roomId,
+          actor.snapshot.self.playerId,
+        );
+        const actorRackBefore = seeded.game.racks.get(
+          actor.snapshot.self.playerId,
+        );
+        assert.ok(actorRackBefore);
+        const acceptedCommand: TurnPassCommand = {
+          ...command,
+          requestId: requestId("accepted-turn-pass"),
+        };
+        const acknowledgement = await emitTurnPass(
+          actor.socket,
+          acceptedCommand,
+        );
+        assert.equal(validateTurnPassAck(acknowledgement).ok, true);
+        harness.networkPayloads.push(acknowledgement);
+        const passed = requireAnyPlayingSnapshot(
+          requireSnapshotSuccess(acknowledgement),
+        );
+        assert.equal(passed.versions.gameRevision, 1);
+        assert.equal(passed.game.bagCounts.consonant, 0);
+        assert.equal(passed.game.bagCounts.vowel, 0);
+        assert.deepEqual(passed.game.board, snapshot.game.board);
+        assert.equal(passed.self.rack.length, actorRackBefore.length);
+        assert.notEqual(
+          passed.game.turn.activePlayerId,
+          snapshot.game.turn.activePlayerId,
+        );
+
+        const [actorEvent, otherEvent, actorTurn, otherTurn] =
+          await Promise.all([
+            waitForSnapshot(
+              actor.observer,
+              (event) => event.versions.gameRevision === 1,
+            ),
+            waitForSnapshot(
+              other.observer,
+              (event) => event.versions.gameRevision === 1,
+            ),
+            waitForTurnStarted(
+              actor.observer,
+              (event) => event.versions.gameRevision === 1,
+            ),
+            waitForTurnStarted(
+              other.observer,
+              (event) => event.versions.gameRevision === 1,
+            ),
+          ]);
+        assert.equal(validateStateSnapshotEvent(actorEvent).ok, true);
+        assert.equal(validateStateSnapshotEvent(otherEvent).ok, true);
+        assert.equal(validateTurnStartedEvent(actorTurn).ok, true);
+        assert.equal(validateTurnStartedEvent(otherTurn).ok, true);
+        const persisted = await deterministic.runtime.persistence.findById(
+          snapshot.room.roomId,
+        );
+        assert.ok(persisted?.game);
+        assert.equal(persisted.storageRevision, seeded.storageRevision + 1);
+        assert.equal(persisted.roomRevision, seeded.roomRevision);
+        assert.deepEqual(
+          persisted.game.racks.get(actor.snapshot.self.playerId),
+          actorRackBefore,
+        );
+      } finally {
+        await stopServer(harness);
+      }
+    });
+
+    await context.test("expired Submit 뒤 internal timeout은 penalty와 next Turn을 fan-out하고 resume으로 복구한다", async () => {
+      const deterministic = createDeterministicRuntime();
+      const harness = await startServer(deterministic.runtime);
+      try {
+        const { host, guest, snapshot } = await startTwoPlayerRoom(
+          harness,
+          "TimeoutHost",
+          "TimeoutGuest",
+        );
+        const actor =
+          snapshot.game.turn.activePlayerId === host.snapshot.self.playerId
+            ? host
+            : guest;
+        const other = actor === host ? guest : host;
+        const actorBefore = requireAnyPlayingSnapshot(
+          requireSnapshotSuccess(
+            await emitStateSync(
+              actor.socket,
+              stateSyncCommand("timeout-actor-before"),
+            ),
+          ),
+        );
+        const overdue = await seedOverdueCurrentTurn(
+          deterministic.runtime.persistence,
+          snapshot.room.roomId,
+        );
+        const expiredSubmit = await emitTurnSubmit(actor.socket, {
+          kind: "turn:submit",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("expired-before-timeout"),
+          expectedGameRevision: overdue.game.gameRevision,
+          turnId: overdue.game.turn.turnId,
+          payload: { proposedBoard: { wordGroups: [] } },
+        });
+        assert.equal(validateTurnSubmitAck(expiredSubmit).ok, true);
+        requireFailureCode(expiredSubmit, "TURN_EXPIRED");
+        assert.deepEqual(
+          await deterministic.runtime.persistence.findById(
+            snapshot.room.roomId,
+          ),
+          overdue,
+        );
+
+        actor.socket.disconnect();
+        await waitForSnapshot(
+          other.observer,
+          (event) =>
+            event.versions.gameRevision === 0 &&
+            playerStatus(
+              event.payload.snapshot,
+              actor.snapshot.self.playerId,
+            ) === "OFFLINE",
+        );
+
+        const timeoutResult = await deterministic.runtime.turnTimeoutService.timeout({
+          roomId: overdue.roomId,
+          gameId: overdue.game.gameId,
+          turnId: overdue.game.turn.turnId,
+          expectedGameRevision: overdue.game.gameRevision,
+          deadlineAt: overdue.game.turn.deadlineAt,
+        });
+        assert.equal(timeoutResult.status, "APPLIED");
+
+        const [otherEvent, otherTurn] = await Promise.all([
+            waitForSnapshot(
+              other.observer,
+              (event) => event.versions.gameRevision === 1,
+            ),
+            waitForTurnStarted(
+              other.observer,
+              (event) => event.versions.gameRevision === 1,
+            ),
+          ]);
+        const otherAfter = requireAnyPlayingSnapshot(
+          otherEvent.payload.snapshot,
+        );
+        assert.equal(validateStateSnapshotEvent(otherEvent).ok, true);
+        assert.equal(validateTurnStartedEvent(otherTurn).ok, true);
+        assert.notEqual(
+          otherAfter.game.turn.activePlayerId,
+          actorBefore.game.turn.activePlayerId,
+        );
+
+        const persistedAfter = await deterministic.runtime.persistence.findById(
+          snapshot.room.roomId,
+        );
+        assert.ok(persistedAfter?.game);
+        assert.equal(persistedAfter.storageRevision, overdue.storageRevision + 1);
+        assert.equal(persistedAfter.roomRevision, overdue.roomRevision);
+        const duplicateTimeout = await deterministic.runtime.turnTimeoutService.timeout({
+          roomId: overdue.roomId,
+          gameId: overdue.game.gameId,
+          turnId: overdue.game.turn.turnId,
+          expectedGameRevision: overdue.game.gameRevision,
+          deadlineAt: overdue.game.turn.deadlineAt,
+        });
+        assert.equal(duplicateTimeout.status, "NO_OP");
+        assert.deepEqual(
+          await deterministic.runtime.persistence.findById(
+            snapshot.room.roomId,
+          ),
+          persistedAfter,
+        );
+
+        const resumedSocket = await connectTypedClient(harness);
+        const resumeAck = await emitResume(resumedSocket, {
+          kind: "session:resume",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("resume-after-timeout"),
+          payload: {
+            credential: {
+              roomCode: snapshot.room.roomCode,
+              sessionToken: actor.sessionToken,
+            },
+            lastSeenVersions: otherAfter.versions,
+          },
+        });
+        const resumed = requireAnyPlayingSnapshot(
+          requireSnapshotSuccess(resumeAck),
+        );
+        assert.equal(resumed.versions.gameRevision, 1);
+        assert.equal(resumed.self.rack.length, actorBefore.self.rack.length + 3);
+        assert.equal(
+          resumed.game.turn.turnId,
+          otherAfter.game.turn.turnId,
+        );
+        assert.equal(
+          otherAfter.room.players.find(
+            (player) => player.playerId === resumed.self.playerId,
+          )?.rackCount,
+          resumed.self.rack.length,
+        );
+        const penaltyTileIds = resumed.self.rack
+          .filter(
+            (tile) =>
+              !actorBefore.self.rack.some(
+                (beforeTile) => beforeTile.tileId === tile.tileId,
+              ),
+          )
+          .map((tile) => tile.tileId);
+        assert.equal(penaltyTileIds.length, 3);
+        const otherStrings = new Set(collectStringValues(otherAfter));
+        for (const penaltyTileId of penaltyTileIds) {
+          assert.equal(otherStrings.has(penaltyTileId), false);
+        }
         assertNoNetworkSecrets(harness.networkPayloads, [
           host.sessionToken,
           guest.sessionToken,

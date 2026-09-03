@@ -14,6 +14,10 @@ import {
   validateStateSnapshotEvent,
   validateStateSyncAck,
   validateStateSyncCommand,
+  validateTurnDrawAck,
+  validateTurnDrawCommand,
+  validateTurnPassAck,
+  validateTurnPassCommand,
   validateTurnSubmitAck,
   validateTurnSubmitCommand,
   validateTurnStartedEvent,
@@ -36,6 +40,10 @@ import {
   type StateSyncCommand,
   type StateVersions,
   type TurnStartedEvent,
+  type TurnDrawAck,
+  type TurnDrawCommand,
+  type TurnPassAck,
+  type TurnPassCommand,
   type TurnSubmitAck,
   type TurnSubmitCommand,
 } from "@hangul-rummikub/shared";
@@ -176,6 +184,8 @@ function hasConsistentSnapshotAcknowledgement(
     | SessionResumeAck
     | StateSyncAck
     | GameStartAck
+    | TurnDrawAck
+    | TurnPassAck
     | TurnSubmitAck,
 ): boolean {
   if (!acknowledgement.ok) {
@@ -515,6 +525,40 @@ export class RealtimeClient {
         );
       },
       validateTurnSubmitAck,
+      hasConsistentSnapshotAcknowledgement,
+    );
+  }
+
+  drawTurn(command: TurnDrawCommand): Promise<TurnDrawAck> {
+    const validatedCommand = validateTurnDrawCommand(command);
+    if (!validatedCommand.ok) {
+      return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    }
+
+    return this.#emitAcknowledged(
+      "turn:draw",
+      validatedCommand.value.requestId,
+      (acknowledge) => {
+        this.#socket.emit("turn:draw", validatedCommand.value, acknowledge);
+      },
+      validateTurnDrawAck,
+      hasConsistentSnapshotAcknowledgement,
+    );
+  }
+
+  passTurn(command: TurnPassCommand): Promise<TurnPassAck> {
+    const validatedCommand = validateTurnPassCommand(command);
+    if (!validatedCommand.ok) {
+      return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    }
+
+    return this.#emitAcknowledged(
+      "turn:pass",
+      validatedCommand.value.requestId,
+      (acknowledge) => {
+        this.#socket.emit("turn:pass", validatedCommand.value, acknowledge);
+      },
+      validateTurnPassAck,
       hasConsistentSnapshotAcknowledgement,
     );
   }

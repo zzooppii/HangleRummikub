@@ -36,7 +36,12 @@ export function createHttpServer(options: CreateHttpServerOptions = {}) {
   >(httpServer);
   const runtime = options.runtime ?? createApplicationRuntime();
 
-  registerSocketIoHandlers(io, runtime);
+  const unregisterSocketIoHandlers = registerSocketIoHandlers(io, runtime);
+  runtime.start();
+  httpServer.once("close", () => {
+    unregisterSocketIoHandlers();
+    runtime.stop();
+  });
 
   return { httpServer, io, runtime };
 }

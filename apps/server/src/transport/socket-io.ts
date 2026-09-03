@@ -7,6 +7,8 @@ import {
   validateSessionBootstrapCommand,
   validateSessionResumeCommand,
   validateStateSyncCommand,
+  validateTurnDrawCommand,
+  validateTurnPassCommand,
   validateTurnSubmitCommand,
   type ClientToServerEvents,
   type ErrorDto,
@@ -31,6 +33,8 @@ import {
   type StateSnapshotEvent,
   type StateSyncAck,
   type TurnStartedEvent,
+  type TurnDrawAck,
+  type TurnPassAck,
   type TurnSubmitAck,
   type UncorrelatedFailureAck,
   type UnscopedAckFailure,
@@ -66,6 +70,7 @@ type RealtimeSocket = Socket<
 type CorrelatableFailureAck =
   | UncorrelatedFailureAck
   | UnscopedAckFailure;
+type TurnCommandFailureAck = CorrelatableFailureAck | RoomScopedAckFailure;
 
 type SocketAuthenticationExecutor = KeyedSerialExecutor<SocketId>;
 
@@ -173,13 +178,27 @@ function turnSubmitSuccessAck(
   };
 }
 
+function turnActionSuccessAck(
+  requestId: RequestId,
+  snapshot: PlayingStateSnapshot,
+): TurnDrawAck | TurnPassAck {
+  return {
+    scope: "ROOM",
+    requestId,
+    ok: true,
+    serverTime: snapshot.serverTime,
+    versions: snapshot.versions,
+    data: { snapshot },
+  };
+}
+
 async function turnSubmitFailureAck(
   runtime: ApplicationRuntime,
   binding: AuthenticatedSocketBinding,
   requestId: RequestId,
   error: ErrorDto,
   fallbackServerTime: ServerTime,
-): Promise<TurnSubmitAck> {
+): Promise<TurnCommandFailureAck> {
   if (!isCurrentBinding(runtime, binding)) {
     return failureAck(
       { requestId },
@@ -217,6 +236,22 @@ async function turnSubmitFailureAck(
     versions: snapshot.versions,
     error,
   } satisfies RoomScopedAckFailure;
+}
+
+async function turnActionFailureAck(
+  runtime: ApplicationRuntime,
+  binding: AuthenticatedSocketBinding,
+  requestId: RequestId,
+  error: ErrorDto,
+  fallbackServerTime: ServerTime,
+): Promise<TurnCommandFailureAck> {
+  return turnSubmitFailureAck(
+    runtime,
+    binding,
+    requestId,
+    error,
+    fallbackServerTime,
+  );
 }
 
 function isPlayingSnapshot(
@@ -344,6 +379,35 @@ async function fanOutRoomSnapshots(
       continue;
     }
     io.to(binding.socketId).emit("state:snapshot", snapshotEvent(snapshot));
+  }
+}
+
+async function emitCurrentTurnStarted(
+  io: RealtimeServer,
+  runtime: ApplicationRuntime,
+  roomId: RoomId,
+): Promise<void> {
+  const room = await runtime.persistence.findById(roomId);
+  if (room === null) {
+    return;
+  }
+
+  for (const binding of runtime.connectionRegistry.listActiveBindings(roomId)) {
+    if (!room.players.some((player) => player.playerId === binding.playerId)) {
+      continue;
+    }
+    const snapshot = await runtime.snapshotProjector.project({
+      room,
+      selfPlayerId: binding.playerId,
+    });
+    if (!isCurrentBinding(runtime, binding) || !isPlayingSnapshot(snapshot)) {
+      continue;
+    }
+    io.to(internalRoomChannel(roomId)).emit(
+      "turn:started",
+      turnStartedEvent(snapshot),
+    );
+    return;
   }
 }
 
@@ -1046,6 +1110,187 @@ function registerTurnSubmitHandler(
   });
 }
 
+function registerTurnDrawHandler(
+  io: RealtimeServer,
+  socket: RealtimeSocket,
+  runtime: ApplicationRuntime,
+): void {
+  socket.on("turn:draw", (rawCommand, acknowledge) => {
+    // Arrival time, captured before validation or queueing, is authoritative.
+    const receivedAt = runtime.clock.now();
+    let committed = false;
+    const commandInput: unknown = rawCommand;
+    const command = validateTurnDrawCommand(commandInput);
+    if (!command.ok) {
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, command.error, receivedAt),
+      );
+      return;
+    }
+
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(
+        createSocketId(socket.id),
+      );
+      if (binding === null) {
+        acknowledgeIfPresent(
+          acknowledge,
+          failureAck(commandInput, UNAUTHENTICATED_ERROR, receivedAt),
+        );
+        return;
+      }
+
+      const result = await runtime.turnDrawService.draw({
+        roomId: binding.roomId,
+        actorPlayerId: binding.playerId,
+        requestId: command.value.requestId,
+        expectedGameRevision: command.value.expectedGameRevision,
+        turnId: command.value.turnId,
+        receivedAt,
+        bagKind: command.value.payload.bagKind,
+        authorization: {
+          isCurrent: () =>
+            socket.connected && isCurrentBinding(runtime, binding),
+        },
+      });
+      if (!result.ok) {
+        acknowledgeIfPresent(
+          acknowledge,
+          await turnActionFailureAck(
+            runtime,
+            binding,
+            command.value.requestId,
+            result.error,
+            receivedAt,
+          ),
+        );
+        return;
+      }
+      committed = true;
+
+      const snapshot = await loadSnapshot(
+        runtime,
+        binding.roomId,
+        binding.playerId,
+      );
+      if (snapshot === null || !isPlayingSnapshot(snapshot)) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      if (!socket.connected || !isCurrentBinding(runtime, binding)) {
+        return;
+      }
+
+      await fanOutRoomSnapshots(io, runtime, binding.roomId);
+      await emitCurrentTurnStarted(io, runtime, binding.roomId);
+      acknowledgeIfPresent(
+        acknowledge,
+        turnActionSuccessAck(command.value.requestId, snapshot),
+      );
+    })().catch(() => {
+      if (committed) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, INTERNAL_ERROR, receivedAt),
+      );
+    });
+  });
+}
+
+function registerTurnPassHandler(
+  io: RealtimeServer,
+  socket: RealtimeSocket,
+  runtime: ApplicationRuntime,
+): void {
+  socket.on("turn:pass", (rawCommand, acknowledge) => {
+    // Arrival time, captured before validation or queueing, is authoritative.
+    const receivedAt = runtime.clock.now();
+    let committed = false;
+    const commandInput: unknown = rawCommand;
+    const command = validateTurnPassCommand(commandInput);
+    if (!command.ok) {
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, command.error, receivedAt),
+      );
+      return;
+    }
+
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(
+        createSocketId(socket.id),
+      );
+      if (binding === null) {
+        acknowledgeIfPresent(
+          acknowledge,
+          failureAck(commandInput, UNAUTHENTICATED_ERROR, receivedAt),
+        );
+        return;
+      }
+
+      const result = await runtime.turnPassService.pass({
+        roomId: binding.roomId,
+        actorPlayerId: binding.playerId,
+        requestId: command.value.requestId,
+        expectedGameRevision: command.value.expectedGameRevision,
+        turnId: command.value.turnId,
+        receivedAt,
+        authorization: {
+          isCurrent: () =>
+            socket.connected && isCurrentBinding(runtime, binding),
+        },
+      });
+      if (!result.ok) {
+        acknowledgeIfPresent(
+          acknowledge,
+          await turnActionFailureAck(
+            runtime,
+            binding,
+            command.value.requestId,
+            result.error,
+            receivedAt,
+          ),
+        );
+        return;
+      }
+      committed = true;
+
+      const snapshot = await loadSnapshot(
+        runtime,
+        binding.roomId,
+        binding.playerId,
+      );
+      if (snapshot === null || !isPlayingSnapshot(snapshot)) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      if (!socket.connected || !isCurrentBinding(runtime, binding)) {
+        return;
+      }
+
+      await fanOutRoomSnapshots(io, runtime, binding.roomId);
+      await emitCurrentTurnStarted(io, runtime, binding.roomId);
+      acknowledgeIfPresent(
+        acknowledge,
+        turnActionSuccessAck(command.value.requestId, snapshot),
+      );
+    })().catch(() => {
+      if (committed) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, INTERNAL_ERROR, receivedAt),
+      );
+    });
+  });
+}
+
 function registerDisconnectHandler(
   io: RealtimeServer,
   socket: RealtimeSocket,
@@ -1075,8 +1320,18 @@ function registerDisconnectHandler(
 export function registerSocketIoHandlers(
   io: RealtimeServer,
   runtime: ApplicationRuntime,
-): void {
+): () => void {
   const authenticationExecutor = new KeyedSerialExecutor<SocketId>();
+  const unsubscribeTimeoutApplied = runtime.turnTimeoutService.subscribeApplied(
+    async (data) => {
+      try {
+        await fanOutRoomSnapshots(io, runtime, data.roomId);
+        await emitCurrentTurnStarted(io, runtime, data.roomId);
+      } catch {
+        reportSnapshotFanOutFailure();
+      }
+    },
+  );
 
   io.on("connection", (socket) => {
     registerBootstrapHandler(socket, runtime);
@@ -1086,6 +1341,10 @@ export function registerSocketIoHandlers(
     registerStateSyncHandler(socket, runtime);
     registerGameStartHandler(io, socket, runtime);
     registerTurnSubmitHandler(io, socket, runtime);
+    registerTurnDrawHandler(io, socket, runtime);
+    registerTurnPassHandler(io, socket, runtime);
     registerDisconnectHandler(io, socket, runtime);
   });
+
+  return unsubscribeTimeoutApplied;
 }

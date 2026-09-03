@@ -540,6 +540,23 @@ h3 {
   letter-spacing: -0.045em;
 }
 
+.turn-countdown {
+  display: inline-flex;
+  margin-top: 18px;
+  border-radius: 999px;
+  padding: 7px 11px;
+  background: rgb(255 255 255 / 12%);
+  color: #fff;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+.turn-countdown.expired {
+  background: #fff0c9;
+  color: #75500c;
+}
+
 .bag-summary {
   display: flex;
   gap: 28px;
@@ -597,12 +614,63 @@ h3 {
 }
 
 .board-panel,
-.rack-panel {
+.rack-panel,
+.turn-action-panel {
   border: 1px solid rgb(41 53 66 / 10%);
   border-radius: 24px;
   padding: clamp(20px, 4vw, 34px);
   background: rgb(255 255 255 / 92%);
   box-shadow: 0 24px 70px rgb(44 50 56 / 8%);
+}
+
+.turn-action-panel {
+  margin-top: 20px;
+  background: rgb(255 255 255 / 92%);
+}
+
+.turn-action-panel > header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+
+.turn-action-panel > header > p {
+  max-width: 520px;
+  margin: 0;
+  color: #5c6672;
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.turn-action-buttons,
+.draw-confirmation > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.turn-action-buttons .primary-button,
+.turn-action-buttons .secondary-button,
+.draw-confirmation .primary-button,
+.draw-confirmation .secondary-button {
+  width: auto;
+  min-width: 172px;
+}
+
+.draw-confirmation {
+  margin-bottom: 14px;
+  border: 1px solid #efd492;
+  border-radius: 14px;
+  padding: 15px;
+  background: #fff8df;
+  color: #705010;
+}
+
+.draw-confirmation p {
+  margin-bottom: 12px;
+  line-height: 1.5;
 }
 
 .rack-panel {
@@ -1017,6 +1085,12 @@ button.game-tile:hover:not(:disabled) {
     align-items: stretch;
   }
 
+  .turn-action-panel > header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
   .rack-return-button {
     width: 100%;
   }
@@ -1074,7 +1148,8 @@ button.game-tile:hover:not(:disabled) {
   }
 
   .board-panel,
-  .rack-panel {
+  .rack-panel,
+  .turn-action-panel {
     border-radius: 18px;
     padding: 16px 12px;
   }
@@ -1098,7 +1173,11 @@ button.game-tile:hover:not(:disabled) {
   }
 
   .toolbar-button,
-  .compact-button {
+  .compact-button,
+  .turn-action-buttons .primary-button,
+  .turn-action-buttons .secondary-button,
+  .draw-confirmation .primary-button,
+  .draw-confirmation .secondary-button {
     width: 100%;
   }
 

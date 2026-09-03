@@ -30,6 +30,8 @@ import type {
   SessionBootstrapCommand,
   SessionResumeCommand,
   StateSyncCommand,
+  TurnDrawCommand,
+  TurnPassCommand,
   TurnSubmitCommand,
 } from "./protocol.js";
 
@@ -113,6 +115,30 @@ export const TurnSubmitAckSchema = v.union([
   createRoomScopedAckSchema(TurnSubmitAckDataSchema),
 ]);
 export type TurnSubmitAck = v.InferOutput<typeof TurnSubmitAckSchema>;
+
+export const TurnDrawAckDataSchema = v.strictObject({
+  snapshot: PlayingStateSnapshotSchema,
+});
+export type TurnDrawAckData = v.InferOutput<typeof TurnDrawAckDataSchema>;
+
+export const TurnDrawAckSchema = v.union([
+  UncorrelatedFailureAckSchema,
+  UnscopedAckFailureSchema,
+  createRoomScopedAckSchema(TurnDrawAckDataSchema),
+]);
+export type TurnDrawAck = v.InferOutput<typeof TurnDrawAckSchema>;
+
+export const TurnPassAckDataSchema = v.strictObject({
+  snapshot: PlayingStateSnapshotSchema,
+});
+export type TurnPassAckData = v.InferOutput<typeof TurnPassAckDataSchema>;
+
+export const TurnPassAckSchema = v.union([
+  UncorrelatedFailureAckSchema,
+  UnscopedAckFailureSchema,
+  createRoomScopedAckSchema(TurnPassAckDataSchema),
+]);
+export type TurnPassAck = v.InferOutput<typeof TurnPassAckSchema>;
 
 export const StateSnapshotEventSchema = v.strictObject({
   kind: v.literal("state:snapshot"),
@@ -204,6 +230,14 @@ export interface ClientToServerEvents {
   "turn:submit": (
     command: TurnSubmitCommand,
     acknowledge: SocketAcknowledgement<TurnSubmitAck>,
+  ) => void;
+  "turn:draw": (
+    command: TurnDrawCommand,
+    acknowledge: SocketAcknowledgement<TurnDrawAck>,
+  ) => void;
+  "turn:pass": (
+    command: TurnPassCommand,
+    acknowledge: SocketAcknowledgement<TurnPassAck>,
   ) => void;
 }
 

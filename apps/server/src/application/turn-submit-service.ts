@@ -4,7 +4,6 @@ import {
   PlayerIdSchema,
   RoomIdSchema,
   RoomRevisionSchema,
-  ServerTimeSchema,
   TurnIdSchema,
   TurnNumberSchema,
   type ErrorDto,
@@ -25,7 +24,6 @@ import type {
   FinishedGameState,
   GameResult,
   GameScoreEntry,
-  GameTurn,
   PlayingGameState,
 } from "../domain/game/game-state.js";
 import {
@@ -45,9 +43,16 @@ import type {
   Clock,
   DictionaryProvider,
   IdGenerator,
+  TurnScheduler,
 } from "../ports/system.js";
 import type { CurrentActorAuthorization } from "./game-start-service.js";
 import type { RoomMutationSerialExecutor } from "./room-session-service.js";
+import {
+  createNextTurn,
+  incrementGameRevision,
+  scheduleCurrentTurnBestEffort,
+  type TurnSchedulingFailureReporter,
+} from "./turn-transition.js";
 
 const TurnSubmitAdvancedDataSchema = v.strictObject({
   roomId: RoomIdSchema,
@@ -110,6 +115,8 @@ export type TurnSubmitServiceDependencies = Readonly<{
     input: ValidateBoardInput,
   ) => Promise<BoardValidationResult>;
   onCheckpoint?: (checkpoint: TurnSubmitCheckpoint) => void;
+  turnScheduler?: TurnScheduler;
+  onTurnSchedulingFailure?: TurnSchedulingFailureReporter;
 }>;
 
 const ERRORS = Object.freeze({
@@ -260,16 +267,8 @@ function toDomainBoard(proposedBoard: ProposedBoard): Board {
   });
 }
 
-function incrementGameRevision(revision: GameRevision): GameRevision {
-  return v.parse(GameRevisionSchema, revision + 1);
-}
-
 function incrementRoomRevision(revision: RoomRevision): RoomRevision {
   return v.parse(RoomRevisionSchema, revision + 1);
-}
-
-function addDuration(startedAt: ServerTime, durationMs: number): ServerTime {
-  return v.parse(ServerTimeSchema, startedAt + durationMs);
 }
 
 function parseAcceptedResult(terminalResult: unknown): TurnSubmitResult {
@@ -330,29 +329,6 @@ function cloneBoard(board: Board): Board {
         }),
       ),
     ),
-  });
-}
-
-function nextTurn(
-  game: PlayingGameState,
-  startedAt: ServerTime,
-  idGenerator: IdGenerator,
-): GameTurn {
-  const activeIndex = game.turnOrder.indexOf(game.turn.activePlayerId);
-  if (activeIndex < 0 || game.turnOrder.length < 2) {
-    throw new Error("Canonical turn order is invalid.");
-  }
-  const activePlayerId = game.turnOrder[(activeIndex + 1) % game.turnOrder.length];
-  if (activePlayerId === undefined) {
-    throw new Error("Canonical turn order has no next Player.");
-  }
-
-  return Object.freeze({
-    turnId: idGenerator.generateTurnId(),
-    turnNumber: v.parse(TurnNumberSchema, game.turn.turnNumber + 1),
-    activePlayerId,
-    startedAt,
-    deadlineAt: addDuration(startedAt, game.rulesConfig.turnDurationMs),
   });
 }
 
@@ -511,7 +487,7 @@ function createCandidate(
     };
   }
 
-  const turn = nextTurn(game, committedAt, idGenerator);
+  const turn = createNextTurn(game, committedAt, idGenerator);
   const activeGame: PlayingGameState = Object.freeze({
     ...baseGame,
     turn,
@@ -571,6 +547,8 @@ export class TurnSubmitService {
     input: ValidateBoardInput,
   ) => Promise<BoardValidationResult>;
   readonly #onCheckpoint: ((checkpoint: TurnSubmitCheckpoint) => void) | undefined;
+  readonly #turnScheduler: TurnScheduler | undefined;
+  readonly #onTurnSchedulingFailure: TurnSchedulingFailureReporter | undefined;
 
   constructor(dependencies: TurnSubmitServiceDependencies) {
     this.#roomRepository = dependencies.roomRepository;
@@ -582,16 +560,34 @@ export class TurnSubmitService {
     this.#dictionaryProvider = dependencies.dictionaryProvider;
     this.#validateBoard = dependencies.validateBoard ?? validateProposedBoard;
     this.#onCheckpoint = dependencies.onCheckpoint;
+    this.#turnScheduler = dependencies.turnScheduler;
+    this.#onTurnSchedulingFailure = dependencies.onTurnSchedulingFailure;
   }
 
   async submit(input: TurnSubmitInput): Promise<TurnSubmitResult> {
+    let result: TurnSubmitResult;
     try {
-      return await this.#roomMutationExecutor.run(input.roomId, () =>
+      result = await this.#roomMutationExecutor.run(input.roomId, () =>
         this.#submitWithinRoomBoundary(input),
       );
     } catch {
       return failed(ERRORS.INTERNAL_ERROR);
     }
+
+    if (result.ok && result.data.outcome === "ADVANCED") {
+      await scheduleCurrentTurnBestEffort(
+        this.#roomRepository,
+        this.#turnScheduler,
+        {
+          roomId: result.data.roomId,
+          gameId: result.data.gameId,
+          gameRevision: result.data.gameRevision,
+          turnId: result.data.nextTurnId,
+        },
+        this.#onTurnSchedulingFailure,
+      );
+    }
+    return result;
   }
 
   async #submitWithinRoomBoundary(

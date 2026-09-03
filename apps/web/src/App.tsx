@@ -30,8 +30,11 @@ type PlayingRouteProps = Readonly<{
   errorMessage: string | null;
   sessionReplaced: boolean;
   turnSubmitPending: boolean;
+  turnActionPending: boolean;
   turnDraftResetGeneration: number;
   onSubmitTurn: ReturnType<typeof useLobbyApp>["submitTurn"];
+  onDrawTurn: ReturnType<typeof useLobbyApp>["drawTurn"];
+  onPassTurn: ReturnType<typeof useLobbyApp>["passTurn"];
   onGoHome: () => void;
 }>;
 
@@ -52,10 +55,20 @@ function PlayingRoute(props: PlayingRouteProps) {
       sessionReplaced={props.sessionReplaced}
       turnDraft={turnDraft}
       turnSubmitPending={props.turnSubmitPending}
+      turnActionPending={props.turnActionPending}
       canSubmit={
-        props.connectionState === "CONNECTED" && !props.sessionReplaced
+        props.connectionState === "CONNECTED" &&
+        !props.sessionReplaced &&
+        !props.turnActionPending
+      }
+      canAct={
+        props.connectionState === "CONNECTED" &&
+        !props.sessionReplaced &&
+        !props.turnSubmitPending
       }
       onSubmitTurn={props.onSubmitTurn}
+      onDrawTurn={props.onDrawTurn}
+      onPassTurn={props.onPassTurn}
       onGoHome={props.onGoHome}
     />
   );
@@ -105,8 +118,11 @@ export function App() {
             errorMessage={app.errorMessage}
             sessionReplaced={app.sessionReplaced}
             turnSubmitPending={app.turnSubmitPending}
+            turnActionPending={app.turnActionPending}
             turnDraftResetGeneration={app.turnDraftResetGeneration}
             onSubmitTurn={app.submitTurn}
+            onDrawTurn={app.drawTurn}
+            onPassTurn={app.passTurn}
             onGoHome={app.goHome}
           />
         </div>

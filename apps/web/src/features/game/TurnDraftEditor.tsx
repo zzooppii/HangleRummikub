@@ -4,6 +4,7 @@ import type {
   PublicBoardTilePlacement,
   PublicBoardView,
   TileId,
+  TurnDrawBagKind,
 } from "@hangul-rummikub/shared";
 import { useEffect, useRef, useState } from "react";
 
@@ -17,6 +18,10 @@ import {
   type TurnDraft,
 } from "../../lib/turn-draft.js";
 import type { TurnDraftController } from "./use-turn-draft.js";
+import {
+  getTurnActionControls,
+  shouldConfirmDraw,
+} from "../../lib/turn-actions.js";
 
 type SelectedTile = Readonly<{
   tileId: TileId;
@@ -436,13 +441,19 @@ export type TurnDraftEditorProps = Readonly<{
   snapshot: PlayingStateSnapshot;
   controller: TurnDraftController;
   submitPending: boolean;
+  turnActionPending: boolean;
   canSubmit: boolean;
+  canAct: boolean;
   onSubmit: (draft: TurnDraft) => void;
+  onDraw: (bagKind: TurnDrawBagKind) => void;
+  onPass: () => void;
 }>;
 
 export function TurnDraftEditor(props: TurnDraftEditorProps) {
   const { controller, snapshot } = props;
   const [selected, setSelected] = useState<SelectedTile | null>(null);
+  const [drawConfirmation, setDrawConfirmation] =
+    useState<TurnDrawBagKind | null>(null);
   const dragSelectionRef = useRef<DragSelection>(null);
 
   useEffect(() => {
@@ -475,6 +486,16 @@ export function TurnDraftEditor(props: TurnDraftEditorProps) {
     controller.draft?.baseGameId,
     controller.draft?.baseGameRevision,
     controller.draft?.baseTurnId,
+  ]);
+
+  useEffect(() => {
+    setDrawConfirmation(null);
+  }, [
+    controller.draft?.baseGameId,
+    controller.draft?.baseGameRevision,
+    controller.draft?.baseTurnId,
+    controller.isDirty,
+    snapshot.game.turn.turnId,
   ]);
 
   const selectTile = (
@@ -534,6 +555,23 @@ export function TurnDraftEditor(props: TurnDraftEditorProps) {
   const activePlayer = snapshot.room.players.find(
     (player) => player.playerId === snapshot.game.turn.activePlayerId,
   );
+  const turnActionControls = getTurnActionControls(
+    snapshot,
+    props.canAct,
+    props.turnActionPending,
+  );
+  const bothBagsEmpty =
+    snapshot.game.bagCounts.consonant === 0 &&
+    snapshot.game.bagCounts.vowel === 0;
+
+  const requestDraw = (bagKind: TurnDrawBagKind): void => {
+    if (shouldConfirmDraw(controller.isDirty)) {
+      setDrawConfirmation(bagKind);
+      return;
+    }
+
+    props.onDraw(bagKind);
+  };
 
   return (
     <>
@@ -641,6 +679,88 @@ export function TurnDraftEditor(props: TurnDraftEditorProps) {
           </>
         )}
       </section>
+
+      {turnActionControls.visible ? (
+        <section
+          className="turn-action-panel"
+          aria-labelledby="turn-action-heading"
+        >
+          <header>
+            <div>
+              <p className="step-label">END TURN</p>
+              <h2 id="turn-action-heading">턴 종료</h2>
+            </div>
+            <p>
+              타일을 가져오면 이 턴이 즉시 끝나며, 실제 타일은 서버가
+              선택합니다.
+            </p>
+          </header>
+
+          {drawConfirmation !== null ? (
+            <div className="draw-confirmation" role="status">
+              <p>
+                편집 중인 배치가 사라집니다.{" "}
+                {drawConfirmation === "CONSONANT" ? "자음" : "모음"} 타일을
+                가져올까요?
+              </p>
+              <div>
+                <button
+                  className="primary-button"
+                  type="button"
+                  disabled={props.turnActionPending}
+                  onClick={() => {
+                    const bagKind = drawConfirmation;
+                    setDrawConfirmation(null);
+                    props.onDraw(bagKind);
+                  }}
+                >
+                  가져오기
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={props.turnActionPending}
+                  onClick={() => setDrawConfirmation(null)}
+                >
+                  취소
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="turn-action-buttons">
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={!turnActionControls.canDrawConsonant}
+              aria-busy={props.turnActionPending}
+              onClick={() => requestDraw("CONSONANT")}
+            >
+              자음 타일 가져오기
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={!turnActionControls.canDrawVowel}
+              aria-busy={props.turnActionPending}
+              onClick={() => requestDraw("VOWEL")}
+            >
+              모음 타일 가져오기
+            </button>
+            {bothBagsEmpty ? (
+              <button
+                className="primary-button"
+                type="button"
+                disabled={!turnActionControls.canPass}
+                aria-busy={props.turnActionPending}
+                onClick={props.onPass}
+              >
+                {props.turnActionPending ? "턴 넘기는 중..." : "턴 넘기기"}
+              </button>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       <section className="rack-panel" aria-labelledby="rack-heading">
         <header className="editor-section-header rack-heading-row">

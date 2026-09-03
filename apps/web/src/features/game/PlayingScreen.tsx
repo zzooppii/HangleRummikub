@@ -1,8 +1,16 @@
-import type { PlayingStateSnapshot } from "@hangul-rummikub/shared";
+import type {
+  PlayingStateSnapshot,
+  TurnDrawBagKind,
+} from "@hangul-rummikub/shared";
+import { useEffect, useMemo, useState } from "react";
 
 import { TurnDraftEditor } from "./TurnDraftEditor.js";
 import type { TurnDraftController } from "./use-turn-draft.js";
 import type { TurnDraft } from "../../lib/turn-draft.js";
+import {
+  calculateServerClockOffset,
+  calculateTurnCountdown,
+} from "../../lib/turn-countdown.js";
 
 export type PlayingScreenProps = Readonly<{
   snapshot: PlayingStateSnapshot;
@@ -12,13 +20,37 @@ export type PlayingScreenProps = Readonly<{
   sessionReplaced: boolean;
   turnDraft: TurnDraftController;
   turnSubmitPending: boolean;
+  turnActionPending: boolean;
   canSubmit: boolean;
+  canAct: boolean;
   onSubmitTurn: (draft: TurnDraft) => void;
+  onDrawTurn: (bagKind: TurnDrawBagKind) => void;
+  onPassTurn: () => void;
   onGoHome: () => void;
 }>;
 
 export function PlayingScreen(props: PlayingScreenProps) {
   const { game, room, self } = props.snapshot;
+  const serverClockOffset = useMemo(
+    () => calculateServerClockOffset(props.snapshot.serverTime, Date.now()),
+    [props.snapshot.serverTime, game.turn.turnId],
+  );
+  const [localNow, setLocalNow] = useState(() => Date.now());
+  useEffect(() => {
+    setLocalNow(Date.now());
+    const intervalId = window.setInterval(() => {
+      setLocalNow(Date.now());
+    }, 1_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [serverClockOffset, game.turn.deadlineAt, game.turn.turnId]);
+  const countdown = calculateTurnCountdown(
+    game.turn.deadlineAt,
+    serverClockOffset,
+    localNow,
+  );
   const activePlayer = room.players.find(
     (player) => player.playerId === game.turn.activePlayerId,
   );
@@ -61,6 +93,15 @@ export function PlayingScreen(props: PlayingScreenProps) {
           <strong className="summary-value">
             {activePlayer?.nickname ?? "참가자 확인 중"}
           </strong>
+          <span
+            className={`turn-countdown${countdown.expired ? " expired" : ""}`}
+            role="timer"
+            aria-live="off"
+          >
+            {countdown.expired
+              ? "시간 종료 처리 중..."
+              : `남은 시간 ${countdown.remainingSeconds}초`}
+          </span>
         </article>
 
         <article className="summary-card">
@@ -119,8 +160,12 @@ export function PlayingScreen(props: PlayingScreenProps) {
         snapshot={props.snapshot}
         controller={props.turnDraft}
         submitPending={props.turnSubmitPending}
+        turnActionPending={props.turnActionPending}
         canSubmit={props.canSubmit}
+        canAct={props.canAct}
         onSubmit={props.onSubmitTurn}
+        onDraw={props.onDrawTurn}
+        onPass={props.onPassTurn}
       />
 
       <p className="live-region" aria-live="polite">

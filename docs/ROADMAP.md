@@ -438,7 +438,7 @@ Definition of Done:
 - 다른 Player rack, bag order, tilesById, storage revision, connection/token/idempotency 내부값은 Submit ack, advisory와 FINISHED projection에 노출하지 않는다. FINISHED 화면은 rack-empty winner와 Player별 score만 표시하고 rematch를 제공하지 않는다.
 - Phase 14 범위인 draw, no-draw turn end, timeout scheduler/penalty와 Submit-timeout 실제 경합은 추가하지 않았다.
 
-### Phase 14. Draw, no-draw turn end와 server timer
+### Phase 14. Draw, no-draw turn end와 server timer — COMPLETE
 
 목표: 확정된 turn 종료 행동과 deadline을 서버 authority로 실행한다.
 
@@ -465,6 +465,17 @@ Definition of Done:
 - Submit과 timeout이 경합해도 하나의 합법적 결과만 commit된다.
 - reconnect해도 client 표시가 server deadline으로 다시 보정된다.
 - timeout 결과가 확정된 GAME_RULES와 일치한다.
+
+구현 결과 (2026-09-03):
+
+- shared contract에 strict `turn:draw`, strict-empty `turn:pass`, `BAG_EMPTY`와 `PASS_NOT_ALLOWED`를 추가했다. 두 command는 requestId, expected gameRevision과 turnId만 concurrency authority로 받고 Draw는 bag kind만 추가로 받는다.
+- `TurnDrawService`와 `TurnPassService`는 current-primary actor, PLAYING/current Turn, handler-entry `receivedAt < deadlineAt`, revision과 bag 조건을 같은 Room mutation lane에서 검증한다. accepted state와 idempotency result를 한 UoW로 commit해 game/storage revision만 1씩 올리고 즉시 다음 Turn을 만든다.
+- internal `TurnTimeoutService`는 socket presence와 무관하게 current game/turn/revision/deadline 및 server Clock을 다시 확인한다. Board/meld를 보존한 채 canonical bags에서 최대 3 Tile penalty를 지급하고 한 번만 다음 Turn으로 진행하며 stale/duplicate callback은 no-op이다.
+- `game:start`, non-terminal Submit, Draw, Pass와 Timeout이 공유 next-Turn helper와 post-commit scheduler registration을 사용한다. rack-empty terminal Submit은 schedule하지 않는다. scheduler 등록은 bounded 2회 시도하고 실패해도 canonical success를 rollback하지 않는다.
+- Node timer 기반 `InProcessTurnScheduler`와 detached `ActiveTurnReader` 기반 1,000ms `OverdueTurnSweeper`를 composition root lifecycle에서 명시적으로 시작·종료한다. early/lost/duplicate timer와 shutdown race를 테스트하며 sweeper가 registration failure를 복구한다.
+- Socket.IO는 Draw/Pass handler entry에서 receivedAt을 캡처하고 binding에서 actor를 도출하며, timeout은 public client command 없이 내부에서만 실행한다. commit 뒤 Player별 snapshot과 advisory `turn:started`를 fan-out한다.
+- web은 active Player 전용 consonant/vowel Draw, both-empty Pass, dirty-draft 확인과 page-memory Submit/Draw/Pass 공용 single-flight를 제공한다. countdown은 snapshot serverTime offset과 deadlineAt으로만 표시하며 client에서 Turn을 변경하지 않는다.
+- Draw/Timeout 뒤 actor만 새 rack Tile 상세를 받고 다른 Player는 rack count만 본다. Phase 14는 25분 Game 종료, stalemate FINISHED, offline timeout streak/forfeit, Host succession과 cleanup을 구현하지 않았다.
 
 ### Phase 15. Disconnect, Host 이탈 policy, Room cleanup
 

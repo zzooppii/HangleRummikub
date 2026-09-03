@@ -25,7 +25,12 @@ import { FakeClock, FakeIdGenerator } from "../infrastructure/system.js";
 import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
 import type { PlayerPresenceReader } from "../ports/player-presence-reader.js";
 import type { RoomUnitOfWork } from "../ports/room-unit-of-work.js";
-import type { IdGenerator, RandomSource } from "../ports/system.js";
+import type {
+  IdGenerator,
+  RandomSource,
+  ScheduledTurnDeadline,
+  TurnScheduler,
+} from "../ports/system.js";
 
 function roomId(value: string): RoomId {
   return parse(RoomIdSchema, value);
@@ -63,6 +68,18 @@ class MutablePresenceReader implements PlayerPresenceReader {
   }
 }
 
+class RecordingTurnScheduler implements TurnScheduler {
+  readonly deadlines: ScheduledTurnDeadline[] = [];
+
+  async scheduleTimeout(deadline: ScheduledTurnDeadline): Promise<void> {
+    this.deadlines.push(deadline);
+  }
+
+  async cancelTimeout(): Promise<void> {
+    return;
+  }
+}
+
 type Harness = Readonly<{
   persistence: InMemoryPersistence;
   service: GameStartService;
@@ -77,6 +94,7 @@ type HarnessOptions = Readonly<{
   unitOfWork?: RoomUnitOfWork;
   idGenerator?: IdGenerator;
   randomSource?: RandomSource;
+  turnScheduler?: TurnScheduler;
 }>;
 
 async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
@@ -122,6 +140,9 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
     clock,
     idGenerator: options.idGenerator ?? new FakeIdGenerator(),
     randomSource: options.randomSource ?? new ZeroRandomSource(),
+    ...(options.turnScheduler === undefined
+      ? {}
+      : { turnScheduler: options.turnScheduler }),
   });
 
   return { persistence, service, presence, clock, room: created.room };
@@ -177,6 +198,24 @@ test("Host와 연결된 2명은 Game을 원자적으로 시작한다", async () 
   assert.equal(persisted.game.turn.startedAt, harness.clock.now());
   assert.equal(persisted.game.turn.deadlineAt, harness.clock.now() + 60_000);
   assert.equal(persisted.game.gameDeadlineAt, harness.clock.now() + 1_500_000);
+});
+
+test("game:start commit 후 first Turn을 scheduler에 등록한다", async () => {
+  const scheduler = new RecordingTurnScheduler();
+  const harness = await createHarness({ turnScheduler: scheduler });
+  const result = await harness.service.start(startInput(harness.room));
+  assert.equal(result.ok, true);
+  assert.equal(scheduler.deadlines.length, 1);
+  const scheduled = scheduler.deadlines[0];
+  const room = await harness.persistence.findById(harness.room.roomId);
+  assert.ok(scheduled && room?.game?.turn);
+  assert.deepEqual(scheduled, {
+    roomId: room.roomId,
+    gameId: room.game.gameId,
+    turnId: room.game.turn.turnId,
+    expectedGameRevision: room.game.gameRevision,
+    deadlineAt: room.game.turn.deadlineAt,
+  });
 });
 
 test("Game start authorization과 phase precondition을 안정적으로 거절한다", async (context) => {

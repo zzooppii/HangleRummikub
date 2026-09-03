@@ -74,6 +74,8 @@ export const PROTOCOL_ERROR_CODES = [
   "PLAYERS_NOT_CONNECTED",
   "NOT_YOUR_TURN",
   "TURN_EXPIRED",
+  "BAG_EMPTY",
+  "PASS_NOT_ALLOWED",
   "STALE_ROOM_REVISION",
   "STALE_GAME_REVISION",
   "REQUEST_ID_REUSED",
@@ -341,6 +343,33 @@ export const TurnSubmitCommandSchema = v.strictObject({
 });
 export type TurnSubmitCommand = v.InferOutput<typeof TurnSubmitCommandSchema>;
 
+export const TurnDrawBagKindSchema = v.picklist(["CONSONANT", "VOWEL"]);
+export type TurnDrawBagKind = v.InferOutput<
+  typeof TurnDrawBagKindSchema
+>;
+
+export const TurnDrawCommandSchema = v.strictObject({
+  kind: v.literal("turn:draw"),
+  protocolVersion: ProtocolVersionSchema,
+  requestId: RequestIdSchema,
+  expectedGameRevision: GameRevisionSchema,
+  turnId: TurnIdSchema,
+  payload: v.strictObject({
+    bagKind: TurnDrawBagKindSchema,
+  }),
+});
+export type TurnDrawCommand = v.InferOutput<typeof TurnDrawCommandSchema>;
+
+export const TurnPassCommandSchema = v.strictObject({
+  kind: v.literal("turn:pass"),
+  protocolVersion: ProtocolVersionSchema,
+  requestId: RequestIdSchema,
+  expectedGameRevision: GameRevisionSchema,
+  turnId: TurnIdSchema,
+  payload: v.strictObject({}),
+});
+export type TurnPassCommand = v.InferOutput<typeof TurnPassCommandSchema>;
+
 export const Phase2ClientCommandSchema = v.variant("kind", [
   SessionBootstrapCommandSchema,
   RoomCreateCommandSchema,
@@ -360,6 +389,8 @@ export const ClientCommandSchema = v.variant("kind", [
   StateSyncCommandSchema,
   GameStartCommandSchema,
   TurnSubmitCommandSchema,
+  TurnDrawCommandSchema,
+  TurnPassCommandSchema,
 ]);
 export type KnownClientCommand = v.InferOutput<typeof ClientCommandSchema>;
 

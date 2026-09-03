@@ -24,8 +24,17 @@ import type {
   RoomUnitOfWork,
   RoomUnitOfWorkResult,
 } from "../ports/room-unit-of-work.js";
-import type { Clock, IdGenerator, RandomSource } from "../ports/system.js";
+import type {
+  Clock,
+  IdGenerator,
+  RandomSource,
+  TurnScheduler,
+} from "../ports/system.js";
 import type { RoomMutationSerialExecutor } from "./room-session-service.js";
+import {
+  scheduleCurrentTurnBestEffort,
+  type TurnSchedulingFailureReporter,
+} from "./turn-transition.js";
 
 export const GAME_START_MIN_PLAYERS = 2;
 export const GAME_START_MAX_PLAYERS = 4;
@@ -68,6 +77,8 @@ export type GameStartServiceDependencies = Readonly<{
   clock: Clock;
   idGenerator: IdGenerator;
   randomSource: RandomSource;
+  turnScheduler?: TurnScheduler;
+  onTurnSchedulingFailure?: TurnSchedulingFailureReporter;
 }>;
 
 const ROOM_NOT_FOUND_ERROR: ErrorDto = Object.freeze({
@@ -160,6 +171,8 @@ export class GameStartService {
   readonly #clock: Clock;
   readonly #idGenerator: IdGenerator;
   readonly #randomSource: RandomSource;
+  readonly #turnScheduler: TurnScheduler | undefined;
+  readonly #onTurnSchedulingFailure: TurnSchedulingFailureReporter | undefined;
 
   constructor(dependencies: GameStartServiceDependencies) {
     this.#roomRepository = dependencies.roomRepository;
@@ -170,16 +183,34 @@ export class GameStartService {
     this.#clock = dependencies.clock;
     this.#idGenerator = dependencies.idGenerator;
     this.#randomSource = dependencies.randomSource;
+    this.#turnScheduler = dependencies.turnScheduler;
+    this.#onTurnSchedulingFailure = dependencies.onTurnSchedulingFailure;
   }
 
   async start(input: StartGameInput): Promise<GameStartResult> {
+    let result: GameStartResult;
     try {
-      return await this.#roomMutationExecutor.run(input.roomId, () =>
+      result = await this.#roomMutationExecutor.run(input.roomId, () =>
         this.#startWithinRoomBoundary(input),
       );
     } catch {
       return failed(INTERNAL_ERROR);
     }
+
+    if (result.ok) {
+      await scheduleCurrentTurnBestEffort(
+        this.#roomRepository,
+        this.#turnScheduler,
+        {
+          roomId: result.data.roomId,
+          gameId: result.data.gameId,
+          gameRevision: result.data.gameRevision,
+          turnId: result.data.turnId,
+        },
+        this.#onTurnSchedulingFailure,
+      );
+    }
+    return result;
   }
 
   async #startWithinRoomBoundary(
