@@ -2,9 +2,9 @@
 
 ## 1. 문서 상태
 
-- 문서 버전: `0.4-phase-8-hangul-composition`
+- 문서 버전: `0.5-phase-9-test-dictionary`
 - 대상: 첫 번째 playable MVP
-- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름과 Phase 7의 gameplay 규칙 gate에 이어, Phase 8의 server-only 순수 Hangul·Unicode composition module까지 구현되었다. Tile/GameState/RuleEngine, 게임 시작, gameplay transport/UI는 아직 없다.
+- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름과 Phase 7의 gameplay 규칙 gate에 이어, Phase 8의 server-only 순수 Hangul·Unicode composition module과 Phase 9의 versioned deterministic `TestDictionaryProvider`까지 구현되었다. Tile/GameState/RuleEngine, 게임 시작, gameplay transport/UI는 아직 없다.
 - 규칙 기준: 확정된 내용과 미확정 내용은 [GAME_RULES.md](./GAME_RULES.md)를 따른다.
 - 기술 구조 기준: [ARCHITECTURE.md](./ARCHITECTURE.md)를 따른다.
 
@@ -153,7 +153,7 @@
 | `FR-GAME-004` | canonical inventory는 GAME_RULES C-22의 `hangul-tile-inventory-v1`이다. ordinary consonant 94, ordinary vowel 60, bag별 Joker 1개씩 총 2개로 전체 156개이며 시작 rack은 각 bag에서 7회씩 draw한다. 해당 bag Joker는 7개 안에 포함한다. |
 | `FR-GAME-005` | Player가 보내는 gameplay mutation은 현재 턴 Player만 요청할 수 있다. 검증된 server timeout command는 별도 actor로 처리한다. |
 | `FR-GAME-006` | 턴은 server Clock 기준 60초다. `receivedAt < deadlineAt`만 시간 조건을 통과하며 클라이언트 카운트다운은 표시용이다. |
-| `FR-GAME-007` | 낱말 판정은 Game에 고정된 `dictionaryVersion`의 `DictionaryProvider`가 NFC 완성형 Hangul word를 검증한다. MVP provider는 deterministic test dictionary이며 장애 시 state 불변의 recoverable failure로 처리하고 deadline을 연장하지 않는다. |
+| `FR-GAME-007` | 낱말 판정은 Game에 고정된 `dictionaryVersion`의 `DictionaryProvider`가 NFC 완성형 Hangul word를 검증한다. MVP provider는 GAME_RULES C-16의 승인된 30단어 `test-dictionary-v1` fixture이며 장애 시 state 불변의 recoverable failure로 처리하고 deadline을 연장하지 않는다. |
 | `FR-GAME-008` | 서버만 rack-empty, 25분 cap, stalemate 또는 active non-forfeit Player 1명 종료를 판정하고 `FINISHED`, score와 ranking을 계산한다. |
 | `FR-GAME-009` | initial meld는 자신의 rack Tile만 최소 6개 사용하고 각 WordGroup이 최소 2음절이어야 한다. 완료 뒤 normal turn에서는 기존 Board를 재조합할 수 있지만 자신의 rack Tile을 최소 1개 사용하고 모든 기존 Tile을 보존해야 한다. |
 | `FR-GAME-010` | 일반 draw는 Player가 bag 종류만 선택하고 서버가 Tile 1개를 선택한다. timeout은 Board 불변 상태에서 최대 3개의 server-random penalty Tile을 지급한다. |
@@ -296,5 +296,5 @@ Exact physical definition과 `assignedSymbol` 정보는 기존 player-specific �
 - 동일 프로세스 안의 메모리 상태만 사용하므로 서버 restart 복구는 지원하지 않는다.
 - single replica만 지원한다. 공유 저장소 없이 replica를 늘리면 Room state와 connection routing이 갈라질 수 있다.
 - 테스트용 `DictionaryProvider`는 게임 메커니즘 검증용이며 실제 한국어 사전 완전성을 보장하지 않는다.
-- Phase 8 composer는 주어진 `assignedSymbol`과 syllable segmentation의 현대 한글 조합만 판정한다. Tile model, inventory/ownership/conservation validation, DictionaryProvider adapter, RuleEngine, GameState와 gameplay transport/UI는 아직 구현되지 않았다.
+- Phase 8 composer는 주어진 `assignedSymbol`과 syllable segmentation의 현대 한글 조합만 판정한다. Phase 9 provider는 NFC word의 고정 fixture membership만 판정한다. Tile model, inventory/ownership/conservation validation, RuleEngine, GameState와 gameplay transport/UI는 아직 구현되지 않았다.
 - production dictionary dataset/license, Lobby 비-Host leave, Room retention, 동일 낱말 중복, start 시 OFFLINE 참가자 조건과 운영 한도는 아직 미확정이다.

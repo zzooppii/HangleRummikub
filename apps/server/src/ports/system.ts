@@ -50,8 +50,19 @@ export interface SessionTokenIssuer {
   ): boolean;
 }
 
+export type DictionaryUnavailableReason = "ERROR" | "TIMEOUT";
+
+export type DictionaryLookupResult =
+  | Readonly<{ status: "ALLOWED" }>
+  | Readonly<{ status: "NOT_ALLOWED" }>
+  | Readonly<{
+      status: "UNAVAILABLE";
+      reason: DictionaryUnavailableReason;
+    }>;
+
 export interface DictionaryProvider {
-  isAllowedWord(normalizedWord: string): Promise<boolean>;
+  readonly dictionaryVersion: string;
+  lookup(word: string): Promise<DictionaryLookupResult>;
 }
 
 export type ScheduledTurnDeadline = Readonly<{

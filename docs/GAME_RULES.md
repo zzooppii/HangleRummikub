@@ -7,8 +7,10 @@
 - Phase 7A(MVP gameplay 규칙 확정): **완료**
 - Phase 7B(공식 Tile inventory와 symbol 표현 확정): **완료** (2026-09-03)
 - Roadmap Phase 7 전체: **완료**
+- Phase 8(순수 Hangul·Unicode 조합): **완료** (2026-09-03)
+- Phase 9(Test DictionaryProvider): **완료** (2026-09-03)
 
-공식 physical Tile inventory와 디지털 symbol 표현의 canonical 기준은 C-22와 C-23이다. Phase 7B는 문서 gate만 닫았으며 Tile, GameState, RulesConfig, Hangul composer의 TypeScript 구현은 아직 없다.
+공식 physical Tile inventory와 디지털 symbol 표현의 canonical 기준은 C-22와 C-23이다. Phase 8은 Hangul composer를 구현했고 Phase 9는 아래 승인된 fixture를 `test-dictionary-v1` adapter로 구현했다. Tile runtime model, GameState, RulesConfig와 Board RuleEngine은 아직 없다.
 
 규칙 문장에서 “해야 한다”, “허용한다”, “거절한다”는 서버 판정에 적용되는 규범적 표현이다. 예시는 규칙을 설명하지만 규범 문장을 대체하지 않는다.
 
@@ -463,6 +465,7 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 - **IMPLEMENTATION_INVARIANT:** 문서에서 쓰는 `ㄱ`, `ㅘ`, `ㄳ` 같은 Hangul Compatibility Jamo glyph를 단순 연결한 뒤 `String.prototype.normalize("NFC")`가 음절을 만들어 준다고 가정하지 않는다. Phase 8은 syllable role에 맞는 conjoining jamo 또는 동등한 명시적 조합 알고리즘을 사용한다.
 - **IMPLEMENTATION_INVARIANT:** `ㅘ = ㅗ + ㅏ`, `ㄳ = ㄱ + ㅅ` 표기는 physical Tile component expansion이다. Unicode canonical decomposition을 뜻하지 않는다.
 - **IMPLEMENTATION_INVARIANT:** browser 표시 문자열, client가 조합한 word 문자열 또는 단순 string concatenation을 규칙 결과로 신뢰하지 않는다.
+- **IMPLEMENTATION_INVARIANT:** `DictionaryProvider`는 word-level input에 NFC normalization만 적용한다. trim, whitespace·punctuation 제거, 자모 조합 또는 최소 음절 수 판정은 수행하지 않는다.
 
 ### 정상 예
 
@@ -482,9 +485,9 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 - client가 주장한 final word를 비교 기준으로 삼지 않고 서버가 placement와 segmentation으로 다시 계산한다.
 - provider 장애와 “단어 없음”을 구분하되 내부 예외를 client에 노출하지 않는다.
 
-### TEST_DICTIONARY_CANDIDATES
+### TEST_DICTIONARY_CANDIDATES — PHASE 9 FIXTURE APPROVED
 
-아래 목록은 Phase 9 개발 fixture 후보일 뿐 production 사전의 범위나 품질을 의미하지 않는다.
+아래 30개 단어는 Phase 9 deterministic test dictionary fixture로 승인되었다. version은 `test-dictionary-v1`이며, 이 목록은 production 사전의 범위나 품질을 의미하지 않는다. 이 절이 규범적 단어 목록이고 `apps/server/src/infrastructure/test-dictionary-provider.ts`의 readonly executable fixture가 이를 그대로 구현한다. 단어의 추가·삭제·변경에는 새 dictionaryVersion을 부여하며 기존 version을 재사용하지 않는다.
 
 - 명사: 가방, 가위, 개구리, 고구마, 고양이, 구름, 나무, 나비, 다람쥐, 달걀, 도토리, 바다, 바나나, 사과, 사자, 수박, 시계, 안경, 연필, 우산, 인형, 자동차, 장갑, 학교
 - 동사 기본형: 가다, 걷다, 달리다
@@ -796,6 +799,7 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 - **Phase 7B:** COMPLETE (2026-09-03)
 - **Phase 7 overall:** COMPLETE
 - **Phase 8 composition implementation:** COMPLETE (2026-09-03)
+- **Phase 9 test dictionary implementation:** COMPLETE (2026-09-03)
 
 공식 exact consonant/vowel inventory, 두 Joker의 physical bag handling, rotation family, physical identity와 assignedSymbol 분리, 쌍자음·복합모음·겹받침 표현, Joker one-position replacement, 초기 7/7 draw semantics, 전체 156개 합계와 Phase 8 input/output semantics를 모두 확정했다. Tile representation에 관한 Phase 7B 미확정 항목은 없다.
 
@@ -824,7 +828,7 @@ Phase 7A에서 공식 근거나 제품 정책이 충분하지 않아 남긴 항�
 - 실제 dataset/provider, license와 release/version 관리
 - 고유명사, 방언, 신조어, 옛말, 활용형과 띄어쓰기 표현의 exact inclusion
 - upstream data 변경 시 기존 dictionaryVersion 재현 방법
-- Phase 9에서는 test fixture/version만 구현하고 production provider를 승인하는 별도 작업 전에 확정한다.
+- Phase 9에서는 `test-dictionary-v1` fixture/adapter만 구현했다. production provider를 승인하는 별도 작업 전에 위 항목을 확정한다.
 
 ## TBC-D. Lobby의 비-Host explicit leave와 Room retention
 
@@ -870,6 +874,6 @@ Phase 7A에서 공식 근거나 제품 정책이 충분하지 않아 남긴 항�
 
 ## 다음 결정 절차
 
-1. Phase 7 gate는 완료되었다.
-2. 다음 작업은 Roadmap Phase 8의 순수 Hangul·Unicode 조합만 수행한다.
-3. Phase 8은 C-22/C-23을 구현 입력으로 사용하되 GameState, RuleEngine, transport나 UI를 선행 구현하지 않는다.
+1. Phase 7 gate와 Phase 8 Hangul composition, Phase 9 test dictionary 구현은 완료되었다.
+2. 다음 작업은 Roadmap Phase 10의 Board와 순수 RuleEngine만 수행한다.
+3. Phase 10은 composition과 `DictionaryProvider` 경계를 조합하되 GameState, game:start, gameplay transport나 UI를 선행 구현하지 않는다.

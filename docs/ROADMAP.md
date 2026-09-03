@@ -274,7 +274,7 @@ Definition of Done:
 - 이 구현은 `hangul-tile-inventory-v1`과 C-23의 고정된 composition semantics를 따른다. future rules version 선택은 caller가 명시적으로 분리해야 하며 같은 version을 의미 변경에 재사용하지 않는다.
 - physical type/allowed symbol, Game ownership·conservation, Joker Tile identity 및 one-position assignment 적합성, 최소 낱말 길이와 사전 판정은 후속 RuleEngine/Dictionary 단계의 책임으로 유지했다.
 
-### Phase 9. Test DictionaryProvider — READY
+### Phase 9. Test DictionaryProvider — COMPLETE
 
 목표: 외부 API 없이 versioned 테스트 단어 목록으로 deterministic한 낱말 판정을 제공한다.
 
@@ -292,6 +292,14 @@ Definition of Done:
 - core caller는 concrete test-list 구현이나 외부 API 세부사항에 의존하지 않는다.
 - provider failure가 확정된 policy의 구조화된 결과로 변환된다.
 - network call과 운영용 외부 사전 dependency를 추가하지 않았다.
+
+구현 결과 (2026-09-03):
+
+- server-only `DictionaryProvider`는 readonly `dictionaryVersion`과 async `lookup(word)`를 제공한다. 결과는 `ALLOWED`, `NOT_ALLOWED`, `UNAVAILABLE`이며 provider 장애는 `ERROR`와 `TIMEOUT`으로 구분한다.
+- GAME_RULES C-16의 30개 후보 전체를 변경 없이 `test-dictionary-v1` readonly fixture로 승인하고 `TestDictionaryProvider`에 구현했다.
+- lookup은 NFC normalization만 수행하며 trim, whitespace 제거, 자모 조합과 최소 2음절 규칙을 담당하지 않는다.
+- fixture integrity, 전체 허용 단어, fixture miss, NFC/NFD, no-trim, determinism, unavailable contract와 Phase 8 composer 경계를 unit test로 검증했다.
+- network, production dictionary, 새 dependency, shared DTO와 Phase 10 RuleEngine은 추가하지 않았다.
 
 ### Phase 10. Board와 순수 RuleEngine
 

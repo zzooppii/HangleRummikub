@@ -20,7 +20,7 @@
 
 ### 2.1 계획된 monorepo
 
-아래는 단계적으로 구현할 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. 나머지 디렉터리는 해당 Roadmap 단계에서 필요할 때 생성한다.
+아래는 단계적으로 구현할 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. Phase 9에서는 versioned deterministic test dictionary adapter를 infrastructure 경계에 추가했다. 나머지 디렉터리는 해당 Roadmap 단계에서 필요할 때 생성한다.
 
 ```text
 /
@@ -137,7 +137,7 @@ Domain API는 가능한 한 plain serializable data를 받고 새 state 또는 �
 | `SessionRepository` | token hash와 Player/Room binding, 만료 | process memory | Redis/PostgreSQL |
 | `IdempotencyRepository` | scope/request/fingerprint 분류와 caller-driven cleanup | process memory | Redis/PostgreSQL |
 | `RoomUnitOfWork` | command별로 관련 code/Room/Game/Player/session/idempotency/outbox record를 함께 바꾸는 원자 경계 | single in-memory critical section | Redis transaction/Lua 또는 PostgreSQL transaction |
-| `DictionaryProvider` | 정규화된 낱말 허용 여부 | 고정 테스트 단어 목록 | versioned 사전 데이터 또는 외부 adapter |
+| `DictionaryProvider` | NFC word lookup과 허용·미등록·provider 장애 구분 | immutable `test-dictionary-v1` 30단어 fixture | versioned 사전 데이터 또는 외부 adapter |
 | `Clock` | server time 제공 | system clock | fake clock in tests |
 | `RandomSource` | tile shuffle/draw의 무작위성 | server random adapter | seeded test random / 보안 요구에 맞는 adapter |
 | `IdGenerator` | room/player/game/turn/tile ID 생성 | process adapter | 동일 contract 유지 |
@@ -147,6 +147,8 @@ Domain API는 가능한 한 plain serializable data를 받고 새 state 또는 �
 | `RealtimePublisher` | player별 projection 전달 | Socket.IO | multi-node Socket.IO adapter |
 
 Port를 만든다는 이유만으로 Redis/PostgreSQL package를 MVP에 설치하지 않는다.
+
+`DictionaryProvider`는 readonly `dictionaryVersion`과 async `lookup(word)`를 제공한다. `DictionaryLookupResult`는 `ALLOWED`, `NOT_ALLOWED`, `UNAVAILABLE`의 discriminated union이며 `UNAVAILABLE`은 `ERROR`와 `TIMEOUT`을 구분한다. Phase 9의 `TestDictionaryProvider`는 lookup input을 NFC로만 normalize하고 trim이나 자모 조합을 하지 않으며, 정상적인 local lookup에서 `UNAVAILABLE`을 만들지 않는다. 이 server-only 결과를 shared transport error로 mapping하는 일은 실제 Submit pipeline 단계에 남긴다.
 
 ## 4. 식별자와 상태 모델
 
@@ -727,7 +729,7 @@ cache 크기와 TTL은 운영 정책으로 정하지만, active Room의 정상�
 - 이미 다음 turn으로 넘어간 오래된 timer는 no-op다.
 - client Submit과 timeout은 같은 Room mutation lane에서 순서화된다.
 - Socket listener는 server 수신 시각을 기록한다. `receivedAt >= deadlineAt`이면 expired이며 모든 code path에 같은 경계를 적용한다.
-- local test dictionary는 deterministic하게 동작한다.
+- local `TestDictionaryProvider`는 immutable `test-dictionary-v1` fixture로 deterministic하게 동작하며 NFC-equivalent lookup만 같은 key로 취급한다.
 - 향후 async external dictionary를 쓰면 live state를 수정한 채 await하지 않는다. validation 후 commit 직전에 `gameRevision`/turn을 재검사하거나 command serialization 전략을 유지한다.
 - dictionary unavailable/error는 recoverable `TEMPORARILY_UNAVAILABLE` 성격으로 실패시키고 canonical state를 바꾸지 않는다. lookup 때문에 turn deadline을 연장하지 않는다.
 - persistent repository를 도입한 뒤에는 process 시작과 scheduler lease takeover 시 active `deadlineAt`을 scan해 누락된 timeout job을 복원한다. 메모리 MVP는 process restart 후 Room 자체가 없으므로 복원 대상도 없다.
