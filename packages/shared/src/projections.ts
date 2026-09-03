@@ -194,6 +194,20 @@ export type PlayingPublicRoomView = v.InferOutput<
   typeof PlayingPublicRoomViewSchema
 >;
 
+export const FinishedPublicRoomViewSchema = v.strictObject({
+  roomId: RoomIdSchema,
+  roomCode: RoomCodeSchema,
+  phase: v.literal("FINISHED"),
+  players: v.pipe(
+    v.array(PlayingPublicPlayerViewSchema),
+    v.minLength(2),
+    v.maxLength(4),
+  ),
+});
+export type FinishedPublicRoomView = v.InferOutput<
+  typeof FinishedPublicRoomViewSchema
+>;
+
 const OrdinaryPublicBoardTilePlacementSchema = v.strictObject({
   tileId: TileIdSchema,
   kind: v.literal("ORDINARY"),
@@ -408,6 +422,84 @@ export const PublicGameViewSchema = v.pipe(
 );
 export type PublicGameView = v.InferOutput<typeof PublicGameViewSchema>;
 
+export const GameScoreSchema = v.pipe(
+  v.number(),
+  v.integer("A Game score must be an integer."),
+  v.safeInteger("A Game score must be a safe integer."),
+);
+export type GameScore = v.InferOutput<typeof GameScoreSchema>;
+
+export const PublicGameScoreEntrySchema = v.strictObject({
+  playerId: PlayerIdSchema,
+  score: GameScoreSchema,
+});
+export type PublicGameScoreEntry = v.InferOutput<
+  typeof PublicGameScoreEntrySchema
+>;
+
+const RackEmptyGameResultObjectSchema = v.strictObject({
+  reason: v.literal("RACK_EMPTY"),
+  winnerPlayerId: PlayerIdSchema,
+  scores: v.pipe(
+    v.array(PublicGameScoreEntrySchema),
+    v.minLength(2),
+    v.maxLength(4),
+  ),
+  finishedAt: ServerTimeSchema,
+});
+
+export const RackEmptyGameResultSchema = v.pipe(
+  RackEmptyGameResultObjectSchema,
+  v.check(
+    (result) =>
+      new Set(result.scores.map((entry) => entry.playerId)).size ===
+      result.scores.length,
+    "Game result scores must not contain duplicate players.",
+  ),
+  v.check(
+    (result) =>
+      result.scores.some((entry) => entry.playerId === result.winnerPlayerId),
+    "The rack-empty winner must have a score entry.",
+  ),
+);
+export type RackEmptyGameResult = v.InferOutput<
+  typeof RackEmptyGameResultSchema
+>;
+
+export const GameResultSchema = RackEmptyGameResultSchema;
+export type GameResult = v.InferOutput<typeof GameResultSchema>;
+
+const FinishedPublicGameViewObjectSchema = v.strictObject({
+  gameId: GameIdSchema,
+  board: PublicBoardViewSchema,
+  turnOrder: v.pipe(
+    v.array(PlayerIdSchema),
+    v.minLength(2),
+    v.maxLength(4),
+  ),
+  bagCounts: PublicBagCountsSchema,
+  result: GameResultSchema,
+});
+
+export const FinishedPublicGameViewSchema = v.pipe(
+  FinishedPublicGameViewObjectSchema,
+  v.check(
+    (game) => new Set(game.turnOrder).size === game.turnOrder.length,
+    "Turn order must not contain duplicate players.",
+  ),
+  v.check(
+    (game) =>
+      game.result.scores.length === game.turnOrder.length &&
+      game.result.scores.every(
+        (entry, index) => entry.playerId === game.turnOrder[index],
+      ),
+    "Game result scores must follow the complete turn order.",
+  ),
+);
+export type FinishedPublicGameView = v.InferOutput<
+  typeof FinishedPublicGameViewSchema
+>;
+
 export const OrdinaryPrivateRackTileViewSchema = v.strictObject({
   tileId: TileIdSchema,
   kind: v.literal("ORDINARY"),
@@ -467,6 +559,11 @@ export const PlayingStateVersionsSchema = v.strictObject({
 });
 export type PlayingStateVersions = v.InferOutput<
   typeof PlayingStateVersionsSchema
+>;
+
+export const FinishedStateVersionsSchema = PlayingStateVersionsSchema;
+export type FinishedStateVersions = v.InferOutput<
+  typeof FinishedStateVersionsSchema
 >;
 
 export const LobbyStateSnapshotSchema = v.strictObject({
@@ -535,8 +632,64 @@ export type PlayingStateSnapshot = v.InferOutput<
   typeof PlayingStateSnapshotSchema
 >;
 
+const FinishedStateSnapshotObjectSchema = v.strictObject({
+  protocolVersion: ProtocolVersionSchema,
+  versions: FinishedStateVersionsSchema,
+  serverTime: ServerTimeSchema,
+  room: FinishedPublicRoomViewSchema,
+  game: FinishedPublicGameViewSchema,
+  self: PlayingPrivatePlayerViewSchema,
+});
+
+export const FinishedStateSnapshotSchema = v.pipe(
+  FinishedStateSnapshotObjectSchema,
+  v.check((snapshot) => {
+    const roomPlayerIds = snapshot.room.players.map(
+      (player) => player.playerId,
+    );
+
+    return new Set(roomPlayerIds).size === roomPlayerIds.length;
+  }, "Room players must not contain duplicate players."),
+  v.check((snapshot) => {
+    const roomPlayerIds = new Set(
+      snapshot.room.players.map((player) => player.playerId),
+    );
+
+    return (
+      snapshot.game.turnOrder.length === roomPlayerIds.size &&
+      snapshot.game.turnOrder.every((playerId) => roomPlayerIds.has(playerId))
+    );
+  }, "Turn order must contain each Room player exactly once."),
+  v.check((snapshot) => {
+    const selfPublicView = snapshot.room.players.find(
+      (player) => player.playerId === snapshot.self.playerId,
+    );
+
+    return (
+      selfPublicView !== undefined &&
+      selfPublicView.rackCount === snapshot.self.rack.length
+    );
+  }, "The private rack must match the self public rack count."),
+  v.check(
+    (snapshot) =>
+      new Set(snapshot.self.rack.map((tile) => tile.tileId)).size ===
+      snapshot.self.rack.length,
+    "The private rack must not contain duplicate Tiles.",
+  ),
+  v.check((snapshot) => {
+    const publicBoardTileIds = new Set(boardTileIds(snapshot.game.board));
+    return snapshot.self.rack.every(
+      (tile) => !publicBoardTileIds.has(tile.tileId),
+    );
+  }, "A physical Tile cannot appear on both the Board and the private rack."),
+);
+export type FinishedStateSnapshot = v.InferOutput<
+  typeof FinishedStateSnapshotSchema
+>;
+
 export const StateSnapshotSchema = v.union([
   LobbyStateSnapshotSchema,
   PlayingStateSnapshotSchema,
+  FinishedStateSnapshotSchema,
 ]);
 export type StateSnapshot = v.InferOutput<typeof StateSnapshotSchema>;

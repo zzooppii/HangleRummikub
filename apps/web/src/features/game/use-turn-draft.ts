@@ -2,7 +2,7 @@ import type {
   PlayingStateSnapshot,
   TileId,
 } from "@hangul-rummikub/shared";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   addDraftSyllable,
@@ -90,8 +90,12 @@ export function useTurnDraft(
   snapshot: PlayingStateSnapshot,
   commandCapable: boolean,
   sessionReplaced: boolean,
+  authorityResetGeneration = 0,
 ): TurnDraftController {
   const currentCommandSession = commandCapable && !sessionReplaced;
+  const handledAuthorityResetGenerationRef = useRef(
+    authorityResetGeneration,
+  );
   const [state, setState] = useState<EditorState>(() =>
     initialEditorState(snapshot, currentCommandSession),
   );
@@ -102,6 +106,18 @@ export function useTurnDraft(
         return {
           draft: null,
           noticeMessage: null,
+          editErrorMessage: null,
+        };
+      }
+
+      if (
+        handledAuthorityResetGenerationRef.current !==
+        authorityResetGeneration
+      ) {
+        handledAuthorityResetGenerationRef.current = authorityResetGeneration;
+        return {
+          draft: createTurnDraft(snapshot, currentCommandSession),
+          noticeMessage: STALE_DRAFT_MESSAGE,
           editErrorMessage: null,
         };
       }
@@ -131,7 +147,12 @@ export function useTurnDraft(
         editErrorMessage: null,
       };
     });
-  }, [currentCommandSession, sessionReplaced, snapshot]);
+  }, [
+    authorityResetGeneration,
+    currentCommandSession,
+    sessionReplaced,
+    snapshot,
+  ]);
 
   const applyEdit = useCallback(
     (edit: (draft: TurnDraft) => TurnDraftEditResult): void => {

@@ -86,11 +86,22 @@ export class LobbyStateSnapshotProjector {
       });
     }
 
-    if (input.room.phase !== "PLAYING" || input.room.game === null) {
-      throw new Error("Only LOBBY and PLAYING Room snapshots are supported.");
+    if (input.room.game === null) {
+      throw new Error("A non-LOBBY Room must contain a GameState.");
     }
 
     const game = input.room.game;
+    if (
+      (input.room.phase === "PLAYING" &&
+        (game.turn === null || game.result !== null)) ||
+      (input.room.phase === "FINISHED" &&
+        (game.turn !== null || game.result === null))
+    ) {
+      throw new Error("Room phase and canonical GameState are inconsistent.");
+    }
+    if (input.room.phase !== "PLAYING" && input.room.phase !== "FINISHED") {
+      throw new Error("Unsupported Room phase for Game projection.");
+    }
     const rack = game.racks.get(input.selfPlayerId);
     if (rack === undefined) {
       throw new Error("Snapshot self Player has no canonical rack.");
@@ -171,7 +182,7 @@ export class LobbyStateSnapshotProjector {
       })),
     };
 
-    const snapshot = {
+    const commonSnapshot = {
       ...baseSnapshot,
       versions: {
         roomRevision: input.room.roomRevision,
@@ -181,14 +192,12 @@ export class LobbyStateSnapshotProjector {
       room: {
         roomId: input.room.roomId,
         roomCode: input.room.roomCode,
-        phase: "PLAYING",
         players: playingPlayers,
       },
       game: {
         gameId: game.gameId,
         board: publicBoard,
         turnOrder: game.turnOrder,
-        turn: game.turn,
         bagCounts: {
           consonant: game.consonantBag.length,
           vowel: game.vowelBag.length,
@@ -200,6 +209,42 @@ export class LobbyStateSnapshotProjector {
       },
     };
 
-    return v.parse(StateSnapshotSchema, snapshot);
+    if (input.room.phase === "PLAYING" && game.turn !== null) {
+      return v.parse(StateSnapshotSchema, {
+        ...commonSnapshot,
+        room: {
+          ...commonSnapshot.room,
+          phase: "PLAYING",
+        },
+        game: {
+          ...commonSnapshot.game,
+          turn: game.turn,
+        },
+      });
+    }
+
+    if (input.room.phase === "FINISHED" && game.result !== null) {
+      return v.parse(StateSnapshotSchema, {
+        ...commonSnapshot,
+        room: {
+          ...commonSnapshot.room,
+          phase: "FINISHED",
+        },
+        game: {
+          ...commonSnapshot.game,
+          result: {
+            reason: game.result.reason,
+            winnerPlayerId: game.result.winnerPlayerId,
+            scores: game.result.scores.map(({ playerId, score }) => ({
+              playerId,
+              score,
+            })),
+            finishedAt: game.result.finishedAt,
+          },
+        },
+      });
+    }
+
+    throw new Error("Room phase and canonical GameState are inconsistent.");
   }
 }

@@ -674,6 +674,45 @@ h3 {
   min-width: 150px;
 }
 
+.submit-turn-button {
+  margin-left: auto;
+}
+
+.finish-panel {
+  display: grid;
+  max-width: 680px;
+  gap: 18px;
+  margin: 0 auto;
+  border: 1px solid #d8d2c5;
+  border-radius: 22px;
+  padding: 28px;
+  background: #fff;
+  box-shadow: 0 18px 45px rgb(38 31 22 / 10%);
+}
+
+.finish-panel h2 {
+  margin: 0;
+}
+
+.score-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.score-list li {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: #f4f1e9;
+}
+
 .compact-button,
 .icon-button {
   border: 1px solid #c9ced2;
@@ -980,6 +1019,10 @@ button.game-tile:hover:not(:disabled) {
 
   .rack-return-button {
     width: 100%;
+  }
+
+  .submit-turn-button {
+    margin-left: 0;
   }
 
   .invitation-panel {

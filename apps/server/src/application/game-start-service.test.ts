@@ -168,6 +168,7 @@ test("Host와 연결된 2명은 Game을 원자적으로 시작한다", async () 
   assert.equal(persisted.roomRevision, harness.room.roomRevision + 1);
   assert.equal(persisted.storageRevision, harness.room.storageRevision + 1);
   assert.ok(persisted.game);
+  assert.ok(persisted.game.turn);
   assert.equal(persisted.game.gameRevision, 0);
   assert.equal(result.data.gameId, persisted.game.gameId);
   assert.equal(result.data.turnId, persisted.game.turn.turnId);

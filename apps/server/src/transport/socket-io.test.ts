@@ -2,13 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  GameRevisionSchema,
   NicknameSchema,
   PROTOCOL_VERSION,
   RequestIdSchema,
   RoomCodeSchema,
   RoomIdSchema,
+  RoomRevisionSchema,
   SessionTokenSchema,
+  validateGameFinishedEvent,
   validateGameStartAck,
+  validateFinishedStateSnapshot,
+  validatePlayingStateSnapshot,
   validateRoomCreateAck,
   validateRoomJoinAck,
   validateSessionBootstrapAck,
@@ -17,11 +22,15 @@ import {
   validateStateSnapshotEvent,
   validateStateSyncAck,
   validateTurnStartedEvent,
+  validateTurnSubmitAck,
   type ClientToServerEvents,
+  type FinishedStateSnapshot,
+  type GameFinishedEvent,
   type GameStartAck,
   type GameStartCommand,
   type Nickname,
   type PlayingStateSnapshot,
+  type PlayerId,
   type RequestId,
   type RoomCode,
   type RoomCreateAck,
@@ -40,7 +49,10 @@ import {
   type StateSnapshotEvent,
   type StateSyncAck,
   type StateSyncCommand,
+  type TileId,
   type TurnStartedEvent,
+  type TurnSubmitAck,
+  type TurnSubmitCommand,
 } from "@hangul-rummikub/shared";
 import {
   io as createSocketClient,
@@ -52,12 +64,22 @@ import { GameStartService } from "../application/game-start-service.js";
 import { LobbyStateSnapshotProjector } from "../application/lobby-state-snapshot-projector.js";
 import { RoomSessionApplicationService } from "../application/room-session-service.js";
 import { SessionResumeService } from "../application/session-resume-service.js";
+import { TurnSubmitService } from "../application/turn-submit-service.js";
 import type { ApplicationRuntime } from "../composition-root.js";
-import { JOKER_ALLOWED_SYMBOLS } from "../domain/game/tile-inventory.js";
+import type {
+  FinishedGameState,
+  PlayingGameState,
+} from "../domain/game/game-state.js";
+import {
+  JOKER_ALLOWED_SYMBOLS,
+  type OrdinaryTileInstance,
+} from "../domain/game/tile-inventory.js";
 import { ConnectionRegistry } from "../infrastructure/connection-registry.js";
 import { ConnectionRegistryPresenceReader } from "../infrastructure/connection-registry-presence-reader.js";
 import { InMemoryPersistence } from "../infrastructure/in-memory-persistence.js";
 import { KeyedSerialExecutor } from "../infrastructure/keyed-serial-executor.js";
+import { TestDictionaryProvider } from "../infrastructure/test-dictionary-provider.js";
+import type { RoomRecord } from "../model/persistence.js";
 import {
   FakeIdGenerator,
   NodeCryptoSessionTokenIssuer,
@@ -84,6 +106,10 @@ interface RawClientToServerEvents {
     command: unknown,
     acknowledge: (ack: GameStartAck) => void,
   ) => void;
+  "turn:submit": (
+    command: unknown,
+    acknowledge: (ack: TurnSubmitAck) => void,
+  ) => void;
 }
 
 type RawClient = SocketIoClient<ServerToClientEvents, RawClientToServerEvents>;
@@ -92,7 +118,8 @@ type SnapshotCommandAck =
   | RoomCreateAck
   | RoomJoinAck
   | SessionResumeAck
-  | StateSyncAck;
+  | StateSyncAck
+  | TurnSubmitAck;
 
 type ServerUnderTest = ReturnType<typeof createHttpServer>;
 
@@ -107,6 +134,7 @@ type ClientObserver = Readonly<{
   snapshots: StateSnapshotEvent[];
   replacements: SessionReplacedNotification[];
   turnStarts: TurnStartedEvent[];
+  gameFinishes: GameFinishedEvent[];
 }>;
 
 type HostedRoom = Readonly<{
@@ -269,6 +297,15 @@ function createDeterministicRuntime(): DeterministicRuntime {
     idGenerator,
     randomSource: new ZeroRandomSource(),
   });
+  const turnSubmitService = new TurnSubmitService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    clock,
+    idGenerator,
+    dictionaryProvider: new TestDictionaryProvider(),
+  });
   const snapshotProjector = new LobbyStateSnapshotProjector({
     clock,
     presenceReader,
@@ -283,6 +320,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
       roomSessionService,
       sessionResumeService,
       snapshotProjector,
+      turnSubmitService,
     },
     tokenIssuer,
     roomCodeGenerator,
@@ -443,6 +481,7 @@ function observeClient(
   const snapshots: StateSnapshotEvent[] = [];
   const replacements: SessionReplacedNotification[] = [];
   const turnStarts: TurnStartedEvent[] = [];
+  const gameFinishes: GameFinishedEvent[] = [];
 
   socket.on("state:snapshot", (event) => {
     snapshots.push(event);
@@ -456,8 +495,12 @@ function observeClient(
     turnStarts.push(event);
     networkPayloads.push(event);
   });
+  socket.on("game:finished", (event) => {
+    gameFinishes.push(event);
+    networkPayloads.push(event);
+  });
 
-  return { snapshots, replacements, turnStarts };
+  return { snapshots, replacements, turnStarts, gameFinishes };
 }
 
 function emitWithAck<TAck>(
@@ -532,6 +575,15 @@ function emitGameStart(
 ): Promise<GameStartAck> {
   return emitWithAck("game:start", (acknowledge) => {
     socket.emit("game:start", command, acknowledge);
+  });
+}
+
+function emitTurnSubmit(
+  socket: TypedClient,
+  command: TurnSubmitCommand,
+): Promise<TurnSubmitAck> {
+  return emitWithAck("turn:submit", (acknowledge) => {
+    socket.emit("turn:submit", command, acknowledge);
   });
 }
 
@@ -613,6 +665,15 @@ function waitForTurnStarted(
   );
 }
 
+function waitForGameFinished(
+  observer: ClientObserver,
+  predicate: (event: GameFinishedEvent) => boolean,
+): Promise<GameFinishedEvent> {
+  return waitForValue("matching game:finished event", () =>
+    takeMatching(observer.gameFinishes, predicate),
+  );
+}
+
 function requireBootstrapSuccess(ack: SessionBootstrapAck): SessionToken {
   assert.equal(validateSessionBootstrapAck(ack).ok, true);
   assert.equal(ack.ok, true);
@@ -636,12 +697,32 @@ function requireSnapshotSuccess(ack: SnapshotCommandAck): StateSnapshot {
 function requirePlayingSnapshot(
   snapshot: StateSnapshot,
 ): PlayingStateSnapshot {
-  assert.equal(snapshot.room.phase, "PLAYING");
-  assert.equal(snapshot.versions.gameRevision, 0);
-  if (!("game" in snapshot)) {
+  const validation = validatePlayingStateSnapshot(snapshot);
+  if (!validation.ok) {
     throw new Error("Expected a PLAYING StateSnapshot.");
   }
-  return snapshot;
+  assert.equal(validation.value.versions.gameRevision, 0);
+  return validation.value;
+}
+
+function requireAnyPlayingSnapshot(
+  snapshot: StateSnapshot,
+): PlayingStateSnapshot {
+  const validation = validatePlayingStateSnapshot(snapshot);
+  if (!validation.ok) {
+    throw new Error("Expected a PLAYING StateSnapshot.");
+  }
+  return validation.value;
+}
+
+function requireFinishedSnapshot(
+  snapshot: StateSnapshot,
+): FinishedStateSnapshot {
+  const validation = validateFinishedStateSnapshot(snapshot);
+  if (!validation.ok) {
+    throw new Error("Expected a FINISHED StateSnapshot.");
+  }
+  return validation.value;
 }
 
 function requireFailureCode(
@@ -714,6 +795,259 @@ async function joinHostedRoom(
   const snapshot = requireSnapshotSuccess(ack);
 
   return { socket, observer, sessionToken: token, snapshot };
+}
+
+type SeededSubmitFixture = Readonly<{
+  room: RoomRecord & Readonly<{ game: PlayingGameState }>;
+  proposedBoard: TurnSubmitCommand["payload"]["proposedBoard"];
+  usedTileIds: readonly TileId[];
+}>;
+
+type StartedTwoPlayerRoom = Readonly<{
+  host: HostedRoom;
+  guest: HostedRoom;
+  snapshot: PlayingStateSnapshot;
+}>;
+
+async function startTwoPlayerRoom(
+  harness: TestHarness,
+  hostName: string,
+  guestName: string,
+): Promise<StartedTwoPlayerRoom> {
+  const host = await createHostedRoom(harness, hostName);
+  const guest = await joinHostedRoom(harness, host, guestName);
+  const acknowledgement = await emitGameStart(host.socket, {
+    kind: "game:start",
+    protocolVersion: PROTOCOL_VERSION,
+    requestId: requestId(`${hostName}-start`),
+    expectedRoomRevision: guest.snapshot.versions.roomRevision,
+    payload: {},
+  });
+  const snapshot = requirePlayingSnapshot(
+    requireSnapshotSuccess(acknowledgement),
+  );
+  await Promise.all([
+    waitForSnapshot(
+      host.observer,
+      (event) => event.payload.snapshot.room.phase === "PLAYING",
+    ),
+    waitForSnapshot(
+      guest.observer,
+      (event) => event.payload.snapshot.room.phase === "PLAYING",
+    ),
+    waitForTurnStarted(
+      host.observer,
+      (event) => event.payload.gameId === snapshot.game.gameId,
+    ),
+    waitForTurnStarted(
+      guest.observer,
+      (event) => event.payload.gameId === snapshot.game.gameId,
+    ),
+  ]);
+
+  return { host, guest, snapshot };
+}
+
+function findOrdinaryTileForSymbol(
+  game: PlayingGameState,
+  assignedSymbol: string,
+  excluded: ReadonlySet<TileId>,
+): OrdinaryTileInstance {
+  const tile = [...game.tilesById.values()].find(
+    (candidate) =>
+      candidate.kind === "ORDINARY" &&
+      !excluded.has(candidate.tileId) &&
+      candidate.allowedSymbols.some((symbol) => symbol === assignedSymbol),
+  );
+  if (tile === undefined || tile.kind !== "ORDINARY") {
+    throw new Error(`Missing deterministic Tile for ${assignedSymbol}.`);
+  }
+  return tile;
+}
+
+/**
+ * Test-only canonical fixture injection. It relocates every physical Tile
+ * exactly once and does not add a production command or backdoor.
+ */
+async function seedDalgyalSubmitFixture(
+  persistence: InMemoryPersistence,
+  roomIdValue: RoomId,
+  actorPlayerId: PlayerId,
+  leaveOneRackTile: boolean,
+): Promise<SeededSubmitFixture> {
+  const room = await persistence.findById(roomIdValue);
+  if (
+    room === null ||
+    room.phase !== "PLAYING" ||
+    room.game === null ||
+    room.game.turn === null ||
+    room.game.result !== null
+  ) {
+    throw new Error("A canonical PLAYING Room is required for Submit setup.");
+  }
+  const game = room.game;
+  const used = new Set<TileId>();
+  const choose = (symbol: string): OrdinaryTileInstance => {
+    const tile = findOrdinaryTileForSymbol(game, symbol, used);
+    used.add(tile.tileId);
+    return tile;
+  };
+
+  const digeut = choose("ㄷ");
+  const firstA = choose("ㅏ");
+  const firstRieul = choose("ㄹ");
+  const giyeok = choose("ㄱ");
+  const ya = choose("ㅑ");
+  const secondRieul = choose("ㄹ");
+  const wordTiles = [
+    digeut,
+    firstA,
+    firstRieul,
+    giyeok,
+    ya,
+    secondRieul,
+  ] as const;
+
+  const extraTile = leaveOneRackTile
+    ? [...game.tilesById.values()].find((tile) => !used.has(tile.tileId))
+    : undefined;
+  if (leaveOneRackTile && extraTile === undefined) {
+    throw new Error("Missing deterministic extra rack Tile.");
+  }
+  if (extraTile !== undefined) {
+    used.add(extraTile.tileId);
+  }
+  const actorRack = Object.freeze([
+    ...wordTiles.map((tile) => tile.tileId),
+    ...(extraTile === undefined ? [] : [extraTile.tileId]),
+  ]);
+
+  const allocated = new Set<TileId>(actorRack);
+  const nextRacks = new Map<PlayerId, readonly TileId[]>([
+    [actorPlayerId, actorRack],
+  ]);
+  for (const playerIdValue of game.turnOrder) {
+    if (playerIdValue === actorPlayerId) {
+      continue;
+    }
+    const priorRack = game.racks.get(playerIdValue);
+    if (priorRack === undefined) {
+      throw new Error("Canonical Game is missing a Player rack.");
+    }
+    const nextRack = priorRack.filter((tileIdValue) => {
+      if (allocated.has(tileIdValue)) {
+        return false;
+      }
+      allocated.add(tileIdValue);
+      return true;
+    });
+    for (const tileIdValue of game.tilesById.keys()) {
+      if (nextRack.length >= priorRack.length) {
+        break;
+      }
+      if (!allocated.has(tileIdValue)) {
+        allocated.add(tileIdValue);
+        nextRack.push(tileIdValue);
+      }
+    }
+    nextRacks.set(playerIdValue, Object.freeze(nextRack));
+  }
+
+  const consonantBag: TileId[] = [];
+  const vowelBag: TileId[] = [];
+  for (const tile of game.tilesById.values()) {
+    if (allocated.has(tile.tileId)) {
+      continue;
+    }
+    (tile.sourceBag === "CONSONANT" ? consonantBag : vowelBag).push(
+      tile.tileId,
+    );
+  }
+
+  const seededGame: PlayingGameState = Object.freeze({
+    ...game,
+    consonantBag: Object.freeze(consonantBag),
+    vowelBag: Object.freeze(vowelBag),
+    racks: nextRacks,
+    result: null,
+  });
+  const replaced = await persistence.replace({
+    candidate: {
+      roomId: room.roomId,
+      roomCode: room.roomCode,
+      phase: "PLAYING",
+      hostPlayerId: room.hostPlayerId,
+      players: room.players,
+      game: seededGame,
+      roomRevision: room.roomRevision,
+      createdAt: room.createdAt,
+      updatedAt: room.updatedAt,
+    },
+    expectedRoomRevision: room.roomRevision,
+    expectedStorageRevision: room.storageRevision,
+  });
+  if (
+    replaced.status !== "REPLACED" ||
+    replaced.room.game === null ||
+    replaced.room.game.turn === null ||
+    replaced.room.game.result !== null
+  ) {
+    throw new Error("Failed to persist deterministic Submit fixture.");
+  }
+
+  return {
+    room: replaced.room as RoomRecord & Readonly<{ game: PlayingGameState }>,
+    usedTileIds: Object.freeze(wordTiles.map((tile) => tile.tileId)),
+    proposedBoard: {
+      wordGroups: [
+        {
+          groupId: "group-dalgyal",
+          syllables: [
+            {
+              choseong: [
+                {
+                  tileId: digeut.tileId,
+                  assignedSymbol: "ㄷ",
+                },
+              ],
+              jungseong: [
+                {
+                  tileId: firstA.tileId,
+                  assignedSymbol: "ㅏ",
+                },
+              ],
+              jongseong: [
+                {
+                  tileId: firstRieul.tileId,
+                  assignedSymbol: "ㄹ",
+                },
+              ],
+            },
+            {
+              choseong: [
+                {
+                  tileId: giyeok.tileId,
+                  assignedSymbol: "ㄱ",
+                },
+              ],
+              jungseong: [
+                {
+                  tileId: ya.tileId,
+                  assignedSymbol: "ㅑ",
+                },
+              ],
+              jongseong: [
+                {
+                  tileId: secondRieul.tileId,
+                  assignedSymbol: "ㄹ",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  };
 }
 
 function playerStatus(snapshot: StateSnapshot, playerId: string) {
@@ -1772,6 +2106,9 @@ test(
         assert.equal(committed.roomRevision, guest.snapshot.versions.roomRevision + 1);
         assert.equal(committed.storageRevision, 2);
         assert.ok(committed.game);
+        if (committed.game.turn === null) {
+          throw new Error("Committed game:start fixture must have a Turn.");
+        }
 
         const replayAck = await emitGameStart(host.socket, command);
         assert.equal(validateGameStartAck(replayAck).ok, true);
@@ -1909,6 +2246,636 @@ test(
         assert.equal(synced.game.gameId, guestStarted.game.gameId);
         assert.deepEqual(synced.game.turnOrder, guestStarted.game.turnOrder);
         assert.deepEqual(synced.self.rack, guestStarted.self.rack);
+      } finally {
+        await stopServer(harness);
+      }
+    });
+
+    await context.test("turn:submit malformed payload와 invalid Board는 canonical Game을 변경하지 않는다", async () => {
+      const deterministic = createDeterministicRuntime();
+      const harness = await startServer(deterministic.runtime);
+      try {
+        const { host, guest, snapshot } = await startTwoPlayerRoom(
+          harness,
+          "InvalidHost",
+          "InvalidGuest",
+        );
+        const actor =
+          snapshot.game.turn.activePlayerId === host.snapshot.self.playerId
+            ? host
+            : guest;
+        const before = await deterministic.runtime.persistence.findById(
+          snapshot.room.roomId,
+        );
+        assert.ok(before);
+
+        const rawSocket = await connectRawClient(harness);
+        const malformedAck = await emitWithAck<TurnSubmitAck>(
+          "malformed turn:submit",
+          (acknowledge) => {
+            rawSocket.emit(
+              "turn:submit",
+              {
+                kind: "turn:submit",
+                protocolVersion: PROTOCOL_VERSION,
+                requestId: "malformed-submit",
+                expectedGameRevision: snapshot.versions.gameRevision,
+                turnId: snapshot.game.turn.turnId,
+                payload: { proposedBoard: { wordGroups: "not-an-array" } },
+              },
+              acknowledge,
+            );
+          },
+        );
+        assert.equal(validateTurnSubmitAck(malformedAck).ok, true);
+        requireFailureCode(malformedAck, "INVALID_PAYLOAD");
+
+        const clientAuthorityAck = await emitWithAck<TurnSubmitAck>(
+          "client-authority turn:submit",
+          (acknowledge) => {
+            rawSocket.emit(
+              "turn:submit",
+              {
+                kind: "turn:submit",
+                protocolVersion: PROTOCOL_VERSION,
+                requestId: "client-authority-submit",
+                expectedGameRevision: snapshot.versions.gameRevision,
+                turnId: snapshot.game.turn.turnId,
+                payload: {
+                  proposedBoard: {
+                    wordGroups: [
+                      {
+                        groupId: "client-authority-group",
+                        syllables: [
+                          {
+                            choseong: [
+                              {
+                                tileId: "client-authority-c",
+                                assignedSymbol: "ㄱ",
+                                physicalType: "GIYEOK_NIEUN_ROTATION",
+                                ownerPlayerId: "player-spoofed",
+                              },
+                            ],
+                            jungseong: [
+                              {
+                                tileId: "client-authority-v",
+                                assignedSymbol: "ㅏ",
+                              },
+                            ],
+                            jongseong: [],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                },
+              },
+              acknowledge,
+            );
+          },
+        );
+        assert.equal(validateTurnSubmitAck(clientAuthorityAck).ok, true);
+        requireFailureCode(clientAuthorityAck, "INVALID_PAYLOAD");
+
+        const invalidAck = await emitTurnSubmit(actor.socket, {
+          kind: "turn:submit",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("invalid-empty-board-submit"),
+          expectedGameRevision: snapshot.versions.gameRevision,
+          turnId: snapshot.game.turn.turnId,
+          payload: { proposedBoard: { wordGroups: [] } },
+        });
+        assert.equal(validateTurnSubmitAck(invalidAck).ok, true);
+        requireFailureCode(invalidAck, "RULE_VIOLATION");
+        assert.equal(invalidAck.scope, "ROOM");
+        if (invalidAck.scope !== "ROOM") {
+          throw new Error("Expected an authenticated Submit rule rejection.");
+        }
+        assert.deepEqual(invalidAck.versions, snapshot.versions);
+
+        assert.deepEqual(
+          await deterministic.runtime.persistence.findById(
+            snapshot.room.roomId,
+          ),
+          before,
+        );
+        assert.equal(
+          actor.observer.snapshots.some(
+            (event) => event.versions.gameRevision === 1,
+          ),
+          false,
+        );
+      } finally {
+        await stopServer(harness);
+      }
+    });
+
+    await context.test("accepted turn:submit은 개인별 snapshot, next turn, idempotent replay와 resume을 제공한다", async () => {
+      const deterministic = createDeterministicRuntime();
+      const harness = await startServer(deterministic.runtime);
+      try {
+        const { host, guest, snapshot } = await startTwoPlayerRoom(
+          harness,
+          "SubmitHost",
+          "SubmitGuest",
+        );
+        const actor =
+          snapshot.game.turn.activePlayerId === host.snapshot.self.playerId
+            ? host
+            : guest;
+        const other = actor === host ? guest : host;
+        const fixture = await seedDalgyalSubmitFixture(
+          deterministic.runtime.persistence,
+          snapshot.room.roomId,
+          actor.snapshot.self.playerId,
+          true,
+        );
+        const command: TurnSubmitCommand = {
+          kind: "turn:submit",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("accepted-turn-submit"),
+          expectedGameRevision: fixture.room.game.gameRevision,
+          turnId: fixture.room.game.turn.turnId,
+          payload: { proposedBoard: fixture.proposedBoard },
+        };
+
+        const acknowledgement = await emitTurnSubmit(actor.socket, command);
+        assert.equal(validateTurnSubmitAck(acknowledgement).ok, true);
+        harness.networkPayloads.push(acknowledgement);
+        const submitted = requireAnyPlayingSnapshot(
+          requireSnapshotSuccess(acknowledgement),
+        );
+        assert.equal(submitted.versions.gameRevision, 1);
+        assert.equal(
+          submitted.versions.roomRevision,
+          fixture.room.roomRevision,
+        );
+        assert.equal(submitted.game.board.wordGroups.length, 1);
+        assert.equal(submitted.self.rack.length, 1);
+        assert.notEqual(
+          submitted.game.turn.activePlayerId,
+          actor.snapshot.self.playerId,
+        );
+        assert.equal(
+          submitted.game.turn.deadlineAt - submitted.game.turn.startedAt,
+          60_000,
+        );
+
+        const [actorEvent, otherEvent, actorTurn, otherTurn] =
+          await Promise.all([
+            waitForSnapshot(
+              actor.observer,
+              (event) => event.versions.gameRevision === 1,
+            ),
+            waitForSnapshot(
+              other.observer,
+              (event) => event.versions.gameRevision === 1,
+            ),
+            waitForTurnStarted(
+              actor.observer,
+              (event) => event.versions.gameRevision === 1,
+            ),
+            waitForTurnStarted(
+              other.observer,
+              (event) => event.versions.gameRevision === 1,
+            ),
+          ]);
+        assert.equal(validateStateSnapshotEvent(actorEvent).ok, true);
+        assert.equal(validateStateSnapshotEvent(otherEvent).ok, true);
+        assert.equal(validateTurnStartedEvent(actorTurn).ok, true);
+        assert.equal(validateTurnStartedEvent(otherTurn).ok, true);
+        const actorView = requireAnyPlayingSnapshot(
+          actorEvent.payload.snapshot,
+        );
+        const otherView = requireAnyPlayingSnapshot(
+          otherEvent.payload.snapshot,
+        );
+        assert.deepEqual(actorView.game, otherView.game);
+        assert.equal(actorView.self.rack.length, 1);
+        assert.equal(otherView.self.rack.length, 14);
+        const privateActorTile = actorView.self.rack[0];
+        assert.ok(privateActorTile);
+        assert.equal(
+          new Set(collectStringValues(otherView)).has(privateActorTile.tileId),
+          false,
+        );
+
+        const persistedAfterFirst =
+          await deterministic.runtime.persistence.findById(
+            snapshot.room.roomId,
+          );
+        assert.ok(persistedAfterFirst?.game);
+        assert.equal(persistedAfterFirst.storageRevision, 4);
+        assert.equal(persistedAfterFirst.game.gameRevision, 1);
+
+        const replay = await emitTurnSubmit(actor.socket, command);
+        assert.equal(validateTurnSubmitAck(replay).ok, true);
+        const replayed = requireAnyPlayingSnapshot(
+          requireSnapshotSuccess(replay),
+        );
+        assert.equal(replayed.game.turn.turnId, submitted.game.turn.turnId);
+        assert.deepEqual(replayed.self.rack, submitted.self.rack);
+        assert.deepEqual(
+          await deterministic.runtime.persistence.findById(
+            snapshot.room.roomId,
+          ),
+          persistedAfterFirst,
+        );
+
+        const conflict = await emitTurnSubmit(actor.socket, {
+          ...command,
+          payload: {
+            proposedBoard: {
+              wordGroups: command.payload.proposedBoard.wordGroups.map(
+                (group) => ({ ...group, groupId: `${group.groupId}-changed` }),
+              ),
+            },
+          },
+        });
+        assert.equal(validateTurnSubmitAck(conflict).ok, true);
+        requireFailureCode(conflict, "REQUEST_ID_REUSED");
+
+        actor.socket.disconnect();
+        await waitForSnapshot(
+          other.observer,
+          (event) =>
+            event.versions.gameRevision === 1 &&
+            playerStatus(
+              event.payload.snapshot,
+              actor.snapshot.self.playerId,
+            ) === "OFFLINE",
+        );
+        const resumedSocket = await connectTypedClient(harness);
+        const resumedObserver = observeClient(
+          resumedSocket,
+          harness.networkPayloads,
+        );
+        const resumeAck = await emitResume(resumedSocket, {
+          kind: "session:resume",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("resume-after-turn-submit"),
+          payload: {
+            credential: {
+              roomCode: snapshot.room.roomCode,
+              sessionToken: actor.sessionToken,
+            },
+            lastSeenVersions: submitted.versions,
+          },
+        });
+        const resumed = requireAnyPlayingSnapshot(
+          requireSnapshotSuccess(resumeAck),
+        );
+        assert.equal(resumed.versions.gameRevision, 1);
+        assert.deepEqual(resumed.game.board, submitted.game.board);
+        assert.deepEqual(resumed.self.rack, submitted.self.rack);
+        await waitForSnapshot(
+          resumedObserver,
+          (event) => event.versions.gameRevision === 1,
+        );
+
+        assertNoNetworkSecrets(harness.networkPayloads, [
+          host.sessionToken,
+          guest.sessionToken,
+        ]);
+        for (const payload of harness.networkPayloads) {
+          const keys = new Set(collectObjectKeys(payload));
+          for (const forbiddenKey of [
+            "consonantBag",
+            "idempotency",
+            "racks",
+            "rulesConfig",
+            "tilesById",
+            "vowelBag",
+          ]) {
+            assert.equal(keys.has(forbiddenKey), false, forbiddenKey);
+          }
+        }
+      } finally {
+        await stopServer(harness);
+      }
+    });
+
+    await context.test("ADVANCED request replay는 이후 FINISHED가 된 Room의 최신 snapshot으로 복구한다", async () => {
+      const deterministic = createDeterministicRuntime();
+      const harness = await startServer(deterministic.runtime);
+      try {
+        const { host, guest, snapshot } = await startTwoPlayerRoom(
+          harness,
+          "ReplayHost",
+          "ReplayGuest",
+        );
+        const actor =
+          snapshot.game.turn.activePlayerId === host.snapshot.self.playerId
+            ? host
+            : guest;
+        const fixture = await seedDalgyalSubmitFixture(
+          deterministic.runtime.persistence,
+          snapshot.room.roomId,
+          actor.snapshot.self.playerId,
+          true,
+        );
+        const command: TurnSubmitCommand = {
+          kind: "turn:submit",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("advanced-before-finish"),
+          expectedGameRevision: fixture.room.game.gameRevision,
+          turnId: fixture.room.game.turn.turnId,
+          payload: { proposedBoard: fixture.proposedBoard },
+        };
+        const advanced = requireAnyPlayingSnapshot(
+          requireSnapshotSuccess(await emitTurnSubmit(actor.socket, command)),
+        );
+
+        const room = await deterministic.runtime.persistence.findById(
+          snapshot.room.roomId,
+        );
+        if (
+          room === null ||
+          room.phase !== "PLAYING" ||
+          room.game === null ||
+          room.game.turn === null ||
+          room.game.result !== null
+        ) {
+          throw new Error("Expected the accepted Submit to leave a PLAYING Game.");
+        }
+        const game = room.game;
+        const winnerPlayerId = game.turn.activePlayerId;
+        const winnerRack = game.racks.get(winnerPlayerId);
+        if (winnerRack === undefined) {
+          throw new Error("Expected the next active Player rack.");
+        }
+        const consonantBag = [...game.consonantBag];
+        const vowelBag = [...game.vowelBag];
+        for (const tileIdValue of winnerRack) {
+          const tile = game.tilesById.get(tileIdValue);
+          if (tile === undefined) {
+            throw new Error("Expected a canonical rack Tile.");
+          }
+          (tile.sourceBag === "CONSONANT" ? consonantBag : vowelBag).push(
+            tileIdValue,
+          );
+        }
+        const racks = new Map(
+          [...game.racks].map(([playerIdValue, rack]) => [
+            playerIdValue,
+            playerIdValue === winnerPlayerId ? Object.freeze([]) : rack,
+          ] as const),
+        );
+        const penaltyByPlayer = new Map<PlayerId, number>();
+        let winnerScore = 0;
+        for (const playerIdValue of game.turnOrder) {
+          if (playerIdValue === winnerPlayerId) {
+            continue;
+          }
+          const rack = racks.get(playerIdValue);
+          if (rack === undefined) {
+            throw new Error("Expected every turn-order Player rack.");
+          }
+          const penalty = rack.reduce((total, tileIdValue) => {
+            const tile = game.tilesById.get(tileIdValue);
+            if (tile === undefined) {
+              throw new Error("Expected a canonical score Tile.");
+            }
+            return total + (tile.kind === "JOKER" ? 30 : 1);
+          }, 0);
+          penaltyByPlayer.set(playerIdValue, penalty);
+          winnerScore += penalty;
+        }
+        const finishedAt = game.turn.startedAt;
+        const finishedGame: FinishedGameState = Object.freeze({
+          ...game,
+          gameRevision: parse(GameRevisionSchema, game.gameRevision + 1),
+          consonantBag: Object.freeze(consonantBag),
+          vowelBag: Object.freeze(vowelBag),
+          racks,
+          turn: null,
+          result: Object.freeze({
+            reason: "RACK_EMPTY",
+            winnerPlayerId,
+            scores: Object.freeze(
+              game.turnOrder.map((playerIdValue) => {
+                const rack = racks.get(playerIdValue);
+                if (rack === undefined) {
+                  throw new Error("Expected every result Player rack.");
+                }
+                return Object.freeze({
+                  playerId: playerIdValue,
+                  score:
+                    playerIdValue === winnerPlayerId
+                      ? winnerScore
+                      : -(penaltyByPlayer.get(playerIdValue) ?? 0),
+                  remainingRackTileCount: rack.length,
+                });
+              }),
+            ),
+            finishedAt,
+          }),
+        });
+        const replacement = await deterministic.runtime.persistence.replace({
+          candidate: {
+            roomId: room.roomId,
+            roomCode: room.roomCode,
+            phase: "FINISHED",
+            hostPlayerId: room.hostPlayerId,
+            players: room.players,
+            game: finishedGame,
+            roomRevision: parse(RoomRevisionSchema, room.roomRevision + 1),
+            createdAt: room.createdAt,
+            updatedAt: finishedAt,
+          },
+          expectedRoomRevision: room.roomRevision,
+          expectedStorageRevision: room.storageRevision,
+        });
+        assert.equal(replacement.status, "REPLACED");
+        if (replacement.status !== "REPLACED") {
+          throw new Error("Expected test-only FINISHED state replacement.");
+        }
+
+        const replay = requireFinishedSnapshot(
+          requireSnapshotSuccess(await emitTurnSubmit(actor.socket, command)),
+        );
+        assert.equal(
+          replay.versions.gameRevision,
+          finishedGame.gameRevision,
+        );
+        assert.equal(replay.room.phase, "FINISHED");
+        assert.notEqual(replay.versions.gameRevision, advanced.versions.gameRevision);
+        assert.deepEqual(
+          await deterministic.runtime.persistence.findById(room.roomId),
+          replacement.room,
+        );
+      } finally {
+        await stopServer(harness);
+      }
+    });
+
+    await context.test("turn:submit post-commit delivery 실패는 replay와 state:sync로 복구한다", async () => {
+      const deterministic = createDeterministicRuntime();
+      const harness = await startServer(deterministic.runtime);
+      try {
+        const { host, guest, snapshot } = await startTwoPlayerRoom(
+          harness,
+          "RetryHost",
+          "RetryGuest",
+        );
+        const actor =
+          snapshot.game.turn.activePlayerId === host.snapshot.self.playerId
+            ? host
+            : guest;
+        const fixture = await seedDalgyalSubmitFixture(
+          deterministic.runtime.persistence,
+          snapshot.room.roomId,
+          actor.snapshot.self.playerId,
+          true,
+        );
+        const command: TurnSubmitCommand = {
+          kind: "turn:submit",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("delivery-failure-submit"),
+          expectedGameRevision: fixture.room.game.gameRevision,
+          turnId: fixture.room.game.turn.turnId,
+          payload: { proposedBoard: fixture.proposedBoard },
+        };
+        let firstAcknowledgement: TurnSubmitAck | null = null;
+        deterministic.presenceReader.failAfterSuccessfulReads(1);
+        actor.socket.emit("turn:submit", command, (acknowledgement) => {
+          firstAcknowledgement = acknowledgement;
+        });
+
+        const committed = await waitForAsyncValue(
+          "committed Submit after delivery failure",
+          async () => {
+            const room = await deterministic.runtime.persistence.findById(
+              snapshot.room.roomId,
+            );
+            return room?.game?.gameRevision === 1 ? room : null;
+          },
+        );
+        assert.equal(firstAcknowledgement, null);
+        assert.equal(committed.storageRevision, 4);
+
+        const replay = await emitTurnSubmit(actor.socket, command);
+        const replayed = requireAnyPlayingSnapshot(
+          requireSnapshotSuccess(replay),
+        );
+        assert.equal(replayed.versions.gameRevision, 1);
+        const sync = requireAnyPlayingSnapshot(
+          requireSnapshotSuccess(
+            await emitStateSync(
+              actor.socket,
+              stateSyncCommand("sync-after-submit-delivery-failure"),
+            ),
+          ),
+        );
+        assert.deepEqual(sync.game.board, replayed.game.board);
+        assert.deepEqual(sync.self.rack, replayed.self.rack);
+        assert.deepEqual(
+          await deterministic.runtime.persistence.findById(
+            snapshot.room.roomId,
+          ),
+          committed,
+        );
+      } finally {
+        await stopServer(harness);
+      }
+    });
+
+    await context.test("마지막 rack Tile Submit은 FINISHED snapshot과 game:finished를 전송한다", async () => {
+      const deterministic = createDeterministicRuntime();
+      const harness = await startServer(deterministic.runtime);
+      try {
+        const { host, guest, snapshot } = await startTwoPlayerRoom(
+          harness,
+          "FinishHost",
+          "FinishGuest",
+        );
+        const actor =
+          snapshot.game.turn.activePlayerId === host.snapshot.self.playerId
+            ? host
+            : guest;
+        const other = actor === host ? guest : host;
+        const fixture = await seedDalgyalSubmitFixture(
+          deterministic.runtime.persistence,
+          snapshot.room.roomId,
+          actor.snapshot.self.playerId,
+          false,
+        );
+        const command: TurnSubmitCommand = {
+          kind: "turn:submit",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("rack-empty-submit"),
+          expectedGameRevision: fixture.room.game.gameRevision,
+          turnId: fixture.room.game.turn.turnId,
+          payload: { proposedBoard: fixture.proposedBoard },
+        };
+
+        const acknowledgement = await emitTurnSubmit(actor.socket, command);
+        assert.equal(validateTurnSubmitAck(acknowledgement).ok, true);
+        harness.networkPayloads.push(acknowledgement);
+        const finished = requireFinishedSnapshot(
+          requireSnapshotSuccess(acknowledgement),
+        );
+        assert.equal(finished.versions.gameRevision, 1);
+        assert.equal(
+          finished.versions.roomRevision,
+          fixture.room.roomRevision + 1,
+        );
+        assert.equal(finished.self.rack.length, 0);
+        assert.equal(finished.game.result.reason, "RACK_EMPTY");
+        assert.equal(
+          finished.game.result.winnerPlayerId,
+          actor.snapshot.self.playerId,
+        );
+        assert.equal("turn" in finished.game, false);
+
+        const [actorEvent, otherEvent, actorFinished, otherFinished] =
+          await Promise.all([
+            waitForSnapshot(
+              actor.observer,
+              (event) => event.payload.snapshot.room.phase === "FINISHED",
+            ),
+            waitForSnapshot(
+              other.observer,
+              (event) => event.payload.snapshot.room.phase === "FINISHED",
+            ),
+            waitForGameFinished(
+              actor.observer,
+              (event) => event.payload.gameRevision === 1,
+            ),
+            waitForGameFinished(
+              other.observer,
+              (event) => event.payload.gameRevision === 1,
+            ),
+          ]);
+        assert.equal(validateStateSnapshotEvent(actorEvent).ok, true);
+        assert.equal(validateStateSnapshotEvent(otherEvent).ok, true);
+        assert.equal(validateGameFinishedEvent(actorFinished).ok, true);
+        assert.equal(validateGameFinishedEvent(otherFinished).ok, true);
+        const otherView = requireFinishedSnapshot(otherEvent.payload.snapshot);
+        assert.deepEqual(otherView.game, finished.game);
+        assert.equal(otherView.self.rack.length, 14);
+
+        const persisted = await deterministic.runtime.persistence.findById(
+          snapshot.room.roomId,
+        );
+        assert.equal(persisted?.phase, "FINISHED");
+        assert.equal(persisted?.storageRevision, 4);
+        assert.equal(persisted?.game?.turn, null);
+        assert.equal(persisted?.game?.result?.reason, "RACK_EMPTY");
+
+        const sync = requireFinishedSnapshot(
+          requireSnapshotSuccess(
+            await emitStateSync(
+              actor.socket,
+              stateSyncCommand("sync-finished-game"),
+            ),
+          ),
+        );
+        assert.deepEqual(sync.game.result, finished.game.result);
+        assertNoNetworkSecrets(harness.networkPayloads, [
+          host.sessionToken,
+          guest.sessionToken,
+        ]);
       } finally {
         await stopServer(harness);
       }

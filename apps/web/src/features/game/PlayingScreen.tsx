@@ -2,6 +2,7 @@ import type { PlayingStateSnapshot } from "@hangul-rummikub/shared";
 
 import { TurnDraftEditor } from "./TurnDraftEditor.js";
 import type { TurnDraftController } from "./use-turn-draft.js";
+import type { TurnDraft } from "../../lib/turn-draft.js";
 
 export type PlayingScreenProps = Readonly<{
   snapshot: PlayingStateSnapshot;
@@ -10,6 +11,9 @@ export type PlayingScreenProps = Readonly<{
   errorMessage: string | null;
   sessionReplaced: boolean;
   turnDraft: TurnDraftController;
+  turnSubmitPending: boolean;
+  canSubmit: boolean;
+  onSubmitTurn: (draft: TurnDraft) => void;
   onGoHome: () => void;
 }>;
 
@@ -111,7 +115,13 @@ export function PlayingScreen(props: PlayingScreenProps) {
         ))}
       </section>
 
-      <TurnDraftEditor snapshot={props.snapshot} controller={props.turnDraft} />
+      <TurnDraftEditor
+        snapshot={props.snapshot}
+        controller={props.turnDraft}
+        submitPending={props.turnSubmitPending}
+        canSubmit={props.canSubmit}
+        onSubmit={props.onSubmitTurn}
+      />
 
       <p className="live-region" aria-live="polite">
         {props.turnDraft.noticeMessage ??

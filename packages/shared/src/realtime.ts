@@ -6,6 +6,8 @@ import {
   TurnIdSchema,
 } from "./identifiers.js";
 import {
+  FinishedStateSnapshotSchema,
+  FinishedStateVersionsSchema,
   PlayingStateSnapshotSchema,
   PlayingStateVersionsSchema,
   StateSnapshotSchema,
@@ -28,6 +30,7 @@ import type {
   SessionBootstrapCommand,
   SessionResumeCommand,
   StateSyncCommand,
+  TurnSubmitCommand,
 } from "./protocol.js";
 
 export const UncorrelatedFailureAckSchema = v.strictObject({
@@ -94,6 +97,23 @@ export const GameStartAckSchema = v.union([
 ]);
 export type GameStartAck = v.InferOutput<typeof GameStartAckSchema>;
 
+export const TurnSubmitAckDataSchema = v.strictObject({
+  snapshot: v.union([
+    PlayingStateSnapshotSchema,
+    FinishedStateSnapshotSchema,
+  ]),
+});
+export type TurnSubmitAckData = v.InferOutput<
+  typeof TurnSubmitAckDataSchema
+>;
+
+export const TurnSubmitAckSchema = v.union([
+  UncorrelatedFailureAckSchema,
+  UnscopedAckFailureSchema,
+  createRoomScopedAckSchema(TurnSubmitAckDataSchema),
+]);
+export type TurnSubmitAck = v.InferOutput<typeof TurnSubmitAckSchema>;
+
 export const StateSnapshotEventSchema = v.strictObject({
   kind: v.literal("state:snapshot"),
   protocolVersion: ProtocolVersionSchema,
@@ -125,6 +145,35 @@ export const TurnStartedEventSchema = v.strictObject({
 });
 export type TurnStartedEvent = v.InferOutput<typeof TurnStartedEventSchema>;
 
+export const GameFinishedEventPayloadSchema = v.strictObject({
+  gameId: GameIdSchema,
+  reason: v.literal("RACK_EMPTY"),
+  winnerPlayerId: PlayerIdSchema,
+  gameRevision: FinishedStateVersionsSchema.entries.gameRevision,
+});
+export type GameFinishedEventPayload = v.InferOutput<
+  typeof GameFinishedEventPayloadSchema
+>;
+
+const GameFinishedEventObjectSchema = v.strictObject({
+  kind: v.literal("game:finished"),
+  protocolVersion: ProtocolVersionSchema,
+  versions: FinishedStateVersionsSchema,
+  serverTime: ServerTimeSchema,
+  payload: GameFinishedEventPayloadSchema,
+});
+
+export const GameFinishedEventSchema = v.pipe(
+  GameFinishedEventObjectSchema,
+  v.check(
+    (event) => event.payload.gameRevision === event.versions.gameRevision,
+    "The finished event revision must match its version vector.",
+  ),
+);
+export type GameFinishedEvent = v.InferOutput<
+  typeof GameFinishedEventSchema
+>;
+
 export type SocketAcknowledgement<TAck> = (ack: TAck) => void;
 
 export interface ClientToServerEvents {
@@ -152,10 +201,15 @@ export interface ClientToServerEvents {
     command: GameStartCommand,
     acknowledge: SocketAcknowledgement<GameStartAck>,
   ) => void;
+  "turn:submit": (
+    command: TurnSubmitCommand,
+    acknowledge: SocketAcknowledgement<TurnSubmitAck>,
+  ) => void;
 }
 
 export interface ServerToClientEvents {
   "state:snapshot": (event: StateSnapshotEvent) => void;
   "turn:started": (event: TurnStartedEvent) => void;
+  "game:finished": (event: GameFinishedEvent) => void;
   "session:replaced": (event: SessionReplacedNotification) => void;
 }

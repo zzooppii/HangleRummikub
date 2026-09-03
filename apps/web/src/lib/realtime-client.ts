@@ -1,6 +1,7 @@
 import {
   validateGameStartAck,
   validateGameStartCommand,
+  validateGameFinishedEvent,
   validateRoomCreateAck,
   validateRoomCreateCommand,
   validateRoomJoinAck,
@@ -13,10 +14,13 @@ import {
   validateStateSnapshotEvent,
   validateStateSyncAck,
   validateStateSyncCommand,
+  validateTurnSubmitAck,
+  validateTurnSubmitCommand,
   validateTurnStartedEvent,
   type ClientToServerEvents,
   type GameStartAck,
   type GameStartCommand,
+  type GameFinishedEvent,
   type RoomCreateAck,
   type RoomCreateCommand,
   type RoomJoinAck,
@@ -32,6 +36,8 @@ import {
   type StateSyncCommand,
   type StateVersions,
   type TurnStartedEvent,
+  type TurnSubmitAck,
+  type TurnSubmitCommand,
 } from "@hangul-rummikub/shared";
 import {
   io as createSocket,
@@ -67,7 +73,11 @@ export type RealtimeProtocolIssue = Readonly<
     }
   | {
       kind: "INVALID_SERVER_EVENT";
-      event: "state:snapshot" | "turn:started" | "session:replaced";
+      event:
+        | "state:snapshot"
+        | "turn:started"
+        | "game:finished"
+        | "session:replaced";
     }
 >;
 
@@ -99,6 +109,7 @@ type ConnectionStateListener = (state: RealtimeConnectionState) => void;
 type ConnectedListener = (event: TransportConnectedEvent) => void;
 type SnapshotListener = (event: StateSnapshotEvent) => void;
 type TurnStartedListener = (event: TurnStartedEvent) => void;
+type GameFinishedListener = (event: GameFinishedEvent) => void;
 type SessionReplacedListener = (
   event: SessionReplacedNotification,
 ) => void;
@@ -164,7 +175,8 @@ function hasConsistentSnapshotAcknowledgement(
     | RoomJoinAck
     | SessionResumeAck
     | StateSyncAck
-    | GameStartAck,
+    | GameStartAck
+    | TurnSubmitAck,
 ): boolean {
   if (!acknowledgement.ok) {
     return true;
@@ -194,6 +206,7 @@ export class RealtimeClient {
   readonly #connectedListeners = new Set<ConnectedListener>();
   readonly #snapshotListeners = new Set<SnapshotListener>();
   readonly #turnStartedListeners = new Set<TurnStartedListener>();
+  readonly #gameFinishedListeners = new Set<GameFinishedListener>();
   readonly #sessionReplacedListeners = new Set<SessionReplacedListener>();
   readonly #protocolIssueListeners = new Set<ProtocolIssueListener>();
 
@@ -220,6 +233,7 @@ export class RealtimeClient {
     this.#socket.on("connect_error", this.#handleConnectError);
     this.#socket.on("state:snapshot", this.#handleSnapshot);
     this.#socket.on("turn:started", this.#handleTurnStarted);
+    this.#socket.on("game:finished", this.#handleGameFinished);
     this.#socket.on("session:replaced", this.#handleSessionReplaced);
     this.#socket.io.on("reconnect_attempt", this.#handleReconnectAttempt);
     this.#socket.io.on("reconnect_failed", this.#handleReconnectFailed);
@@ -272,6 +286,7 @@ export class RealtimeClient {
     this.#socket.off("connect_error", this.#handleConnectError);
     this.#socket.off("state:snapshot", this.#handleSnapshot);
     this.#socket.off("turn:started", this.#handleTurnStarted);
+    this.#socket.off("game:finished", this.#handleGameFinished);
     this.#socket.off("session:replaced", this.#handleSessionReplaced);
     this.#socket.io.off(
       "reconnect_attempt",
@@ -285,6 +300,7 @@ export class RealtimeClient {
     this.#connectedListeners.clear();
     this.#snapshotListeners.clear();
     this.#turnStartedListeners.clear();
+    this.#gameFinishedListeners.clear();
     this.#sessionReplacedListeners.clear();
     this.#protocolIssueListeners.clear();
   }
@@ -334,6 +350,14 @@ export class RealtimeClient {
 
     return () => {
       this.#turnStartedListeners.delete(listener);
+    };
+  }
+
+  subscribeGameFinished(listener: GameFinishedListener): Unsubscribe {
+    this.#gameFinishedListeners.add(listener);
+
+    return () => {
+      this.#gameFinishedListeners.delete(listener);
     };
   }
 
@@ -470,6 +494,27 @@ export class RealtimeClient {
         this.#socket.emit("game:start", validatedCommand.value, acknowledge);
       },
       validateGameStartAck,
+      hasConsistentSnapshotAcknowledgement,
+    );
+  }
+
+  submitTurn(command: TurnSubmitCommand): Promise<TurnSubmitAck> {
+    const validatedCommand = validateTurnSubmitCommand(command);
+    if (!validatedCommand.ok) {
+      return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    }
+
+    return this.#emitAcknowledged(
+      "turn:submit",
+      validatedCommand.value.requestId,
+      (acknowledge) => {
+        this.#socket.emit(
+          "turn:submit",
+          validatedCommand.value,
+          acknowledge,
+        );
+      },
+      validateTurnSubmitAck,
       hasConsistentSnapshotAcknowledgement,
     );
   }
@@ -660,6 +705,25 @@ export class RealtimeClient {
     }
 
     for (const listener of this.#turnStartedListeners) {
+      listener(validation.value);
+    }
+  };
+
+  readonly #handleGameFinished = (input: GameFinishedEvent): void => {
+    if (this.#closed || this.#replacementBlocked) {
+      return;
+    }
+
+    const validation = validateGameFinishedEvent(input);
+    if (!validation.ok) {
+      this.#notifyProtocolIssue({
+        kind: "INVALID_SERVER_EVENT",
+        event: "game:finished",
+      });
+      return;
+    }
+
+    for (const listener of this.#gameFinishedListeners) {
       listener(validation.value);
     }
   };

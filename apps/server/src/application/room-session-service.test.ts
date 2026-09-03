@@ -30,7 +30,10 @@ import {
   type ApplicationResult,
   type BootstrapSessionSuccessData,
 } from "./room-session-service.js";
-import { createInitialGameState } from "../domain/game/game-state.js";
+import {
+  createInitialGameState,
+  type GameState,
+} from "../domain/game/game-state.js";
 import {
   type IdempotencyRecord,
   type RoomRecord,
@@ -245,21 +248,74 @@ async function seedRoom(
     throw new Error("A Room fixture requires a Host Player.");
   }
 
+  const phase = options.phase ?? "LOBBY";
+  let game: GameState | null = null;
+  if (phase !== "LOBBY") {
+    const activeGame = createInitialGameState({
+      playerIds: players.map((player) => player.playerId),
+      startedAt: serverTime(500),
+      idGenerator: new FakeIdGenerator(),
+      randomSource: { nextInt: () => 0 },
+    });
+    if (phase === "PLAYING") {
+      game = activeGame;
+    } else {
+      const winnerRack = activeGame.racks.get(host.playerId) ?? [];
+      const returnedConsonants = winnerRack.filter(
+        (tileId) => activeGame.tilesById.get(tileId)?.sourceBag === "CONSONANT",
+      );
+      const returnedVowels = winnerRack.filter(
+        (tileId) => activeGame.tilesById.get(tileId)?.sourceBag === "VOWEL",
+      );
+      const racks = new Map(activeGame.racks);
+      racks.set(host.playerId, []);
+      const rackPenalty = (playerId: PlayerId): number => {
+        const rack = racks.get(playerId) ?? [];
+        return rack.reduce((sum, tileId) => {
+          const tile = activeGame.tilesById.get(tileId);
+          return sum + (tile?.kind === "JOKER" ? 30 : 1);
+        }, 0);
+      };
+      const winnerScore = activeGame.turnOrder.reduce(
+        (sum, playerId) =>
+          playerId === host.playerId ? sum : sum + rackPenalty(playerId),
+        0,
+      );
+      game = {
+        ...activeGame,
+        consonantBag: [...activeGame.consonantBag, ...returnedConsonants],
+        vowelBag: [...activeGame.vowelBag, ...returnedVowels],
+        racks,
+        turn: null,
+        result: {
+          reason: "RACK_EMPTY",
+          winnerPlayerId: host.playerId,
+          scores: activeGame.turnOrder.map((playerId) =>
+            playerId === host.playerId
+              ? {
+                  playerId,
+                  score: winnerScore,
+                  remainingRackTileCount: 0,
+                }
+              : {
+                  playerId,
+                  score: -rackPenalty(playerId),
+                  remainingRackTileCount: (racks.get(playerId) ?? []).length,
+                },
+          ),
+          finishedAt: serverTime(500),
+        },
+      };
+    }
+  }
+
   const candidate: RoomWriteCandidate = {
     roomId: roomId(seedRoomId),
     roomCode: roomCode(options.roomCode ?? "ABCDEF"),
-    phase: options.phase ?? "LOBBY",
+    phase,
     hostPlayerId: host.playerId,
     players,
-    game:
-      (options.phase ?? "LOBBY") === "LOBBY"
-        ? null
-        : createInitialGameState({
-            playerIds: players.map((player) => player.playerId),
-            startedAt: serverTime(500),
-            idGenerator: new FakeIdGenerator(),
-            randomSource: { nextInt: () => 0 },
-          }),
+    game,
     roomRevision: roomRevision(options.roomRevision ?? 0),
     createdAt: serverTime(500),
     updatedAt: serverTime(500),

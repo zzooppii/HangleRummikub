@@ -1126,6 +1126,7 @@ test("PLAYING Room의 GameState deep copy는 caller mutation에서 persistence�
   assert.ok(nestedRack);
   assert.ok(ordinaryTile?.kind === "ORDINARY");
   assert.ok(boardPlacement);
+  assert.ok(created.room.game.turn);
 
   assert.throws(() =>
     Reflect.apply(Array.prototype.pop, nestedRack, []),

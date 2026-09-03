@@ -6,11 +6,18 @@ import {
   BOOTSTRAP_SESSION_TTL_MS,
   BROWSER_CREDENTIAL_STORAGE,
   DUPLICATE_CONNECTION_POLICY,
+  PROPOSED_ASSIGNED_SYMBOL_MAX_LENGTH,
+  PROPOSED_BOARD_MAX_TILE_REFERENCES,
+  PROPOSED_BOARD_MAX_WORD_GROUPS,
+  PROPOSED_WORD_GROUP_MAX_SYLLABLES,
+  PROPOSED_WORD_GROUP_ID_MAX_LENGTH,
   PROTOCOL_VERSION,
+  ProposedWordGroupSchema,
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LENGTH,
   type ClientToServerEvents,
   type GameStartAck,
+  type TurnSubmitAck,
   type PlayingStateSnapshot,
   type RoomCreateAck,
   RoomPhaseSchema,
@@ -22,6 +29,8 @@ import {
   validateBrowserStoredPlayerSession,
   validateClientCommand,
   validateErrorDto,
+  validateFinishedStateSnapshot,
+  validateGameFinishedEvent,
   validateGameStartAck,
   validateGameStartCommand,
   validateLobbyStateSnapshot,
@@ -47,6 +56,8 @@ import {
   validateStateSyncCommand,
   validateStateVersions,
   validateTurnStartedEvent,
+  validateTurnSubmitAck,
+  validateTurnSubmitCommand,
   validateUnscopedAck,
 } from "./index.js";
 
@@ -215,6 +226,47 @@ function createPlayingSnapshot() {
           allowedSymbols: ["ㄱ", "ㅏ"],
         },
       ],
+    },
+  };
+}
+
+function createFinishedSnapshot() {
+  const playing = createPlayingSnapshot();
+
+  return {
+    ...playing,
+    versions: {
+      ...playing.versions,
+      roomRevision: 4,
+      gameRevision: 1,
+    },
+    room: {
+      ...playing.room,
+      phase: "FINISHED",
+      players: playing.room.players.map((player) =>
+        player.playerId === "player_123"
+          ? { ...player, rackCount: 0, initialMeldCompleted: true }
+          : player,
+      ),
+    },
+    game: {
+      gameId: playing.game.gameId,
+      board: playing.game.board,
+      turnOrder: playing.game.turnOrder,
+      bagCounts: playing.game.bagCounts,
+      result: {
+        reason: "RACK_EMPTY",
+        winnerPlayerId: "player_123",
+        scores: [
+          { playerId: "player_123", score: 2 },
+          { playerId: "player_456", score: -2 },
+        ],
+        finishedAt: 1_750_000_030_000,
+      },
+    },
+    self: {
+      playerId: "player_123",
+      rack: [],
     },
   };
 }
@@ -1803,6 +1855,390 @@ test("game:start ack와 turn:started event는 PLAYING projection만 전달한다
   }
   if (parsedEvent.ok) {
     turnListener(parsedEvent.value);
+  }
+  assert.equal(acknowledged, true);
+});
+
+function proposedSyllable(seed: string) {
+  return {
+    choseong: [{ tileId: `${seed}_c`, assignedSymbol: "ㄱ" }],
+    jungseong: [{ tileId: `${seed}_v`, assignedSymbol: "ㅏ" }],
+    jongseong: [{ tileId: `${seed}_f`, assignedSymbol: "ㄴ" }],
+  };
+}
+
+function turnSubmitCommand(proposedBoard: unknown) {
+  return {
+    kind: "turn:submit",
+    protocolVersion: PROTOCOL_VERSION,
+    requestId: "request_turn_submit",
+    expectedGameRevision: 0,
+    turnId: "turn_123",
+    payload: { proposedBoard },
+  };
+}
+
+test("turn:submit command는 actor/derived state 없이 strict ProposedBoard만 받는다", () => {
+  const proposedBoard = {
+    wordGroups: [
+      {
+        groupId: "group_submit",
+        syllables: [proposedSyllable("tile_submit")],
+      },
+    ],
+  };
+  const command = turnSubmitCommand(proposedBoard);
+  const result = validateTurnSubmitCommand(command);
+
+  assert.equal(result.ok, true);
+  assert.equal(validateClientCommand(command).ok, true);
+  if (result.ok) {
+    assert.equal(result.value.expectedGameRevision, 0);
+    assert.equal(result.value.turnId, "turn_123");
+    assert.equal(result.value.payload.proposedBoard.wordGroups.length, 1);
+  }
+
+  for (const invalid of [
+    { ...command, playerId: "player_spoofed" },
+    { ...command, expectedGameRevision: -1 },
+    { ...command, turnId: "" },
+    { ...command, payload: { ...command.payload, rack: [] } },
+    { ...command, payload: { ...command.payload, composedWord: "간" } },
+    {
+      ...command,
+      payload: {
+        proposedBoard: { ...proposedBoard, tilesById: {} },
+      },
+    },
+  ]) {
+    assert.equal(validateTurnSubmitCommand(invalid).ok, false);
+  }
+});
+
+test("ProposedBoard wire schema는 component cardinality를 resource shape로 제한한다", () => {
+  const base = proposedSyllable("tile_cardinality");
+  const cases = [
+    { ...base, choseong: [] },
+    {
+      ...base,
+      choseong: [
+        ...base.choseong,
+        { tileId: "tile_second_c", assignedSymbol: "ㄴ" },
+      ],
+    },
+    { ...base, jungseong: [] },
+    {
+      ...base,
+      jungseong: [
+        ...base.jungseong,
+        { tileId: "tile_second_v", assignedSymbol: "ㅏ" },
+        { tileId: "tile_third_v", assignedSymbol: "ㅣ" },
+      ],
+    },
+    {
+      ...base,
+      jongseong: [
+        ...base.jongseong,
+        { tileId: "tile_second_f", assignedSymbol: "ㄱ" },
+        { tileId: "tile_third_f", assignedSymbol: "ㅅ" },
+      ],
+    },
+  ];
+
+  for (const syllable of cases) {
+    assert.equal(
+      validateTurnSubmitCommand(
+        turnSubmitCommand({
+          wordGroups: [{ groupId: "group_counts", syllables: [syllable] }],
+        }),
+      ).ok,
+      false,
+    );
+  }
+});
+
+test("ProposedBoard는 156개 aggregate Tile reference까지만 허용한다", () => {
+  const makeBoard = (syllableCount: number) => ({
+    wordGroups: [
+      {
+        groupId: "group_tile_limit",
+        syllables: Array.from({ length: syllableCount }, (_, index) =>
+          proposedSyllable(`tile_limit_${index}`),
+        ),
+      },
+    ],
+  });
+
+  assert.equal(PROPOSED_BOARD_MAX_TILE_REFERENCES, 156);
+  assert.equal(validateTurnSubmitCommand(turnSubmitCommand(makeBoard(52))).ok, true);
+  assert.equal(
+    validateTurnSubmitCommand(turnSubmitCommand(makeBoard(53))).ok,
+    false,
+  );
+});
+
+test("ProposedBoard는 group/syllable/string 입력 크기를 제한한다", () => {
+  const groupIdAtLimit = "g".repeat(PROPOSED_WORD_GROUP_ID_MAX_LENGTH);
+  const symbolAtLimit = "가".repeat(PROPOSED_ASSIGNED_SYMBOL_MAX_LENGTH);
+  const groupsAtLimit = Array.from(
+    { length: PROPOSED_BOARD_MAX_WORD_GROUPS },
+    (_, index) => ({ groupId: `group_${index}`, syllables: [] }),
+  );
+
+  assert.equal(
+    validateTurnSubmitCommand(
+      turnSubmitCommand({ wordGroups: groupsAtLimit }),
+    ).ok,
+    true,
+  );
+  assert.equal(
+    validateTurnSubmitCommand(
+      turnSubmitCommand({
+        wordGroups: [
+          ...groupsAtLimit,
+          { groupId: "group_over_limit", syllables: [] },
+        ],
+      }),
+    ).ok,
+    false,
+  );
+  assert.equal(
+    v.safeParse(ProposedWordGroupSchema, {
+      groupId: "group_syllable_at_limit",
+      syllables: Array.from(
+        { length: PROPOSED_WORD_GROUP_MAX_SYLLABLES },
+        (_, index) => proposedSyllable(`tile_syllable_at_limit_${index}`),
+      ),
+    }).success,
+    true,
+  );
+  assert.equal(
+    v.safeParse(ProposedWordGroupSchema, {
+      groupId: "group_syllable_over_limit",
+      syllables: Array.from(
+        { length: PROPOSED_WORD_GROUP_MAX_SYLLABLES + 1 },
+        (_, index) => proposedSyllable(`tile_syllable_over_limit_${index}`),
+      ),
+    }).success,
+    false,
+  );
+  assert.equal(
+    validateTurnSubmitCommand(
+      turnSubmitCommand({
+        wordGroups: [{ groupId: groupIdAtLimit, syllables: [] }],
+      }),
+    ).ok,
+    true,
+  );
+  assert.equal(
+    validateTurnSubmitCommand(
+      turnSubmitCommand({
+        wordGroups: [{ groupId: `${groupIdAtLimit}g`, syllables: [] }],
+      }),
+    ).ok,
+    false,
+  );
+  assert.equal(
+    validateTurnSubmitCommand(
+      turnSubmitCommand({
+        wordGroups: [
+          {
+            groupId: "group_symbol_limit",
+            syllables: [
+              {
+                choseong: [
+                  { tileId: "tile_symbol_limit", assignedSymbol: symbolAtLimit },
+                ],
+                jungseong: [
+                  { tileId: "tile_symbol_vowel", assignedSymbol: "ㅏ" },
+                ],
+                jongseong: [],
+              },
+            ],
+          },
+        ],
+      }),
+    ).ok,
+    true,
+  );
+  assert.equal(
+    validateTurnSubmitCommand(
+      turnSubmitCommand({
+        wordGroups: [
+          {
+            groupId: "group_symbol_over_limit",
+            syllables: [
+              {
+                choseong: [
+                  {
+                    tileId: "tile_symbol_over_limit",
+                    assignedSymbol: `${symbolAtLimit}가`,
+                  },
+                ],
+                jungseong: [
+                  { tileId: "tile_symbol_over_vowel", assignedSymbol: "ㅏ" },
+                ],
+                jongseong: [],
+              },
+            ],
+          },
+        ],
+      }),
+    ).ok,
+    false,
+  );
+});
+
+test("ProposedBoard transport는 안전한 game-rule invalid shape를 RuleEngine에 남긴다", () => {
+  assert.equal(
+    validateTurnSubmitCommand(
+      turnSubmitCommand({
+        wordGroups: [
+          { groupId: "group_empty_semantic", syllables: [] },
+          {
+            groupId: "group_unsupported_semantic",
+            syllables: [
+              {
+                choseong: [
+                  { tileId: "tile_same", assignedSymbol: "X" },
+                ],
+                jungseong: [
+                  { tileId: "tile_same", assignedSymbol: "Y" },
+                ],
+                jongseong: [],
+              },
+            ],
+          },
+        ],
+      }),
+    ).ok,
+    true,
+  );
+});
+
+test("Phase 13 public error code는 safe ErrorDto로 직렬화된다", () => {
+  for (const code of [
+    "NOT_YOUR_TURN",
+    "TURN_EXPIRED",
+    "INVALID_TILE_ACCESS",
+    "INVALID_BOARD",
+    "INVALID_HANGUL_COMPOSITION",
+    "WORD_NOT_ALLOWED",
+    "RULE_VIOLATION",
+    "TEMPORARILY_UNAVAILABLE",
+  ] as const) {
+    const result = validateErrorDto({
+      code,
+      message: "The proposed turn was not accepted.",
+      recoverable: true,
+    });
+    assert.equal(result.ok, true);
+    if (result.ok) {
+      assert.equal(result.value.code, code);
+    }
+  }
+});
+
+test("FINISHED snapshot은 no-active-turn result와 본인 rack만 공개한다", () => {
+  const snapshot = createFinishedSnapshot();
+  const result = validateFinishedStateSnapshot(snapshot);
+
+  assert.equal(result.ok, true);
+  assert.equal(validateStateSnapshot(snapshot).ok, true);
+  if (result.ok) {
+    assert.equal(result.value.room.phase, "FINISHED");
+    assert.equal(result.value.game.result.reason, "RACK_EMPTY");
+    assert.equal(result.value.game.result.winnerPlayerId, "player_123");
+    assert.equal("turn" in result.value.game, false);
+  }
+
+  for (const leaked of [
+    { ...snapshot, sessionToken },
+    {
+      ...snapshot,
+      game: { ...snapshot.game, turn: createPlayingSnapshot().game.turn },
+    },
+    {
+      ...snapshot,
+      game: { ...snapshot.game, tilesById: {} },
+    },
+    {
+      ...snapshot,
+      game: { ...snapshot.game, result: { ...snapshot.game.result, rack: [] } },
+    },
+  ]) {
+    assert.equal(validateFinishedStateSnapshot(leaked).ok, false);
+  }
+});
+
+test("turn:submit ack와 game:finished advisory는 typed, strict, secret-free다", () => {
+  const snapshot = createFinishedSnapshot();
+  const ack = {
+    scope: "ROOM",
+    requestId: "request_turn_submit_ack",
+    ok: true,
+    serverTime: snapshot.serverTime,
+    versions: snapshot.versions,
+    data: { snapshot },
+  };
+  const parsedAck = validateTurnSubmitAck(ack);
+  assert.equal(parsedAck.ok, true);
+  assert.equal(
+    validateTurnSubmitAck({ ...ack, data: { snapshot, sessionToken } }).ok,
+    false,
+  );
+
+  const finishedEvent = {
+    kind: "game:finished",
+    protocolVersion: PROTOCOL_VERSION,
+    versions: snapshot.versions,
+    serverTime: snapshot.serverTime,
+    payload: {
+      gameId: snapshot.game.gameId,
+      reason: "RACK_EMPTY",
+      winnerPlayerId: snapshot.game.result.winnerPlayerId,
+      gameRevision: snapshot.versions.gameRevision,
+    },
+  };
+  const parsedEvent = validateGameFinishedEvent(finishedEvent);
+  assert.equal(parsedEvent.ok, true);
+  assert.equal(
+    validateGameFinishedEvent({
+      ...finishedEvent,
+      payload: { ...finishedEvent.payload, gameRevision: 2 },
+    }).ok,
+    false,
+  );
+  assert.equal(
+    validateGameFinishedEvent({ ...finishedEvent, socketId: "socket_secret" })
+      .ok,
+    false,
+  );
+
+  const parsedCommand = validateTurnSubmitCommand(
+    turnSubmitCommand({ wordGroups: [] }),
+  );
+  let acknowledged = false;
+  const submitHandler: ClientToServerEvents["turn:submit"] = (
+    command,
+    acknowledge,
+  ) => {
+    assert.equal(command.kind, "turn:submit");
+    if (parsedAck.ok) {
+      acknowledge(parsedAck.value);
+    }
+  };
+  const finishedListener: ServerToClientEvents["game:finished"] = (event) => {
+    assert.equal(event.payload.reason, "RACK_EMPTY");
+  };
+
+  if (parsedCommand.ok) {
+    submitHandler(parsedCommand.value, (received: TurnSubmitAck) => {
+      acknowledged = received.ok;
+    });
+  }
+  if (parsedEvent.ok) {
+    finishedListener(parsedEvent.value);
   }
   assert.equal(acknowledged, true);
 });

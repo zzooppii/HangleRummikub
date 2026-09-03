@@ -400,7 +400,7 @@ Definition of Done:
 - public Board placement projection은 Board 위 Tile의 kind/physicalType/current assignedSymbol/allowedSymbols만 추가하며 rack owner, bag order와 전체 Tile map은 계속 감춘다.
 - 새 dependency 없이 구현했고 draft Board/history를 storage에 저장하지 않으며 모든 editor action은 Socket.IO gameplay event를 emit하거나 server canonical GameState를 변경하지 않는다. `turn:submit`, `turn:draw`, `turn:pass`와 해당 control은 추가하지 않았다.
 
-### Phase 13. 원자적 Submit pipeline
+### Phase 13. 원자적 Submit pipeline — COMPLETE
 
 목표: 전체 proposed board를 검증해 성공 또는 무변경 실패를 보장한다.
 
@@ -426,6 +426,17 @@ Definition of Done:
 - 종료를 만드는 Submit은 `gameRevision`, `roomRevision`, `storageRevision`과 result를 같은 unit에 commit한다.
 - commit 전에 realtime success event가 발행되지 않는다.
 - commit 뒤 ack/publish 실패를 주입해도 command를 실패로 잘못 되돌려 말하지 않고 retry/`state:sync`가 committed state를 회복한다.
+
+구현 결과 (2026-09-03):
+
+- shared contract에 strict `turn:submit`과 browser-safe `ProposedBoard`를 추가했다. transport safety 한도는 WordGroup 156개, group당 syllable 156개, Board 전체 Tile reference 156개이며 role별 component cardinality와 bounded groupId/assignedSymbol을 runtime validation한다.
+- `TurnSubmitService`는 authenticated Room/Player scope의 Room mutation lane에서 idempotency를 먼저 분류하고, current-primary actor, PLAYING phase, active Player, turnId, captured `receivedAt < deadlineAt`, expected gameRevision을 검사한 뒤 Phase 10 RuleEngine을 실행한다. async validation 뒤 최신 authority와 aggregate를 다시 확인한다.
+- accepted Submit은 proposed Board, actor rack의 newly-used Tile 제거, initial meld flag와 다음 Turn 또는 rack-empty result를 격리된 candidate로 만든다. UoW CAS가 state, storage/game revisions와 accepted idempotency result를 한 번에 교체하며 failure injection과 rejection은 live state를 바꾸지 않는다.
+- non-terminal Submit은 roomRevision을 유지하고 game/storage revision을 1씩 증가시키며 validation 완료 뒤 fresh Clock으로 다음 turnId, turnNumber, startedAt과 60초 deadline을 만든다. rack-empty Submit은 다음 Turn 없이 Room을 FINISHED로 전이하고 Room/Game/storage revision과 winner/score/finishedAt을 같은 commit에 포함한다.
+- Socket.IO transport는 command 도착 즉시 `receivedAt`을 캡처하고 current-primary binding에서 actor를 도출한다. commit 후에만 Player별 PLAYING/FINISHED snapshot과 `turn:started` 또는 `game:finished` advisory를 전달하며, delivery failure는 commit을 rollback하지 않는다.
+- web TurnDraft는 slot의 tileId/assignedSymbol만 proposed Board로 직렬화하고 active dirty draft에만 Submit control을 연다. 같은 page의 acknowledgement-loss retry는 동일 requestId/payload를 메모리에서 재사용하고 refresh 뒤 자동 재전송하지 않는다. 수정 가능한 rule rejection은 draft를 유지하고 authority/stale 계열 오류는 sync/reset한다.
+- 다른 Player rack, bag order, tilesById, storage revision, connection/token/idempotency 내부값은 Submit ack, advisory와 FINISHED projection에 노출하지 않는다. FINISHED 화면은 rack-empty winner와 Player별 score만 표시하고 rematch를 제공하지 않는다.
+- Phase 14 범위인 draw, no-draw turn end, timeout scheduler/penalty와 Submit-timeout 실제 경합은 추가하지 않았다.
 
 ### Phase 14. Draw, no-draw turn end와 server timer
 

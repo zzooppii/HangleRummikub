@@ -435,6 +435,9 @@ function isSyllableEmpty(syllable: DraftSyllable): boolean {
 export type TurnDraftEditorProps = Readonly<{
   snapshot: PlayingStateSnapshot;
   controller: TurnDraftController;
+  submitPending: boolean;
+  canSubmit: boolean;
+  onSubmit: (draft: TurnDraft) => void;
 }>;
 
 export function TurnDraftEditor(props: TurnDraftEditorProps) {
@@ -590,6 +593,23 @@ export function TurnDraftEditor(props: TurnDraftEditorProps) {
                 onClick={controller.reset}
               >
                 서버 상태로 초기화
+              </button>
+              <button
+                className="primary-button toolbar-button submit-turn-button"
+                type="button"
+                disabled={
+                  !controller.isDirty ||
+                  !props.canSubmit ||
+                  props.submitPending
+                }
+                aria-busy={props.submitPending}
+                onClick={() => {
+                  if (controller.draft !== null) {
+                    props.onSubmit(controller.draft);
+                  }
+                }}
+              >
+                {props.submitPending ? "제출 중..." : "배치 제출"}
               </button>
             </div>
             {controller.draft.mode === "INITIAL_MELD" ? (

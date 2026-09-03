@@ -12,6 +12,7 @@ import {
   type SessionResumeCommand,
   type StateSnapshot,
   type StateSyncCommand,
+  type TurnSubmitCommand,
 } from "@hangul-rummikub/shared";
 import { useEffect, useRef, useState } from "react";
 
@@ -47,6 +48,14 @@ import {
   compareStateVersions,
   decideSnapshotUpdate,
 } from "../lib/snapshot-state.js";
+import {
+  createOrReuseTurnSubmitCommand,
+  decideTurnSubmitFailureAction,
+  runTurnSubmitSingleFlight,
+  shouldDiscardPendingTurnSubmitOnNavigation,
+  snapshotSupersedesPendingTurnSubmit,
+} from "../lib/turn-submit.js";
+import type { TurnDraft } from "../lib/turn-draft.js";
 
 const STALE_SESSION_MESSAGE =
   "이 방의 연결 정보가 더 이상 유효하지 않습니다. 새 방을 만들거나 다시 참가해주세요.";
@@ -71,11 +80,14 @@ export type LobbyAppState = Readonly<{
   copyMessage: string | null;
   sessionReplaced: boolean;
   gameStartPending: boolean;
+  turnSubmitPending: boolean;
+  turnDraftResetGeneration: number;
   setNickname: (value: string) => void;
   setRoomCodeInput: (value: string) => void;
   createRoom: () => void;
   joinRoom: () => void;
   startGame: () => void;
+  submitTurn: (draft: TurnDraft) => void;
   copyInvitation: (invitationUrl: string) => void;
   goHome: () => void;
 }>;
@@ -139,7 +151,7 @@ function clientFailureMessage(error: unknown): string {
   }
 }
 
-function isRetryableGameStartFailure(error: unknown): boolean {
+function isRetryableCommandFailure(error: unknown): boolean {
   return (
     error instanceof RealtimeClientError &&
     (error.code === "ACKNOWLEDGEMENT_TIMEOUT" ||
@@ -160,6 +172,8 @@ export function useLobbyApp(): LobbyAppState {
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [sessionReplaced, setSessionReplaced] = useState(false);
   const [gameStartPending, setGameStartPending] = useState(false);
+  const [turnSubmitPending, setTurnSubmitPending] = useState(false);
+  const [turnDraftResetGeneration, setTurnDraftResetGeneration] = useState(0);
 
   const routeRef = useRef<AppRoute>(initialRoute);
   const snapshotRef = useRef<StateSnapshot | null>(null);
@@ -174,12 +188,25 @@ export function useLobbyApp(): LobbyAppState {
   const gameStartFlightRef = useRef<Promise<void> | null>(null);
   const pendingGameStartCommandRef = useRef<GameStartCommand | null>(null);
   const gameStartRetryRequestedRef = useRef(false);
+  const turnSubmitFlightRef = useRef<Promise<void> | null>(null);
+  const pendingTurnSubmitCommandRef = useRef<TurnSubmitCommand | null>(null);
+  const turnSubmitRetryRequestedRef = useRef(false);
   const sessionReplacedRef = useRef(false);
 
   function clearPendingGameStartRequest(): void {
     pendingGameStartCommandRef.current = null;
     gameStartRetryRequestedRef.current = false;
     setGameStartPending(false);
+  }
+
+  function clearPendingTurnSubmitRequest(): void {
+    pendingTurnSubmitCommandRef.current = null;
+    turnSubmitRetryRequestedRef.current = false;
+    setTurnSubmitPending(false);
+  }
+
+  function resetTurnDraftFromAuthority(): void {
+    setTurnDraftResetGeneration((current) => current + 1);
   }
 
   function updateRoute(nextRoute: AppRoute): void {
@@ -235,6 +262,15 @@ export function useLobbyApp(): LobbyAppState {
     );
     switch (decision) {
       case "APPLY":
+        if (
+          pendingTurnSubmitCommandRef.current !== null &&
+          snapshotSupersedesPendingTurnSubmit(
+            pendingTurnSubmitCommandRef.current,
+            incomingSnapshot,
+          )
+        ) {
+          clearPendingTurnSubmitRequest();
+        }
         updateSnapshot(incomingSnapshot);
         return "CURRENT";
       case "KEEP_EQUAL":
@@ -276,6 +312,7 @@ export function useLobbyApp(): LobbyAppState {
           if (isStaleSessionError(acknowledgement.error)) {
             clearStoredPlayerSession(window.sessionStorage);
             clearPendingGameStartRequest();
+            clearPendingTurnSubmitRequest();
             updateSnapshot(null);
             setErrorMessage(STALE_SESSION_MESSAGE);
             return;
@@ -386,7 +423,7 @@ export function useLobbyApp(): LobbyAppState {
           void requestLatestSnapshot();
         }
       } catch (error: unknown) {
-        if (!isRetryableGameStartFailure(error)) {
+        if (!isRetryableCommandFailure(error)) {
           pendingGameStartCommandRef.current = null;
           if (
             error instanceof RealtimeClientError &&
@@ -420,6 +457,97 @@ export function useLobbyApp(): LobbyAppState {
       !sessionReplacedRef.current
     ) {
       await executeGameStartCommand(pendingCommand);
+    }
+  }
+
+  async function executeTurnSubmitCommand(
+    command: TurnSubmitCommand,
+  ): Promise<void> {
+    if (turnSubmitFlightRef.current !== null) {
+      return turnSubmitFlightRef.current;
+    }
+
+    const client = clientRef.current;
+    const session = storedSessionForCurrentRoute();
+    if (
+      client === null ||
+      !client.connected ||
+      session === null ||
+      sessionReplacedRef.current
+    ) {
+      setErrorMessage("서버에 연결되지 않았습니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    pendingTurnSubmitCommandRef.current = command;
+    setTurnSubmitPending(true);
+    setOperationLabel("배치 제출 중...");
+    setErrorMessage(null);
+
+    const flight = runTurnSubmitSingleFlight(turnSubmitFlightRef, async () => {
+      try {
+        const acknowledgement = await client.submitTurn(command);
+        pendingTurnSubmitCommandRef.current = null;
+
+        if (!acknowledgement.ok) {
+          setErrorMessage(getUserErrorMessage(acknowledgement.error.code));
+          if (
+            decideTurnSubmitFailureAction(
+              acknowledgement.error.code,
+              acknowledgement.scope === "ROOM"
+                ? acknowledgement.versions.gameRevision
+                : null,
+              command.expectedGameRevision,
+            ) ===
+            "RESET_DRAFT_AND_SYNC"
+          ) {
+            resetTurnDraftFromAuthority();
+            void requestLatestSnapshot();
+          }
+          return;
+        }
+
+        const application = applyOrderedSnapshot(
+          acknowledgement.data.snapshot,
+          session,
+        );
+        if (application === "CURRENT") {
+          setErrorMessage(null);
+        } else {
+          resetTurnDraftFromAuthority();
+          void requestLatestSnapshot();
+        }
+      } catch (error: unknown) {
+        if (!isRetryableCommandFailure(error)) {
+          pendingTurnSubmitCommandRef.current = null;
+          if (
+            error instanceof RealtimeClientError &&
+            error.code === "INVALID_SERVER_RESPONSE"
+          ) {
+            resetTurnDraftFromAuthority();
+            void requestLatestSnapshot();
+          }
+        }
+        setErrorMessage(clientFailureMessage(error));
+      }
+    });
+    try {
+      await flight;
+    } finally {
+      setTurnSubmitPending(false);
+      setOperationLabel(null);
+    }
+
+    const retryRequestedWhileActive = turnSubmitRetryRequestedRef.current;
+    turnSubmitRetryRequestedRef.current = false;
+    const pendingCommand = pendingTurnSubmitCommandRef.current;
+    if (
+      retryRequestedWhileActive &&
+      pendingCommand !== null &&
+      client.connected &&
+      !sessionReplacedRef.current
+    ) {
+      await executeTurnSubmitCommand(pendingCommand);
     }
   }
 
@@ -457,6 +585,7 @@ export function useLobbyApp(): LobbyAppState {
           if (isStaleSessionError(acknowledgement.error)) {
             clearStoredPlayerSession(window.sessionStorage);
             clearPendingGameStartRequest();
+            clearPendingTurnSubmitRequest();
             updateSnapshot(null);
             setErrorMessage(STALE_SESSION_MESSAGE);
             return;
@@ -744,17 +873,26 @@ export function useLobbyApp(): LobbyAppState {
     }
 
     const pendingGameStartCommand = pendingGameStartCommandRef.current;
-    if (pendingGameStartCommand === null || sessionReplacedRef.current) {
+    if (pendingGameStartCommand !== null && !sessionReplacedRef.current) {
+      if (gameStartFlightRef.current !== null) {
+        gameStartRetryRequestedRef.current = true;
+        await gameStartFlightRef.current;
+      } else {
+        await executeGameStartCommand(pendingGameStartCommand);
+      }
+    }
+
+    const pendingTurnSubmitCommand = pendingTurnSubmitCommandRef.current;
+    if (pendingTurnSubmitCommand === null || sessionReplacedRef.current) {
+      return;
+    }
+    if (turnSubmitFlightRef.current !== null) {
+      turnSubmitRetryRequestedRef.current = true;
+      await turnSubmitFlightRef.current;
       return;
     }
 
-    if (gameStartFlightRef.current !== null) {
-      gameStartRetryRequestedRef.current = true;
-      await gameStartFlightRef.current;
-      return;
-    }
-
-    await executeGameStartCommand(pendingGameStartCommand);
+    await executeTurnSubmitCommand(pendingTurnSubmitCommand);
   }
 
   useEffect(() => {
@@ -785,6 +923,19 @@ export function useLobbyApp(): LobbyAppState {
         void requestLatestSnapshot();
       }
     });
+    const unsubscribeGameFinished = client.subscribeGameFinished((event) => {
+      const currentSnapshot = snapshotRef.current;
+      if (
+        currentSnapshot === null ||
+        !("game" in currentSnapshot) ||
+        currentSnapshot.room.phase !== "FINISHED" ||
+        "turn" in currentSnapshot.game ||
+        currentSnapshot.game.gameId !== event.payload.gameId ||
+        currentSnapshot.versions.gameRevision < event.payload.gameRevision
+      ) {
+        void requestLatestSnapshot();
+      }
+    });
     const unsubscribeReplaced = client.subscribeSessionReplaced(() => {
       sessionReplacedRef.current = true;
       setSessionReplaced(true);
@@ -793,6 +944,8 @@ export function useLobbyApp(): LobbyAppState {
       clearStoredPlayerSession(window.sessionStorage);
       clearPendingRoomOperation(window.sessionStorage);
       clearPendingGameStartRequest();
+      clearPendingTurnSubmitRequest();
+      resetTurnDraftFromAuthority();
     });
     const unsubscribeProtocolIssue = client.subscribeProtocolIssue(() => {
       setErrorMessage(INVALID_SERVER_STATE_MESSAGE);
@@ -828,10 +981,13 @@ export function useLobbyApp(): LobbyAppState {
       const currentSnapshot = snapshotRef.current;
       if (
         currentSnapshot !== null &&
-        (nextRoute.kind !== "ROOM" ||
-          nextRoute.roomCode !== currentSnapshot.room.roomCode)
+        shouldDiscardPendingTurnSubmitOnNavigation(
+          currentSnapshot.room.roomCode,
+          nextRoute.kind === "ROOM" ? nextRoute.roomCode : null,
+        )
       ) {
         clearPendingGameStartRequest();
+        clearPendingTurnSubmitRequest();
         updateSnapshot(null);
         client.disconnect();
         client.connect();
@@ -852,6 +1008,7 @@ export function useLobbyApp(): LobbyAppState {
       unsubscribeConnected();
       unsubscribeSnapshot();
       unsubscribeTurnStarted();
+      unsubscribeGameFinished();
       unsubscribeReplaced();
       unsubscribeProtocolIssue();
       client.destroy();
@@ -993,6 +1150,46 @@ export function useLobbyApp(): LobbyAppState {
     void executeGameStartCommand(command);
   }
 
+  function submitTurn(draft: TurnDraft): void {
+    if (
+      turnSubmitFlightRef.current !== null ||
+      resumeFlightRef.current !== null ||
+      entryFlightRef.current !== null ||
+      gameStartFlightRef.current !== null ||
+      operationLabel !== null
+    ) {
+      return;
+    }
+
+    const currentSnapshot = snapshotRef.current;
+    const client = clientRef.current;
+    if (
+      currentSnapshot?.room.phase !== "PLAYING" ||
+      !("game" in currentSnapshot) ||
+      !("turn" in currentSnapshot.game) ||
+      currentSnapshot.versions.gameRevision !== draft.baseGameRevision ||
+      currentSnapshot.game.turn.turnId !== draft.baseTurnId ||
+      currentSnapshot.game.turn.activePlayerId !==
+        currentSnapshot.self.playerId
+    ) {
+      resetTurnDraftFromAuthority();
+      void requestLatestSnapshot();
+      return;
+    }
+    if (client === null || !client.connected || sessionReplacedRef.current) {
+      setErrorMessage("서버에 연결되지 않았습니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    const command = createOrReuseTurnSubmitCommand(
+      pendingTurnSubmitCommandRef.current,
+      draft,
+      createRequestId,
+    );
+    pendingTurnSubmitCommandRef.current = command;
+    void executeTurnSubmitCommand(command);
+  }
+
   function goHome(): void {
     if (sessionReplacedRef.current) {
       clearStoredPlayerSession(window.sessionStorage);
@@ -1004,6 +1201,7 @@ export function useLobbyApp(): LobbyAppState {
 
     updateSnapshot(null);
     clearPendingGameStartRequest();
+    clearPendingTurnSubmitRequest();
     setErrorMessage(null);
     setCopyMessage(null);
     if (window.location.pathname !== "/") {
@@ -1026,11 +1224,14 @@ export function useLobbyApp(): LobbyAppState {
     copyMessage,
     sessionReplaced,
     gameStartPending,
+    turnSubmitPending,
+    turnDraftResetGeneration,
     setNickname,
     setRoomCodeInput,
     createRoom,
     joinRoom,
     startGame,
+    submitTurn,
     copyInvitation,
     goHome,
   };

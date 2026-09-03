@@ -2,9 +2,9 @@
 
 ## 1. 문서 상태
 
-- 문서 버전: `0.8-phase-12-turn-draft`
+- 문서 버전: `0.9-phase-13-submit`
 - 대상: 첫 번째 playable MVP
-- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름과 Phase 7의 gameplay 규칙 gate, Phase 8 Hangul composition, Phase 9 `TestDictionaryProvider`, Phase 10 Board RuleEngine, Phase 11의 canonical Game start/state projection에 이어 Phase 12의 browser-only TurnDraft editor까지 구현되었다. Submit·draw·pass와 Game 시작 이후 server mutation은 아직 없다.
+- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름과 Phase 7의 gameplay 규칙 gate, Phase 8 Hangul composition, Phase 9 `TestDictionaryProvider`, Phase 10 Board RuleEngine, Phase 11 canonical Game start/state projection, Phase 12 browser-only TurnDraft에 이어 Phase 13의 원자적 `turn:submit`과 rack-empty 종료까지 구현되었다. draw, no-draw turn end와 server timeout은 아직 없다.
 - 규칙 기준: 확정된 내용과 미확정 내용은 [GAME_RULES.md](./GAME_RULES.md)를 따른다.
 - 기술 구조 기준: [ARCHITECTURE.md](./ARCHITECTURE.md)를 따른다.
 
@@ -113,8 +113,8 @@
 2. 현재 턴 Player만 자신의 브라우저에서 `TurnDraft`를 편집한다.
 3. 편집은 서버 상태나 다른 클라이언트에 즉시 영향을 주지 않는다.
 4. Player는 기준 `gameRevision`, `turnId`, `requestId`와 proposed board 전체를 Submit한다.
-5. 서버는 인증, 상태, 턴, 시간, `gameRevision`, 타일 보존·소유권 및 확정된 게임 규칙을 검증한다.
-6. 성공 시 candidate state를 한 번에 commit하고 새 projection을 전송한다.
+5. Socket transport는 command 도착 즉시 server `receivedAt`을 기록하고, 서버는 인증, 상태, 턴, `receivedAt < deadlineAt`, `gameRevision`, 타일 보존·소유권 및 확정된 게임 규칙을 검증한다.
+6. 성공 시 candidate Board/rack/meld와 다음 Turn 또는 rack-empty result를 accepted idempotency record와 한 번에 commit하고 Player별 새 projection을 전송한다. 다음 Turn의 시작 시각은 async validation 완료 뒤의 fresh server Clock을 사용한다.
 7. 실패 시 canonical state를 변경하거나 turn을 종료하지 않고 구조화된 거절 사유와 동기화에 필요한 정보를 반환한다. deadline 전에는 draft를 수정해 다시 Submit할 수 있다.
 
 ### 6.5 재접속
@@ -167,14 +167,16 @@
 | --- | --- |
 | `FR-SUBMIT-001` | `TurnDraft`는 active current-primary Player의 client-only 상태다. invalid intermediate layout과 undo/reset을 허용하고 다른 Player에게 broadcast하거나 gameplay event를 emit하지 않는다. 같은 gameId/gameRevision/turnId의 duplicate·presence-only snapshot과 일시적 disconnect에는 유지할 수 있지만 새 revision/turn/game, non-active 전환, `session:replaced`에는 폐기한다. Full refresh에는 저장·복원하지 않고 canonical snapshot에서 새로 만든다. |
 | `FR-SUBMIT-002` | Submit payload는 stable groupId, ordered physical tileId placement와 `assignedSymbol`, explicit choseong/jungseong/jongseong segmentation, one-position Joker assignment를 가진 proposed WordGroup collection 전체 및 동시성 identifier만 전달한다. canonical rack/bag/score/active Player를 클라이언트 값으로 덮어쓰지 않는다. |
-| `FR-SUBMIT-003` | 서버는 payload schema와 크기, 인증된 actor, phase, `turnId`, deadline, `gameRevision`을 검증해야 한다. |
+| `FR-SUBMIT-003` | strict proposed Board schema는 WordGroup 최대 156개, group당 syllable 최대 156개, 전체 Tile reference 최대 156개, choseong 1·jungseong 1~2·jongseong 0~2개와 bounded groupId/assignedSymbol을 강제한다. 서버는 이어 인증된 actor, phase, `turnId`, captured `receivedAt` deadline과 `gameRevision`을 검증해야 한다. |
 | `FR-SUBMIT-004` | 서버는 모든 `tileId`의 존재와 유일성, 전체 tile conservation, 기존 board Tile의 규칙상 허용된 이동, 새 Tile의 active Player rack 소유권을 검증해야 한다. |
 | `FR-SUBMIT-005` | 서버는 확정된 initial meld, 재조합, 한글 조합, joker, 사전 규칙을 검증해야 한다. |
-| `FR-SUBMIT-006` | 모든 검증이 끝나기 전에 live state를 수정하면 안 된다. 성공 시 한 번만 commit하고 실패 시 기존 state와 `gameRevision`을 유지한다. |
-| `FR-SUBMIT-007` | 재전송된 같은 `requestId`가 mutation을 중복 적용하지 않도록 idempotency를 제공해야 한다. |
+| `FR-SUBMIT-006` | 모든 검증이 끝나기 전에 live state를 수정하면 안 된다. 성공 시 Board/rack/meld/next Turn 또는 result와 revisions를 한 번만 atomic commit하고 실패 시 기존 state와 versions를 유지한다. |
+| `FR-SUBMIT-007` | authenticated Room/Player scope의 같은 `requestId`와 같은 fingerprint retry는 accepted result를 replay하고 mutation을 중복 적용하지 않으며, 다른 fingerprint는 `REQUEST_ID_REUSED`로 거절해야 한다. accepted result와 canonical state는 같은 atomic unit에 저장한다. |
 | `FR-SUBMIT-008` | stale `gameRevision`, 잘못된 turn, timeout, 위조 tile, invalid word 등은 안정적인 error code로 거절해야 한다. |
 | `FR-SUBMIT-009` | 서로 다른 physical Tile을 사용하는 독립적인 유효 WordGroup은 같은 NFC 완성 낱말을 가질 수 있다. composed word uniqueness는 강제하지 않지만 groupId와 tileId uniqueness는 각각 유지해야 한다. |
 | `FR-SUBMIT-010` | 기존 Board Joker의 logical placement 또는 assignment가 바뀌면 recovered Joker로 판정한다. 각 recovered Joker에는 canonical old symbol과 같은 final assignedSymbol을 가진 서로 다른 newly-used actor-rack ordinary Tile 하나가 필요하고, recovered Joker tileId도 final Board에 정확히 한 번 남아야 한다. |
+| `FR-SUBMIT-011` | non-terminal accepted Submit은 `gameRevision`과 `storageRevision`을 1씩 증가시키고 `roomRevision`은 유지하며, validation 완료 뒤 fresh server time의 새 Turn을 만든다. actor rack이 비면 다음 Turn 없이 rack-empty result를 만들고 Room/Game/storage revisions를 각각 1씩 증가시켜 `FINISHED`로 전이한다. |
+| `FR-SUBMIT-012` | browser는 in-flight 또는 acknowledgement-loss retry command를 page memory에만 보관해 같은 requestId/payload를 재사용한다. full refresh 뒤 pending Submit을 저장하거나 자동 재전송하지 않는다. |
 
 ### 7.4 Connection과 동기화
 
@@ -239,7 +241,7 @@ Exact physical definition과 `assignedSymbol` 정보는 기존 player-specific �
 - `roomCode` 입력은 trim 후 uppercase로 정규화하고 `C-10`의 6자리 ASCII alphabet을 검증한다. code는 locator일 뿐 secret이나 인증 수단으로 사용하지 않는다.
 - `sessionToken`은 고엔트로피 opaque value로 발급하고 URL, analytics, 일반 로그에 기록하지 않는다.
 - wire `tileId`는 opaque하고 쉽게 열거할 수 없게 하며, 허용되지 않은 Tile 참조의 오류 차이로 private Tile 존재 여부를 노출하지 않는다.
-- room create/join/resume과 잘못된 command에 rate/size limit을 적용할 수 있는 경계를 둔다. 정확한 제한값은 운영 측정 후 정한다.
+- `turn:submit`에는 collection/string count 한도를 runtime schema로 적용한다. serialized byte 크기와 Room/IP별 command rate limit은 운영 측정 후 정한다.
 - secret/API key는 환경 변수로 주입하며 저장소에 commit하지 않는다.
 
 ### 9.3 타입과 유지보수성
@@ -300,5 +302,5 @@ Exact physical definition과 `assignedSymbol` 정보는 기존 player-specific �
 - 동일 프로세스 안의 메모리 상태만 사용하므로 서버 restart 복구는 지원하지 않는다.
 - single replica만 지원한다. 공유 저장소 없이 replica를 늘리면 Room state와 connection routing이 갈라질 수 있다.
 - 테스트용 `DictionaryProvider`는 게임 메커니즘 검증용이며 실제 한국어 사전 완전성을 보장하지 않는다.
-- Phase 8 composer는 assigned jamo의 현대 한글 조합, Phase 9 provider는 NFC fixture membership, Phase 10 RuleEngine은 readonly proposed Board validation만 맡는다. Phase 11은 start 시 canonical GameState와 첫 deadline까지 생성하고 Phase 12는 그 projection을 복제한 browser-memory TurnDraft만 편집한다. Submit/draw/pass, timeout 실행, 이후 rack/Board/turn server mutation과 score/finish는 아직 구현하지 않았다.
+- Phase 8 composer는 assigned jamo의 현대 한글 조합, Phase 9 provider는 NFC fixture membership, Phase 10 RuleEngine은 readonly proposed Board validation만 맡는다. Phase 11은 start 시 canonical GameState와 첫 deadline을 생성하고 Phase 12는 browser-memory TurnDraft를 편집하며 Phase 13은 유효한 Submit의 Board/rack/meld/next Turn mutation과 rack-empty score/finish를 원자적으로 commit한다. draw, no-draw turn end, timeout 실행과 25분·stalemate·forfeit 종료는 아직 구현하지 않았다.
 - production dictionary dataset/license, Lobby 비-Host leave, Room retention과 운영 한도는 아직 미확정이다.

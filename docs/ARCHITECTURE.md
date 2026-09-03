@@ -20,7 +20,7 @@
 
 ### 2.1 계획된 monorepo
 
-아래는 단계적으로 구현할 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. Phase 9에서는 versioned deterministic test dictionary adapter를 infrastructure 경계에 추가했고 Phase 10에서는 server-only Board·Tile validation model과 async pure RuleEngine을 domain 경계에 추가했다. Phase 11은 canonical inventory/GameState, `GameStartService`, player별 PLAYING projection과 `game:start` transport를 연결했다. Phase 12는 `apps/web`에 browser-only TurnDraft model, pure immutable reducer와 board/rack editor를 추가했다. 나머지 구조는 해당 Roadmap 단계에서 필요할 때 생성한다.
+아래는 단계적으로 구현할 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. Phase 9에서는 versioned deterministic test dictionary adapter를 infrastructure 경계에 추가했고 Phase 10에서는 server-only Board·Tile validation model과 async pure RuleEngine을 domain 경계에 추가했다. Phase 11은 canonical inventory/GameState, `GameStartService`, player별 PLAYING projection과 `game:start` transport를 연결했다. Phase 12는 `apps/web`에 browser-only TurnDraft model, pure immutable reducer와 board/rack editor를 추가했고 Phase 13은 `TurnSubmitService`, `turn:submit`, rack-empty terminal state와 FINISHED projection을 연결했다. 나머지 구조는 해당 Roadmap 단계에서 필요할 때 생성한다.
 
 ```text
 /
@@ -239,7 +239,7 @@ GameState
 - 하나의 `tileId`는 최종 Board 전체에 최대 한 번만 나타나며 모든 Tile은 정확히 하나의 WordGroup, rack 또는 bag 같은 허용 위치에 속해야 한다.
 - WordGroup collection의 표시 순서는 UI 안정성을 위한 것이고 낱말 유효성에는 영향을 주지 않는다.
 - Phase 11의 `RulesConfig`는 위 version과 수치를 frozen snapshot으로 생성하며 repository clone 뒤에도 동일 값과 nested isolation을 유지한다.
-- forfeit, consecutive offline timeout, stalemate tracking과 result는 정책은 확정됐지만 Phase 11 GameState에는 넣지 않았다. 각각을 실제로 변경하는 후속 Phase에서 canonical field를 추가한다.
+- Phase 13의 `GameState`는 `PlayingGameState { turn, result: null }`와 `FinishedGameState { turn: null, result }`를 구분한다. 현재 terminal result는 rack-empty reason, winner, turnOrder 순서의 Player별 score와 finishedAt만 표현한다. forfeit, consecutive offline timeout과 stalemate tracking은 실제로 변경하는 후속 Phase에서 canonical field를 추가한다.
 - 구현된 Phase 8 composition은 명시된 syllable role별 `tileId + assignedSymbol`에서 word 내부 중복 physical reference를 거절하고, two-position component를 먼저 하나의 logical V/T로 collapse한다. Compatibility Jamo를 명시적 Unicode modern Hangul L/V/T index table에 mapping해 precomposed NFC word를 계산하며 문자열을 단순 concatenate/normalize하지 않는다.
 - Phase 10의 `Board`는 ordered `WordGroup` collection이고 각 group은 unique `groupId`와 Phase 8 syllable/component 구조를 사용한다. `OrdinaryTileDescriptor`와 `JokerTileDescriptor`는 full Game Tile entity가 아니라 RuleEngine 입력의 physical assignment 검증용 server-only descriptor다.
 - async `validateProposedBoard(ValidateBoardInput)`은 canonical/proposed Board, readonly `tilesById`, actor rack tileId 집합, initial meld 상태, `RuleValidationPolicy`와 `DictionaryProvider`를 받아 `BoardValidationResult`를 반환한다. 성공 값은 group별 `composedWords`, `newlyUsedRackTileIds`, `recoveredJokerTileIds`, `completesInitialMeld`만 포함한다.
@@ -312,12 +312,12 @@ StateSnapshot
 - Lobby에서 Game이 아직 없으면 `StateVersions.gameRevision`은 `null`이며 `0` sentinel로 부재를 나타내지 않는다.
 - `PublicPlayerView.connectionStatus`는 `CONNECTED | OFFLINE`이고 `PublicRoomView.players` 배열 순서가 공개 표시 순서다.
 - `PlayingPublicPlayerView`는 각 Player의 rack 개수와 initial meld 완료 여부를 공개하고, `PlayingPrivatePlayerView`만 현재 Player의 ordered rack Tile 상세를 포함한다. ordinary rack Tile은 tileId, kind, physicalType, sourceBag과 allowedSymbols를, Joker는 같은 identifier/meta 중 applicable field만 가진다.
-- `PublicGameView`는 Board 전체, active Player를 포함한 current turn과 deadline, immutable turnOrder와 consonant/vowel bag 잔여 개수를 공개한다. Phase 11에서 아직 존재하지 않는 forfeit/result field는 가짜 값으로 추가하지 않는다.
+- `PublicGameView`는 PLAYING에서 Board 전체, active Player를 포함한 current turn과 deadline, immutable turnOrder와 consonant/vowel bag 잔여 개수를 공개한다. `FinishedPublicGameView`는 active turn을 제거하고 rack-empty result의 winner, Player별 score와 finishedAt을 공개한다.
 - Phase 12의 public Board placement는 편집 가능한 공개 Tile에 한해 `tileId`, `kind`, `physicalType`, 현재 `assignedSymbol`과 선택 가능한 `allowedSymbols`를 제공한다. 이는 Board 위 Tile만을 위한 projection이며 rack origin/owner, bag 순서나 전체 `tilesById`를 공개하지 않는다.
 - 상대 rack 상세, bag 순서, future draw Tile과 server random state는 public DTO에 넣지 않는다. `sessionToken`, token hash, `socketId`, `connectionGeneration`, bootstrap credential, server-only `storageRevision`, repository 내부 정보는 public/private 어느 snapshot에도 넣지 않는다.
 - Socket.IO room 전체로 동일 snapshot을 broadcast하지 않는다. 공개 변화 알림 뒤 각 Player에게 projection을 보내거나, 처음부터 socket별 snapshot을 emit한다.
 
-`LobbyStateSnapshotProjector`는 이름을 유지하면서 LOBBY와 PLAYING 두 projection을 모두 생성한다. PLAYING에서는 canonical `tilesById`와 rack을 self view로만 변환하며 다른 Player와 bag에는 count만 남긴다. resume과 `state:sync`도 이 projector를 사용하므로 GameState를 재생성하거나 turnOrder/rack을 다시 배분하지 않는다.
+`LobbyStateSnapshotProjector`는 기존 이름을 유지하면서 LOBBY, PLAYING과 FINISHED projection을 모두 생성한다. PLAYING/FINISHED에서는 canonical `tilesById`와 rack을 self view로만 변환하며 다른 Player와 bag에는 count만 남긴다. resume과 `state:sync`도 이 projector를 사용하므로 GameState를 재생성하거나 turnOrder/rack을 다시 배분하지 않는다.
 
 MVP는 patch protocol보다 full snapshot을 우선한다. 최대 4명 규모에서는 단순성과 복구 가능성이 더 중요하다. 이후 측정 결과가 필요할 때 scoped-version delta를 추가할 수 있다.
 
@@ -406,7 +406,7 @@ exact inventory와 Joker 시작 배분은 GAME_RULES C-02/C-22, 연결 조건과
 
 ### 7.3 Finished
 
-- server-side RuleEngine이 rack-empty, 25분 Game deadline, stalemate 또는 active non-forfeit Player 1명이라는 확정 종료 조건을 만족했다고 판정할 때만 `FINISHED`로 전이한다.
+- server-side application/domain pipeline이 rack-empty, 25분 Game deadline, stalemate 또는 active non-forfeit Player 1명이라는 확정 종료 조건을 만족했다고 판정할 때만 `FINISHED`로 전이한다. Phase 13은 그중 accepted Submit 뒤 rack-empty만 구현한다.
 - 결과, 종료 사유, 마지막 `gameRevision`과 `FINISHED` phase 전이는 하나의 unit-of-work에 포함한다.
 - `FINISHED`에서는 gameplay mutation을 거절한다. snapshot/resume과 별도의 leave/retention command 허용 여부는 Room policy가 결정한다.
 - rematch, Room 재사용, 결과 보존 기간은 현재 scope에서 미확정이며 임의 구현하지 않는다.
@@ -592,6 +592,8 @@ MVP에서는 독립 event 수를 줄이고 `state:snapshot`을 중심으로 구�
 
 Phase 11 `game:start`는 required `expectedRoomRevision`과 strict empty payload를 사용한다. client가 playerId, turnOrder, Tile, random seed나 rack을 지정하지 못하며, current-primary binding에서 actor를 얻는다. 성공 acknowledgement는 requester의 최신 `PlayingStateSnapshot`을 가진 Room-scoped ack이고, commit 뒤 Room의 각 active primary socket에는 각자 projection한 `state:snapshot`과 동일 first-turn metadata의 `turn:started`를 보낸다.
 
+Phase 13 `turn:submit`은 `requestId`, `expectedGameRevision`, `turnId`와 strict `proposedBoard`만 받는다. actor, rack, bag, next Player, composed word와 result는 payload에서 받지 않고 server state에서 도출한다. 성공 acknowledgement는 requester의 최신 PLAYING 또는 FINISHED snapshot을 가진 Room-scoped ack다. commit 뒤 각 active primary socket에 Player별 `state:snapshot`을 보내고, non-terminal이면 `turn:started`, rack-empty terminal이면 non-authoritative `game:finished` advisory를 보낸다.
+
 ### 9.4 Scoped version 처리
 
 - client는 `roomRevision`, `gameRevision`, `presenceVersion`을 각각 비교한다.
@@ -632,7 +634,7 @@ Phase 11 `game:start`는 required `expectedRoomRevision`과 strict empty payload
 - ordinary Tile은 projection의 `allowedSymbols` 중 하나를 선택하고 Joker도 one-position symbol만 고른다. 복합모음과 겹받침은 서로 다른 physical Tile 두 개를 두 slot에 배치하며 가상 compound Tile을 만들지 않는다.
 - edit는 authoritative snapshot을 mutate하지 않는 immutable reducer를 통과한다. placement, move, symbol 변경과 구조 편집 전 상태를 최대 50개 보존해 undo하고, reset은 최신 canonical snapshot으로 fresh draft를 만든다.
 - desktop HTML drag와 pointer/touch click 기반 tap-to-place, Enter/Space keyboard activation은 모두 같은 reducer action을 사용한다. drag만을 유일한 조작으로 요구하지 않으며 React component나 client에 Hangul composer, DictionaryProvider 또는 authoritative RuleEngine을 복제하지 않는다.
-- draft edit, undo와 reset은 Socket.IO event를 emit하지 않으며 다른 Player에게 broadcast하지 않는다. Phase 12에는 `turn:submit`, `turn:draw`, `turn:pass` contract나 control이 없다.
+- draft edit, undo와 reset은 Socket.IO event를 emit하지 않으며 다른 Player에게 broadcast하지 않는다. Phase 13에서 명시적인 제출 control과 `turn:submit`만 추가했으며 `turn:draw`와 `turn:pass` control은 없다.
 - incoming snapshot의 `gameId`, `gameRevision`, `turnId`가 base와 같으면 duplicate/presence-only 갱신에도 draft를 유지한다. 다른 game, 더 새로운 gameRevision, 다른 turn 또는 non-active 전환이면 자동 merge하지 않고 draft를 폐기해 최신 canonical snapshot에서 다시 시작한다.
 - 페이지가 살아 있는 일시적 disconnect에서는 memory draft를 유지할 수 있으나 resume 뒤 위 base identity를 다시 확인한다. full refresh에는 draft를 storage에 기록하지 않아 복구하지 않으며, `session:replaced`를 받으면 즉시 폐기하고 편집을 막는다.
 - draft에는 visibility policy상 actor에게 허용되지 않은 상대 rack이나 bag data가 존재하지 않는다.
@@ -650,6 +652,10 @@ proposedBoard:
 ```
 
 client가 계산한 next turn, rack, bag, score, winner는 제출하지 않거나 모두 무시한다.
+
+shared `ProposedBoard` runtime schema는 transport resource safety를 위해 WordGroup 최대 156개, group당 syllable 최대 156개, 전체 physical Tile reference 최대 156개를 허용한다. syllable component count는 choseong 1, jungseong 1~2, jongseong 0~2이며 groupId는 non-empty 최대 128자, assignedSymbol은 non-empty 최대 8자다. empty group, duplicate identifier/reference와 unsupported bounded symbol 같은 game-rule rejection은 이 구조 schema에서 억지로 판정하지 않고 RuleEngine에 맡긴다.
+
+browser는 draft를 mutate하지 않는 `serializeTurnDraft`로 slot의 `tileId + assignedSymbol`만 직렬화한다. acknowledgement 유실 동안 pending Submit command는 page memory에만 보관하고 동일 requestId/payload로 재시도한다. 성공 또는 더 새로운 authoritative snapshot이면 폐기하며 full refresh 뒤에는 저장하거나 자동 재전송하지 않는다.
 
 ### 10.2 원자적 validation pipeline
 
@@ -671,9 +677,6 @@ enqueue in room mutation lane
 idempotency / room / phase / turn / deadline / gameRevision checks
         │
         ▼
-build candidate from canonical state
-        │
-        ▼
 tile existence / uniqueness / conservation / ownership
         │
         ▼
@@ -682,7 +685,7 @@ RulesConfig / Hangul composition / DictionaryProvider validation
         ├── failure ──> discard candidate; unchanged state/gameRevision; error ack
         │
         ▼
-derive rack, board, meld state, rules-defined continuation/next turn/result
+build isolated candidate; derive rack, board, meld state and next turn/result
         │
         ▼
 atomic accepted-result + state CAS:
@@ -693,7 +696,7 @@ atomic accepted-result + state CAS:
 publish player-specific snapshots; retry/resync on delivery failure
 ```
 
-검증 순서는 값싼 보안·구조 검사를 먼저 하고 domain/사전 검사를 뒤에 두되, 어느 단계도 commit 전 live state를 변경하지 않는다. Phase 10은 이 pipeline 중 proposed Board의 구조·Tile·initial meld/rearrangement·Joker·Hangul·dictionary validation slice만 구현한다. 인증, phase, turn, deadline, revision, candidate aggregate 생성과 CAS commit은 Phase 13 mutation pipeline에서 연결한다.
+검증 순서는 값싼 보안·구조 검사를 먼저 하고 domain/사전 검사를 뒤에 두되, 어느 단계도 commit 전 live state를 변경하지 않는다. Phase 10의 `validateProposedBoard`가 proposed Board의 구조·Tile·initial meld/rearrangement·Joker·Hangul·dictionary validation slice를 맡고, Phase 13의 `TurnSubmitService`가 current-primary authorization, phase, turn, captured receivedAt deadline, revision, candidate aggregate 생성과 CAS commit을 연결한다. async RuleEngine 뒤에는 최신 Room/Game/turn/revision과 current-primary를 다시 확인한다.
 
 ### 10.3 필수 검증
 
@@ -717,6 +720,8 @@ publish player-specific snapshots; retry/resync on delivery failure
 
 검증 실패 시 authoritative board, racks, bag, turn, timer, `gameRevision`은 그대로여야 한다.
 
+Socket listener는 command 도착 즉시 runtime validation보다 먼저 server `Clock`의 `receivedAt`을 캡처한다. deadline admission은 오직 `receivedAt < deadlineAt`으로 판정하므로 queue 및 async dictionary validation 지연이 도착 시각을 바꾸지 않는다. accepted non-terminal Submit의 다음 `startedAt`은 validation 완료 뒤 `TurnSubmitService`가 다시 읽은 fresh Clock 값이며 `deadlineAt = startedAt + turnDurationMs`다.
+
 ### 10.4 Commit과 논리적 rollback
 
 실제 live state를 수정한 뒤 되돌리는 방식은 사용하지 않는다.
@@ -726,6 +731,7 @@ publish player-specific snapshots; retry/resync on delivery failure
 - repository commit은 application이 read한 server-only `storageRevision`도 함께 CAS해 unrelated Room write를 덮어쓰지 않는다.
 - storage CAS가 경쟁으로 실패하면 최신 aggregate를 다시 읽는다. `gameRevision` 또는 적용되는 authorization/phase가 바뀌었으면 안전하게 거절하고, game state가 그대로인 unrelated metadata change뿐이면 candidate를 다시 만들고 전체 검증 후 bounded retry할 수 있다.
 - Submit/timeout이 종료 조건을 만들면 `gameRevision`, `roomRevision`, `storageRevision`과 `FINISHED` result를 같은 commit에서 갱신한다.
+- Phase 13 non-terminal Submit은 proposed Board, actor rack에서 `newlyUsedRackTileIds` 제거, 필요 시 initial meld flag, 새 Turn과 `gameRevision + 1`, `storageRevision + 1`을 commit하고 `roomRevision`은 유지한다. rack-empty Submit은 다음 Turn 없이 `turn = null`, rack-empty result, Room `FINISHED`와 세 revision 중 Room/Game/storage를 모두 1씩 증가시킨다.
 - CAS가 실패하면 candidate를 버리고 `STALE_GAME_REVISION`으로 처리한다.
 - 실패 시 candidate 폐기가 곧 rollback이며 별도의 역연산을 수행하지 않는다.
 - commit 후에만 realtime event를 발행한다.
@@ -743,6 +749,7 @@ DB 도입 후 accepted idempotency record와 outbox는 state와 같은 transacti
 - 같은 ID와 같은 payload의 retry는 이전 ack를 돌려주고 다시 mutate하지 않는다.
 - 같은 ID와 다른 payload는 `REQUEST_ID_REUSED`로 거절한다.
 - 특히 draw, start, submit, timeout처럼 타일이나 turn을 바꾸는 command는 반드시 idempotent해야 한다.
+- Phase 13 Submit scope는 authenticated Room/Player이고 fingerprint는 command kind, expected gameRevision, turnId와 ordered proposed Board의 group/syllable/role별 tileId·assignedSymbol을 포함한다. terminal record에는 Room/Game revision, `ADVANCED | FINISHED`, 다음 Turn 식별자 또는 rack-empty winner 같은 non-secret replay data만 저장한다.
 
 cache 크기와 TTL은 운영 정책으로 정하지만, active Room의 정상적인 retry window보다 짧아 correctness를 깨지 않게 한다.
 
@@ -901,10 +908,10 @@ https://game.example/
 
 - Domain unit test: fixed `Clock`, seeded/fake `RandomSource`, test `DictionaryProvider`로 state transition과 invariant를 검증하며, Phase 10 RuleEngine은 deterministic provider와 readonly Board 입력으로 validation-only 동작을 검증하고 Phase 11은 exact inventory, 2/3/4인 deal, Tile conservation, turnOrder와 첫 deadline을 검증
 - Repository contract test: code 충돌, capacity race, scoped-version CAS, session lookup
-- Application test: authorization, idempotency, candidate discard, timeout race
-- Socket integration test: bootstrap/create/join/start/resume, 잘못된 token, stale scoped version, duplicate request와 lost ack
-- Projection test: visibility policy상 private인 rack/bag 정보와 token이 허용되지 않은 payload에 포함되지 않는지 검증
-- Client test: snapshot version vector 처리, immutable TurnDraft 편집·Tile uniqueness·undo/reset, reconnect/refresh/replaced 수명주기와 no-network boundary
+- Application test: authorization, receivedAt deadline boundary, RuleEngine mapping, candidate discard, CAS/current-primary recheck, idempotency, next Turn과 rack-empty result
+- Socket integration test: bootstrap/create/join/start/submit/resume, 잘못된 token, stale scoped version, duplicate request와 post-commit delivery failure
+- Projection test: PLAYING/FINISHED visibility policy상 private인 다른 rack/bag 정보와 token이 허용되지 않은 payload에 포함되지 않는지 검증
+- Client test: snapshot version vector 처리, immutable TurnDraft 편집·Tile uniqueness·undo/reset, page-memory Submit retry, rejection별 draft 보존/reset과 reconnect/refresh/replaced 수명주기
 - End-to-end test: 2~4 browser, refresh, disconnect, valid/invalid Submit, Railway smoke flow
 
 테스트가 가능하도록 system time, random, dictionary, repository, publisher를 전역 singleton에 숨기지 않는다.
@@ -915,7 +922,7 @@ https://game.example/
 | --- | --- |
 | production dictionary dataset·license·exact 어휘 범위 | `DictionaryProvider`, version storage |
 | Lobby 비-Host explicit leave와 Room retention/code 재사용 | session/Room cleanup, generator, abuse controls |
-| command/Submit 운영 한도 | transport validation, rate limiting |
+| command byte-size/rate 운영 한도 | transport ingress, rate limiting |
 | rematch와 누적 match | result model, Room lifecycle |
 
 이 항목은 [GAME_RULES.md](./GAME_RULES.md)의 `TO_BE_CONFIRMED`에 동기화한다. Tile inventory와 symbol representation은 같은 문서의 C-15/C-22/C-23이 canonical source이며 변경 시 새 inventory/rules version과 검증이 필요하다.

@@ -895,7 +895,10 @@ export function decideTurnDraftReconciliation(
   draft: TurnDraft,
   incomingSnapshot: StateSnapshot,
 ): TurnDraftReconciliationDecision {
-  if (!("game" in incomingSnapshot)) {
+  if (
+    !("game" in incomingSnapshot) ||
+    !("turn" in incomingSnapshot.game)
+  ) {
     return "RESET_DRAFT";
   }
 

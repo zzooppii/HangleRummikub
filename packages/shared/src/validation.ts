@@ -23,8 +23,10 @@ import {
   type SessionBootstrapCommand,
   type SessionResumeCommand,
   type StateSyncCommand,
+  type TurnSubmitCommand,
 } from "./protocol.js";
 import {
+  GameFinishedEventSchema,
   GameStartAckSchema,
   RoomCreateAckSchema,
   RoomJoinAckSchema,
@@ -34,6 +36,7 @@ import {
   StateSnapshotEventSchema,
   StateSyncAckSchema,
   TurnStartedEventSchema,
+  TurnSubmitAckSchema,
 } from "./realtime.js";
 import {
   NicknameSchema,
@@ -42,9 +45,11 @@ import {
 } from "./identifiers.js";
 import {
   LobbyStateSnapshotSchema,
+  FinishedStateSnapshotSchema,
   PlayingStateSnapshotSchema,
   StateSnapshotSchema,
   type LobbyStateSnapshot,
+  type FinishedStateSnapshot,
   type PlayingStateSnapshot,
   type StateSnapshot,
 } from "./projections.js";
@@ -347,6 +352,29 @@ export function validateGameStartCommand(
   return { ok: true, value: result.value };
 }
 
+export function validateTurnSubmitCommand(
+  input: unknown,
+): RuntimeValidationResult<TurnSubmitCommand> {
+  const result = validateClientCommand(input);
+
+  if (!result.ok) {
+    return result;
+  }
+
+  if (result.value.kind !== "turn:submit") {
+    return {
+      ok: false,
+      error: validationError(
+        "INVALID_PAYLOAD",
+        "Turn submit command is invalid.",
+        false,
+      ),
+    } satisfies RuntimeValidationResult<never>;
+  }
+
+  return { ok: true, value: result.value };
+}
+
 export function validateStateVersions(input: unknown) {
   return validateSchema(
     StateVersionsSchema,
@@ -495,6 +523,18 @@ export function validateGameStartAck(input: unknown) {
   );
 }
 
+export function validateTurnSubmitAck(input: unknown) {
+  return validateSchema(
+    TurnSubmitAckSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Turn submit acknowledgement is invalid.",
+      false,
+    ),
+  );
+}
+
 export function validateErrorDto(input: unknown) {
   return validateSchema(
     ErrorDtoSchema,
@@ -541,6 +581,20 @@ export function validatePlayingStateSnapshot(
   );
 }
 
+export function validateFinishedStateSnapshot(
+  input: unknown,
+): RuntimeValidationResult<FinishedStateSnapshot> {
+  return validateSchema(
+    FinishedStateSnapshotSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Finished state snapshot is invalid.",
+      false,
+    ),
+  );
+}
+
 export function validateStateSnapshotDeliveryData(input: unknown) {
   return validateSchema(
     StateSnapshotDeliveryDataSchema,
@@ -572,6 +626,18 @@ export function validateTurnStartedEvent(input: unknown) {
     validationError(
       "INVALID_PAYLOAD",
       "Turn started event is invalid.",
+      false,
+    ),
+  );
+}
+
+export function validateGameFinishedEvent(input: unknown) {
+  return validateSchema(
+    GameFinishedEventSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Game finished event is invalid.",
       false,
     ),
   );

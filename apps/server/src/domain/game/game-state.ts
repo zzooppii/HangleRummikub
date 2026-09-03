@@ -57,7 +57,20 @@ export type GameTurn = Readonly<{
   deadlineAt: ServerTime;
 }>;
 
-export type GameState = Readonly<{
+export type GameScoreEntry = Readonly<{
+  playerId: PlayerId;
+  score: number;
+  remainingRackTileCount: number;
+}>;
+
+export type GameResult = Readonly<{
+  reason: "RACK_EMPTY";
+  winnerPlayerId: PlayerId;
+  scores: readonly GameScoreEntry[];
+  finishedAt: ServerTime;
+}>;
+
+type GameStateBase = Readonly<{
   gameId: GameId;
   gameRevision: GameRevision;
   rulesConfig: RulesConfig;
@@ -70,10 +83,24 @@ export type GameState = Readonly<{
   board: Board;
   initialMeldCompleted: ReadonlyMap<PlayerId, boolean>;
   turnOrder: readonly PlayerId[];
-  turn: GameTurn;
   gameStartedAt: ServerTime;
   gameDeadlineAt: ServerTime;
 }>;
+
+export type PlayingGameState = GameStateBase &
+  Readonly<{
+    turn: GameTurn;
+    result: null;
+  }>;
+
+export type FinishedGameState = GameStateBase &
+  Readonly<{
+    /** A terminal Game has no active or next Turn. */
+    turn: null;
+    result: GameResult;
+  }>;
+
+export type GameState = PlayingGameState | FinishedGameState;
 
 export type CreateInitialGameStateInput = Readonly<{
   playerIds: readonly PlayerId[];
@@ -279,6 +306,88 @@ function assertInitialTileConservation(gameState: GameState): void {
   }
 }
 
+function cloneGameResult(result: GameResult): GameResult {
+  if (result.reason !== "RACK_EMPTY") {
+    throw new TypeError("Unsupported Game result reason.");
+  }
+  requireNonNegativeSafeInteger(result.finishedAt, "finishedAt");
+  return Object.freeze({
+    reason: result.reason,
+    winnerPlayerId: result.winnerPlayerId,
+    scores: Object.freeze(
+      result.scores.map((entry) => {
+        requireNonNegativeSafeInteger(
+          entry.remainingRackTileCount,
+          "remainingRackTileCount",
+        );
+        if (!Number.isSafeInteger(entry.score)) {
+          throw new RangeError("Game score must be a safe integer.");
+        }
+        return Object.freeze({
+          playerId: entry.playerId,
+          score: entry.score,
+          remainingRackTileCount: entry.remainingRackTileCount,
+        });
+      }),
+    ),
+    finishedAt: result.finishedAt,
+  });
+}
+
+function requireNonNegativeSafeInteger(value: number, name: string): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new RangeError(`${name} must be a non-negative safe integer.`);
+  }
+}
+
+function assertRackEmptyResult(gameState: FinishedGameState): void {
+  const winnerRack = gameState.racks.get(gameState.result.winnerPlayerId);
+  if (winnerRack === undefined || winnerRack.length !== 0) {
+    throw new Error("The rack-empty winner must have an empty rack.");
+  }
+
+  let winnerScore = 0;
+  for (const [index, playerId] of gameState.turnOrder.entries()) {
+    const rack = gameState.racks.get(playerId);
+    const scoreEntry = gameState.result.scores[index];
+    if (
+      rack === undefined ||
+      scoreEntry === undefined ||
+      scoreEntry.playerId !== playerId ||
+      scoreEntry.remainingRackTileCount !== rack.length
+    ) {
+      throw new Error("Game result score order must match canonical racks.");
+    }
+
+    if (playerId === gameState.result.winnerPlayerId) {
+      continue;
+    }
+
+    let penalty = 0;
+    for (const tileId of rack) {
+      const tile = gameState.tilesById.get(tileId);
+      if (tile === undefined) {
+        throw new Error("A scored rack contains an unknown Tile.");
+      }
+      penalty += tile.kind === "JOKER" ? 30 : 1;
+    }
+    if (scoreEntry.score !== -penalty) {
+      throw new Error("A losing Player score does not match rack penalties.");
+    }
+    winnerScore += penalty;
+  }
+
+  const winnerEntry = gameState.result.scores.find(
+    (entry) => entry.playerId === gameState.result.winnerPlayerId,
+  );
+  if (winnerEntry?.score !== winnerScore) {
+    throw new Error("The winner score does not match losing rack penalties.");
+  }
+}
+
+export function cloneGameState(gameState: PlayingGameState): PlayingGameState;
+export function cloneGameState(gameState: FinishedGameState): FinishedGameState;
+export function cloneGameState(gameState: GameState): GameState;
 export function cloneGameState(gameState: GameState): GameState {
   const clonedTiles = [...gameState.tilesById].map(
     ([tileId, tile]) => [tileId, cloneTileInstance(tile)] as const,
@@ -290,7 +399,7 @@ export function cloneGameState(gameState: GameState): GameState {
     ([playerId, completed]) => [playerId, completed] as const,
   );
 
-  return Object.freeze({
+  const base = {
     gameId: gameState.gameId,
     gameRevision: gameState.gameRevision,
     rulesConfig: cloneRulesConfig(gameState.rulesConfig),
@@ -301,6 +410,38 @@ export function cloneGameState(gameState: GameState): GameState {
     board: cloneBoard(gameState.board),
     initialMeldCompleted: createReadonlyMap(clonedMeldStatus),
     turnOrder: Object.freeze([...gameState.turnOrder]),
+    gameStartedAt: gameState.gameStartedAt,
+    gameDeadlineAt: gameState.gameDeadlineAt,
+  };
+
+  if (gameState.turn === null) {
+    const scorePlayerIds = gameState.result.scores.map(
+      (entry) => entry.playerId,
+    );
+    if (
+      scorePlayerIds.length !== gameState.turnOrder.length ||
+      new Set(scorePlayerIds).size !== scorePlayerIds.length ||
+      !gameState.turnOrder.every((playerId) => scorePlayerIds.includes(playerId)) ||
+      !scorePlayerIds.includes(gameState.result.winnerPlayerId)
+    ) {
+      throw new Error(
+        "A terminal Game result must score every turn-order Player once.",
+      );
+    }
+    assertRackEmptyResult(gameState);
+    return Object.freeze({
+      ...base,
+      turn: null,
+      result: cloneGameResult(gameState.result),
+    });
+  }
+
+  if (gameState.result !== null) {
+    throw new Error("An active Game must not contain a terminal result.");
+  }
+
+  return Object.freeze({
+    ...base,
     turn: Object.freeze({
       turnId: gameState.turn.turnId,
       turnNumber: gameState.turn.turnNumber,
@@ -308,14 +449,13 @@ export function cloneGameState(gameState: GameState): GameState {
       startedAt: gameState.turn.startedAt,
       deadlineAt: gameState.turn.deadlineAt,
     }),
-    gameStartedAt: gameState.gameStartedAt,
-    gameDeadlineAt: gameState.gameDeadlineAt,
+    result: null,
   });
 }
 
 export function createInitialGameState(
   input: CreateInitialGameStateInput,
-): GameState {
+): PlayingGameState {
   const rulesConfig =
     input.rulesConfig === undefined
       ? createDefaultRulesConfig()
@@ -361,7 +501,7 @@ export function createInitialGameState(
     throw new Error("Initial turn requires an active Player.");
   }
 
-  const gameState: GameState = Object.freeze({
+  const gameState: PlayingGameState = Object.freeze({
     gameId: input.idGenerator.generateGameId(),
     gameRevision: parse(GameRevisionSchema, 0),
     rulesConfig,
@@ -379,6 +519,7 @@ export function createInitialGameState(
       startedAt: gameStartedAt,
       deadlineAt: addDuration(gameStartedAt, rulesConfig.turnDurationMs),
     }),
+    result: null,
     gameStartedAt,
     gameDeadlineAt: addDuration(gameStartedAt, rulesConfig.gameDurationMs),
   });

@@ -12,8 +12,9 @@
 - Phase 10(Board와 순수 RuleEngine): **완료** (2026-09-03)
 - Phase 11(Game start와 권한별 상태 동기화): **완료** (2026-09-03)
 - Phase 12(Client TurnDraft): **완료** (2026-09-03)
+- Phase 13(원자적 Submit pipeline): **완료** (2026-09-03)
 
-공식 physical Tile inventory와 디지털 symbol 표현의 canonical 기준은 C-22와 C-23이다. Phase 8은 Hangul composer를 구현했고 Phase 9는 아래 승인된 fixture를 `test-dictionary-v1` adapter로 구현했다. Phase 10은 server-only Board·Tile validation descriptor와 순수 RuleEngine을 구현했다. Phase 11은 exact inventory로 canonical GameState와 immutable RulesConfig를 만들고 `game:start`, Player별 PLAYING projection을 연결했다. Phase 12는 active Player의 browser-only TurnDraft editor를 연결했지만 Submit·draw·timeout 같은 Game 시작 이후 server mutation은 아직 없다.
+공식 physical Tile inventory와 디지털 symbol 표현의 canonical 기준은 C-22와 C-23이다. Phase 8은 Hangul composer를 구현했고 Phase 9는 아래 승인된 fixture를 `test-dictionary-v1` adapter로 구현했다. Phase 10은 server-only Board·Tile validation descriptor와 순수 RuleEngine을 구현했다. Phase 11은 exact inventory로 canonical GameState와 immutable RulesConfig를 만들고 `game:start`, Player별 PLAYING projection을 연결했다. Phase 12는 active Player의 browser-only TurnDraft editor를 연결했으며, Phase 13은 `turn:submit`의 server validation, candidate commit, next Turn과 rack-empty 종료를 연결했다. draw, no-draw turn end와 timeout 실행은 아직 구현하지 않았다.
 
 규칙 문장에서 “해야 한다”, “허용한다”, “거절한다”는 서버 판정에 적용되는 규범적 표현이다. 예시는 규칙을 설명하지만 규범 문장을 대체하지 않는다.
 
@@ -149,6 +150,9 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 - **IMPLEMENTATION_INVARIANT:** actor, phase, turnId, active Player, deadline, expected gameRevision, Tile 존재·소유권·중복·보존, Hangul 조합, dictionary와 해당 move 규칙을 모두 통과한 경우에만 한 번 commit한다.
 - **IMPLEMENTATION_INVARIANT:** 실패하면 canonical Board, rack, bag, turn state와 gameRevision은 그대로 유지한다.
 - **IMPLEMENTATION_INVARIANT:** 같은 Room의 Submit, draw, timeout, leave 같은 경쟁 mutation은 직렬화한다.
+- **IMPLEMENTATION_INVARIANT:** `turn:submit`의 strict wire shape는 WordGroup 최대 156개, WordGroup당 syllable 최대 156개, Board 전체 physical Tile reference 최대 156개로 제한한다. 각 syllable은 choseong 정확히 1개, jungseong 1~2개, jongseong 0~2개 component를 가지며, non-empty `groupId`는 최대 128자, non-empty `assignedSymbol`은 최대 8자로 제한한다. 이는 gameplay acceptance가 아니라 transport resource-safety 한도다.
+- **IMPLEMENTATION_INVARIANT:** empty WordGroup, duplicate groupId/tileId 또는 지원하지 않는 bounded symbol처럼 안전하게 직렬화할 수 있는 gameplay-invalid proposal은 wire 구조 검증을 통과할 수 있지만 의미상 승인된 것이 아니다. 이 판정은 server RuleEngine에 남긴다.
+- **IMPLEMENTATION_INVARIANT:** accepted Submit의 idempotency scope는 authenticated Room/Player이며 fingerprint는 command kind, expected gameRevision, turnId와 ordered proposed Board 전체를 포함한다. 같은 scope/requestId/fingerprint는 저장된 non-secret 결과를 replay하고, 같은 requestId의 다른 fingerprint는 거절한다.
 
 ### 정상 예
 
@@ -163,6 +167,8 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 
 - 제출 검증은 pure candidate 기반이어야 하며 commit 전 live aggregate를 변경하면 안 된다.
 - accepted request의 canonical state와 idempotency 결과를 함께 원자적으로 보존한다.
+- accepted non-terminal Submit은 Board, actor rack, initial meld flag, 새 Turn, `gameRevision + 1`, `storageRevision + 1`과 accepted idempotency result를 한 atomic commit에 넣으며 `roomRevision`은 유지한다.
+- rack-empty terminal Submit은 Board/rack/result, `PLAYING → FINISHED`, `gameRevision + 1`, `roomRevision + 1`, `storageRevision + 1`과 accepted idempotency result를 같은 commit에 넣는다.
 
 ## C-05. Initial meld
 
@@ -235,6 +241,7 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 - **DIGITAL_MVP_POLICY:** 페이지가 살아 있는 일시적인 network disconnect 중에는 local TurnDraft를 메모리에 유지할 수 있다. resume snapshot의 `gameId`, `gameRevision`, `turnId`가 draft 기준과 모두 같을 때만 같은 draft를 계속 사용한다.
 - **DIGITAL_MVP_POLICY:** full page refresh에서는 미제출 TurnDraft를 복구하지 않는다. session resume으로 같은 Player와 canonical GameState를 복원한 뒤 최신 snapshot에서 새 draft를 만든다.
 - **DIGITAL_MVP_POLICY:** TurnDraft Board와 history를 `sessionStorage`나 `localStorage`에 저장하지 않는다.
+- **DIGITAL_MVP_POLICY:** page가 살아 있는 동안 acknowledgement가 유실된 Submit은 메모리에 보관한 동일 requestId와 동일 payload로만 재시도한다. full page refresh 뒤 pending Submit을 자동 재전송하지 않는다.
 - **DIGITAL_MVP_POLICY:** 현재 tab이 `session:replaced`를 받으면 TurnDraft를 즉시 폐기하고 편집 및 command 실행을 막는다. 자동 resume으로 primary를 다시 빼앗지 않는다.
 - **IMPLEMENTATION_INVARIANT:** 다른 `gameId`, 더 새로운 `gameRevision` 또는 다른 `turnId`를 받은 draft는 stale이다. 같은 game/revision/turn의 duplicate snapshot과 `presenceVersion`만 바뀐 snapshot은 현재 draft를 재생성하지 않는다.
 - **IMPLEMENTATION_INVARIANT:** invalid Submit은 canonical state를 바꾸지 않는다.
@@ -255,6 +262,7 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 - 같은 gameRevision이어도 turnId가 바뀌거나 자신이 active Player가 아니게 되면 기존 draft를 폐기하고 Board를 read-only로 전환한다.
 - `session:replaced` 이후 기존 tab이 draft를 유지한 채 편집이나 gameplay command를 계속해서는 안 된다.
 - invalid Submit을 이유로 timer를 재시작하거나 연장하지 않는다.
+- 같은 turn/revision에서 `INVALID_BOARD`, `INVALID_HANGUL_COMPOSITION`, `WORD_NOT_ALLOWED`, `RULE_VIOLATION` 또는 dictionary 일시 장애로 거절되면 draft를 유지할 수 있다. stale revision, 잘못된 turn, 만료, 권한 상실 또는 invalid Tile access는 최신 snapshot 동기화 대상으로 처리한다.
 
 ### Server validation implication
 
@@ -412,6 +420,8 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 - **OFFICIAL_BASE_RULE:** 시간 안에 조합을 완료하지 못하면 실물 변경을 원상복구하고 penalty Tile 3개를 받는다.
 - **DIGITAL_MVP_POLICY:** turnDurationMs는 60,000이며 server Clock만 authority다.
 - **DIGITAL_MVP_POLICY:** command의 서버 수신 시각 receivedAt < deadlineAt이면 시간 조건을 만족하고 receivedAt >= deadlineAt이면 expired다.
+- **DIGITAL_MVP_POLICY:** `receivedAt`은 Socket listener가 command를 받는 즉시 server Clock으로 기록하며 runtime validation, Room queue 대기 또는 dictionary lookup 완료 시각으로 대체하지 않는다.
+- **DIGITAL_MVP_POLICY:** accepted Submit 뒤 다음 Player의 `startedAt`은 이전 command의 `receivedAt`이 아니라 validation이 끝난 뒤 얻은 fresh server Clock 값이다. 다음 `deadlineAt = startedAt + turnDurationMs`로 계산해 사전 검증 시간 때문에 다음 Player의 60초가 줄지 않게 한다.
 - **DIGITAL_MVP_POLICY:** timeout 시 client-only TurnDraft를 폐기하고 canonical Board는 그대로 둔다.
 - **DIGITAL_MVP_POLICY:** timeout penalty는 최대 3개다. 각 draw마다 두 bag이 모두 non-empty이면 server RandomSource가 CONSONANT와 VOWEL을 동일 확률 1/2로 선택하고, 한 bag만 남으면 그 bag을 사용하며, 둘 다 비면 중단한다.
 - **DIGITAL_MVP_POLICY:** 선택된 bag 내부의 실제 Tile도 서버가 선택하고 penalty를 rack에 넣은 뒤 다음 turn으로 이동한다.
@@ -431,6 +441,7 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 
 - turn 시작 시 deadlineAt을 한 번 저장하고 임의 reset하지 않는다.
 - timeout command와 늦은 Submit은 Room mutation serialization 및 turnId/gameRevision precondition으로 정확히 하나만 commit한다.
+- Phase 13은 Submit의 deadline admission과 새 Turn deadline 생성까지만 구현한다. 실제 timeout scheduling, penalty와 Submit/timeout 경합 실행은 Phase 14 범위다.
 
 ## C-15. Joker
 
@@ -536,6 +547,7 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 - **DIGITAL_MVP_POLICY:** stalemate ranking은 penaltyCost가 낮은 순이며 동률은 공동 순위다.
 - **DIGITAL_MVP_POLICY:** rack-empty 종료에서는 winner가 다른 Player penalty 절댓값 합계의 positive score를 얻는다. time cap·stalemate 종료에서는 각 Player의 remaining rack penalty score를 결과로 기록한다.
 - **DIGITAL_MVP_POLICY:** 장기 match나 여러 Game의 누적 점수는 MVP 범위가 아니다.
+- **IMPLEMENTATION_INVARIANT:** Phase 13의 rack-empty accepted Submit은 active Player rack이 비면 다음 Turn을 만들지 않고 terminal Game의 `turn = null`, `result.reason = RACK_EMPTY`, winner, turnOrder 순서의 Player별 score와 `finishedAt`을 같은 canonical commit에 저장한다.
 
 ### 정상 예
 
@@ -553,6 +565,7 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 
 - Game 종료는 FINISHED phase, result/ranking과 active timer 취소를 하나의 canonical mutation으로 commit한다.
 - 종료 원인별 scoring path를 명시적으로 구분한다.
+- Phase 13은 rack-empty 종료만 실행한다. 25분 cap, stalemate와 forfeit 종료 mutation은 후속 Phase의 범위다.
 
 ## C-18. PLAYING 중 disconnect와 explicit leave
 
@@ -860,6 +873,7 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 - **Phase 10 Board/RuleEngine implementation:** COMPLETE (2026-09-03)
 - **Phase 11 Game start/state projection implementation:** COMPLETE (2026-09-03)
 - **Phase 12 Client TurnDraft implementation:** COMPLETE (2026-09-03)
+- **Phase 13 atomic Submit pipeline implementation:** COMPLETE (2026-09-03)
 
 공식 exact consonant/vowel inventory, 두 Joker의 physical bag handling, rotation family, physical identity와 assignedSymbol 분리, 쌍자음·복합모음·겹받침 표현, Joker one-position replacement, 초기 7/7 draw semantics, 전체 156개 합계와 Phase 8 input/output semantics를 모두 확정했다. Tile representation에 관한 Phase 7B 미확정 항목은 없다.
 
@@ -886,7 +900,7 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 ## TBC-E. 운영 한도
 
 - Room/IP별 command rate limit
-- 최대 serialized Submit 크기와 WordGroup·Tile 수 방어 한도
+- 최대 serialized command byte 크기. Phase 13이 확정한 Submit collection/string count 한도와 별개다.
 - observability와 abuse 대응 정책
 
 ## TBC-F. Rematch와 장기 match
@@ -922,6 +936,6 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 
 ## 다음 결정 절차
 
-1. Phase 7 gate, Phase 8 Hangul composition, Phase 9 test dictionary, Phase 10 Board/RuleEngine, Phase 11 Game start/state projection과 Phase 12 Client TurnDraft 구현은 완료되었다.
-2. 다음 작업은 Roadmap Phase 13의 원자적 Submit pipeline이다.
-3. Phase 12는 browser-only draft 편집만 제공하며 Submit, draw, timeout 실행, canonical Game mutation, score와 종료는 구현하지 않았다.
+1. Phase 7 gate부터 Phase 13 원자적 Submit pipeline까지 구현을 완료했다.
+2. 다음 작업은 Roadmap Phase 14의 draw, no-draw turn end와 server timer다.
+3. Phase 13은 accepted Submit의 Board/rack/meld/next Turn mutation과 rack-empty 종료만 제공한다. draw, no-draw turn end, timeout penalty/scheduler, 25분·stalemate·forfeit 종료는 구현하지 않았다.

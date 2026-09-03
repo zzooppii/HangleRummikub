@@ -14,6 +14,8 @@ const USER_ERROR_MESSAGES = {
   NOT_ENOUGH_PLAYERS: "게임을 시작하려면 참가자가 2명 이상이어야 합니다.",
   PLAYERS_NOT_CONNECTED:
     "모든 참가자가 접속 중일 때 게임을 시작할 수 있습니다.",
+  NOT_YOUR_TURN: "현재 내 차례가 아닙니다. 최신 게임 상태를 불러옵니다.",
+  TURN_EXPIRED: "제출할 수 있는 시간이 지났습니다. 최신 상태를 불러옵니다.",
   INVALID_PHASE: "현재 방 상태에서는 실행할 수 없습니다.",
   STALE_ROOM_REVISION: "방 상태가 변경되었습니다. 최신 상태를 불러옵니다.",
   STALE_GAME_REVISION: "게임 상태가 변경되었습니다. 최신 상태를 불러옵니다.",
@@ -24,7 +26,12 @@ const USER_ERROR_MESSAGES = {
   ROOM_CODE_INVALID: "방 코드는 허용된 6자리 문자로 입력해주세요.",
   ROOM_CODE_EXHAUSTED:
     "지금은 새 방 코드를 만들 수 없습니다. 잠시 후 다시 시도해주세요.",
-  INVALID_TILE_ACCESS: "요청한 타일을 사용할 수 없습니다.",
+  INVALID_TILE_ACCESS:
+    "게임 상태와 타일 정보가 달라졌습니다. 최신 상태를 불러옵니다.",
+  INVALID_BOARD: "완성되지 않았거나 허용되지 않는 보드 배치입니다.",
+  INVALID_HANGUL_COMPOSITION: "한글 음절 구성을 다시 확인해주세요.",
+  WORD_NOT_ALLOWED: "허용된 단어가 아닙니다.",
+  RULE_VIOLATION: "현재 게임 규칙에 맞지 않는 배치입니다.",
   TEMPORARILY_UNAVAILABLE:
     "서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.",
   INTERNAL_ERROR: "문제가 발생했습니다. 잠시 후 다시 시도해주세요.",

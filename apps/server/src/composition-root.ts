@@ -4,10 +4,12 @@ import { GameStartService } from "./application/game-start-service.js";
 import { LobbyStateSnapshotProjector } from "./application/lobby-state-snapshot-projector.js";
 import { RoomSessionApplicationService } from "./application/room-session-service.js";
 import { SessionResumeService } from "./application/session-resume-service.js";
+import { TurnSubmitService } from "./application/turn-submit-service.js";
 import { ConnectionRegistry } from "./infrastructure/connection-registry.js";
 import { ConnectionRegistryPresenceReader } from "./infrastructure/connection-registry-presence-reader.js";
 import { InMemoryPersistence } from "./infrastructure/in-memory-persistence.js";
 import { KeyedSerialExecutor } from "./infrastructure/keyed-serial-executor.js";
+import { TestDictionaryProvider } from "./infrastructure/test-dictionary-provider.js";
 import {
   CryptoRandomSource,
   NodeCryptoIdGenerator,
@@ -24,6 +26,7 @@ export type ApplicationRuntime = Readonly<{
   roomSessionService: RoomSessionApplicationService;
   sessionResumeService: SessionResumeService;
   snapshotProjector: LobbyStateSnapshotProjector;
+  turnSubmitService: TurnSubmitService;
 }>;
 
 /** Creates one isolated process-memory runtime; importing this module has no side effects. */
@@ -66,6 +69,15 @@ export function createApplicationRuntime(): ApplicationRuntime {
     idGenerator,
     randomSource,
   });
+  const turnSubmitService = new TurnSubmitService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    clock,
+    idGenerator,
+    dictionaryProvider: new TestDictionaryProvider(),
+  });
   const snapshotProjector = new LobbyStateSnapshotProjector({
     clock,
     presenceReader,
@@ -79,5 +91,6 @@ export function createApplicationRuntime(): ApplicationRuntime {
     roomSessionService,
     sessionResumeService,
     snapshotProjector,
+    turnSubmitService,
   });
 }

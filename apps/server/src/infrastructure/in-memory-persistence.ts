@@ -138,11 +138,24 @@ function cloneRoomWriteCandidate(
   requireNonNegativeSafeInteger(candidate.createdAt, "createdAt");
   requireNonNegativeSafeInteger(candidate.updatedAt, "updatedAt");
 
-  if (candidate.phase === "LOBBY" && candidate.game !== null) {
-    throw new TypeError("A LOBBY Room must not contain a GameState.");
-  }
-  if (candidate.phase === "PLAYING" && candidate.game === null) {
-    throw new TypeError("A PLAYING Room must contain a GameState.");
+  if (candidate.phase === "LOBBY") {
+    if (candidate.game !== null) {
+      throw new TypeError("A LOBBY Room must not contain a GameState.");
+    }
+  } else if (candidate.phase === "PLAYING") {
+    if (
+      candidate.game === null ||
+      candidate.game.turn === null ||
+      candidate.game.result !== null
+    ) {
+      throw new TypeError("A PLAYING Room must contain an active GameState.");
+    }
+  } else if (
+    candidate.game === null ||
+    candidate.game.turn !== null ||
+    candidate.game.result === null
+  ) {
+    throw new TypeError("A FINISHED Room must contain a terminal GameState.");
   }
 
   return Object.freeze({

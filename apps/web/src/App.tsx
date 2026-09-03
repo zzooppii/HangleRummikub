@@ -1,10 +1,12 @@
 import {
   PROTOCOL_VERSION,
+  validateFinishedStateSnapshot,
   validatePlayingStateSnapshot,
 } from "@hangul-rummikub/shared";
 
 import { useLobbyApp } from "./app/use-lobby-app.js";
 import { PlayingScreen } from "./features/game/PlayingScreen.js";
+import { FinishedScreen } from "./features/game/FinishedScreen.js";
 import { useTurnDraft } from "./features/game/use-turn-draft.js";
 import { HomeScreen } from "./features/lobby/HomeScreen.js";
 import { LobbyScreen } from "./features/lobby/LobbyScreen.js";
@@ -27,6 +29,9 @@ type PlayingRouteProps = Readonly<{
   connectionTone: ConnectionPresentation["tone"];
   errorMessage: string | null;
   sessionReplaced: boolean;
+  turnSubmitPending: boolean;
+  turnDraftResetGeneration: number;
+  onSubmitTurn: ReturnType<typeof useLobbyApp>["submitTurn"];
   onGoHome: () => void;
 }>;
 
@@ -35,6 +40,7 @@ function PlayingRoute(props: PlayingRouteProps) {
     props.snapshot,
     props.connectionState === "CONNECTED",
     props.sessionReplaced,
+    props.turnDraftResetGeneration,
   );
 
   return (
@@ -45,6 +51,11 @@ function PlayingRoute(props: PlayingRouteProps) {
       errorMessage={props.errorMessage}
       sessionReplaced={props.sessionReplaced}
       turnDraft={turnDraft}
+      turnSubmitPending={props.turnSubmitPending}
+      canSubmit={
+        props.connectionState === "CONNECTED" && !props.sessionReplaced
+      }
+      onSubmitTurn={props.onSubmitTurn}
       onGoHome={props.onGoHome}
     />
   );
@@ -93,6 +104,24 @@ export function App() {
             connectionTone={connection.tone}
             errorMessage={app.errorMessage}
             sessionReplaced={app.sessionReplaced}
+            turnSubmitPending={app.turnSubmitPending}
+            turnDraftResetGeneration={app.turnDraftResetGeneration}
+            onSubmitTurn={app.submitTurn}
+            onGoHome={app.goHome}
+          />
+        </div>
+      );
+    }
+
+    const finishedSnapshot = validateFinishedStateSnapshot(app.snapshot);
+    if (finishedSnapshot.ok) {
+      return (
+        <div data-protocol-version={PROTOCOL_VERSION}>
+          <FinishedScreen
+            snapshot={finishedSnapshot.value}
+            connectionLabel={connectionLabel}
+            connectionTone={connection.tone}
+            errorMessage={app.errorMessage}
             onGoHome={app.goHome}
           />
         </div>

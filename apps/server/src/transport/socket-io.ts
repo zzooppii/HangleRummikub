@@ -7,8 +7,11 @@ import {
   validateSessionBootstrapCommand,
   validateSessionResumeCommand,
   validateStateSyncCommand,
+  validateTurnSubmitCommand,
   type ClientToServerEvents,
   type ErrorDto,
+  type FinishedStateSnapshot,
+  type GameFinishedEvent,
   type GameStartAck,
   type PlayerId,
   type PlayingStateSnapshot,
@@ -17,6 +20,7 @@ import {
   type RoomId,
   type RoomJoinAck,
   type RoomScopedAck,
+  type RoomScopedAckFailure,
   type ServerTime,
   type ServerToClientEvents,
   type SessionBootstrapAck,
@@ -27,6 +31,7 @@ import {
   type StateSnapshotEvent,
   type StateSyncAck,
   type TurnStartedEvent,
+  type TurnSubmitAck,
   type UncorrelatedFailureAck,
   type UnscopedAckFailure,
 } from "@hangul-rummikub/shared";
@@ -154,10 +159,76 @@ function gameStartSuccessAck(
   };
 }
 
+function turnSubmitSuccessAck(
+  requestId: RequestId,
+  snapshot: PlayingStateSnapshot | FinishedStateSnapshot,
+): TurnSubmitAck {
+  return {
+    scope: "ROOM",
+    requestId,
+    ok: true,
+    serverTime: snapshot.serverTime,
+    versions: snapshot.versions,
+    data: { snapshot },
+  };
+}
+
+async function turnSubmitFailureAck(
+  runtime: ApplicationRuntime,
+  binding: AuthenticatedSocketBinding,
+  requestId: RequestId,
+  error: ErrorDto,
+  fallbackServerTime: ServerTime,
+): Promise<TurnSubmitAck> {
+  if (!isCurrentBinding(runtime, binding)) {
+    return failureAck(
+      { requestId },
+      UNAUTHENTICATED_ERROR,
+      fallbackServerTime,
+    );
+  }
+
+  let snapshot: StateSnapshot | null;
+  try {
+    snapshot = await loadSnapshot(
+      runtime,
+      binding.roomId,
+      binding.playerId,
+    );
+  } catch {
+    return failureAck({ requestId }, error, fallbackServerTime);
+  }
+  if (snapshot === null) {
+    return failureAck({ requestId }, error, fallbackServerTime);
+  }
+  if (!isCurrentBinding(runtime, binding)) {
+    return failureAck(
+      { requestId },
+      UNAUTHENTICATED_ERROR,
+      fallbackServerTime,
+    );
+  }
+
+  return {
+    scope: "ROOM",
+    requestId,
+    ok: false,
+    serverTime: snapshot.serverTime,
+    versions: snapshot.versions,
+    error,
+  } satisfies RoomScopedAckFailure;
+}
+
 function isPlayingSnapshot(
   snapshot: StateSnapshot,
 ): snapshot is PlayingStateSnapshot {
   return snapshot.room.phase === "PLAYING" && "game" in snapshot;
+}
+
+function isFinishedSnapshot(
+  snapshot: StateSnapshot,
+): snapshot is FinishedStateSnapshot {
+  return snapshot.room.phase === "FINISHED" && "game" in snapshot;
 }
 
 function isCurrentBinding(
@@ -200,6 +271,23 @@ function turnStartedEvent(
       turnNumber: snapshot.game.turn.turnNumber,
       activePlayerId: snapshot.game.turn.activePlayerId,
       deadlineAt: snapshot.game.turn.deadlineAt,
+    },
+  };
+}
+
+function gameFinishedEvent(
+  snapshot: FinishedStateSnapshot,
+): GameFinishedEvent {
+  return {
+    kind: "game:finished",
+    protocolVersion: PROTOCOL_VERSION,
+    versions: snapshot.versions,
+    serverTime: snapshot.serverTime,
+    payload: {
+      gameId: snapshot.game.gameId,
+      reason: snapshot.game.result.reason,
+      winnerPlayerId: snapshot.game.result.winnerPlayerId,
+      gameRevision: snapshot.versions.gameRevision,
     },
   };
 }
@@ -852,6 +940,112 @@ function registerGameStartHandler(
   });
 }
 
+function registerTurnSubmitHandler(
+  io: RealtimeServer,
+  socket: RealtimeSocket,
+  runtime: ApplicationRuntime,
+): void {
+  socket.on("turn:submit", (rawCommand, acknowledge) => {
+    // The canonical deadline comparison uses arrival time, never validation,
+    // queue wait, dictionary lookup, or a client-provided timestamp.
+    const receivedAt = runtime.clock.now();
+    let committed = false;
+    const commandInput: unknown = rawCommand;
+    const command = validateTurnSubmitCommand(commandInput);
+    if (!command.ok) {
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, command.error, receivedAt),
+      );
+      return;
+    }
+
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(
+        createSocketId(socket.id),
+      );
+      if (binding === null) {
+        acknowledgeIfPresent(
+          acknowledge,
+          failureAck(commandInput, UNAUTHENTICATED_ERROR, receivedAt),
+        );
+        return;
+      }
+
+      const result = await runtime.turnSubmitService.submit({
+        roomId: binding.roomId,
+        actorPlayerId: binding.playerId,
+        requestId: command.value.requestId,
+        expectedGameRevision: command.value.expectedGameRevision,
+        turnId: command.value.turnId,
+        receivedAt,
+        proposedBoard: command.value.payload.proposedBoard,
+        authorization: {
+          isCurrent: () =>
+            socket.connected && isCurrentBinding(runtime, binding),
+        },
+      });
+      if (!result.ok) {
+        acknowledgeIfPresent(
+          acknowledge,
+          await turnSubmitFailureAck(
+            runtime,
+            binding,
+            command.value.requestId,
+            result.error,
+            receivedAt,
+          ),
+        );
+        return;
+      }
+      committed = true;
+
+      const snapshot = await loadSnapshot(
+        runtime,
+        binding.roomId,
+        binding.playerId,
+      );
+      if (snapshot === null) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      if (!socket.connected || !isCurrentBinding(runtime, binding)) {
+        return;
+      }
+
+      if (!isPlayingSnapshot(snapshot) && !isFinishedSnapshot(snapshot)) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+
+      await fanOutRoomSnapshots(io, runtime, binding.roomId);
+      if (isPlayingSnapshot(snapshot)) {
+        io.to(internalRoomChannel(binding.roomId)).emit(
+          "turn:started",
+          turnStartedEvent(snapshot),
+        );
+      } else if (isFinishedSnapshot(snapshot)) {
+        io.to(internalRoomChannel(binding.roomId)).emit(
+          "game:finished",
+          gameFinishedEvent(snapshot),
+        );
+      }
+
+      const ack = turnSubmitSuccessAck(command.value.requestId, snapshot);
+      acknowledgeIfPresent(acknowledge, ack);
+    })().catch(() => {
+      if (committed) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, INTERNAL_ERROR, receivedAt),
+      );
+    });
+  });
+}
+
 function registerDisconnectHandler(
   io: RealtimeServer,
   socket: RealtimeSocket,
@@ -891,6 +1085,7 @@ export function registerSocketIoHandlers(
     registerResumeHandler(io, socket, runtime, authenticationExecutor);
     registerStateSyncHandler(socket, runtime);
     registerGameStartHandler(io, socket, runtime);
+    registerTurnSubmitHandler(io, socket, runtime);
     registerDisconnectHandler(io, socket, runtime);
   });
 }

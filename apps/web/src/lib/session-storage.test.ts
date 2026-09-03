@@ -204,3 +204,21 @@ test("invalid pending operation은 삭제한다", () => {
   assert.equal(readPendingRoomOperation(storage), null);
   assert.equal(storage.getItem(PENDING_ROOM_OPERATION_STORAGE_KEY), null);
 });
+
+test("pending turn:submit은 Room entry sessionStorage 경계에서 복원되지 않는다", () => {
+  const storage = new MemoryStorage();
+  storage.setItem(
+    PENDING_ROOM_OPERATION_STORAGE_KEY,
+    JSON.stringify({
+      kind: "turn:submit",
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "request_turn_submit_must_stay_in_page_memory",
+      expectedGameRevision: 0,
+      turnId: "turn_page_memory_only",
+      payload: { proposedBoard: { wordGroups: [] } },
+    }),
+  );
+
+  assert.equal(readPendingRoomOperation(storage), null);
+  assert.equal(storage.getItem(PENDING_ROOM_OPERATION_STORAGE_KEY), null);
+});

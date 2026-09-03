@@ -20,6 +20,13 @@ test("주요 protocol error를 안정적인 한국어 UX message로 변환한다
     "ROOM_CODE_EXHAUSTED",
     "NOT_ENOUGH_PLAYERS",
     "PLAYERS_NOT_CONNECTED",
+    "NOT_YOUR_TURN",
+    "TURN_EXPIRED",
+    "INVALID_TILE_ACCESS",
+    "INVALID_BOARD",
+    "INVALID_HANGUL_COMPOSITION",
+    "WORD_NOT_ALLOWED",
+    "RULE_VIOLATION",
     "TEMPORARILY_UNAVAILABLE",
     "INTERNAL_ERROR",
   ];
@@ -39,5 +46,13 @@ test("주요 protocol error를 안정적인 한국어 UX message로 변환한다
   assert.equal(
     getUserErrorMessage("PLAYERS_NOT_CONNECTED"),
     "모든 참가자가 접속 중일 때 게임을 시작할 수 있습니다.",
+  );
+  assert.equal(
+    getUserErrorMessage("WORD_NOT_ALLOWED"),
+    "허용된 단어가 아닙니다.",
+  );
+  assert.equal(
+    getUserErrorMessage("RULE_VIOLATION"),
+    "현재 게임 규칙에 맞지 않는 배치입니다.",
   );
 });
