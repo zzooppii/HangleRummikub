@@ -53,6 +53,7 @@ import { LobbyStateSnapshotProjector } from "../application/lobby-state-snapshot
 import { RoomSessionApplicationService } from "../application/room-session-service.js";
 import { SessionResumeService } from "../application/session-resume-service.js";
 import type { ApplicationRuntime } from "../composition-root.js";
+import { JOKER_ALLOWED_SYMBOLS } from "../domain/game/tile-inventory.js";
 import { ConnectionRegistry } from "../infrastructure/connection-registry.js";
 import { ConnectionRegistryPresenceReader } from "../infrastructure/connection-registry-presence-reader.js";
 import { InMemoryPersistence } from "../infrastructure/in-memory-persistence.js";
@@ -1794,6 +1795,7 @@ test(
                     kind: tile.kind,
                     physicalType: tile.physicalType,
                     sourceBag: tile.sourceBag,
+                    allowedSymbols: [...JOKER_ALLOWED_SYMBOLS],
                   }
                 : {
                     tileId: tile.tileId,

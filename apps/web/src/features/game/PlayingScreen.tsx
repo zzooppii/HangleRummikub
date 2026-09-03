@@ -1,11 +1,15 @@
 import type { PlayingStateSnapshot } from "@hangul-rummikub/shared";
 
+import { TurnDraftEditor } from "./TurnDraftEditor.js";
+import type { TurnDraftController } from "./use-turn-draft.js";
+
 export type PlayingScreenProps = Readonly<{
   snapshot: PlayingStateSnapshot;
   connectionLabel: string;
   connectionTone: "connected" | "pending" | "offline" | "replaced";
   errorMessage: string | null;
   sessionReplaced: boolean;
+  turnDraft: TurnDraftController;
   onGoHome: () => void;
 }>;
 
@@ -19,7 +23,7 @@ export function PlayingScreen(props: PlayingScreenProps) {
     <main className="app-shell playing-shell">
       <header className="lobby-header">
         <div>
-          <p className="eyebrow">한글 루미큐브</p>
+          <p className="eyebrow">ROOM {room.roomCode}</p>
           <h1>게임이 시작되었습니다.</h1>
         </div>
         <span className={`connection-chip ${props.connectionTone}`}>
@@ -83,12 +87,36 @@ export function PlayingScreen(props: PlayingScreenProps) {
         </article>
       </section>
 
-      <p className="playing-note">
-        타일 배치와 턴 동작은 다음 단계에서 제공됩니다.
-      </p>
+      <section className="playing-participants" aria-label="참가자 상태">
+        {room.players.map((player) => (
+          <div
+            className={`playing-player${
+              player.playerId === game.turn.activePlayerId ? " active" : ""
+            }`}
+            key={player.playerId}
+          >
+            <strong>{player.nickname}</strong>
+            <span>
+              {player.playerId === self.playerId ? "나 · " : ""}
+              {player.isHost ? "방장 · " : ""}
+              {player.connectionStatus === "CONNECTED"
+                ? "접속 중"
+                : "오프라인"}
+            </span>
+            <small>
+              랙 {player.rackCount}개 · 첫 등록{" "}
+              {player.initialMeldCompleted ? "완료" : "대기"}
+            </small>
+          </div>
+        ))}
+      </section>
+
+      <TurnDraftEditor snapshot={props.snapshot} controller={props.turnDraft} />
 
       <p className="live-region" aria-live="polite">
-        {props.connectionLabel}
+        {props.turnDraft.noticeMessage ??
+          props.turnDraft.editErrorMessage ??
+          props.connectionLabel}
       </p>
     </main>
   );

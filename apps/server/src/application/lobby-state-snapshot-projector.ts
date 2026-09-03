@@ -6,6 +6,8 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
+import type { BoardTilePlacement } from "../domain/game/board.js";
+import { JOKER_ALLOWED_SYMBOLS } from "../domain/game/tile-inventory.js";
 import type { RoomRecord } from "../model/persistence.js";
 import type {
   PlayerPresenceReader,
@@ -125,6 +127,7 @@ export class LobbyStateSnapshotProjector {
             kind: tile.kind,
             physicalType: tile.physicalType,
             sourceBag: tile.sourceBag,
+            allowedSymbols: [...JOKER_ALLOWED_SYMBOLS],
           }
         : {
             tileId: tile.tileId,
@@ -134,6 +137,39 @@ export class LobbyStateSnapshotProjector {
             allowedSymbols: [...tile.allowedSymbols],
           };
     });
+
+    const projectBoardPlacement = (placement: BoardTilePlacement) => {
+      const tile = game.tilesById.get(placement.tileId);
+      if (tile === undefined) {
+        throw new Error("Board contains an unknown Tile.");
+      }
+
+      return tile.kind === "JOKER"
+        ? {
+            tileId: tile.tileId,
+            kind: tile.kind,
+            physicalType: tile.physicalType,
+            assignedSymbol: placement.assignedSymbol,
+            allowedSymbols: [...JOKER_ALLOWED_SYMBOLS],
+          }
+        : {
+            tileId: tile.tileId,
+            kind: tile.kind,
+            physicalType: tile.physicalType,
+            assignedSymbol: placement.assignedSymbol,
+            allowedSymbols: [...tile.allowedSymbols],
+          };
+    };
+    const publicBoard = {
+      wordGroups: game.board.wordGroups.map((wordGroup) => ({
+        groupId: wordGroup.groupId,
+        syllables: wordGroup.syllables.map((syllable) => ({
+          choseong: syllable.choseong.map(projectBoardPlacement),
+          jungseong: syllable.jungseong.map(projectBoardPlacement),
+          jongseong: syllable.jongseong.map(projectBoardPlacement),
+        })),
+      })),
+    };
 
     const snapshot = {
       ...baseSnapshot,
@@ -150,7 +186,7 @@ export class LobbyStateSnapshotProjector {
       },
       game: {
         gameId: game.gameId,
-        board: game.board,
+        board: publicBoard,
         turnOrder: game.turnOrder,
         turn: game.turn,
         bagCounts: {

@@ -367,7 +367,7 @@ Definition of Done:
 - Lobby Host web control은 인원과 전원 presence를 UX에서 보조 확인하며, 성공 뒤 server snapshot 기반 최소 PLAYING 상태만 보여준다. TurnDraft·board interaction과 countdown은 추가하지 않았다.
 - PLAYING의 `session:resume`과 `state:sync`는 같은 gameId, rack, turnOrder와 first Turn을 projection해 Tile 재생성·재배분 없이 복구한다.
 
-### Phase 12. Client TurnDraft
+### Phase 12. Client TurnDraft — COMPLETE
 
 목표: 현재 턴 Player가 canonical state를 손상시키지 않고 board를 편집한다.
 
@@ -389,6 +389,16 @@ Definition of Done:
 - disconnect/새로고침 시 미제출 draft 처리 방식이 확정된 policy와 일치하며 자동 Submit하거나 canonical state로 승격하지 않는다.
 - mobile/desktop 핵심 조작에 keyboard 또는 접근 가능한 대체 control을 제공한다.
 - UI 컴포넌트에 authoritative RuleEngine을 복제하지 않는다.
+
+구현 결과 (2026-09-03):
+
+- authoritative snapshot과 분리된 browser-only TurnDraft가 base gameId/gameRevision/turnId, editable WordGroup·syllable slots, available self rack과 최대 50단계 immutable undo history를 관리한다.
+- active Player는 initial meld 상태에 따라 새 group만 편집하거나 canonical Board working copy를 재배치한다. non-active Player와 `session:replaced` tab은 read-only이며 상대 rack 상세는 받거나 표시하지 않는다.
+- ordinary rotation Tile과 Joker의 one-position symbol picker, physical Tile 두 개를 사용하는 compound jungseong/final cluster slot, rack→Board·Board→Board move와 self-rack Tile return을 제공하고 draft tileId uniqueness를 유지한다.
+- desktop drag와 pointer/touch click 기반 tap-to-place, Enter/Space keyboard 조작이 같은 local reducer action을 사용하며 WordGroup/syllable 추가·빈 구조 삭제, undo/reset을 제공한다.
+- 같은 game/revision/turn의 duplicate 또는 presence-only snapshot과 페이지가 살아 있는 일시적 disconnect에는 draft를 유지한다. 다른 game, 더 새 gameRevision, 다른 turn, non-active 전환에는 reset하고 full refresh와 `session:replaced`에는 폐기한다.
+- public Board placement projection은 Board 위 Tile의 kind/physicalType/current assignedSymbol/allowedSymbols만 추가하며 rack owner, bag order와 전체 Tile map은 계속 감춘다.
+- 새 dependency 없이 구현했고 draft Board/history를 storage에 저장하지 않으며 모든 editor action은 Socket.IO gameplay event를 emit하거나 server canonical GameState를 변경하지 않는다. `turn:submit`, `turn:draw`, `turn:pass`와 해당 control은 추가하지 않았다.
 
 ### Phase 13. 원자적 Submit pipeline
 

@@ -8,7 +8,6 @@ import {
   RoomIdSchema,
   TileIdSchema,
   TurnIdSchema,
-  type TileId,
 } from "./identifiers.js";
 import {
   GameRevisionSchema,
@@ -108,6 +107,21 @@ const CLUSTER_JONGSEONG_COMPONENTS = new Set([
   "ㄹㅎ",
   "ㅂㅅ",
 ]);
+const ONE_POSITION_ASSIGNED_SYMBOLS = [
+  ...CHOSEONG_SYMBOLS,
+  ...SINGLE_JUNGSEONG_SYMBOLS,
+] as const;
+const OnePositionAssignedSymbolSchema = v.picklist(
+  ONE_POSITION_ASSIGNED_SYMBOLS,
+);
+const TileAllowedSymbolsSchema = v.pipe(
+  v.array(OnePositionAssignedSymbolSchema),
+  v.minLength(1),
+  v.check(
+    (symbols) => new Set(symbols).size === symbols.length,
+    "Tile allowedSymbols must not contain duplicates.",
+  ),
+);
 
 export const TileCountSchema = v.pipe(
   v.number(),
@@ -180,19 +194,41 @@ export type PlayingPublicRoomView = v.InferOutput<
   typeof PlayingPublicRoomViewSchema
 >;
 
-export type PublicBoardTilePlacement = {
-  tileId: TileId;
-  assignedSymbol: string;
-};
-
-export const PublicBoardTilePlacementSchema: v.BaseSchema<
-  unknown,
-  PublicBoardTilePlacement,
-  v.BaseIssue<unknown>
-> = v.strictObject({
+const OrdinaryPublicBoardTilePlacementSchema = v.strictObject({
   tileId: TileIdSchema,
+  kind: v.literal("ORDINARY"),
+  physicalType: NonEmptyWireStringSchema,
   assignedSymbol: NonEmptyWireStringSchema,
+  allowedSymbols: TileAllowedSymbolsSchema,
 });
+
+const JokerPublicBoardTilePlacementSchema = v.strictObject({
+  tileId: TileIdSchema,
+  kind: v.literal("JOKER"),
+  physicalType: v.literal("JOKER"),
+  assignedSymbol: NonEmptyWireStringSchema,
+  allowedSymbols: TileAllowedSymbolsSchema,
+});
+
+const PublicBoardTilePlacementVariantSchema = v.variant("kind", [
+  OrdinaryPublicBoardTilePlacementSchema,
+  JokerPublicBoardTilePlacementSchema,
+]);
+
+export type PublicBoardTilePlacement = v.InferOutput<
+  typeof PublicBoardTilePlacementVariantSchema
+>;
+
+export const PublicBoardTilePlacementSchema = v.pipe(
+  PublicBoardTilePlacementVariantSchema,
+  v.check(
+    (placement) =>
+      placement.allowedSymbols.some(
+        (allowedSymbol) => allowedSymbol === placement.assignedSymbol,
+      ),
+    "A Board Tile assignment must belong to allowedSymbols.",
+  ),
+);
 
 const ChoseongPlacementSequenceSchema: v.BaseSchema<
   unknown,
@@ -377,10 +413,7 @@ export const OrdinaryPrivateRackTileViewSchema = v.strictObject({
   kind: v.literal("ORDINARY"),
   physicalType: NonEmptyWireStringSchema,
   sourceBag: TileSourceBagSchema,
-  allowedSymbols: v.pipe(
-    v.array(NonEmptyWireStringSchema),
-    v.minLength(1),
-  ),
+  allowedSymbols: TileAllowedSymbolsSchema,
 });
 export type OrdinaryPrivateRackTileView = v.InferOutput<
   typeof OrdinaryPrivateRackTileViewSchema
@@ -391,6 +424,7 @@ export const JokerPrivateRackTileViewSchema = v.strictObject({
   kind: v.literal("JOKER"),
   physicalType: v.literal("JOKER"),
   sourceBag: TileSourceBagSchema,
+  allowedSymbols: TileAllowedSymbolsSchema,
 });
 export type JokerPrivateRackTileView = v.InferOutput<
   typeof JokerPrivateRackTileViewSchema
@@ -490,6 +524,12 @@ export const PlayingStateSnapshotSchema = v.pipe(
       snapshot.self.rack.length,
     "The private rack must not contain duplicate Tiles.",
   ),
+  v.check((snapshot) => {
+    const publicBoardTileIds = new Set(boardTileIds(snapshot.game.board));
+    return snapshot.self.rack.every(
+      (tile) => !publicBoardTileIds.has(tile.tileId),
+    );
+  }, "A physical Tile cannot appear on both the Board and the private rack."),
 );
 export type PlayingStateSnapshot = v.InferOutput<
   typeof PlayingStateSnapshotSchema

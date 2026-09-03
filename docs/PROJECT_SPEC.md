@@ -2,9 +2,9 @@
 
 ## 1. 문서 상태
 
-- 문서 버전: `0.7-phase-11-game-start`
+- 문서 버전: `0.8-phase-12-turn-draft`
 - 대상: 첫 번째 playable MVP
-- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름과 Phase 7의 gameplay 규칙 gate, Phase 8 Hangul composition, Phase 9 `TestDictionaryProvider`, Phase 10 Board RuleEngine에 이어 Phase 11의 canonical GameState 생성, exact Tile inventory·RulesConfig, `game:start` transport, Player별 PLAYING projection과 최소 web 상태까지 구현되었다. TurnDraft와 Game 시작 이후 mutation은 아직 없다.
+- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름과 Phase 7의 gameplay 규칙 gate, Phase 8 Hangul composition, Phase 9 `TestDictionaryProvider`, Phase 10 Board RuleEngine, Phase 11의 canonical Game start/state projection에 이어 Phase 12의 browser-only TurnDraft editor까지 구현되었다. Submit·draw·pass와 Game 시작 이후 server mutation은 아직 없다.
 - 규칙 기준: 확정된 내용과 미확정 내용은 [GAME_RULES.md](./GAME_RULES.md)를 따른다.
 - 기술 구조 기준: [ARCHITECTURE.md](./ARCHITECTURE.md)를 따른다.
 
@@ -75,7 +75,7 @@
 | `WordGroup` | ordered Tile placement, syllable segmentation과 필요한 Joker assignment로 하나의 최종 낱말을 표현하는 단위 |
 | `RulesConfig` | game:start 시 snapshot되어 한 Game 동안 바뀌지 않는 rules/dictionary/inventory version과 수치 정책 |
 | `Canonical state` | 서버가 소유하고 판정에 사용하는 유일한 권위 상태 |
-| `TurnDraft` | 클라이언트가 canonical state를 기준으로 임시 편집하는 비권위 상태 |
+| `TurnDraft` | active Player가 canonical snapshot에서 만든 browser-memory 전용 비권위 working copy. 기준 gameId/gameRevision/turnId, editable Board, available self rack과 bounded undo history를 분리해 보유한다. |
 | `roomRevision` / `gameRevision` / `presenceVersion` | Room metadata, gameplay state, transient presence의 순서를 각각 나타내는 scoped version |
 
 닉네임은 trim 후 NFC normalization하며 1~12 Unicode code point의 Letter, Number, `_`만 허용하는 표시용 문자열이다. 같은 Room의 normalized nickname은 중복될 수 없으며 identity나 인증 수단이 아니다. 같은 문자 타일도 서로 다른 `tileId`를 갖는다.
@@ -165,7 +165,7 @@
 
 | ID | 요구사항 |
 | --- | --- |
-| `FR-SUBMIT-001` | `TurnDraft`는 active Player의 client-only 상태다. invalid intermediate layout과 undo/reset을 허용하고 다른 Player에게 broadcast하지 않으며 새 `gameRevision`과 자동 merge하지 않는다. |
+| `FR-SUBMIT-001` | `TurnDraft`는 active current-primary Player의 client-only 상태다. invalid intermediate layout과 undo/reset을 허용하고 다른 Player에게 broadcast하거나 gameplay event를 emit하지 않는다. 같은 gameId/gameRevision/turnId의 duplicate·presence-only snapshot과 일시적 disconnect에는 유지할 수 있지만 새 revision/turn/game, non-active 전환, `session:replaced`에는 폐기한다. Full refresh에는 저장·복원하지 않고 canonical snapshot에서 새로 만든다. |
 | `FR-SUBMIT-002` | Submit payload는 stable groupId, ordered physical tileId placement와 `assignedSymbol`, explicit choseong/jungseong/jongseong segmentation, one-position Joker assignment를 가진 proposed WordGroup collection 전체 및 동시성 identifier만 전달한다. canonical rack/bag/score/active Player를 클라이언트 값으로 덮어쓰지 않는다. |
 | `FR-SUBMIT-003` | 서버는 payload schema와 크기, 인증된 actor, phase, `turnId`, deadline, `gameRevision`을 검증해야 한다. |
 | `FR-SUBMIT-004` | 서버는 모든 `tileId`의 존재와 유일성, 전체 tile conservation, 기존 board Tile의 규칙상 허용된 이동, 새 Tile의 active Player rack 소유권을 검증해야 한다. |
@@ -253,6 +253,7 @@ Exact physical definition과 `assignedSymbol` 정보는 기존 player-specific �
 ### 9.4 UX
 
 - PC pointer와 모바일 touch 환경에서 핵심 lobby 및 board 조작이 가능해야 한다.
+- TurnDraft editor는 drag만 요구하지 않고 tap/click 및 Enter/Space 기반 Tile 선택·slot 배치와 native button 구조 편집을 제공해야 한다.
 - 연결 중, 재접속 중, offline, Submit 처리 중, Submit 거절 상태를 구분해 표시한다.
 - 거절된 Submit 후에는 서버 state와 로컬 draft의 관계를 명확히 보여 주고 안전하게 reset할 수 있어야 한다.
 - 서버 deadline을 기준으로 보정되는 카운트다운을 표시하되, 화면의 0초가 판정 권한을 갖지 않는다.
@@ -299,5 +300,5 @@ Exact physical definition과 `assignedSymbol` 정보는 기존 player-specific �
 - 동일 프로세스 안의 메모리 상태만 사용하므로 서버 restart 복구는 지원하지 않는다.
 - single replica만 지원한다. 공유 저장소 없이 replica를 늘리면 Room state와 connection routing이 갈라질 수 있다.
 - 테스트용 `DictionaryProvider`는 게임 메커니즘 검증용이며 실제 한국어 사전 완전성을 보장하지 않는다.
-- Phase 8 composer는 assigned jamo의 현대 한글 조합, Phase 9 provider는 NFC fixture membership, Phase 10 RuleEngine은 readonly proposed Board validation만 맡는다. Phase 11은 start 시 canonical GameState와 첫 deadline까지 생성하지만 TurnDraft, Submit/draw, timeout 실행, 이후 rack/Board/turn mutation과 score/finish는 아직 구현하지 않았다.
+- Phase 8 composer는 assigned jamo의 현대 한글 조합, Phase 9 provider는 NFC fixture membership, Phase 10 RuleEngine은 readonly proposed Board validation만 맡는다. Phase 11은 start 시 canonical GameState와 첫 deadline까지 생성하고 Phase 12는 그 projection을 복제한 browser-memory TurnDraft만 편집한다. Submit/draw/pass, timeout 실행, 이후 rack/Board/turn server mutation과 score/finish는 아직 구현하지 않았다.
 - production dictionary dataset/license, Lobby 비-Host leave, Room retention과 운영 한도는 아직 미확정이다.

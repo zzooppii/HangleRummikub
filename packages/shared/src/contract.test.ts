@@ -53,6 +53,30 @@ import {
 const sessionToken = "opaque_session_token_for_contract_tests";
 const AckDataSchema = v.strictObject({ accepted: v.boolean() });
 
+function ordinaryBoardTilePlacement(
+  tileId: string,
+  assignedSymbol: string,
+  allowedSymbols: readonly string[] = [assignedSymbol],
+) {
+  return {
+    tileId,
+    kind: "ORDINARY" as const,
+    physicalType: `TEST_${tileId}`,
+    assignedSymbol,
+    allowedSymbols: [...allowedSymbols],
+  };
+}
+
+function jokerBoardTilePlacement(tileId: string, assignedSymbol: string) {
+  return {
+    tileId,
+    kind: "JOKER" as const,
+    physicalType: "JOKER" as const,
+    assignedSymbol,
+    allowedSymbols: ["ㄱ", "ㅏ"],
+  };
+}
+
 function validateUnscopedTestAck(input: unknown) {
   return validateUnscopedAck(input, AckDataSchema);
 }
@@ -149,10 +173,10 @@ function createPlayingSnapshot() {
             syllables: [
               {
                 choseong: [
-                  { tileId: "tile_board_1", assignedSymbol: "ㄱ" },
+                  ordinaryBoardTilePlacement("tile_board_1", "ㄱ"),
                 ],
                 jungseong: [
-                  { tileId: "tile_board_2", assignedSymbol: "ㅏ" },
+                  ordinaryBoardTilePlacement("tile_board_2", "ㅏ"),
                 ],
                 jongseong: [],
               },
@@ -188,6 +212,7 @@ function createPlayingSnapshot() {
           kind: "JOKER",
           physicalType: "JOKER",
           sourceBag: "VOWEL",
+          allowedSymbols: ["ㄱ", "ㅏ"],
         },
       ],
     },
@@ -1297,7 +1322,7 @@ test("PLAYING projection은 public summary와 본인 rack detail만 허용한다
         ...playing.self,
         rack: playing.self.rack.map((tile) =>
           tile.kind === "JOKER"
-            ? { ...tile, allowedSymbols: ["ㄱ"] }
+            ? { ...tile, allowedSymbols: ["ㅘ"] }
             : tile,
         ),
       },
@@ -1309,8 +1334,8 @@ test("PLAYING projection은 public summary와 본인 rack detail만 허용한다
 test("public Board runtime contract는 canonical syllable 구조와 식별자 유일성을 강제한다", () => {
   const playing = createPlayingSnapshot();
   const validSyllable = {
-    choseong: [{ tileId: "tile_choseong", assignedSymbol: "ㄱ" }],
-    jungseong: [{ tileId: "tile_jungseong", assignedSymbol: "ㅏ" }],
+    choseong: [ordinaryBoardTilePlacement("tile_choseong", "ㄱ")],
+    jungseong: [ordinaryBoardTilePlacement("tile_jungseong", "ㅏ")],
     jongseong: [],
   };
   const snapshotWithGroups = (wordGroups: readonly unknown[]) => ({
@@ -1346,7 +1371,7 @@ test("public Board runtime contract는 canonical syllable 구조와 식별자 �
           ...validSyllable,
           choseong: [
             ...validSyllable.choseong,
-            { tileId: "tile_choseong_2", assignedSymbol: "ㄴ" },
+            ordinaryBoardTilePlacement("tile_choseong_2", "ㄴ"),
           ],
         }),
       ],
@@ -1363,9 +1388,9 @@ test("public Board runtime contract는 canonical syllable 구조와 식별자 �
         groupWithSyllable({
           ...validSyllable,
           jungseong: [
-            { tileId: "tile_vowel_1", assignedSymbol: "ㅗ" },
-            { tileId: "tile_vowel_2", assignedSymbol: "ㅏ" },
-            { tileId: "tile_vowel_3", assignedSymbol: "ㅣ" },
+            ordinaryBoardTilePlacement("tile_vowel_1", "ㅗ"),
+            ordinaryBoardTilePlacement("tile_vowel_2", "ㅏ"),
+            ordinaryBoardTilePlacement("tile_vowel_3", "ㅣ"),
           ],
         }),
       ],
@@ -1376,8 +1401,8 @@ test("public Board runtime contract는 canonical syllable 구조와 식별자 �
         groupWithSyllable({
           ...validSyllable,
           jungseong: [
-            { tileId: "tile_vowel_1", assignedSymbol: "ㅏ" },
-            { tileId: "tile_vowel_2", assignedSymbol: "ㅗ" },
+            ordinaryBoardTilePlacement("tile_vowel_1", "ㅏ"),
+            ordinaryBoardTilePlacement("tile_vowel_2", "ㅗ"),
           ],
         }),
       ],
@@ -1388,9 +1413,9 @@ test("public Board runtime contract는 canonical syllable 구조와 식별자 �
         groupWithSyllable({
           ...validSyllable,
           jongseong: [
-            { tileId: "tile_final_1", assignedSymbol: "ㄹ" },
-            { tileId: "tile_final_2", assignedSymbol: "ㄱ" },
-            { tileId: "tile_final_3", assignedSymbol: "ㅅ" },
+            ordinaryBoardTilePlacement("tile_final_1", "ㄹ"),
+            ordinaryBoardTilePlacement("tile_final_2", "ㄱ"),
+            ordinaryBoardTilePlacement("tile_final_3", "ㅅ"),
           ],
         }),
       ],
@@ -1401,8 +1426,8 @@ test("public Board runtime contract는 canonical syllable 구조와 식별자 �
         groupWithSyllable({
           ...validSyllable,
           jongseong: [
-            { tileId: "tile_final_1", assignedSymbol: "ㅅ" },
-            { tileId: "tile_final_2", assignedSymbol: "ㄱ" },
+            ordinaryBoardTilePlacement("tile_final_1", "ㅅ"),
+            ordinaryBoardTilePlacement("tile_final_2", "ㄱ"),
           ],
         }),
       ],
@@ -1413,7 +1438,7 @@ test("public Board runtime contract는 canonical syllable 구조와 식별자 �
         groupWithSyllable({
           ...validSyllable,
           jongseong: [
-            { tileId: "tile_wrong_final_role", assignedSymbol: "ㄸ" },
+            ordinaryBoardTilePlacement("tile_wrong_final_role", "ㄸ"),
           ],
         }),
       ],
@@ -1423,7 +1448,9 @@ test("public Board runtime contract는 canonical syllable 구조와 식별자 �
       wordGroups: [
         groupWithSyllable({
           ...validSyllable,
-          choseong: [{ tileId: "tile_wrong_role", assignedSymbol: "ㅏ" }],
+          choseong: [
+            ordinaryBoardTilePlacement("tile_wrong_role", "ㅏ"),
+          ],
         }),
       ],
     },
@@ -1432,7 +1459,9 @@ test("public Board runtime contract는 canonical syllable 구조와 식별자 �
       wordGroups: [
         groupWithSyllable({
           ...validSyllable,
-          jungseong: [{ tileId: "tile_wrong_role", assignedSymbol: "ㄱ" }],
+          jungseong: [
+            ordinaryBoardTilePlacement("tile_wrong_role", "ㄱ"),
+          ],
         }),
       ],
     },
@@ -1441,7 +1470,9 @@ test("public Board runtime contract는 canonical syllable 구조와 식별자 �
       wordGroups: [
         groupWithSyllable({
           ...validSyllable,
-          choseong: [{ tileId: "tile_unknown_symbol", assignedSymbol: "A" }],
+          choseong: [
+            ordinaryBoardTilePlacement("tile_unknown_symbol", "A"),
+          ],
         }),
       ],
     },
@@ -1454,10 +1485,10 @@ test("public Board runtime contract는 canonical syllable 구조와 식별자 �
           syllables: [
             {
               choseong: [
-                { tileId: "tile_second_choseong", assignedSymbol: "ㄴ" },
+                ordinaryBoardTilePlacement("tile_second_choseong", "ㄴ"),
               ],
               jungseong: [
-                { tileId: "tile_second_jungseong", assignedSymbol: "ㅏ" },
+                ordinaryBoardTilePlacement("tile_second_jungseong", "ㅏ"),
               ],
               jongseong: [],
             },
@@ -1471,10 +1502,7 @@ test("public Board runtime contract는 canonical syllable 구조와 식별자 �
         groupWithSyllable({
           ...validSyllable,
           jungseong: [
-            {
-              tileId: "tile_choseong",
-              assignedSymbol: "ㅏ",
-            },
+            ordinaryBoardTilePlacement("tile_choseong", "ㅏ"),
           ],
         }),
       ],
@@ -1490,6 +1518,146 @@ test("public Board runtime contract는 canonical syllable 구조와 식별자 �
   }
 });
 
+test("public Board Tile metadata는 ordinary/Joker를 구분하고 private origin을 거절한다", () => {
+  const playing = createPlayingSnapshot();
+  const snapshotWithChoseong = (choseong: unknown) => ({
+    ...playing,
+    game: {
+      ...playing.game,
+      board: {
+        wordGroups: [
+          {
+            groupId: "group_tile_metadata",
+            syllables: [
+              {
+                choseong: [choseong],
+                jungseong: [
+                  ordinaryBoardTilePlacement("tile_metadata_vowel", "ㅏ"),
+                ],
+                jongseong: [],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(
+    validatePlayingStateSnapshot(
+      snapshotWithChoseong(
+        ordinaryBoardTilePlacement(
+          "tile_metadata_ordinary",
+          "ㄱ",
+          ["ㄱ", "ㄴ"],
+        ),
+      ),
+    ).ok,
+    true,
+  );
+  assert.equal(
+    validatePlayingStateSnapshot(
+      snapshotWithChoseong(
+        jokerBoardTilePlacement("tile_metadata_joker", "ㄱ"),
+      ),
+    ).ok,
+    true,
+  );
+
+  const invalidPlacements: readonly Readonly<{
+    name: string;
+    placement: unknown;
+  }>[] = [
+    {
+      name: "legacy metadata-free placement",
+      placement: { tileId: "tile_metadata_legacy", assignedSymbol: "ㄱ" },
+    },
+    {
+      name: "ordinary assignedSymbol outside allowedSymbols",
+      placement: ordinaryBoardTilePlacement(
+        "tile_metadata_invalid_assignment",
+        "ㄱ",
+        ["ㄴ"],
+      ),
+    },
+    {
+      name: "ordinary sourceBag disclosure",
+      placement: {
+        ...ordinaryBoardTilePlacement("tile_metadata_source", "ㄱ"),
+        sourceBag: "CONSONANT",
+      },
+    },
+    {
+      name: "Joker without server-derived allowedSymbols",
+      placement: {
+        tileId: "tile_metadata_joker_symbols",
+        kind: "JOKER",
+        physicalType: "JOKER",
+        assignedSymbol: "ㄱ",
+      },
+    },
+    {
+      name: "Joker compound symbol option",
+      placement: {
+        ...jokerBoardTilePlacement("tile_metadata_joker_compound", "ㄱ"),
+        allowedSymbols: ["ㄱ", "ㅘ"],
+      },
+    },
+    {
+      name: "Joker assignedSymbol outside allowedSymbols",
+      placement: {
+        ...jokerBoardTilePlacement("tile_metadata_joker_assignment", "ㄱ"),
+        allowedSymbols: ["ㅏ"],
+      },
+    },
+    {
+      name: "Joker non-Joker physicalType",
+      placement: {
+        ...jokerBoardTilePlacement("tile_metadata_joker_type", "ㄱ"),
+        physicalType: "GIYEOK_NIEUN_ROTATION",
+      },
+    },
+  ];
+
+  for (const fixture of invalidPlacements) {
+    assert.equal(
+      validatePlayingStateSnapshot(
+        snapshotWithChoseong(fixture.placement),
+      ).ok,
+      false,
+      fixture.name,
+    );
+  }
+});
+
+test("PLAYING snapshot은 Board와 self rack 사이의 physical Tile 중복을 거절한다", () => {
+  const playing = createPlayingSnapshot();
+  const firstRackTile = playing.self.rack[0];
+  const firstGroup = playing.game.board.wordGroups[0];
+  assert.ok(firstRackTile);
+  assert.ok(firstGroup);
+  const firstSyllable = firstGroup.syllables[0];
+  assert.ok(firstSyllable);
+  const firstBoardTile = firstSyllable.choseong[0];
+  assert.ok(firstBoardTile);
+
+  const overlappingSnapshot = {
+    ...playing,
+    self: {
+      ...playing.self,
+      rack: [
+        {
+          ...firstRackTile,
+          tileId: firstBoardTile.tileId,
+        },
+        ...playing.self.rack.slice(1),
+      ],
+    },
+  };
+
+  assert.equal(validatePlayingStateSnapshot(overlappingSnapshot).ok, false);
+});
+
 test("public Board runtime contract는 지원되는 복합모음과 겹받침을 허용한다", () => {
   const playing = createPlayingSnapshot();
   const result = validatePlayingStateSnapshot({
@@ -1503,15 +1671,15 @@ test("public Board runtime contract는 지원되는 복합모음과 겹받침을
             syllables: [
               {
                 choseong: [
-                  { tileId: "tile_compound_initial", assignedSymbol: "ㄱ" },
+                  ordinaryBoardTilePlacement("tile_compound_initial", "ㄱ"),
                 ],
                 jungseong: [
-                  { tileId: "tile_compound_vowel_1", assignedSymbol: "ㅗ" },
-                  { tileId: "tile_compound_vowel_2", assignedSymbol: "ㅏ" },
+                  ordinaryBoardTilePlacement("tile_compound_vowel_1", "ㅗ"),
+                  ordinaryBoardTilePlacement("tile_compound_vowel_2", "ㅏ"),
                 ],
                 jongseong: [
-                  { tileId: "tile_compound_final_1", assignedSymbol: "ㄱ" },
-                  { tileId: "tile_compound_final_2", assignedSymbol: "ㅅ" },
+                  ordinaryBoardTilePlacement("tile_compound_final_1", "ㄱ"),
+                  ordinaryBoardTilePlacement("tile_compound_final_2", "ㅅ"),
                 ],
               },
             ],

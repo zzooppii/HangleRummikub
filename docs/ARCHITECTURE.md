@@ -20,7 +20,7 @@
 
 ### 2.1 계획된 monorepo
 
-아래는 단계적으로 구현할 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. Phase 9에서는 versioned deterministic test dictionary adapter를 infrastructure 경계에 추가했고 Phase 10에서는 server-only Board·Tile validation model과 async pure RuleEngine을 domain 경계에 추가했다. Phase 11은 canonical inventory/GameState, `GameStartService`, player별 PLAYING projection, `game:start` transport와 최소 web Playing 화면을 연결했다. 나머지 구조는 해당 Roadmap 단계에서 필요할 때 생성한다.
+아래는 단계적으로 구현할 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. Phase 9에서는 versioned deterministic test dictionary adapter를 infrastructure 경계에 추가했고 Phase 10에서는 server-only Board·Tile validation model과 async pure RuleEngine을 domain 경계에 추가했다. Phase 11은 canonical inventory/GameState, `GameStartService`, player별 PLAYING projection과 `game:start` transport를 연결했다. Phase 12는 `apps/web`에 browser-only TurnDraft model, pure immutable reducer와 board/rack editor를 추가했다. 나머지 구조는 해당 Roadmap 단계에서 필요할 때 생성한다.
 
 ```text
 /
@@ -78,7 +78,8 @@ Web client가 담당하는 일:
 - accepted create/join의 acknowledgement 유실에 대비해 pending operation을 같은 `requestId`로 재전송
 - 서버가 보낸 개인별 snapshot을 `roomRevision`, `gameRevision`, `presenceVersion`으로 적용
 - public board와 자신의 rack 렌더링
-- 현재 턴에만 client-only `TurnDraft` 생성·편집·reset
+- 현재 턴에만 client-only `TurnDraft` 생성·편집·undo/reset
+- pointer drag, tap-to-place와 keyboard가 같은 draft action 경로를 사용하는 board/rack editor
 - command 전송, acknowledgement, loading/error/reconnect UX
 - `serverTime`과 `deadlineAt`을 이용한 표시용 countdown 보정
 - delta/advisory event에서 version gap 발견 시 full sync 요청
@@ -291,7 +292,7 @@ Canonical Room/Game
         └── projectFor(player C) ──> public state + C rack/private fields
 ```
 
-Phase 11 shared wire snapshot은 Room phase로 구분되는 union이다.
+Phase 11에서 도입하고 Phase 12에서 public Board Tile metadata를 확장한 shared wire snapshot은 Room phase로 구분되는 union이다.
 
 ```text
 StateSnapshot
@@ -312,6 +313,7 @@ StateSnapshot
 - `PublicPlayerView.connectionStatus`는 `CONNECTED | OFFLINE`이고 `PublicRoomView.players` 배열 순서가 공개 표시 순서다.
 - `PlayingPublicPlayerView`는 각 Player의 rack 개수와 initial meld 완료 여부를 공개하고, `PlayingPrivatePlayerView`만 현재 Player의 ordered rack Tile 상세를 포함한다. ordinary rack Tile은 tileId, kind, physicalType, sourceBag과 allowedSymbols를, Joker는 같은 identifier/meta 중 applicable field만 가진다.
 - `PublicGameView`는 Board 전체, active Player를 포함한 current turn과 deadline, immutable turnOrder와 consonant/vowel bag 잔여 개수를 공개한다. Phase 11에서 아직 존재하지 않는 forfeit/result field는 가짜 값으로 추가하지 않는다.
+- Phase 12의 public Board placement는 편집 가능한 공개 Tile에 한해 `tileId`, `kind`, `physicalType`, 현재 `assignedSymbol`과 선택 가능한 `allowedSymbols`를 제공한다. 이는 Board 위 Tile만을 위한 projection이며 rack origin/owner, bag 순서나 전체 `tilesById`를 공개하지 않는다.
 - 상대 rack 상세, bag 순서, future draw Tile과 server random state는 public DTO에 넣지 않는다. `sessionToken`, token hash, `socketId`, `connectionGeneration`, bootstrap credential, server-only `storageRevision`, repository 내부 정보는 public/private 어느 snapshot에도 넣지 않는다.
 - Socket.IO room 전체로 동일 snapshot을 broadcast하지 않는다. 공개 변화 알림 뒤 각 Player에게 projection을 보내거나, 처음부터 socket별 snapshot을 emit한다.
 
@@ -621,13 +623,19 @@ Phase 11 `game:start`는 required `expectedRoomRevision`과 strict empty payload
 
 ### 10.1 Local TurnDraft
 
-`TurnDraft`는 특정 canonical `gameRevision`의 board와 자신의 rack view를 바탕으로 만든 client-only working copy다.
+`TurnDraft`는 authoritative snapshot과 객체를 공유하지 않는 browser-only working copy다. 최소한 `baseGameId`, `baseGameRevision`, `baseTurnId`, editable WordGroup collection, 현재 사용할 수 있는 self rack Tile과 bounded history를 갖는다.
 
-- 확정된 board model에 따른 타일 배치 편집과 undo/reset은 network mutation이 아니다.
-- draft는 일시적으로 invalid할 수 있으며 server는 Submit된 최종 결과만 authoritative하게 검사한다.
-- 현재 active Player만 편집하고 draft를 다른 Player에게 realtime broadcast하지 않는다.
-- 다른 `gameRevision`을 받으면 draft를 자동 merge한다고 가정하지 않는다. MVP는 안전한 reset과 명확한 안내를 우선한다. `presenceVersion` 변화만으로 draft를 버리지 않는다.
-- draft에는 visibility policy상 actor에게 허용되지 않은 rack이나 bag data가 존재하지 않는다.
+- active Player면서 current-primary command가 가능한 tab만 draft를 생성한다. non-active Player는 canonical Board와 자신의 rack을 보되 read-only다.
+- initial meld 전에는 canonical Board를 read-only로 보존하고 self rack Tile로 만든 새 WordGroup만 편집한다. initial meld 이후에는 canonical Board 전체를 working copy로 만들고 기존 Tile 이동, group 분리·병합에 해당하는 편집과 rack Tile 추가를 허용한다.
+- WordGroup은 ordered syllable collection이며 syllable은 choseong 한 자리, jungseong 최대 두 자리, jongseong 최대 두 자리로 편집한다. draft 중 빈 group, 빈 syllable과 비어 있는 slot은 허용되는 transient UI 상태이지 wire Board나 canonical Board가 아니다.
+- rack 또는 public Board projection에서 얻은 physical Tile만 draft source가 될 수 있다. 한 tileId를 옮기면 이전 위치에서 제거하며 draft 전체에서 한 위치만 차지한다. self rack에서 나온 Tile만 rack 영역으로 되돌릴 수 있고 canonical Board Tile은 다른 Board 위치로 옮겨야 한다.
+- ordinary Tile은 projection의 `allowedSymbols` 중 하나를 선택하고 Joker도 one-position symbol만 고른다. 복합모음과 겹받침은 서로 다른 physical Tile 두 개를 두 slot에 배치하며 가상 compound Tile을 만들지 않는다.
+- edit는 authoritative snapshot을 mutate하지 않는 immutable reducer를 통과한다. placement, move, symbol 변경과 구조 편집 전 상태를 최대 50개 보존해 undo하고, reset은 최신 canonical snapshot으로 fresh draft를 만든다.
+- desktop HTML drag와 pointer/touch click 기반 tap-to-place, Enter/Space keyboard activation은 모두 같은 reducer action을 사용한다. drag만을 유일한 조작으로 요구하지 않으며 React component나 client에 Hangul composer, DictionaryProvider 또는 authoritative RuleEngine을 복제하지 않는다.
+- draft edit, undo와 reset은 Socket.IO event를 emit하지 않으며 다른 Player에게 broadcast하지 않는다. Phase 12에는 `turn:submit`, `turn:draw`, `turn:pass` contract나 control이 없다.
+- incoming snapshot의 `gameId`, `gameRevision`, `turnId`가 base와 같으면 duplicate/presence-only 갱신에도 draft를 유지한다. 다른 game, 더 새로운 gameRevision, 다른 turn 또는 non-active 전환이면 자동 merge하지 않고 draft를 폐기해 최신 canonical snapshot에서 다시 시작한다.
+- 페이지가 살아 있는 일시적 disconnect에서는 memory draft를 유지할 수 있으나 resume 뒤 위 base identity를 다시 확인한다. full refresh에는 draft를 storage에 기록하지 않아 복구하지 않으며, `session:replaced`를 받으면 즉시 폐기하고 편집을 막는다.
+- draft에는 visibility policy상 actor에게 허용되지 않은 상대 rack이나 bag data가 존재하지 않는다.
 
 권장 `turn:submit` payload는 다음 정보만 포함한다.
 
@@ -896,7 +904,7 @@ https://game.example/
 - Application test: authorization, idempotency, candidate discard, timeout race
 - Socket integration test: bootstrap/create/join/start/resume, 잘못된 token, stale scoped version, duplicate request와 lost ack
 - Projection test: visibility policy상 private인 rack/bag 정보와 token이 허용되지 않은 payload에 포함되지 않는지 검증
-- Client test: snapshot version vector 처리, draft reset, reconnect/error UX
+- Client test: snapshot version vector 처리, immutable TurnDraft 편집·Tile uniqueness·undo/reset, reconnect/refresh/replaced 수명주기와 no-network boundary
 - End-to-end test: 2~4 browser, refresh, disconnect, valid/invalid Submit, Railway smoke flow
 
 테스트가 가능하도록 system time, random, dictionary, repository, publisher를 전역 singleton에 숨기지 않는다.

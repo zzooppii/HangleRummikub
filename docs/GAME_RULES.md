@@ -11,8 +11,9 @@
 - Phase 9(Test DictionaryProvider): **완료** (2026-09-03)
 - Phase 10(Board와 순수 RuleEngine): **완료** (2026-09-03)
 - Phase 11(Game start와 권한별 상태 동기화): **완료** (2026-09-03)
+- Phase 12(Client TurnDraft): **완료** (2026-09-03)
 
-공식 physical Tile inventory와 디지털 symbol 표현의 canonical 기준은 C-22와 C-23이다. Phase 8은 Hangul composer를 구현했고 Phase 9는 아래 승인된 fixture를 `test-dictionary-v1` adapter로 구현했다. Phase 10은 server-only Board·Tile validation descriptor와 순수 RuleEngine을 구현했다. Phase 11은 exact inventory로 canonical GameState와 immutable RulesConfig를 만들고 `game:start`, Player별 PLAYING projection과 최소 web 상태를 연결했다. Submit·draw·timeout 같은 Game 시작 이후 mutation은 아직 없다.
+공식 physical Tile inventory와 디지털 symbol 표현의 canonical 기준은 C-22와 C-23이다. Phase 8은 Hangul composer를 구현했고 Phase 9는 아래 승인된 fixture를 `test-dictionary-v1` adapter로 구현했다. Phase 10은 server-only Board·Tile validation descriptor와 순수 RuleEngine을 구현했다. Phase 11은 exact inventory로 canonical GameState와 immutable RulesConfig를 만들고 `game:start`, Player별 PLAYING projection을 연결했다. Phase 12는 active Player의 browser-only TurnDraft editor를 연결했지만 Submit·draw·timeout 같은 Game 시작 이후 server mutation은 아직 없다.
 
 규칙 문장에서 “해야 한다”, “허용한다”, “거절한다”는 서버 판정에 적용되는 규범적 표현이다. 예시는 규칙을 설명하지만 규범 문장을 대체하지 않는다.
 
@@ -231,6 +232,11 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 - **IMPLEMENTATION_INVARIANT:** 다른 Player에게 draft를 실시간 broadcast하거나 서버 canonical state로 저장하지 않는다.
 - **DIGITAL_MVP_POLICY:** Submit 전에는 canonical state가 아니므로 undo, reset과 일시적인 invalid group을 허용한다.
 - **DIGITAL_MVP_POLICY:** 새로운 gameRevision을 받으면 stale draft를 자동 merge하지 않고 폐기 또는 명시적 reset 대상으로 처리한다.
+- **DIGITAL_MVP_POLICY:** 페이지가 살아 있는 일시적인 network disconnect 중에는 local TurnDraft를 메모리에 유지할 수 있다. resume snapshot의 `gameId`, `gameRevision`, `turnId`가 draft 기준과 모두 같을 때만 같은 draft를 계속 사용한다.
+- **DIGITAL_MVP_POLICY:** full page refresh에서는 미제출 TurnDraft를 복구하지 않는다. session resume으로 같은 Player와 canonical GameState를 복원한 뒤 최신 snapshot에서 새 draft를 만든다.
+- **DIGITAL_MVP_POLICY:** TurnDraft Board와 history를 `sessionStorage`나 `localStorage`에 저장하지 않는다.
+- **DIGITAL_MVP_POLICY:** 현재 tab이 `session:replaced`를 받으면 TurnDraft를 즉시 폐기하고 편집 및 command 실행을 막는다. 자동 resume으로 primary를 다시 빼앗지 않는다.
+- **IMPLEMENTATION_INVARIANT:** 다른 `gameId`, 더 새로운 `gameRevision` 또는 다른 `turnId`를 받은 draft는 stale이다. 같은 game/revision/turn의 duplicate snapshot과 `presenceVersion`만 바뀐 snapshot은 현재 draft를 재생성하지 않는다.
 - **IMPLEMENTATION_INVARIANT:** invalid Submit은 canonical state를 바꾸지 않는다.
 - **DIGITAL_MVP_POLICY:** invalid Submit만으로 turn은 끝나지 않는다.
 - **DIGITAL_MVP_POLICY:** deadline 전에는 횟수 제한 없이 draft를 고쳐 다시 Submit할 수 있으며 server deadline은 계속 진행된다.
@@ -239,16 +245,21 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 
 - 편집 중 Tile 하나가 잠시 standalone이어도 Submit하기 전까지는 허용한다.
 - 첫 Submit이 사전 판정에 실패해도 deadline 전이면 수정 후 같은 turn에서 다시 제출할 수 있다.
+- active Player가 draft를 편집하는 동안 다른 Player가 잠시 offline이 되었다가 돌아와도 gameRevision과 turnId가 같으면 편집 내용은 유지된다.
+- 새로고침 뒤 같은 Player session이 resume되어도 이전 draft는 사라지고 server canonical Board와 rack에서 다시 시작한다.
 
 ### 거절·edge case
 
 - 다른 Player의 draft를 서버 snapshot에 포함하지 않는다.
 - stale gameRevision 기반 draft를 새 Board와 임의 병합하지 않는다.
+- 같은 gameRevision이어도 turnId가 바뀌거나 자신이 active Player가 아니게 되면 기존 draft를 폐기하고 Board를 read-only로 전환한다.
+- `session:replaced` 이후 기존 tab이 draft를 유지한 채 편집이나 gameplay command를 계속해서는 안 된다.
 - invalid Submit을 이유로 timer를 재시작하거나 연장하지 않는다.
 
 ### Server validation implication
 
 - 서버는 TurnDraft 저장소를 만들 필요가 없고 최종 Submit payload만 검증한다.
+- 서버의 resume과 snapshot은 canonical Board/rack만 복구하며 미제출 draft나 client history를 복구하지 않는다.
 - invalid 결과에서 canonical state와 gameRevision 불변을 보장한다.
 
 ## C-08. 일반 draw, no-draw turn end와 bag
@@ -848,6 +859,7 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 - **Phase 9 test dictionary implementation:** COMPLETE (2026-09-03)
 - **Phase 10 Board/RuleEngine implementation:** COMPLETE (2026-09-03)
 - **Phase 11 Game start/state projection implementation:** COMPLETE (2026-09-03)
+- **Phase 12 Client TurnDraft implementation:** COMPLETE (2026-09-03)
 
 공식 exact consonant/vowel inventory, 두 Joker의 physical bag handling, rotation family, physical identity와 assignedSymbol 분리, 쌍자음·복합모음·겹받침 표현, Joker one-position replacement, 초기 7/7 draw semantics, 전체 156개 합계와 Phase 8 input/output semantics를 모두 확정했다. Tile representation에 관한 Phase 7B 미확정 항목은 없다.
 
@@ -910,6 +922,6 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 
 ## 다음 결정 절차
 
-1. Phase 7 gate, Phase 8 Hangul composition, Phase 9 test dictionary, Phase 10 Board/RuleEngine과 Phase 11 Game start/state projection 구현은 완료되었다.
-2. 다음 작업은 Roadmap Phase 12의 Client TurnDraft다.
-3. Phase 11은 Game 시작 상태와 첫 deadline을 만들지만 TurnDraft, Submit, draw, timeout 실행, score와 종료는 구현하지 않았다.
+1. Phase 7 gate, Phase 8 Hangul composition, Phase 9 test dictionary, Phase 10 Board/RuleEngine, Phase 11 Game start/state projection과 Phase 12 Client TurnDraft 구현은 완료되었다.
+2. 다음 작업은 Roadmap Phase 13의 원자적 Submit pipeline이다.
+3. Phase 12는 browser-only draft 편집만 제공하며 Submit, draw, timeout 실행, canonical Game mutation, score와 종료는 구현하지 않았다.

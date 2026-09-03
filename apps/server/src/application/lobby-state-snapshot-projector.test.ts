@@ -22,6 +22,7 @@ import {
   type RoomPresenceReadPort,
 } from "./lobby-state-snapshot-projector.js";
 import { createInitialGameState } from "../domain/game/game-state.js";
+import { JOKER_ALLOWED_SYMBOLS } from "../domain/game/tile-inventory.js";
 import {
   createStorageRevision,
   type RoomRecord,
@@ -297,6 +298,147 @@ test("PLAYING projection은 public Game과 각 self의 private rack만 분리한
   );
   assert.equal(validateStateSnapshot(hostSnapshot).ok, true);
   assert.equal(validateStateSnapshot(guestSnapshot).ok, true);
+});
+
+test("PLAYING projection은 Board Tile 편집 metadata만 public으로 투영한다", async () => {
+  const room = playingRoomFixture();
+  const game = room.game;
+  if (game === null) {
+    throw new Error("PLAYING fixture requires a GameState.");
+  }
+
+  const ordinaryConsonant = [...game.tilesById.values()].find(
+    (tile) =>
+      tile.kind === "ORDINARY" && tile.allowedSymbols.includes("ㄱ"),
+  );
+  const ordinaryVowel = [...game.tilesById.values()].find(
+    (tile) =>
+      tile.kind === "ORDINARY" && tile.allowedSymbols.includes("ㅏ"),
+  );
+  const jokers = [...game.tilesById.values()].filter(
+    (tile) => tile.kind === "JOKER",
+  );
+  const boardJoker = jokers[0];
+  const privateRackJoker = jokers[1];
+  if (
+    ordinaryConsonant === undefined ||
+    ordinaryConsonant.kind !== "ORDINARY" ||
+    ordinaryVowel === undefined ||
+    ordinaryVowel.kind !== "ORDINARY" ||
+    boardJoker === undefined ||
+    boardJoker.kind !== "JOKER" ||
+    privateRackJoker === undefined ||
+    privateRackJoker.kind !== "JOKER"
+  ) {
+    throw new Error("Board projection fixture Tiles are required.");
+  }
+  const hostRack = game.racks.get(room.hostPlayerId);
+  if (hostRack === undefined || hostRack.length === 0) {
+    throw new Error("Host rack fixture is required.");
+  }
+  const publicBoardTileIds = new Set([
+    ordinaryConsonant.tileId,
+    ordinaryVowel.tileId,
+    boardJoker.tileId,
+  ]);
+  const racksWithJoker = new Map(
+    [...game.racks].map(([playerId, rack]) => [
+      playerId,
+      rack.filter(
+        (tileId) =>
+          !publicBoardTileIds.has(tileId) && tileId !== privateRackJoker.tileId,
+      ),
+    ]),
+  );
+  const hostRackWithoutBoard = racksWithJoker.get(room.hostPlayerId);
+  if (hostRackWithoutBoard === undefined) {
+    throw new Error("Host rack fixture is required.");
+  }
+  racksWithJoker.set(room.hostPlayerId, [
+    privateRackJoker.tileId,
+    ...hostRackWithoutBoard.slice(0, hostRack.length - 1),
+  ]);
+
+  const roomWithBoard: RoomRecord = {
+    ...room,
+    game: {
+      ...game,
+      racks: racksWithJoker,
+      board: {
+        wordGroups: [
+          {
+            groupId: "group-public-metadata",
+            syllables: [
+              {
+                choseong: [
+                  { tileId: ordinaryConsonant.tileId, assignedSymbol: "ㄱ" },
+                ],
+                jungseong: [
+                  { tileId: ordinaryVowel.tileId, assignedSymbol: "ㅏ" },
+                ],
+                jongseong: [
+                  { tileId: boardJoker.tileId, assignedSymbol: "ㄴ" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+  const projector = new LobbyStateSnapshotProjector({
+    clock: new FakeClock(9_000),
+    presenceReader: {
+      readRoomPresence: async () => ({
+        presenceVersion: parse(PresenceVersionSchema, 1),
+        connectionStatusByPlayerId: new Map(),
+      }),
+    },
+  });
+
+  const snapshot = await projector.project({
+    room: roomWithBoard,
+    selfPlayerId: room.hostPlayerId,
+  });
+  if (!("game" in snapshot)) {
+    throw new Error("Expected a PLAYING snapshot.");
+  }
+
+  const syllable = snapshot.game.board.wordGroups[0]?.syllables[0];
+  assert.ok(syllable);
+  assert.deepEqual(syllable.choseong[0], {
+    tileId: ordinaryConsonant.tileId,
+    kind: "ORDINARY",
+    physicalType: ordinaryConsonant.physicalType,
+    assignedSymbol: "ㄱ",
+    allowedSymbols: [...ordinaryConsonant.allowedSymbols],
+  });
+  assert.deepEqual(syllable.jongseong[0], {
+    tileId: boardJoker.tileId,
+    kind: "JOKER",
+    physicalType: "JOKER",
+    assignedSymbol: "ㄴ",
+    allowedSymbols: [...JOKER_ALLOWED_SYMBOLS],
+  });
+  assert.deepEqual(snapshot.self.rack[0], {
+    tileId: privateRackJoker.tileId,
+    kind: "JOKER",
+    physicalType: "JOKER",
+    sourceBag: privateRackJoker.sourceBag,
+    allowedSymbols: [...JOKER_ALLOWED_SYMBOLS],
+  });
+
+  const boardForbidden = new Set([
+    "sourceBag",
+    "rackOwner",
+    "ownerPlayerId",
+    "tilesById",
+    "consonantBag",
+    "vowelBag",
+  ]);
+  for (const key of collectKeys(snapshot.game.board)) {
+    assert.equal(boardForbidden.has(key), false, `forbidden Board key: ${key}`);
+  }
 });
 
 test("PLAYING snapshot은 bag 순서, 다른 rack, canonical private field를 노출하지 않는다", async () => {

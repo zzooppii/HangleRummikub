@@ -5,6 +5,7 @@ import {
 
 import { useLobbyApp } from "./app/use-lobby-app.js";
 import { PlayingScreen } from "./features/game/PlayingScreen.js";
+import { useTurnDraft } from "./features/game/use-turn-draft.js";
 import { HomeScreen } from "./features/lobby/HomeScreen.js";
 import { LobbyScreen } from "./features/lobby/LobbyScreen.js";
 import {
@@ -18,6 +19,36 @@ type ConnectionPresentation = Readonly<{
   label: string;
   tone: "connected" | "pending" | "offline" | "replaced";
 }>;
+
+type PlayingRouteProps = Readonly<{
+  snapshot: Parameters<typeof PlayingScreen>[0]["snapshot"];
+  connectionState: RealtimeConnectionState;
+  connectionLabel: string;
+  connectionTone: ConnectionPresentation["tone"];
+  errorMessage: string | null;
+  sessionReplaced: boolean;
+  onGoHome: () => void;
+}>;
+
+function PlayingRoute(props: PlayingRouteProps) {
+  const turnDraft = useTurnDraft(
+    props.snapshot,
+    props.connectionState === "CONNECTED",
+    props.sessionReplaced,
+  );
+
+  return (
+    <PlayingScreen
+      snapshot={props.snapshot}
+      connectionLabel={props.connectionLabel}
+      connectionTone={props.connectionTone}
+      errorMessage={props.errorMessage}
+      sessionReplaced={props.sessionReplaced}
+      turnDraft={turnDraft}
+      onGoHome={props.onGoHome}
+    />
+  );
+}
 
 function connectionPresentation(
   state: RealtimeConnectionState,
@@ -55,8 +86,9 @@ export function App() {
     if (playingSnapshot.ok) {
       return (
         <div data-protocol-version={PROTOCOL_VERSION}>
-          <PlayingScreen
+          <PlayingRoute
             snapshot={playingSnapshot.value}
+            connectionState={app.connectionState}
             connectionLabel={connectionLabel}
             connectionTone={connection.tone}
             errorMessage={app.errorMessage}
