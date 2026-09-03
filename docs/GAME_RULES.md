@@ -9,8 +9,9 @@
 - Roadmap Phase 7 전체: **완료**
 - Phase 8(순수 Hangul·Unicode 조합): **완료** (2026-09-03)
 - Phase 9(Test DictionaryProvider): **완료** (2026-09-03)
+- Phase 10(Board와 순수 RuleEngine): **완료** (2026-09-03)
 
-공식 physical Tile inventory와 디지털 symbol 표현의 canonical 기준은 C-22와 C-23이다. Phase 8은 Hangul composer를 구현했고 Phase 9는 아래 승인된 fixture를 `test-dictionary-v1` adapter로 구현했다. Tile runtime model, GameState, RulesConfig와 Board RuleEngine은 아직 없다.
+공식 physical Tile inventory와 디지털 symbol 표현의 canonical 기준은 C-22와 C-23이다. Phase 8은 Hangul composer를 구현했고 Phase 9는 아래 승인된 fixture를 `test-dictionary-v1` adapter로 구현했다. Phase 10은 server-only Board·Tile validation descriptor와 순수 RuleEngine을 구현했다. canonical GameState, full RulesConfig, game:start와 gameplay mutation·transport/UI는 아직 없다.
 
 규칙 문장에서 “해야 한다”, “허용한다”, “거절한다”는 서버 판정에 적용되는 규범적 표현이다. 예시는 규칙을 설명하지만 규범 문장을 대체하지 않는다.
 
@@ -109,6 +110,7 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 - **DIGITAL_MVP_POLICY:** Board는 2D crossword가 아니라 WordGroup들의 ordered collection이다.
 - **DIGITAL_MVP_POLICY:** 각 WordGroup은 stable groupId, ordered Tile placement, 낱말을 만들기 위한 Tile 순서, syllable segmentation, 필요한 Joker assignment를 표현한다.
 - **DIGITAL_MVP_POLICY:** WordGroup 배열 순서는 안정적인 UI 배치를 위한 것이며 낱말 유효성에는 의미가 없다.
+- **DIGITAL_MVP_POLICY:** 서로 다른 physical tileId를 사용하는 독립적인 유효 WordGroup이라면 같은 NFC 완성 낱말을 Board에 여러 번 둘 수 있다.
 - **OFFICIAL_BASE_RULE:** 최종 낱말은 최소 두 글자여야 한다.
 - **OFFICIAL_BASE_RULE:** 최종 table에 남는 모든 낱말은 사전에서 확인 가능한 유효한 낱말이어야 한다.
 - **DIGITAL_MVP_POLICY:** 서버의 canonical lookup 단위를 명확히 하기 위해 “두 글자”를 최소 2개의 완성형 Hangul syllable로 적용한다.
@@ -120,6 +122,7 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 
 - 바다, 학교, 사과처럼 2음절 이상이고 dictionary policy를 통과하는 낱말은 길이 조건을 만족한다.
 - WordGroup 표시 순서를 바다·학교에서 학교·바다로 바꿔도 각 낱말의 유효성은 변하지 않는다.
+- 서로 다른 physical Tile로 각각 만든 “학교” WordGroup 두 개는 두 group이 모두 독립적으로 유효하면 허용한다.
 
 ### 거절·edge case
 
@@ -127,12 +130,13 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 - 공식 안내의 난이도 완화용 1글자 선택 변형은 MVP에서 사용하지 않는다.
 - 어느 WordGroup에도 속하지 않은 Tile을 최종 Board에 남길 수 없다.
 - 동일 tileId를 두 WordGroup에 중복 배치하면 거절한다.
-- 같은 완성 낱말을 Board에 여러 번 둘 수 있는지는 아직 미확정이다.
+- 같은 완성 낱말을 표현하더라도 두 WordGroup이 하나의 tileId를 공유하면 거절한다.
 
 ### Server validation implication
 
 - 서버는 groupId 안정성, Tile 순서, segmentation, Joker assignment와 dictionary 결과를 함께 검증한다.
 - final Board 전체를 대상으로 tileId 중복과 standalone Tile 부재를 확인한다.
+- composed word의 uniqueness를 강제하지 않으며, groupId와 physical tileId의 uniqueness는 각각 독립적으로 검증한다.
 
 ## C-04. 서버 권위형 Submit과 Tile conservation
 
@@ -175,7 +179,7 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 ### 정상 예
 
 1. 하나의 유효 WordGroup이 rack Tile 6개 이상을 사용하면 조건을 만족한다.
-2. “바다”와 “나무”라는 두 유효 WordGroup이 합계 8개의 physical Tile을 사용하면 조건을 만족한다.
+2. “바다”와 “나무”라는 두 유효 2음절 WordGroup은 합계 8개의 physical Tile을 사용하므로 조건을 만족한다. 각 음절은 최소 choseong·jungseong 두 자리를 요구하므로 두 개의 유효 2음절 WordGroup은 정확히 6개가 아니라 최소 8개부터 가능하지만, initial meld 임계값 자체는 6개로 유지한다.
 3. rack의 Joker 하나에 명시적 symbol assignment를 부여해 만든 유효 WordGroup들이 총 6개 이상의 Tile을 사용하면 조건을 만족한다.
 
 ### 거절·edge case
@@ -431,12 +435,19 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 - **OFFICIAL_BASE_RULE:** initial meld를 완료하지 않은 Player는 기존 Board Joker를 회수하거나 재조합할 수 없다.
 - **DIGITAL_MVP_POLICY:** rearrangement 중 assignment 변경은 허용하지만 accepted final Board에는 명시적 assignment가 있어야 한다.
 - **DIGITAL_MVP_POLICY:** Joker가 포함된 모든 final WordGroup도 composition과 dictionary validation을 통과해야 한다.
+- **IMPLEMENTATION_INVARIANT:** canonical Board의 기존 Joker logical placement는 `groupId`, syllable index, `CHOSEONG | JUNGSEONG | JONGSEONG` role, role 내부 component index와 canonical `assignedSymbol`로 식별한다. proposed Board에서 이 위치와 symbol이 모두 같을 때만 회수하지 않은 Joker로 본다.
+- **IMPLEMENTATION_INVARIANT:** 기존 Joker가 다른 logical placement로 이동하거나 `assignedSymbol`이 바뀌거나 canonical group 구조가 더 이상 유지되지 않으면 recovered Joker로 본다.
+- **IMPLEMENTATION_INVARIANT:** recovered Joker마다 actor rack에서 proposed Board에 새로 사용한 서로 다른 ordinary physical Tile 하나가 필요하며, 그 Tile의 final `assignedSymbol`은 Joker의 canonical old symbol과 정확히 같아야 한다. matching은 final Board 전체의 symbol별 multiset으로 판정하므로 ordinary Tile이 Joker의 옛 위치에 남을 필요는 없다.
+- **IMPLEMENTATION_INVARIANT:** recovered Joker의 tileId는 proposed Board에도 정확히 한 번 남아야 하며, 이 conservation이 같은 turn의 즉시 재사용을 보장한다. actor rack에서 처음 Board로 나온 새 Joker에는 recovered-Joker replacement 조건을 적용하지 않는다.
 
 ### 정상 예
 
 - Board Joker가 ㄱ을 대신하고 있을 때 actor가 ㄱ으로 사용할 수 있는 실제 Tile을 사용해 Joker를 회수한 뒤 같은 Submit에서 다른 유효 낱말에 배치한다.
+- 기존 Joker를 다른 위치로 옮기고 actor rack의 ordinary ㄱ Tile을 final Board의 어느 위치에서든 `assignedSymbol = ㄱ`으로 새로 사용하면 canonical ㄱ Joker의 회수 조건을 충족할 수 있다.
+- 기존 Joker의 assignment를 ㄱ에서 ㄴ으로 바꾸더라도 actor rack의 새 ordinary ㄱ Tile로 old symbol을 대체하고 Joker를 final Board에 즉시 재사용하면 허용할 수 있다.
 - `ㅗ + Joker(assignedSymbol = ㅏ)` 두 자리로 복합모음 ㅘ를 표현할 수 있다.
 - 어느 bag에서 나온 Joker든 `assignedSymbol = ㄴ` 또는 `assignedSymbol = ㅐ`처럼 one-position symbol을 대신할 수 있다.
+- actor rack의 새 Joker는 유효한 one-position assignment와 final word 조건을 만족하면 별도의 old-symbol replacement 없이 사용할 수 있다.
 
 ### 거절·edge case
 
@@ -444,10 +455,13 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 - initialMeldCompleted가 false인 Player가 Board Joker를 건드리면 거절한다.
 - Joker 하나에 `assignedSymbol = ㅘ`를 부여하거나 Joker 하나만으로 ㄳ 전체를 표현하면 거절한다.
 - replacement assignment가 C-22 ordinary Tile의 어떤 `allowedSymbols`에도 속하지 않으면 거절한다.
+- 같은 symbol의 기존 Joker 두 개를 회수하면서 matching newly-used ordinary Tile을 하나만 사용하면 거절한다.
+- matching ordinary Tile이 있어도 recovered Joker tileId가 final Board에서 사라지면 Tile conservation 위반으로 거절한다.
 
 ### Server validation implication
 
-- before/after Joker 위치, one-position 대체 assignment, syllable role, 회수와 재사용을 한 candidate Board 안에서 함께 검증한다.
+- before/after Joker의 logical placement와 assignment를 비교하고 recovered Joker의 canonical old symbol별 수량을 newly-used ordinary Tile의 final assigned symbol별 수량과 일대일로 소비해 검증한다.
+- recovered Joker tileId가 final Board에 정확히 한 번 남는지 Tile conservation으로 확인하고, 새 rack Joker는 recovery matching 대상에서 제외한다.
 - Joker의 source bag은 inventory conservation을 위해 보존하되 replacement authorization 조건으로 사용하지 않는다.
 
 ## C-16. Hangul·Unicode와 Dictionary policy
@@ -800,6 +814,7 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 - **Phase 7 overall:** COMPLETE
 - **Phase 8 composition implementation:** COMPLETE (2026-09-03)
 - **Phase 9 test dictionary implementation:** COMPLETE (2026-09-03)
+- **Phase 10 Board/RuleEngine implementation:** COMPLETE (2026-09-03)
 
 공식 exact consonant/vowel inventory, 두 Joker의 physical bag handling, rotation family, physical identity와 assignedSymbol 분리, 쌍자음·복합모음·겹받침 표현, Joker one-position replacement, 초기 7/7 draw semantics, 전체 156개 합계와 Phase 8 input/output semantics를 모두 확정했다. Tile representation에 관한 Phase 7B 미확정 항목은 없다.
 
@@ -809,13 +824,7 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 
 # TO_BE_CONFIRMED
 
-Phase 7A에서 공식 근거나 제품 정책이 충분하지 않아 남긴 항목이다. 관련 구현 Phase 전에 별도 결정한다.
-
-## TBC-A. 동일 낱말의 중복 WordGroup
-
-- 같은 완성 낱말을 Board에 여러 WordGroup으로 동시에 둘 수 있는가
-- groupId 안정성과 UI 배치가 동일 낱말 중복 허용 여부에 미치는 영향은 없는가
-- Phase 10 RuleEngine 구현 전에 확정한다.
+현재 공식 근거나 제품 정책이 충분하지 않아 남아 있는 항목이다. 관련 구현 Phase 전에 별도 결정한다.
 
 ## TBC-B. game:start 연결 조건
 
@@ -874,6 +883,6 @@ Phase 7A에서 공식 근거나 제품 정책이 충분하지 않아 남긴 항�
 
 ## 다음 결정 절차
 
-1. Phase 7 gate와 Phase 8 Hangul composition, Phase 9 test dictionary 구현은 완료되었다.
-2. 다음 작업은 Roadmap Phase 10의 Board와 순수 RuleEngine만 수행한다.
-3. Phase 10은 composition과 `DictionaryProvider` 경계를 조합하되 GameState, game:start, gameplay transport나 UI를 선행 구현하지 않는다.
+1. Phase 7 gate, Phase 8 Hangul composition, Phase 9 test dictionary와 Phase 10 Board/RuleEngine 구현은 완료되었다.
+2. 다음 작업은 Roadmap Phase 11의 Game start와 권한별 상태 동기화다.
+3. Phase 10 RuleEngine은 validation-only 경계이며 canonical GameState mutation, game:start, turn/deadline, CAS, gameplay transport와 UI를 구현하지 않았다.

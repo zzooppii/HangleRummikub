@@ -301,7 +301,7 @@ Definition of Done:
 - fixture integrity, 전체 허용 단어, fixture miss, NFC/NFD, no-trim, determinism, unavailable contract와 Phase 8 composer 경계를 unit test로 검증했다.
 - network, production dictionary, 새 dependency, shared DTO와 Phase 10 RuleEngine은 추가하지 않았다.
 
-### Phase 10. Board와 순수 RuleEngine
+### Phase 10. Board와 순수 RuleEngine — COMPLETE
 
 목표: UI와 network 없이 최종 proposed board 전체의 게임 규칙 유효성을 판정하는 deterministic engine을 만든다.
 
@@ -319,6 +319,17 @@ Definition of Done:
 - 허용/거절/initial meld/Joker/재조합 edge case가 table-driven unit test로 존재한다.
 - proposed board 전체가 검증된다.
 - client-side 편의를 위한 validator가 있어도 server engine이 최종 authority다.
+
+구현 결과 (2026-09-03):
+
+- `apps/server/src/domain/game/board.ts`에 ordered `Board`/`WordGroup`, Phase 8 syllable/component 연결, ordinary/Joker `TileDescriptor`를 server-only validation model로 구현했다.
+- `validateProposedBoard`는 canonical/proposed Board, readonly Tile lookup과 actor rack tileId, initial meld 상태, 최소 rule policy와 `DictionaryProvider`를 받아 구조화된 `BoardValidationResult`를 반환한다.
+- groupId/tileId uniqueness, known Tile과 physical assignment, canonical Tile conservation, actor rack ownership을 Hangul composition과 dictionary lookup보다 먼저 검증한다.
+- initial meld의 기존 Board 보존과 physical Tile 6개 임계값, normal rearrangement의 actor rack Tile 최소 1개 사용, 모든 final group의 최소 2음절을 검증한다. 여러 WordGroup의 initial meld Tile 수는 합산하며, 유효한 2음절 group 두 개는 최소 8 physical Tile을 사용하지만 임계값은 6개다.
+- 같은 composed word를 서로 다른 physical Tile로 만든 여러 WordGroup은 허용한다.
+- 기존 Joker는 logical placement와 assignment 변화로 recovery를 판정하고, canonical old symbol별 newly-used ordinary Tile을 일대일 multiset으로 matching하며 recovered Joker의 final Board 즉시 재사용을 conservation으로 확인한다.
+- Phase 8 `composeWord`와 Phase 9 async `DictionaryProvider.lookup`을 연결하고 composition, fixture miss, provider `ERROR | TIMEOUT`을 구분된 domain error로 반환한다.
+- 입력을 mutate하거나 GameState, rack, turn, revision을 commit하지 않는다. actor 인증, deadline/CAS, game:start, gameplay Socket.IO와 UI는 Phase 10에 추가하지 않았다.
 
 ### Phase 11. Game start와 권한별 상태 동기화
 

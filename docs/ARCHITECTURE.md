@@ -20,7 +20,7 @@
 
 ### 2.1 계획된 monorepo
 
-아래는 단계적으로 구현할 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. Phase 9에서는 versioned deterministic test dictionary adapter를 infrastructure 경계에 추가했다. 나머지 디렉터리는 해당 Roadmap 단계에서 필요할 때 생성한다.
+아래는 단계적으로 구현할 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. Phase 9에서는 versioned deterministic test dictionary adapter를 infrastructure 경계에 추가했다. Phase 10에서는 server-only Board·Tile validation model과 async pure RuleEngine을 domain 경계에 추가했다. 나머지 디렉터리는 해당 Roadmap 단계에서 필요할 때 생성한다.
 
 ```text
 /
@@ -36,7 +36,7 @@
 │           ├── model/          # server-only persistence record와 value type
 │           ├── transport/      # HTTP/Socket.IO adapters and runtime validation
 │           ├── application/    # commands/use cases and authorization orchestration
-│           ├── domain/         # 순수 domain; 현재 hangul/composition.ts 구현
+│           ├── domain/         # 순수 domain; hangul composition과 game Board/RuleEngine
 │           ├── ports/          # repositories, clock, random, dictionary, scheduler
 │           └── infrastructure/ # in-memory adapters, Socket.IO projection delivery
 └── packages/
@@ -55,6 +55,7 @@ server transport ───────> server application
 server application ─────> server domain
 server application ─────> server ports
 server infrastructure ──> server ports
+server domain ──────────> server ports (`DictionaryProvider` contract)
 
 server domain ──X──> React / Express / Socket.IO / storage driver / system clock
 ```
@@ -232,7 +233,11 @@ GameState
 - 하나의 `tileId`는 최종 Board 전체에 최대 한 번만 나타나며 모든 Tile은 정확히 하나의 WordGroup, rack 또는 bag 같은 허용 위치에 속해야 한다.
 - WordGroup collection의 표시 순서는 UI 안정성을 위한 것이고 낱말 유효성에는 영향을 주지 않는다.
 - `RulesConfig`는 최소한 rules/dictionary version, `tileInventoryVersion = hangul-tile-inventory-v1`, 60초 turn, 25분 Game, 시작 rack 7/7, initial meld 최소 Tile 6개·최소 2음절, timeout penalty 3개, 최대 4명과 Joker 규칙 reference를 snapshot할 수 있어야 한다.
-- 구현된 Phase 8 composition은 명시된 syllable role별 `tileId + assignedSymbol`에서 word 내부 중복 physical reference를 거절하고, two-position component를 먼저 하나의 logical V/T로 collapse한다. Compatibility Jamo를 명시적 Unicode modern Hangul L/V/T index table에 mapping해 precomposed NFC word를 계산하며 문자열을 단순 concatenate/normalize하지 않는다. `physicalType`별 `allowedSymbols`, Game 내 Tile 존재·소유권과 Board 전체 conservation은 입력에 포함하지 않고 Phase 10 RuleEngine 경계에 남긴다.
+- 구현된 Phase 8 composition은 명시된 syllable role별 `tileId + assignedSymbol`에서 word 내부 중복 physical reference를 거절하고, two-position component를 먼저 하나의 logical V/T로 collapse한다. Compatibility Jamo를 명시적 Unicode modern Hangul L/V/T index table에 mapping해 precomposed NFC word를 계산하며 문자열을 단순 concatenate/normalize하지 않는다.
+- Phase 10의 `Board`는 ordered `WordGroup` collection이고 각 group은 unique `groupId`와 Phase 8 syllable/component 구조를 사용한다. `OrdinaryTileDescriptor`와 `JokerTileDescriptor`는 full Game Tile entity가 아니라 RuleEngine 입력의 physical assignment 검증용 server-only descriptor다.
+- async `validateProposedBoard(ValidateBoardInput)`은 canonical/proposed Board, readonly `tilesById`, actor rack tileId 집합, initial meld 상태, `RuleValidationPolicy`와 `DictionaryProvider`를 받아 `BoardValidationResult`를 반환한다. 성공 값은 group별 `composedWords`, `newlyUsedRackTileIds`, `recoveredJokerTileIds`, `completesInitialMeld`만 포함한다.
+- RuleEngine은 Board 구조와 Tile reference·assignment·conservation·ownership을 먼저 확인하고, initial meld 또는 rearrangement와 Joker recovery를 검증한 다음 Phase 8 `composeWord`와 Phase 9 `DictionaryProvider.lookup`을 실행한다. 같은 word의 여러 group은 허용하되 groupId와 tileId uniqueness는 유지한다.
+- RuleEngine은 입력 collection이나 canonical state를 mutate하지 않고 candidate를 commit하지 않는다. actor 인증, Room/Game phase, turn/deadline/revision, rack mutation, CAS와 다음 turn/result 계산은 이 경계 밖이다.
 - 저장 state는 plain data와 명시적인 schema/rules version을 가져야 한다. socket, timer handle, framework object를 직렬화 state에 넣지 않는다.
 
 ### 4.4 Connection과 Session state
@@ -664,7 +669,7 @@ atomic accepted-result + state CAS:
 publish player-specific snapshots; retry/resync on delivery failure
 ```
 
-검증 순서는 값싼 보안·구조 검사를 먼저 하고 domain/사전 검사를 뒤에 두되, 어느 단계도 commit 전 live state를 변경하지 않는다.
+검증 순서는 값싼 보안·구조 검사를 먼저 하고 domain/사전 검사를 뒤에 두되, 어느 단계도 commit 전 live state를 변경하지 않는다. Phase 10은 이 pipeline 중 proposed Board의 구조·Tile·initial meld/rearrangement·Joker·Hangul·dictionary validation slice만 구현한다. 인증, phase, turn, deadline, revision, candidate aggregate 생성과 CAS commit은 Phase 13 mutation pipeline에서 연결한다.
 
 ### 10.3 필수 검증
 
@@ -869,7 +874,7 @@ https://game.example/
 
 ## 15. 테스트 경계
 
-- Domain unit test: fixed `Clock`, seeded/fake `RandomSource`, test `DictionaryProvider`로 state transition과 invariant 검증
+- Domain unit test: fixed `Clock`, seeded/fake `RandomSource`, test `DictionaryProvider`로 state transition과 invariant를 검증하며, Phase 10 RuleEngine은 deterministic provider와 readonly Board 입력으로 validation-only 동작을 검증
 - Repository contract test: code 충돌, capacity race, scoped-version CAS, session lookup
 - Application test: authorization, idempotency, candidate discard, timeout race
 - Socket integration test: bootstrap/create/join/start/resume, 잘못된 token, stale scoped version, duplicate request와 lost ack
@@ -883,7 +888,6 @@ https://game.example/
 
 | 미확정 결정 | 영향을 받는 component |
 | --- | --- |
-| 동일 낱말 WordGroup 중복 허용 | RuleEngine, Submit validation |
 | game:start 시 OFFLINE 참가자 포함 여부 | start validation, participant snapshot |
 | production dictionary dataset·license·exact 어휘 범위 | `DictionaryProvider`, version storage |
 | Lobby 비-Host explicit leave와 Room retention/code 재사용 | session/Room cleanup, generator, abuse controls |

@@ -2,9 +2,9 @@
 
 ## 1. 문서 상태
 
-- 문서 버전: `0.5-phase-9-test-dictionary`
+- 문서 버전: `0.6-phase-10-board-rule-engine`
 - 대상: 첫 번째 playable MVP
-- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름과 Phase 7의 gameplay 규칙 gate에 이어, Phase 8의 server-only 순수 Hangul·Unicode composition module과 Phase 9의 versioned deterministic `TestDictionaryProvider`까지 구현되었다. Tile/GameState/RuleEngine, 게임 시작, gameplay transport/UI는 아직 없다.
+- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름과 Phase 7의 gameplay 규칙 gate에 이어, Phase 8의 server-only 순수 Hangul·Unicode composition module, Phase 9의 versioned deterministic `TestDictionaryProvider`, Phase 10의 server-only Board·Tile validation model과 순수 RuleEngine까지 구현되었다. canonical GameState, full Tile aggregate/RulesConfig, 게임 시작과 gameplay mutation·transport/UI는 아직 없다.
 - 규칙 기준: 확정된 내용과 미확정 내용은 [GAME_RULES.md](./GAME_RULES.md)를 따른다.
 - 기술 구조 기준: [ARCHITECTURE.md](./ARCHITECTURE.md)를 따른다.
 
@@ -172,6 +172,8 @@
 | `FR-SUBMIT-006` | 모든 검증이 끝나기 전에 live state를 수정하면 안 된다. 성공 시 한 번만 commit하고 실패 시 기존 state와 `gameRevision`을 유지한다. |
 | `FR-SUBMIT-007` | 재전송된 같은 `requestId`가 mutation을 중복 적용하지 않도록 idempotency를 제공해야 한다. |
 | `FR-SUBMIT-008` | stale `gameRevision`, 잘못된 turn, timeout, 위조 tile, invalid word 등은 안정적인 error code로 거절해야 한다. |
+| `FR-SUBMIT-009` | 서로 다른 physical Tile을 사용하는 독립적인 유효 WordGroup은 같은 NFC 완성 낱말을 가질 수 있다. composed word uniqueness는 강제하지 않지만 groupId와 tileId uniqueness는 각각 유지해야 한다. |
+| `FR-SUBMIT-010` | 기존 Board Joker의 logical placement 또는 assignment가 바뀌면 recovered Joker로 판정한다. 각 recovered Joker에는 canonical old symbol과 같은 final assignedSymbol을 가진 서로 다른 newly-used actor-rack ordinary Tile 하나가 필요하고, recovered Joker tileId도 final Board에 정확히 한 번 남아야 한다. |
 
 ### 7.4 Connection과 동기화
 
@@ -296,5 +298,5 @@ Exact physical definition과 `assignedSymbol` 정보는 기존 player-specific �
 - 동일 프로세스 안의 메모리 상태만 사용하므로 서버 restart 복구는 지원하지 않는다.
 - single replica만 지원한다. 공유 저장소 없이 replica를 늘리면 Room state와 connection routing이 갈라질 수 있다.
 - 테스트용 `DictionaryProvider`는 게임 메커니즘 검증용이며 실제 한국어 사전 완전성을 보장하지 않는다.
-- Phase 8 composer는 주어진 `assignedSymbol`과 syllable segmentation의 현대 한글 조합만 판정한다. Phase 9 provider는 NFC word의 고정 fixture membership만 판정한다. Tile model, inventory/ownership/conservation validation, RuleEngine, GameState와 gameplay transport/UI는 아직 구현되지 않았다.
-- production dictionary dataset/license, Lobby 비-Host leave, Room retention, 동일 낱말 중복, start 시 OFFLINE 참가자 조건과 운영 한도는 아직 미확정이다.
+- Phase 8 composer는 주어진 `assignedSymbol`과 syllable segmentation의 현대 한글 조합만 판정하고 Phase 9 provider는 NFC word의 고정 fixture membership만 판정한다. Phase 10 RuleEngine은 전달받은 readonly Board와 Tile descriptor에 대한 구조, assignment, ownership/conservation, initial meld/rearrangement, Joker, composition과 dictionary validation만 수행한다. canonical GameState mutation, actor/turn/deadline/revision 판정, rack commit과 gameplay transport/UI는 아직 구현되지 않았다.
+- production dictionary dataset/license, Lobby 비-Host leave, Room retention, start 시 OFFLINE 참가자 조건과 운영 한도는 아직 미확정이다.
