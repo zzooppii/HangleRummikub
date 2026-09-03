@@ -1,0 +1,26 @@
+{
+  "name": "@hangul-rummikub/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "tsc --project tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc --project tsconfig.json && tsc --project tsconfig.test.json --noEmit",
+    "test": "tsc --project tsconfig.test.json && node --test .test-dist/index.test.js .test-dist/contract.test.js",
+    "build": "tsc --project tsconfig.build.json"
+  },
+  "dependencies": {
+    "valibot": "1.4.2"
+  }
+}

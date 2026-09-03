@@ -1,0 +1,28 @@
+{
+  "name": "hangul-rummikub",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "npm@10.8.2",
+  "engines": {
+    "node": "^20.18.0 || >=22.0.0",
+    "npm": ">=10.8.2"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "predev": "npm run build --workspace @hangul-rummikub/shared && npm run build --workspace @hangul-rummikub/server",
+    "dev": "concurrently --kill-others-on-fail --names shared,web,server --prefix-colors yellow,cyan,magenta \"npm run dev --workspace @hangul-rummikub/shared\" \"npm run dev --workspace @hangul-rummikub/web\" \"npm run dev --workspace @hangul-rummikub/server\"",
+    "pretypecheck": "npm run build --workspace @hangul-rummikub/shared",
+    "typecheck": "npm run typecheck --workspace @hangul-rummikub/shared && npm run typecheck --workspace @hangul-rummikub/web && npm run typecheck --workspace @hangul-rummikub/server",
+    "pretest": "npm run build --workspace @hangul-rummikub/shared",
+    "test": "npm test --workspace @hangul-rummikub/shared && npm test --workspace @hangul-rummikub/web && npm test --workspace @hangul-rummikub/server",
+    "build": "npm run build --workspace @hangul-rummikub/shared && npm run build --workspace @hangul-rummikub/web && npm run build --workspace @hangul-rummikub/server"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.58",
+    "concurrently": "9.2.4",
+    "typescript": "5.9.3"
+  }
+}

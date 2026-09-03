@@ -1,0 +1,574 @@
+:root {
+  color: #1d2733;
+  background: #f4f2ec;
+  font-family:
+    Inter, Pretendard, "Noto Sans KR", system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 12% 5%, rgb(255 216 151 / 35%), transparent 30rem),
+    linear-gradient(145deg, #f8f6f0 0%, #eeece5 100%);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  min-height: 48px;
+  border: 0;
+  cursor: pointer;
+}
+
+button:disabled,
+input:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 3px;
+}
+
+.app-shell {
+  width: min(1120px, 100%);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 48px clamp(20px, 5vw, 72px) 64px;
+}
+
+.hero-panel,
+.lobby-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 34px;
+}
+
+.eyebrow,
+.step-label {
+  margin: 0 0 8px;
+  color: #805a16;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 12px;
+  color: #16212d;
+  font-size: clamp(2.1rem, 7vw, 4.4rem);
+  line-height: 1.02;
+  letter-spacing: -0.055em;
+}
+
+h2 {
+  margin-bottom: 0;
+  font-size: clamp(1.45rem, 4vw, 2rem);
+  letter-spacing: -0.035em;
+}
+
+h3 {
+  margin-bottom: 8px;
+  font-size: 1.15rem;
+}
+
+.hero-copy,
+.action-panel p,
+.room-invite-copy,
+.waiting-copy,
+.field-help {
+  color: #5c6672;
+  line-height: 1.65;
+}
+
+.hero-copy {
+  max-width: 560px;
+  margin-bottom: 0;
+  font-size: 1.02rem;
+}
+
+.connection-chip,
+.presence-label {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.connection-chip {
+  min-height: 38px;
+  padding: 8px 13px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(33 41 52 / 9%);
+  font-size: 0.82rem;
+}
+
+.status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.connection-chip.connected,
+.presence-label.online {
+  color: #14734a;
+}
+
+.connection-chip.pending {
+  color: #996500;
+}
+
+.connection-chip.offline,
+.presence-label.offline {
+  color: #8a4650;
+}
+
+.connection-chip.replaced {
+  color: #6d3faa;
+}
+
+.entry-card,
+.room-card,
+.players-card {
+  border: 1px solid rgb(41 53 66 / 10%);
+  border-radius: 24px;
+  background: rgb(255 255 255 / 90%);
+  box-shadow: 0 24px 70px rgb(44 50 56 / 10%);
+}
+
+.entry-card {
+  padding: clamp(22px, 5vw, 46px);
+}
+
+.section-heading {
+  margin-bottom: 28px;
+}
+
+.field-label {
+  display: block;
+  margin: 0 0 8px;
+  color: #303b46;
+  font-size: 0.9rem;
+  font-weight: 750;
+}
+
+.text-input {
+  width: 100%;
+  min-height: 50px;
+  border: 1px solid #c7ccd0;
+  border-radius: 12px;
+  padding: 11px 14px;
+  background: #fff;
+  color: #15202a;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.text-input:hover:not(:disabled) {
+  border-color: #8b949c;
+}
+
+.text-input:focus-visible {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 4px rgb(37 99 235 / 12%);
+}
+
+.field-help {
+  margin: 8px 0 24px;
+  font-size: 0.83rem;
+}
+
+.entry-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.action-panel,
+.invitation-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border: 1px solid #e1ded6;
+  border-radius: 18px;
+  padding: 22px;
+  background: #faf9f6;
+}
+
+.action-panel p {
+  margin-bottom: 0;
+  font-size: 0.9rem;
+}
+
+.create-panel {
+  justify-content: space-between;
+  background: #f5ead5;
+}
+
+.action-number {
+  display: block;
+  margin-bottom: 12px;
+  color: #956a19;
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+}
+
+.room-code-input,
+.room-code-display,
+.invited-room-code {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.primary-button,
+.secondary-button {
+  width: 100%;
+  border-radius: 12px;
+  padding: 12px 18px;
+  font-weight: 800;
+}
+
+.primary-button {
+  background: #172533;
+  color: #fff;
+}
+
+.primary-button:hover:not(:disabled) {
+  background: #263b4f;
+}
+
+.secondary-button {
+  border: 1px solid #172533;
+  background: #fff;
+  color: #172533;
+}
+
+.secondary-button:hover:not(:disabled) {
+  background: #eef1f3;
+}
+
+.text-button {
+  min-height: 40px;
+  padding: 6px 2px;
+  background: transparent;
+  color: inherit;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.invitation-panel {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  background: #f5ead5;
+}
+
+.invitation-panel .primary-button {
+  width: auto;
+  min-width: 180px;
+}
+
+.invited-room-code {
+  display: block;
+  font-size: clamp(1.7rem, 6vw, 2.4rem);
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 13px;
+  padding: 14px 16px;
+  line-height: 1.45;
+}
+
+.error-notice {
+  border: 1px solid #e7b9bf;
+  background: #fff0f1;
+  color: #7e2835;
+}
+
+.entry-card > .error-notice {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.replaced-notice {
+  justify-content: space-between;
+  margin-bottom: 20px;
+  border: 1px solid #d6c2ec;
+  background: #f6f0fc;
+  color: #54317f;
+}
+
+.replaced-notice div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lobby-grid {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.78fr) minmax(0, 1.5fr);
+  gap: 18px;
+}
+
+.room-card,
+.players-card {
+  padding: clamp(22px, 4vw, 34px);
+}
+
+.room-card {
+  background: #172533;
+  color: #fff;
+}
+
+.room-card .step-label,
+.room-card .room-invite-copy {
+  color: #d4bb8a;
+}
+
+.room-code-display {
+  display: block;
+  margin: 14px 0 24px;
+  font-size: clamp(2rem, 6vw, 3.3rem);
+}
+
+.room-invite-copy {
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+}
+
+.invitation-url {
+  display: block;
+  overflow-wrap: anywhere;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgb(255 255 255 / 8%);
+  color: #f5f6f7;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.copy-button {
+  margin-top: 16px;
+  background: #efbd5c;
+  color: #172533;
+}
+
+.copy-button:hover:not(:disabled) {
+  background: #ffd174;
+}
+
+.copy-status {
+  min-height: 1.4em;
+  margin: 9px 0 0;
+  color: #e8d5b0;
+  font-size: 0.8rem;
+}
+
+.players-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.player-count {
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: #eef0f2;
+  font-weight: 850;
+}
+
+.player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.player-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 66px;
+  border: 1px solid #e4e5e4;
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: #fcfcfb;
+}
+
+.player-avatar {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 12px;
+  background: #ece3d1;
+  color: #684a16;
+  font-weight: 850;
+}
+
+.player-identity {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.player-identity > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-badges {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.badge {
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.self-badge {
+  background: #dce9ff;
+  color: #245296;
+}
+
+.host-badge {
+  background: #f7e1ac;
+  color: #6f4b0c;
+}
+
+.presence-label {
+  font-size: 0.78rem;
+}
+
+.waiting-copy {
+  margin: 20px 0 0;
+  font-size: 0.86rem;
+}
+
+.live-region {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    padding-top: 28px;
+  }
+
+  .hero-panel,
+  .lobby-header {
+    flex-direction: column;
+    margin-bottom: 24px;
+  }
+
+  .entry-grid,
+  .lobby-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .invitation-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .invitation-panel .primary-button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-shell {
+    padding: 22px 14px 40px;
+  }
+
+  .entry-card,
+  .room-card,
+  .players-card {
+    border-radius: 18px;
+    padding: 20px;
+  }
+
+  .action-panel {
+    padding: 18px;
+  }
+
+  .player-row {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .player-avatar {
+    width: 38px;
+    height: 38px;
+  }
+
+  .presence-label {
+    grid-column: 2;
+  }
+
+  .replaced-notice {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
