@@ -74,6 +74,7 @@ function playingSnapshot(): PlayingStateSnapshot {
           connectionStatus: "CONNECTED",
           rackCount: 0,
           initialMeldCompleted: false,
+          forfeited: false,
         },
         {
           playerId: "player_snapshot_guest",
@@ -82,6 +83,7 @@ function playingSnapshot(): PlayingStateSnapshot {
           connectionStatus: "CONNECTED",
           rackCount: 14,
           initialMeldCompleted: false,
+          forfeited: false,
         },
       ],
     },
@@ -130,6 +132,7 @@ function finishedSnapshot(): FinishedStateSnapshot {
           connectionStatus: "CONNECTED",
           rackCount: 0,
           initialMeldCompleted: true,
+          forfeited: false,
         },
         {
           playerId: "player_snapshot_guest",
@@ -138,6 +141,7 @@ function finishedSnapshot(): FinishedStateSnapshot {
           connectionStatus: "CONNECTED",
           rackCount: 3,
           initialMeldCompleted: false,
+          forfeited: false,
         },
       ],
     },

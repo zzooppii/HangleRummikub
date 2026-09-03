@@ -5,6 +5,9 @@ export type FinishedScreenProps = Readonly<{
   connectionLabel: string;
   connectionTone: "connected" | "pending" | "offline" | "replaced";
   errorMessage: string | null;
+  sessionReplaced: boolean;
+  roomLeavePending: boolean;
+  onLeaveRoom: () => void;
   onGoHome: () => void;
 }>;
 
@@ -26,6 +29,18 @@ export function FinishedScreen(props: FinishedScreenProps) {
           {props.connectionLabel}
         </span>
       </header>
+
+      {props.sessionReplaced ? (
+        <section className="notice replaced-notice" role="alert">
+          <div>
+            <strong>이 플레이어 세션이 다른 창에서 연결되었습니다.</strong>
+            <span>이 창에서는 더 이상 명령을 보내지 않습니다.</span>
+          </div>
+          <button className="text-button" type="button" onClick={props.onGoHome}>
+            홈으로 돌아가기
+          </button>
+        </section>
+      ) : null}
 
       {props.errorMessage !== null ? (
         <p className="notice error-notice" role="alert">
@@ -51,6 +66,7 @@ export function FinishedScreen(props: FinishedScreenProps) {
                   {entry.playerId === game.result.winnerPlayerId
                     ? " · 승자"
                     : ""}
+                  {player?.forfeited ? " · 기권" : ""}
                 </span>
                 <strong>
                   {entry.score > 0 ? `+${entry.score}` : entry.score}점
@@ -59,13 +75,17 @@ export function FinishedScreen(props: FinishedScreenProps) {
             );
           })}
         </ol>
-        <button
-          className="secondary-button"
-          type="button"
-          onClick={props.onGoHome}
-        >
-          홈으로 돌아가기
-        </button>
+        {!props.sessionReplaced ? (
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={props.roomLeavePending}
+            aria-busy={props.roomLeavePending}
+            onClick={props.onLeaveRoom}
+          >
+            {props.roomLeavePending ? "나가는 중..." : "방 나가기"}
+          </button>
+        ) : null}
       </section>
     </main>
   );

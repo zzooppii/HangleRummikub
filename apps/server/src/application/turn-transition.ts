@@ -4,6 +4,7 @@ import {
   TurnNumberSchema,
   type GameId,
   type GameRevision,
+  type PlayerId,
   type RoomId,
   type ServerTime,
   type TurnId,
@@ -39,16 +40,24 @@ export function createNextTurn(
   game: PlayingGameState,
   startedAt: ServerTime,
   idGenerator: IdGenerator,
+  forfeitedPlayerIds: ReadonlySet<PlayerId> = game.forfeitedPlayerIds,
 ): GameTurn {
   const activeIndex = game.turnOrder.indexOf(game.turn.activePlayerId);
-  if (activeIndex < 0 || game.turnOrder.length < 2) {
+  if (activeIndex < 0 || game.turnOrder.length === 0) {
     throw new Error("Canonical turn order is invalid.");
   }
 
-  const activePlayerId =
-    game.turnOrder[(activeIndex + 1) % game.turnOrder.length];
+  let activePlayerId: PlayerId | undefined;
+  for (let offset = 1; offset <= game.turnOrder.length; offset += 1) {
+    const candidate =
+      game.turnOrder[(activeIndex + offset) % game.turnOrder.length];
+    if (candidate !== undefined && !forfeitedPlayerIds.has(candidate)) {
+      activePlayerId = candidate;
+      break;
+    }
+  }
   if (activePlayerId === undefined) {
-    throw new Error("Canonical turn order has no next Player.");
+    throw new Error("Canonical turn order has no non-forfeited Player.");
   }
 
   return Object.freeze({

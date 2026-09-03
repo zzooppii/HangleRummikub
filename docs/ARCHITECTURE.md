@@ -20,7 +20,7 @@
 
 ### 2.1 계획된 monorepo
 
-아래는 단계적으로 구현할 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. Phase 9에서는 versioned deterministic test dictionary adapter를 infrastructure 경계에 추가했고 Phase 10에서는 server-only Board·Tile validation model과 async pure RuleEngine을 domain 경계에 추가했다. Phase 11은 canonical inventory/GameState, `GameStartService`, player별 PLAYING projection과 `game:start` transport를 연결했다. Phase 12는 `apps/web`에 browser-only TurnDraft editor를, Phase 13은 원자적 `turn:submit`과 rack-empty terminal state를 연결했다. Phase 14는 `TurnDrawService`, `TurnPassService`, internal `TurnTimeoutService`, in-process scheduler/overdue sweeper와 client countdown을 연결했다. 나머지 구조는 해당 Roadmap 단계에서 필요할 때 생성한다.
+아래는 단계적으로 구현할 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. Phase 9에서는 versioned deterministic test dictionary adapter를 infrastructure 경계에 추가했고 Phase 10에서는 server-only Board·Tile validation model과 async pure RuleEngine을 domain 경계에 추가했다. Phase 11은 canonical inventory/GameState, `GameStartService`, player별 PLAYING projection과 `game:start` transport를 연결했다. Phase 12는 `apps/web`에 browser-only TurnDraft editor를, Phase 13은 원자적 `turn:submit`과 rack-empty terminal state를 연결했다. Phase 14는 `TurnDrawService`, `TurnPassService`, internal `TurnTimeoutService`, in-process scheduler/overdue sweeper와 client countdown을 연결했다. Phase 15는 phase-aware disconnect/resume, explicit leave, Host 승계, offline-timeout forfeit와 Room policy scheduler/cleanup lifecycle을 연결했다. 나머지 구조는 해당 Roadmap 단계에서 필요할 때 생성한다.
 
 ```text
 /
@@ -239,7 +239,7 @@ GameState
 - 하나의 `tileId`는 최종 Board 전체에 최대 한 번만 나타나며 모든 Tile은 정확히 하나의 WordGroup, rack 또는 bag 같은 허용 위치에 속해야 한다.
 - WordGroup collection의 표시 순서는 UI 안정성을 위한 것이고 낱말 유효성에는 영향을 주지 않는다.
 - Phase 11의 `RulesConfig`는 위 version과 수치를 frozen snapshot으로 생성하며 repository clone 뒤에도 동일 값과 nested isolation을 유지한다.
-- Phase 13의 `GameState`는 `PlayingGameState { turn, result: null }`와 `FinishedGameState { turn: null, result }`를 구분한다. 현재 terminal result는 rack-empty reason, winner, turnOrder 순서의 Player별 score와 finishedAt만 표현한다. forfeit, consecutive offline timeout과 stalemate tracking은 실제로 변경하는 후속 Phase에서 canonical field를 추가한다.
+- Phase 13의 `GameState`는 `PlayingGameState { turn, result: null }`와 `FinishedGameState { turn: null, result }`를 구분한다. Phase 15는 immutable `turnOrder`와 별도로 `forfeitedPlayerIds`, server-only `offlineTimeoutStreakByPlayerId`를 보존한다. public projection은 forfeit만 노출하고 streak는 노출하지 않는다. 현재 terminal result는 rack-empty reason, winner, turnOrder 순서의 Player별 score와 finishedAt만 표현하며 Phase 16 종료 계산은 아직 없다.
 - 구현된 Phase 8 composition은 명시된 syllable role별 `tileId + assignedSymbol`에서 word 내부 중복 physical reference를 거절하고, two-position component를 먼저 하나의 logical V/T로 collapse한다. Compatibility Jamo를 명시적 Unicode modern Hangul L/V/T index table에 mapping해 precomposed NFC word를 계산하며 문자열을 단순 concatenate/normalize하지 않는다.
 - Phase 10의 `Board`는 ordered `WordGroup` collection이고 각 group은 unique `groupId`와 Phase 8 syllable/component 구조를 사용한다. `OrdinaryTileDescriptor`와 `JokerTileDescriptor`는 full Game Tile entity가 아니라 RuleEngine 입력의 physical assignment 검증용 server-only descriptor다.
 - async `validateProposedBoard(ValidateBoardInput)`은 canonical/proposed Board, readonly `tilesById`, actor rack tileId 집합, initial meld 상태, `RuleValidationPolicy`와 `DictionaryProvider`를 받아 `BoardValidationResult`를 반환한다. 성공 값은 group별 `composedWords`, `newlyUsedRackTileIds`, `recoveredJokerTileIds`, `completesInitialMeld`만 포함한다.
@@ -266,6 +266,8 @@ Phase 6 web client는 `{ protocolVersion, playerId, credential: { roomCode, sess
 MVP duplicate connection policy는 `single-primary`다. 각 binding은 server-only `connectionGeneration`을 가지며 새 socket의 resume이 성공하면 generation이 증가하고 이전 socket의 Room/gameplay command 권한이 끝난다. 늦게 도착한 이전 socket의 disconnect가 새 연결의 presence를 offline으로 되돌리거나 reconnect grace/Host policy를 시작하지 못하게 한다.
 
 Phase 5의 process-local `ConnectionRegistry`는 `socketId → current authenticated binding`과 `(roomId, playerId) → primary socket`을 양방향으로 관리한다. 새 Player binding과 offline Player의 resume, current primary disconnect처럼 공개 presence가 실제로 전이할 때만 Room별 `presenceVersion`을 증가시킨다. 이미 `CONNECTED`인 Player의 primary 교체와 교체된 socket의 늦은 disconnect는 version을 증가시키지 않는다. 이 registry와 version은 `RoomRecord`에 저장하지 않는다.
+
+Phase 15의 policy command는 registry에서 connection generation과 presence version을 캡처한 short-lived lease를 얻고 canonical commit 직전까지 동일한지 다시 확인한다. Lobby Player/Room cleanup은 registry entry와 binding을 후처리로 제거하며, stale socket이나 timer가 새 primary를 OFFLINE으로 바꾸지 못한다. Host 제거 시 CONNECTED successor가 없고 다른 OFFLINE Player의 grace가 남아 있으면 `hostPlayerId = null`인 transient Lobby를 허용하고 다음 eligible resume에서 canonical Host를 선출한다.
 
 ### 4.5 Scoped version 규칙
 
@@ -366,12 +368,12 @@ canonical code는 `ABCDEFGHJKMNPQRSTUVWXYZ23456789` alphabet의 uppercase ASCII 
 - Host 권한은 명시적으로 허용된 Room/Lobby command에만 적용하며 turn ownership, tile ownership, validation, 승패 판정을 우회하지 못한다.
 - disconnect는 connection registry와 presence만 바꾸며 Player나 rack을 삭제하지 않는다.
 - 명시적 leave는 사용자가 의도한 command이며 disconnect와 다른 policy를 거친다.
-- LOBBY Host의 explicit leave는 당시 CONNECTED Player 중 가장 낮은 `joinOrder`에게 Host를 즉시 이전한다.
-- LOBBY Host disconnect는 60초 resume grace를 시작한다. 계속 OFFLINE이면 당시 CONNECTED Player 중 가장 낮은 `joinOrder`에게 이전하고, 대상이 없으면 기존 Host identity를 유지한다.
-- grace 뒤 대상이 없어 이전하지 못했으면 eligible Player가 생길 때 재평가한다. 한 번 이전된 Host는 이전 Host reconnect만으로 자동 복원하지 않는다.
+- 모든 LOBBY Player의 current-primary disconnect는 60초 resume grace를 시작하고, 계속 OFFLINE인 Player와 bound session을 만료 때 제거한다. explicit leave는 grace 없이 같은 제거를 즉시 실행한다.
+- LOBBY Host 제거는 당시 CONNECTED Player 중 가장 낮은 `joinOrder`에게 Host를 이전한다. 남은 Player가 없으면 Room을 cleanup하고, 모두 OFFLINE이면 각자의 grace를 보존한 hostless Lobby가 되며 다음 eligible resume에서 가장 낮은 `joinOrder`를 선출한다.
+- grace 전에 같은 valid session이 resume되면 Player와 Host identity를 유지하고 old callback을 stale 처리한다. 한 번 이전된 Host는 이전 Host의 old session이나 새 join으로 자동 복원하지 않는다.
 - PLAYING에서 Host 역할은 gameplay authority에 특별한 효과가 없고 explicit leave는 일반 Player와 같이 forfeit다.
 - 이 시간 기반 조건은 `HostSuccessionPolicy` 같은 application/domain 경계에 구현하고 socket handler에 흩뜨리지 않는다.
-- 모든 Player가 offline이거나 Room이 `FINISHED`인 경우의 삭제는 별도 retention policy가 결정한다.
+- PLAYING 전원 OFFLINE은 해당 transition부터 30분, FINISHED는 fixed `finishedAt`부터 30분 뒤 cleanup한다. resume은 all-offline window를 취소하지만 FINISHED deadline을 연장하지 않는다.
 
 ## 7. Game lifecycle
 
@@ -469,12 +471,12 @@ Browser                    Socket transport          Session/Application        
 1. connection registry에서 정확히 해당 `socketId`/`connectionGeneration` binding만 제거한다.
 2. disconnect된 binding이 여전히 current `connectionGeneration`인지 재검사한다.
 3. 더 새 primary binding이 있으면 presence를 offline으로 바꾸거나 grace policy를 시작하지 않는다.
-4. current primary가 사라졌을 때만 `presenceVersion`을 증가시킨다. Phase 5의 process-local registry는 `disconnectedAt`을 저장하지 않으며 Player 자체도 삭제하지 않는다.
+4. current primary가 사라졌을 때만 `presenceVersion`을 증가시킨다. canonical Player 자체는 transport callback에서 삭제하지 않는다.
 5. 다른 Player에게 policy가 허용한 connection status projection을 보낸다.
 6. 현재 turn timer와 Game timer는 계속 진행하며 client disconnect 자체가 timer callback을 취소하지 않는다.
 7. 검증된 current presence를 기준으로 Host 또는 Player disconnect policy를 application service에 enqueue한다.
 
-PLAYING Player가 authoritative OFFLINE 상태에서 연속 두 번 자신의 turn timeout을 맞으면 두 번째 penalty 뒤 forfeit한다. 성공적인 resume은 이 연속 횟수를 reset한다. LOBBY Host는 60초 grace 뒤 C-19의 승계 정책을 적용한다. canonical forfeit와 Host 변경은 connection event가 직접 수행하지 않고 검증된 server command로 처리한다.
+PLAYING Player가 authoritative OFFLINE 상태에서 연속 두 번 자신의 turn timeout을 맞으면 두 번째 penalty 뒤 forfeit한다. `TurnTimeoutService`는 presence lease를 commit precondition으로 사용해 penalty, streak, forfeit와 next Turn을 하나의 commit으로 만든다. 성공적인 resume은 server-only streak만 reset하고 game/room revision이나 turn identity를 바꾸지 않는다. LOBBY의 모든 Player는 60초 grace 뒤 C-19의 제거/승계 정책을 적용한다. canonical forfeit와 Host 변경은 connection event가 직접 수행하지 않고 검증된 server command로 처리한다.
 
 ### 8.4 복구할 수 없는 경우
 
@@ -575,6 +577,8 @@ bootstrap ack와 Room을 찾기 전의 오류에는 존재하지 않는 version�
 | `turn:pass` | active Player session | 두 source bag이 모두 empty일 때 no-draw Turn 종료 |
 
 Phase 14 `turn:draw`는 `requestId`, `expectedGameRevision`, `turnId`와 `bagKind: CONSONANT | VOWEL`만 받는다. client는 tileId나 draw 결과를 지정하지 않는다. `turn:pass`는 같은 concurrency field와 strict empty payload만 받으며 두 bag이 모두 empty일 때만 허용한다. 두 command의 성공 ack는 requester의 최신 PLAYING snapshot을 담고, 내부 accepted result에 있는 drawn/penalty tileId는 일반 event나 다른 Player에게 직접 전달하지 않는다.
+
+Phase 15 `room:leave`는 `requestId`, `expectedRoomRevision`, nullable `expectedGameRevision`과 strict empty payload만 받는다. client는 playerId, Host successor나 forfeit를 지정하지 않는다. 성공 ack는 secret-free terminal metadata만 반환하며 client는 bound credential과 local draft를 삭제한다. `room:closed`는 재사용 가능한 roomCode뿐 아니라 불변 public roomId도 함께 담는 advisory event이며, client는 두 identity가 모두 현재 snapshot과 일치할 때만 적용한다. cleanup reason, timer identity, socket/session 정보는 전달하지 않는다.
 
 ### 9.3 예상 server → client event
 
@@ -778,19 +782,22 @@ cache 크기와 TTL은 운영 정책으로 정하지만, active Room의 정상�
 
 ## 11. Host와 Player disconnect 설계
 
-구현 구조는 Phase 7A에서 확정된 gameplay/Host policy와 아직 남은 Room retention 결정을 분리해 처리해야 한다.
+Phase 15는 gameplay/Host policy와 Room retention을 별도 application command로 구현하고 공통 Room별 mutation lane에서 직렬화한다.
 
 | 상황 | 확정 동작 | 아직 남은 사항 |
 | --- | --- | --- |
-| Lobby non-Host disconnect | Player/session을 삭제하지 않고 presence만 OFFLINE | 장기 offline 제거·Room retention |
-| Lobby Host disconnect | 60초 grace, 이후 CONNECTED 중 최저 `joinOrder`에게 승계 | Room에 다른 Player가 없을 때 cleanup |
+| Lobby non-Host disconnect | presence OFFLINE, 60초 grace; 계속 OFFLINE이면 Player/session 제거 | 없음 |
+| Lobby Host disconnect | 60초 grace; 계속 OFFLINE이면 Host 제거 후 CONNECTED 중 최저 `joinOrder` 승계 | 없음 |
 | Current Player disconnect | rack/turn ownership과 timer 유지, normal timeout penalty 적용 | 없음 |
 | PLAYING Player 장기 offline | OFFLINE인 자기 turn timeout 2회 연속 뒤 forfeit | 없음 |
-| 모든 Player disconnect | Room state가 즉시 부분 삭제되지 않음 | idle TTL과 cleanup |
+| PLAYING 모든 Player disconnect | state 유지, all-offline 시점부터 30분 뒤 cleanup | 없음 |
+| FINISHED | `finishedAt`부터 30분 보존 뒤 cleanup; resume은 연장하지 않음 | 없음 |
 | duplicate session connect | 새 resume 성공 시 새 `connectionGeneration`만 primary, 이전 권한 회수와 stale disconnect 무시 | 없음 |
 | explicit leave during PLAYING | 즉시 forfeit, rack/result metadata 유지 | 없음 |
 
-policy가 어떤 결정을 하더라도 server command와 timer만 canonical state를 변경하며, connection event가 domain state를 임의로 건너뛰어 수정하지 않는다.
+`InProcessRoomPolicyScheduler`는 Lobby grace, PLAYING all-offline retention과 FINISHED retention deadline만 보관한다. callback은 Room을 직접 바꾸지 않고 phase/identity/deadline/presence lease를 다시 검증하는 application service를 enqueue한다. composition root가 scheduler를 명시적으로 start/stop하며 cleanup은 Room 관련 policy/Turn timer와 connection state를 취소한다.
+
+`room:leave`는 current-primary binding에서 actor를 얻고 nullable game revision을 포함한 optimistic concurrency와 request fingerprint를 검증한다. LOBBY removal/Host succession, PLAYING forfeit, FINISHED session termination은 phase별 candidate를 만들며 partial cleanup을 허용하지 않는다. Room cleanup UoW는 Room, roomCode index, bound sessions와 Room idempotency records를 copy-on-write state 교체 한 번으로 삭제한다.
 
 ## 12. In-memory MVP
 
@@ -806,9 +813,9 @@ Phase 3의 `InMemoryPersistence`는 process 내부 Map 기반 adapter다.
 - code 예약과 정원 확인/추가는 이 unit-of-work 안에서 재검사한다. 예외 시 기존 Map/index를 유지하고 partial entry를 노출하지 않는다.
 - `KeyedSerialExecutor`는 같은 Room key의 async mutation을 등록 순서로 실행하되 다른 Room key는 서로 막지 않으며, reject 뒤에도 다음 작업을 실행하고 idle key를 정리한다.
 - `SessionRepository`는 token hash와 Player binding을 관리한다.
-- Room cleanup change set은 연결된 session과 caller가 명시한 idempotency scope를 같은 commit에서 제거하고 cleanup command의 terminal result를 함께 기록할 수 있다.
+- 전용 Room cleanup change set은 Room record/code index, 해당 Room의 모든 bound session과 Room에 귀속되는 모든 idempotency record를 detached state에서 제거한 뒤 backing state를 한 번만 교체한다. cleanup 중간 checkpoint가 실패하면 live state에는 partial delete가 보이지 않는다.
 - idempotency record 보존 기간은 아직 숫자로 고정하지 않으며 scope 또는 caller-supplied cutoff cleanup만 제공한다.
-- 개별 `RoomRepository.delete`는 low-level persistence primitive다. 실제 Room lifecycle cleanup은 누락 없는 idempotency scope 목록과 `DELETE_BY_ROOM` session cleanup을 포함한 `RoomUnitOfWork`를 사용한다.
+- 개별 `RoomRepository.delete`는 low-level persistence primitive다. 실제 Room lifecycle cleanup은 `RoomCleanupUnitOfWork`와 `DELETE_BY_ROOM` session cleanup을 사용하며 idempotency scope를 caller가 열거하지 않는다.
 - idempotency terminal result는 application이 명시적인 non-secret replay projection으로 구성해야 한다. in-memory adapter의 private field-name 거절은 방어 계층이며 임의 문자열 속 secret을 판별하는 scanner가 아니다.
 - scheduler handle은 infrastructure에 두고 canonical state에는 deadline 값만 둔다.
 - retention worker는 policy가 정한 빈/종료 Room을 명시적으로 제거한다.

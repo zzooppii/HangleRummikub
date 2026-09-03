@@ -4,6 +4,7 @@ import {
   validateRequestId,
   validateRoomCreateCommand,
   validateRoomJoinCommand,
+  validateRoomLeaveCommand,
   validateSessionBootstrapCommand,
   validateSessionResumeCommand,
   validateStateSyncCommand,
@@ -19,8 +20,10 @@ import {
   type PlayingStateSnapshot,
   type RequestId,
   type RoomCreateAck,
+  type RoomClosedEvent,
   type RoomId,
   type RoomJoinAck,
+  type RoomLeaveAck,
   type RoomScopedAck,
   type RoomScopedAckFailure,
   type ServerTime,
@@ -74,6 +77,8 @@ type TurnCommandFailureAck = CorrelatableFailureAck | RoomScopedAckFailure;
 
 type SocketAuthenticationExecutor = KeyedSerialExecutor<SocketId>;
 
+class RoomMembershipEndedError extends Error {}
+
 const INVALID_PAYLOAD_ERROR = Object.freeze({
   code: "INVALID_PAYLOAD",
   message: "Command payload is invalid.",
@@ -95,6 +100,12 @@ const ROOM_NOT_FOUND_ERROR: ErrorDto = Object.freeze({
 const INTERNAL_ERROR: ErrorDto = Object.freeze({
   code: "INTERNAL_ERROR",
   message: "An internal error occurred.",
+  recoverable: false,
+});
+
+const REQUEST_ID_REUSED_ERROR: ErrorDto = Object.freeze({
+  code: "REQUEST_ID_REUSED",
+  message: "Request ID was already used for a different command payload.",
   recoverable: false,
 });
 
@@ -189,6 +200,19 @@ function turnActionSuccessAck(
     serverTime: snapshot.serverTime,
     versions: snapshot.versions,
     data: { snapshot },
+  };
+}
+
+function roomClosedEvent(
+  runtime: ApplicationRuntime,
+  roomId: RoomId,
+  roomCode: import("@hangul-rummikub/shared").RoomCode,
+): RoomClosedEvent {
+  return {
+    kind: "room:closed",
+    protocolVersion: PROTOCOL_VERSION,
+    serverTime: runtime.clock.now(),
+    payload: { roomId, roomCode },
   };
 }
 
@@ -343,6 +367,12 @@ function reportSnapshotFanOutFailure(): void {
   );
 }
 
+function reportRoomPolicyOrchestrationFailure(): void {
+  console.error(
+    "A Room lifecycle policy follow-up failed; canonical state remains authoritative.",
+  );
+}
+
 async function loadSnapshot(
   runtime: ApplicationRuntime,
   roomId: RoomId,
@@ -476,6 +506,20 @@ async function bindPrimarySocket(
       throw new Error("Socket is no longer the current primary connection.");
     }
     return current;
+  }
+
+  // Session verification and joining the Socket.IO channel both await. Re-read
+  // the canonical membership immediately before the synchronous registry bind
+  // so a concurrent grace/retention cleanup cannot resurrect a stale Player.
+  const currentRoom = await runtime.persistence.findById(roomId);
+  if (
+    currentRoom === null ||
+    !currentRoom.players.some((player) => player.playerId === playerId)
+  ) {
+    await socket.leave(roomChannel);
+    throw new RoomMembershipEndedError(
+      "Room membership ended before the socket could be bound.",
+    );
   }
 
   let result: BindPrimaryConnectionResult;
@@ -720,6 +764,13 @@ function registerJoinRoomHandler(
           result.data.roomId,
           result.data.playerId,
         );
+        try {
+          await runtime.roomPresencePolicyService.electLobbyHostIfNeeded(
+            result.data.roomId,
+          );
+        } catch {
+          reportRoomPolicyOrchestrationFailure();
+        }
         const snapshot = await loadSnapshot(
           runtime,
           result.data.roomId,
@@ -802,23 +853,141 @@ function registerResumeHandler(
 
       let binding: AuthenticatedSocketBinding | null = null;
       try {
-        binding = await bindPrimarySocket(
-          io,
-          runtime,
-          socket,
-          result.data.roomId,
-          result.data.playerId,
-        );
+        let currentSessionError: ErrorDto | null = null;
+        const verifyAndBind = async (): Promise<AuthenticatedSocketBinding | null> => {
+          // The first verification locates the Room lane. Re-verify while
+          // holding the lifecycle mutation lane for phases whose explicit
+          // leave retains Player membership. This prevents a deleted
+          // PLAYING/FINISHED credential from resurrecting that Player.
+          const currentSession =
+            await runtime.sessionResumeService.resumeSession({
+              sessionToken: command.value.payload.credential.sessionToken,
+              roomCode: command.value.payload.credential.roomCode,
+            });
+          if (!currentSession.ok) {
+            currentSessionError = currentSession.error;
+            return null;
+          }
+          if (
+            currentSession.data.roomId !== result.data.roomId ||
+            currentSession.data.playerId !== result.data.playerId
+          ) {
+            currentSessionError = UNAUTHENTICATED_ERROR;
+            return null;
+          }
+          return bindPrimarySocket(
+            io,
+            runtime,
+            socket,
+            currentSession.data.roomId,
+            currentSession.data.playerId,
+          );
+        };
+        binding =
+          result.data.room.phase === "LOBBY"
+            ? await verifyAndBind()
+            : await runtime.runRoomMutation(result.data.roomId, verifyAndBind);
+        if (binding === null) {
+          acknowledgeIfPresent(
+            acknowledge,
+            failureAck(
+              commandInput,
+              currentSessionError ?? ROOM_NOT_FOUND_ERROR,
+              receivedAt,
+            ),
+          );
+          return;
+        }
+
+        // Lobby resume cannot wait for the Room lane: an in-flight game:start
+        // deliberately waits for an immediate primary replacement to revoke
+        // the old actor lease. Grace cleanup uses a generation lease, and this
+        // final credential check closes the remaining cleanup-before-bind
+        // window. PLAYING/FINISHED already perform verify+bind in the lane.
+        const boundSession = await runtime.sessionResumeService.resumeSession({
+          sessionToken: command.value.payload.credential.sessionToken,
+          roomCode: command.value.payload.credential.roomCode,
+        });
+        if (
+          !boundSession.ok ||
+          boundSession.data.roomId !== binding.roomId ||
+          boundSession.data.playerId !== binding.playerId
+        ) {
+          const rejectedBinding = binding;
+          if (isCurrentBinding(runtime, binding)) {
+            runtime.connectionRegistry.removePlayer(
+              binding.roomId,
+              binding.playerId,
+            );
+          }
+          binding = null;
+          try {
+            await socket.leave(internalRoomChannel(rejectedBinding.roomId));
+          } catch {
+            reportSnapshotFanOutFailure();
+          }
+          acknowledgeIfPresent(
+            acknowledge,
+            failureAck(
+              commandInput,
+              boundSession.ok ? UNAUTHENTICATED_ERROR : boundSession.error,
+              receivedAt,
+            ),
+          );
+          return;
+        }
+        const resumePolicyFollowUp =
+          runtime.roomPresencePolicyService.onResume(
+            result.data.roomId,
+            result.data.playerId,
+          );
+        if (
+          result.data.room.phase === "LOBBY" &&
+          result.data.room.hostPlayerId !== null
+        ) {
+          // A Lobby command can already hold the Room mutation lane while it
+          // waits for this primary replacement (for example game:start's final
+          // actor lease check). Host election is a post-bind policy follow-up,
+          // so do not make the resume acknowledgement wait behind that lane.
+          // The new connection generation already makes an old grace deadline
+          // stale; onResume still cancels it and reconciles Host state once the
+          // lane becomes available. A hostless Lobby has no game:start actor
+          // that can create this cycle, so await its Host reconciliation and
+          // return an authoritative snapshot that already names the new Host.
+          void resumePolicyFollowUp
+            .then(() =>
+              fanOutRoomSnapshots(io, runtime, result.data.roomId),
+            )
+            .catch(reportRoomPolicyOrchestrationFailure);
+        } else {
+          try {
+            await resumePolicyFollowUp;
+          } catch {
+            // The generation-aware presence bind already makes an obsolete
+            // retention callback stale. A policy follow-up failure must not
+            // invalidate a successfully verified Player session.
+            reportRoomPolicyOrchestrationFailure();
+          }
+        }
         const snapshot = await loadSnapshot(
           runtime,
           result.data.roomId,
           result.data.playerId,
         );
         if (snapshot === null) {
-          runtime.connectionRegistry.disconnect(
-            binding.socketId,
-            binding.connectionGeneration,
-          );
+          const rejectedBinding = binding;
+          if (isCurrentBinding(runtime, rejectedBinding)) {
+            runtime.connectionRegistry.removePlayer(
+              rejectedBinding.roomId,
+              rejectedBinding.playerId,
+            );
+          }
+          binding = null;
+          try {
+            await socket.leave(internalRoomChannel(rejectedBinding.roomId));
+          } catch {
+            reportSnapshotFanOutFailure();
+          }
           acknowledgeIfPresent(
             acknowledge,
             failureAck(commandInput, ROOM_NOT_FOUND_ERROR, receivedAt),
@@ -837,11 +1006,17 @@ function registerResumeHandler(
         void fanOutRoomSnapshots(io, runtime, result.data.roomId).catch(
           reportSnapshotFanOutFailure,
         );
-      } catch {
+      } catch (error: unknown) {
         if (binding === null) {
           acknowledgeIfPresent(
             acknowledge,
-            failureAck(commandInput, INTERNAL_ERROR, receivedAt),
+            failureAck(
+              commandInput,
+              error instanceof RoomMembershipEndedError
+                ? ROOM_NOT_FOUND_ERROR
+                : INTERNAL_ERROR,
+              receivedAt,
+            ),
           );
           return;
         }
@@ -1063,6 +1238,20 @@ function registerTurnSubmitHandler(
         return;
       }
       committed = true;
+
+      if (result.data.outcome === "FINISHED") {
+        try {
+          await runtime.roomPresencePolicyService.scheduleFinishedRetention(
+            binding.roomId,
+          );
+        } catch {
+          // The Game result is already committed. Retention scheduling is
+          // operational cleanup and cannot roll the command back. It must run
+          // before any transport delivery guard because the actor may vanish
+          // immediately after the canonical FINISHED commit.
+          reportRoomPolicyOrchestrationFailure();
+        }
+      }
 
       const snapshot = await loadSnapshot(
         runtime,
@@ -1291,12 +1480,194 @@ function registerTurnPassHandler(
   });
 }
 
+function registerRoomLeaveHandler(
+  io: RealtimeServer,
+  socket: RealtimeSocket,
+  runtime: ApplicationRuntime,
+  authenticationExecutor: SocketAuthenticationExecutor,
+): void {
+  const maxTerminalAcknowledgements = 16;
+  type TerminalRoomLeaveAcknowledgement = Readonly<{
+    roomId: RoomId;
+    playerId: PlayerId;
+    fingerprint: string;
+    acknowledgement: RoomLeaveAck;
+  }>;
+  const terminalAcks = new Map<
+    RequestId,
+    TerminalRoomLeaveAcknowledgement
+  >();
+
+  const terminalAppliesToBinding = (
+    terminal: TerminalRoomLeaveAcknowledgement,
+    binding: AuthenticatedSocketBinding | null,
+  ): boolean =>
+    binding === null ||
+    (binding.roomId === terminal.roomId &&
+      binding.playerId === terminal.playerId);
+
+  socket.on("room:leave", (rawCommand, acknowledge) => {
+    const receivedAt = runtime.clock.now();
+    const commandInput: unknown = rawCommand;
+    const command = validateRoomLeaveCommand(commandInput);
+    if (!command.ok) {
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, command.error, receivedAt),
+      );
+      return;
+    }
+
+    const fingerprint = JSON.stringify([
+      "room:leave",
+      command.value.expectedRoomRevision,
+      command.value.expectedGameRevision,
+    ]);
+    const terminal = terminalAcks.get(command.value.requestId);
+    const bindingAtEntry = runtime.connectionRegistry.getAuthenticatedBinding(
+      createSocketId(socket.id),
+    );
+    if (
+      terminal !== undefined &&
+      terminalAppliesToBinding(terminal, bindingAtEntry)
+    ) {
+      acknowledgeIfPresent(
+        acknowledge,
+        terminal.fingerprint === fingerprint
+          ? terminal.acknowledgement
+          : failureAck(commandInput, REQUEST_ID_REUSED_ERROR, receivedAt),
+      );
+      return;
+    }
+
+    void authenticationExecutor.run(createSocketId(socket.id), async () => {
+      const replayAfterQueue = terminalAcks.get(command.value.requestId);
+      const bindingAfterQueue =
+        runtime.connectionRegistry.getAuthenticatedBinding(
+          createSocketId(socket.id),
+        );
+      if (
+        replayAfterQueue !== undefined &&
+        terminalAppliesToBinding(replayAfterQueue, bindingAfterQueue)
+      ) {
+        acknowledgeIfPresent(
+          acknowledge,
+          replayAfterQueue.fingerprint === fingerprint
+            ? replayAfterQueue.acknowledgement
+            : failureAck(commandInput, REQUEST_ID_REUSED_ERROR, receivedAt),
+        );
+        return;
+      }
+
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(
+        createSocketId(socket.id),
+      );
+      if (binding === null) {
+        acknowledgeIfPresent(
+          acknowledge,
+          failureAck(commandInput, UNAUTHENTICATED_ERROR, receivedAt),
+        );
+        return;
+      }
+
+      const roomBefore = await runtime.persistence.findById(binding.roomId);
+      if (roomBefore === null) {
+        acknowledgeIfPresent(
+          acknowledge,
+          failureAck(commandInput, ROOM_NOT_FOUND_ERROR, receivedAt),
+        );
+        return;
+      }
+      const actorWasCurrent =
+        roomBefore.phase === "PLAYING" &&
+        roomBefore.game?.turn?.activePlayerId === binding.playerId;
+
+      const result = await runtime.roomLeaveService.leave({
+        roomId: binding.roomId,
+        actorPlayerId: binding.playerId,
+        requestId: command.value.requestId,
+        expectedRoomRevision: command.value.expectedRoomRevision,
+        expectedGameRevision: command.value.expectedGameRevision,
+        authorization: {
+          isCurrent: () =>
+            socket.connected && isCurrentBinding(runtime, binding),
+        },
+      });
+      if (!result.ok) {
+        acknowledgeIfPresent(
+          acknowledge,
+          await turnSubmitFailureAck(
+            runtime,
+            binding,
+            command.value.requestId,
+            result.error,
+            receivedAt,
+          ),
+        );
+        return;
+      }
+
+      const acknowledgement: RoomLeaveAck = {
+        scope: "ROOM",
+        requestId: command.value.requestId,
+        ok: true,
+        serverTime: runtime.clock.now(),
+        versions: {
+          roomRevision:
+            result.data.roomRevision ?? command.value.expectedRoomRevision,
+          gameRevision: result.data.gameRevision,
+          presenceVersion: runtime.connectionRegistry.getPresenceVersion(
+            binding.roomId,
+          ),
+        },
+        data: {
+          roomId: binding.roomId,
+          roomCode: roomBefore.roomCode,
+          roomClosed: result.data.roomClosed,
+        },
+      };
+      terminalAcks.set(command.value.requestId, {
+        roomId: binding.roomId,
+        playerId: binding.playerId,
+        fingerprint,
+        acknowledgement,
+      });
+      if (terminalAcks.size > maxTerminalAcknowledgements) {
+        const oldestRequestId = terminalAcks.keys().next().value;
+        if (oldestRequestId !== undefined) {
+          terminalAcks.delete(oldestRequestId);
+        }
+      }
+
+      // Canonical leave has already committed. Remove the transport channel
+      // subscription before acknowledging so this socket cannot observe later
+      // Room snapshots despite no longer owning a Room membership.
+      try {
+        await socket.leave(internalRoomChannel(binding.roomId));
+      } catch {
+        reportPostCommitDeliveryFailure();
+      }
+      acknowledgeIfPresent(acknowledge, acknowledgement);
+
+      if (actorWasCurrent && !result.data.roomClosed) {
+        await emitCurrentTurnStarted(io, runtime, binding.roomId);
+      }
+    }).catch(() => {
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, INTERNAL_ERROR, receivedAt),
+      );
+    });
+  });
+}
+
 function registerDisconnectHandler(
   io: RealtimeServer,
   socket: RealtimeSocket,
   runtime: ApplicationRuntime,
 ): void {
   socket.on("disconnect", () => {
+    const disconnectedAt = runtime.clock.now();
     const socketId = createSocketId(socket.id);
     const binding = runtime.connectionRegistry.getAuthenticatedBinding(socketId);
     if (binding === null) {
@@ -1311,6 +1682,15 @@ function registerDisconnectHandler(
       return;
     }
 
+    void runtime.roomPresencePolicyService
+      .onCurrentDisconnect({
+        roomId: binding.roomId,
+        playerId: binding.playerId,
+        connectionGeneration: binding.connectionGeneration,
+        presenceVersion: result.presenceVersion,
+        disconnectedAt,
+      })
+      .catch(reportRoomPolicyOrchestrationFailure);
     void fanOutRoomSnapshots(io, runtime, binding.roomId).catch(
       reportSnapshotFanOutFailure,
     );
@@ -1332,6 +1712,32 @@ export function registerSocketIoHandlers(
       }
     },
   );
+  const unsubscribeRoomPlayerRemoved = runtime.subscribeRoomPlayerRemoved(
+    async (roomId) => {
+      try {
+        await fanOutRoomSnapshots(io, runtime, roomId);
+      } catch {
+        reportSnapshotFanOutFailure();
+      }
+    },
+  );
+  const unsubscribeRoomClosed = runtime.subscribeRoomClosed(
+    async (roomId, roomCode, connectedBindings) => {
+      const event = roomClosedEvent(runtime, roomId, roomCode);
+      for (const binding of connectedBindings) {
+        const connectedSocket = io.sockets.sockets.get(binding.socketId);
+        if (connectedSocket === undefined) {
+          continue;
+        }
+        connectedSocket.emit("room:closed", event);
+        try {
+          await connectedSocket.leave(internalRoomChannel(binding.roomId));
+        } catch {
+          reportPostCommitDeliveryFailure();
+        }
+      }
+    },
+  );
 
   io.on("connection", (socket) => {
     registerBootstrapHandler(socket, runtime);
@@ -1343,8 +1749,13 @@ export function registerSocketIoHandlers(
     registerTurnSubmitHandler(io, socket, runtime);
     registerTurnDrawHandler(io, socket, runtime);
     registerTurnPassHandler(io, socket, runtime);
+    registerRoomLeaveHandler(io, socket, runtime, authenticationExecutor);
     registerDisconnectHandler(io, socket, runtime);
   });
 
-  return unsubscribeTimeoutApplied;
+  return () => {
+    unsubscribeRoomClosed();
+    unsubscribeRoomPlayerRemoved();
+    unsubscribeTimeoutApplied();
+  };
 }

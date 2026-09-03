@@ -82,6 +82,10 @@ type GameStateBase = Readonly<{
   racks: ReadonlyMap<PlayerId, readonly TileId[]>;
   board: Board;
   initialMeldCompleted: ReadonlyMap<PlayerId, boolean>;
+  /** Server-only consecutive timeout count while the Player was OFFLINE. */
+  offlineTimeoutStreakByPlayerId: ReadonlyMap<PlayerId, number>;
+  /** Original turnOrder remains immutable; active rotation skips this set. */
+  forfeitedPlayerIds: ReadonlySet<PlayerId>;
   turnOrder: readonly PlayerId[];
   gameStartedAt: ServerTime;
   gameDeadlineAt: ServerTime;
@@ -398,6 +402,33 @@ export function cloneGameState(gameState: GameState): GameState {
   const clonedMeldStatus = [...gameState.initialMeldCompleted].map(
     ([playerId, completed]) => [playerId, completed] as const,
   );
+  const clonedOfflineTimeoutStreaks = [
+    ...gameState.offlineTimeoutStreakByPlayerId,
+  ].map(([playerId, streak]) => {
+    requireNonNegativeSafeInteger(streak, "offline timeout streak");
+    if (streak > 2) {
+      throw new RangeError("Offline timeout streak must not exceed two.");
+    }
+    return [playerId, streak] as const;
+  });
+  const forfeitedPlayerIds = new Set(gameState.forfeitedPlayerIds);
+
+  if (
+    clonedOfflineTimeoutStreaks.length !== gameState.turnOrder.length ||
+    !gameState.turnOrder.every((playerId) =>
+      gameState.offlineTimeoutStreakByPlayerId.has(playerId),
+    ) ||
+    [...gameState.offlineTimeoutStreakByPlayerId.keys()].some(
+      (playerId) => !gameState.turnOrder.includes(playerId),
+    ) ||
+    [...forfeitedPlayerIds].some(
+      (playerId) => !gameState.turnOrder.includes(playerId),
+    )
+  ) {
+    throw new Error(
+      "Player timeout/forfeit state must match the complete turn order.",
+    );
+  }
 
   const base = {
     gameId: gameState.gameId,
@@ -409,6 +440,10 @@ export function cloneGameState(gameState: GameState): GameState {
     racks: createReadonlyMap(clonedRacks),
     board: cloneBoard(gameState.board),
     initialMeldCompleted: createReadonlyMap(clonedMeldStatus),
+    offlineTimeoutStreakByPlayerId: createReadonlyMap(
+      clonedOfflineTimeoutStreaks,
+    ),
+    forfeitedPlayerIds: Object.freeze(forfeitedPlayerIds),
     turnOrder: Object.freeze([...gameState.turnOrder]),
     gameStartedAt: gameState.gameStartedAt,
     gameDeadlineAt: gameState.gameDeadlineAt,
@@ -438,6 +473,16 @@ export function cloneGameState(gameState: GameState): GameState {
 
   if (gameState.result !== null) {
     throw new Error("An active Game must not contain a terminal result.");
+  }
+  if (gameState.forfeitedPlayerIds.has(gameState.turn.activePlayerId)) {
+    throw new Error("An active Turn cannot belong to a forfeited Player.");
+  }
+  if (
+    gameState.turnOrder.every((playerId) =>
+      gameState.forfeitedPlayerIds.has(playerId),
+    )
+  ) {
+    throw new Error("An active Game must have a non-forfeited Player.");
   }
 
   return Object.freeze({
@@ -487,12 +532,14 @@ export function createInitialGameState(
 
   const racks = new Map<PlayerId, readonly TileId[]>();
   const initialMeldCompleted = new Map<PlayerId, boolean>();
+  const offlineTimeoutStreakByPlayerId = new Map<PlayerId, number>();
   for (const playerId of playerIds) {
     const rack: TileId[] = [];
     drawIntoRack(consonantBag, rack, rulesConfig.initialRack.consonants);
     drawIntoRack(vowelBag, rack, rulesConfig.initialRack.vowels);
     racks.set(playerId, Object.freeze(rack));
     initialMeldCompleted.set(playerId, false);
+    offlineTimeoutStreakByPlayerId.set(playerId, 0);
   }
 
   const turnOrder = fisherYatesShuffle(playerIds, input.randomSource);
@@ -511,6 +558,10 @@ export function createInitialGameState(
     racks: createReadonlyMap(racks),
     board: Object.freeze({ wordGroups: Object.freeze([]) }),
     initialMeldCompleted: createReadonlyMap(initialMeldCompleted),
+    offlineTimeoutStreakByPlayerId: createReadonlyMap(
+      offlineTimeoutStreakByPlayerId,
+    ),
+    forfeitedPlayerIds: Object.freeze(new Set<PlayerId>()),
     turnOrder,
     turn: Object.freeze({
       turnId: input.idGenerator.generateTurnId(),

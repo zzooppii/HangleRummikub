@@ -238,6 +238,12 @@ test("새 Game은 gameRevision 0, empty Board, 모든 initial meld false로 시�
     [playerId("player-2"), false],
     [playerId("player-3"), false],
   ]);
+  assert.deepEqual([...game.offlineTimeoutStreakByPlayerId], [
+    [playerId("player-1"), 0],
+    [playerId("player-2"), 0],
+    [playerId("player-3"), 0],
+  ]);
+  assert.deepEqual([...game.forfeitedPlayerIds], []);
 });
 
 test("creation은 caller의 ordered Player/RulesConfig 참조를 보관하지 않는다", () => {
@@ -277,6 +283,8 @@ test("creation은 caller의 ordered Player/RulesConfig 참조를 보관하지 �
   assert.ok(Object.isFrozen(game.tilesById));
   assert.ok(Object.isFrozen(game.racks));
   assert.ok(Object.isFrozen(game.initialMeldCompleted));
+  assert.ok(Object.isFrozen(game.offlineTimeoutStreakByPlayerId));
+  assert.ok(Object.isFrozen(game.forfeitedPlayerIds));
   assert.ok([...game.racks.values()].every(Object.isFrozen));
 });
 
@@ -293,6 +301,11 @@ test("cloneGameState는 nested canonical collections를 detached copy로 만든�
   assert.notEqual(clone.vowelBag, original.vowelBag);
   assert.notEqual(clone.racks, original.racks);
   assert.notEqual(clone.initialMeldCompleted, original.initialMeldCompleted);
+  assert.notEqual(
+    clone.offlineTimeoutStreakByPlayerId,
+    original.offlineTimeoutStreakByPlayerId,
+  );
+  assert.notEqual(clone.forfeitedPlayerIds, original.forfeitedPlayerIds);
   assert.notEqual(clone.turnOrder, original.turnOrder);
   assert.notEqual(clone.turn, original.turn);
   assert.notEqual(clone.board, original.board);
@@ -300,6 +313,39 @@ test("cloneGameState는 nested canonical collections를 detached copy로 만든�
   const cloneRacks = clone.racks as Map<PlayerId, readonly TileId[]>;
   cloneRacks.set(playerId("player-1"), Object.freeze([]));
   assert.equal(original.racks.get(playerId("player-1"))?.length, 14);
+});
+
+test("cloneGameState는 timeout streak와 forfeit rotation 불변 조건을 검증한다", () => {
+  const original = createGame(2);
+
+  assert.throws(() =>
+    cloneGameState({
+      ...original,
+      offlineTimeoutStreakByPlayerId: new Map([
+        [original.turnOrder[0]!, 0],
+      ]),
+    }),
+  );
+  assert.throws(() =>
+    cloneGameState({
+      ...original,
+      offlineTimeoutStreakByPlayerId: new Map(
+        original.turnOrder.map((id) => [id, 3]),
+      ),
+    }),
+  );
+  assert.throws(() =>
+    cloneGameState({
+      ...original,
+      forfeitedPlayerIds: new Set([original.turn.activePlayerId]),
+    }),
+  );
+  assert.throws(() =>
+    cloneGameState({
+      ...original,
+      forfeitedPlayerIds: new Set([playerId("unknown-player")]),
+    }),
+  );
 });
 
 test("2명 미만, 4명 초과 또는 duplicate Player로 Game을 만들 수 없다", () => {

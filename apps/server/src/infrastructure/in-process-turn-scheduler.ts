@@ -1,4 +1,5 @@
 import type { TurnId } from "@hangul-rummikub/shared";
+import type { RoomId } from "@hangul-rummikub/shared";
 
 import type {
   Clock,
@@ -42,6 +43,7 @@ export type InProcessTurnSchedulerOptions = Readonly<{
 }>;
 
 type ScheduledTimer = Readonly<{
+  roomId: RoomId;
   turnId: TurnId;
   identity: string;
   handle: unknown;
@@ -110,12 +112,27 @@ export class InProcessTurnScheduler implements TurnScheduler {
     const handle = this.#timerDriver.set(delayMs, () => {
       void this.#fire(deadline, identity);
     });
-    this.#timers.set(key, { turnId: deadline.turnId, identity, handle });
+    this.#timers.set(key, {
+      roomId: deadline.roomId,
+      turnId: deadline.turnId,
+      identity,
+      handle,
+    });
   }
 
   async cancelTimeout(turnId: TurnId): Promise<void> {
     for (const [key, current] of this.#timers) {
       if (current.turnId !== turnId) {
+        continue;
+      }
+      this.#timerDriver.clear(current.handle);
+      this.#timers.delete(key);
+    }
+  }
+
+  async cancelRoom(roomId: RoomId): Promise<void> {
+    for (const [key, current] of this.#timers) {
+      if (current.roomId !== roomId) {
         continue;
       }
       this.#timerDriver.clear(current.handle);

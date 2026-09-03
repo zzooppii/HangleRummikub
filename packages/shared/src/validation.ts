@@ -20,6 +20,7 @@ import {
   type ProtocolErrorCode,
   type RoomCreateCommand,
   type RoomJoinCommand,
+  type RoomLeaveCommand,
   type SessionBootstrapCommand,
   type SessionResumeCommand,
   type StateSyncCommand,
@@ -32,6 +33,8 @@ import {
   GameStartAckSchema,
   RoomCreateAckSchema,
   RoomJoinAckSchema,
+  RoomClosedEventSchema,
+  RoomLeaveAckSchema,
   SessionBootstrapAckSchema,
   SessionResumeAckSchema,
   StateSnapshotDeliveryDataSchema,
@@ -279,6 +282,29 @@ export function validateRoomJoinCommand(
       error: validationError(
         "INVALID_PAYLOAD",
         "Room join command is invalid.",
+        false,
+      ),
+    } satisfies RuntimeValidationResult<never>;
+  }
+
+  return { ok: true, value: result.value };
+}
+
+export function validateRoomLeaveCommand(
+  input: unknown,
+): RuntimeValidationResult<RoomLeaveCommand> {
+  const result = validateClientCommand(input);
+
+  if (!result.ok) {
+    return result;
+  }
+
+  if (result.value.kind !== "room:leave") {
+    return {
+      ok: false,
+      error: validationError(
+        "INVALID_PAYLOAD",
+        "Room leave command is invalid.",
         false,
       ),
     } satisfies RuntimeValidationResult<never>;
@@ -537,6 +563,18 @@ export function validateRoomJoinAck(input: unknown) {
   );
 }
 
+export function validateRoomLeaveAck(input: unknown) {
+  return validateSchema(
+    RoomLeaveAckSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Room leave acknowledgement is invalid.",
+      false,
+    ),
+  );
+}
+
 export function validateSessionResumeAck(input: unknown) {
   return validateSchema(
     SessionResumeAckSchema,
@@ -712,6 +750,18 @@ export function validateGameFinishedEvent(input: unknown) {
     validationError(
       "INVALID_PAYLOAD",
       "Game finished event is invalid.",
+      false,
+    ),
+  );
+}
+
+export function validateRoomClosedEvent(input: unknown) {
+  return validateSchema(
+    RoomClosedEventSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Room closed event is invalid.",
       false,
     ),
   );

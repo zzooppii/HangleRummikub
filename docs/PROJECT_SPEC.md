@@ -2,9 +2,9 @@
 
 ## 1. 문서 상태
 
-- 문서 버전: `0.10-phase-14-turn-end`
+- 문서 버전: `0.11-phase-15-room-lifecycle`
 - 대상: 첫 번째 playable MVP
-- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름과 Phase 7 gameplay 규칙 gate, Phase 8 Hangul composition, Phase 9 `TestDictionaryProvider`, Phase 10 Board RuleEngine, Phase 11 canonical Game start/state projection, Phase 12 browser-only TurnDraft, Phase 13 원자적 `turn:submit`/rack-empty 종료에 이어 Phase 14의 `turn:draw`, empty-bag `turn:pass`, server timeout/penalty와 scheduling까지 구현되었다. 25분·stalemate·forfeit 종료는 아직 없다.
+- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름과 Phase 7 gameplay 규칙 gate, Phase 8 Hangul composition, Phase 9 `TestDictionaryProvider`, Phase 10 Board RuleEngine, Phase 11 canonical Game start/state projection, Phase 12 browser-only TurnDraft, Phase 13 원자적 `turn:submit`/rack-empty 종료, Phase 14 Draw/Pass/server timer에 이어 Phase 15의 disconnect grace, Host 승계, offline-timeout forfeit, explicit leave와 Room cleanup까지 구현되었다. 25분·stalemate·active non-forfeit Player 한 명에 따른 종료는 아직 없다.
 - 규칙 기준: 확정된 내용과 미확정 내용은 [GAME_RULES.md](./GAME_RULES.md)를 따른다.
 - 기술 구조 기준: [ARCHITECTURE.md](./ARCHITECTURE.md)를 따른다.
 
@@ -142,8 +142,9 @@
 | `FR-ROOM-005` | Room 정원은 최대 4명이며, Game은 2~4명의 등록 Player가 모두 CONNECTED일 때만 시작할 수 있다. 한 명이라도 OFFLINE이면 시작을 거절하며 5번째 신규 참가는 서버가 거절한다. |
 | `FR-ROOM-006` | MVP scope에서 신규 참가는 `LOBBY`로 제한한다. Room이 보존된 동안 `PLAYING`/`FINISHED`의 기존 Player resume은 신규 참가와 구분한다. |
 | `FR-ROOM-007` | Host의 current-primary socket만 게임 시작 command를 보낼 권한이 있다. 서버가 connection binding과 canonical `hostPlayerId`로 권한을 판정하며 Ready 기능은 사용하지 않는다. |
-| `FR-ROOM-008` | Host identity는 connection과 독립적이다. LOBBY Host explicit leave 시 CONNECTED Player 중 최저 `joinOrder`에게 즉시 승계하고, disconnect 시 60초 resume grace 뒤 같은 기준으로 승계한다. 대상이 없으면 identity를 유지하며 retention policy를 기다린다. |
-| `FR-ROOM-009` | 명시적 leave와 비의도적 disconnect를 구분한다. PLAYING explicit leave는 forfeit이며 disconnect는 즉시 forfeit가 아니다. Lobby 비-Host leave의 제거 세부사항은 별도 policy로 남긴다. |
+| `FR-ROOM-008` | Host identity는 connection과 독립적이다. LOBBY Host explicit leave 또는 60초 disconnect grace 만료 시 해당 Player를 제거하고 CONNECTED Player 중 최저 `joinOrder`에게 승계한다. 남은 Player가 모두 OFFLINE이면 dangling Host 대신 일시적인 hostless Lobby로 보존하고 다음 eligible resume에서 선출한다. |
+| `FR-ROOM-009` | 명시적 leave와 비의도적 disconnect를 구분한다. 모든 LOBBY disconnect는 60초 grace 뒤 계속 OFFLINE이면 Player/session을 제거하고, explicit leave는 즉시 제거한다. PLAYING explicit leave는 forfeit이며 disconnect는 즉시 forfeit가 아니다. FINISHED leave는 보존된 result를 변경하지 않는다. |
+| `FR-ROOM-010` | 빈 LOBBY는 즉시, 전원이 OFFLINE인 PLAYING Room은 all-offline 시점부터 30분 뒤, FINISHED Room은 `finishedAt`부터 30분 뒤 atomic cleanup한다. cleanup은 Room/code index/session/idempotency를 제거하고 완료된 roomCode에는 별도 cooldown을 두지 않는다. |
 
 ### 7.2 Game
 
@@ -159,7 +160,7 @@
 | `FR-GAME-008` | 서버만 rack-empty, 25분 cap, stalemate 또는 active non-forfeit Player 1명 종료를 판정하고 `FINISHED`, score와 ranking을 계산한다. |
 | `FR-GAME-009` | initial meld는 자신의 rack Tile만 최소 6개 사용하고 각 WordGroup이 최소 2음절이어야 한다. 완료 뒤 normal turn에서는 기존 Board를 재조합할 수 있지만 자신의 rack Tile을 최소 1개 사용하고 모든 기존 Tile을 보존해야 한다. |
 | `FR-GAME-010` | 일반 draw는 Player가 bag 종류만 선택하고 서버가 Tile 1개를 선택해 Turn을 즉시 끝낸다. 선택 bag만 empty이면 `BAG_EMPTY`, 두 bag 모두 empty일 때만 `turn:pass`를 허용하고 그 외에는 `PASS_NOT_ALLOWED`로 state 불변 거절한다. |
-| `FR-GAME-011` | OFFLINE 상태에서 자기 turn timeout이 연속 2회인 Player와 PLAYING explicit leave Player는 forfeit하며 active rotation에서 제외하되 rack/result metadata를 보존한다. |
+| `FR-GAME-011` | OFFLINE 상태에서 자기 turn timeout이 연속 2회인 Player와 PLAYING explicit leave Player는 forfeit하며 immutable turnOrder에서는 유지하되 active rotation에서 제외하고 rack/result metadata를 보존한다. resume은 offline streak만 reset하며 presence-only 변화로 game/room revision이나 turn identity를 바꾸지 않는다. |
 | `FR-GAME-012` | dedicated 쌍자음은 physical Tile 하나, 허용된 복합모음과 겹받침은 서로 다른 physical Tile 두 개를 소비한다. Joker 하나는 ordinary physical Tile 한 자리만 대체하고 two-position composition 전체를 대체하지 않는다. |
 | `FR-GAME-013` | 새 Game은 `gameRevision = 0`, empty Board, Player별 14 Tile rack과 `initialMeldCompleted = false`, server-random immutable turnOrder와 `turnNumber = 1`인 첫 Turn으로 시작한다. 성공은 `roomRevision + 1`, `storageRevision + 1`과 accepted idempotency result를 같은 atomic commit에 포함한다. |
 | `FR-GAME-014` | timeout은 socket presence와 무관한 internal command이며 canonical `gameId`/`turnId`/`gameRevision`/deadline과 server Clock을 다시 확인한다. 성공하면 Board와 meld를 유지하고 남은 bag에서 최대 3 Tile penalty를 지급해 다음 Turn으로 진행한다. |
@@ -277,9 +278,9 @@ Exact physical definition과 `assignedSymbol` 정보는 기존 player-specific �
 - Railway의 환경 기반 `PORT`와 reverse proxy/WebSocket 환경을 지원한다.
 - 메모리 MVP는 정확성을 위해 server replica 하나만 사용한다.
 - 프로세스 장애, restart, redeploy 시 모든 in-memory Room과 session이 사라질 수 있음을 사용자와 운영 문서에 명확히 알린다.
-- 비어 있거나 종료된 Room의 메모리를 정리하는 retention 정책이 필요하다. 정확한 TTL은 미확정이다.
+- 비어 있는 LOBBY는 즉시 정리하고, 전원이 OFFLINE인 PLAYING Room과 FINISHED Room은 각각 확정된 30분 retention 뒤 정리한다.
 
-아직 미확정인 성능 한계, Room retention TTL과 rate limit은 측정과 규칙 결정 없이 임의로 고정하지 않는다. 확정된 bootstrap TTL 5분, turn 60초, Host grace 60초와 Game cap 25분은 예외다.
+아직 미확정인 성능 한계와 rate limit은 측정과 규칙 결정 없이 임의로 고정하지 않는다. 확정된 bootstrap TTL 5분, turn 60초, Lobby disconnect grace 60초, PLAYING/FINISHED retention 30분과 Game cap 25분은 예외다.
 
 ## 10. MVP 완료 시나리오
 
@@ -306,5 +307,5 @@ Exact physical definition과 `assignedSymbol` 정보는 기존 player-specific �
 - 동일 프로세스 안의 메모리 상태만 사용하므로 서버 restart 복구는 지원하지 않는다.
 - single replica만 지원한다. 공유 저장소 없이 replica를 늘리면 Room state와 connection routing이 갈라질 수 있다.
 - 테스트용 `DictionaryProvider`는 게임 메커니즘 검증용이며 실제 한국어 사전 완전성을 보장하지 않는다.
-- Phase 8 composer는 assigned jamo의 현대 한글 조합, Phase 9 provider는 NFC fixture membership, Phase 10 RuleEngine은 readonly proposed Board validation만 맡는다. Phase 11~13은 Game start, browser TurnDraft와 Submit/rack-empty finish를 연결했고 Phase 14는 draw/pass, 60초 timeout penalty와 다음 Turn scheduling을 원자적으로 실행한다. 25분 cap, stalemate·forfeit 종료, explicit leave와 Host succession/Room cleanup은 아직 구현하지 않았다.
-- production dictionary dataset/license, Lobby 비-Host leave, Room retention과 운영 한도는 아직 미확정이다.
+- Phase 8 composer는 assigned jamo의 현대 한글 조합, Phase 9 provider는 NFC fixture membership, Phase 10 RuleEngine은 readonly proposed Board validation만 맡는다. Phase 11~13은 Game start, browser TurnDraft와 Submit/rack-empty finish를 연결했고 Phase 14는 draw/pass, 60초 timeout penalty와 다음 Turn scheduling을 원자적으로 실행한다. Phase 15는 disconnect grace, offline-timeout forfeit, explicit leave, Host succession과 Room cleanup을 연결한다. 25분 cap, stalemate 및 active non-forfeit Player 한 명 종료 mutation은 아직 없다.
+- production dictionary dataset/license, 운영 한도와 rate limit은 아직 미확정이다.

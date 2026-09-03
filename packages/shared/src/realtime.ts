@@ -3,6 +3,8 @@ import * as v from "valibot";
 import {
   GameIdSchema,
   PlayerIdSchema,
+  RoomCodeSchema,
+  RoomIdSchema,
   TurnIdSchema,
 } from "./identifiers.js";
 import {
@@ -27,6 +29,7 @@ import type {
   GameStartCommand,
   RoomCreateCommand,
   RoomJoinCommand,
+  RoomLeaveCommand,
   SessionBootstrapCommand,
   SessionResumeCommand,
   StateSyncCommand,
@@ -78,6 +81,22 @@ export type RoomCreateAck = v.InferOutput<typeof RoomCreateAckSchema>;
 
 export const RoomJoinAckSchema = createSnapshotCommandAckSchema();
 export type RoomJoinAck = v.InferOutput<typeof RoomJoinAckSchema>;
+
+export const RoomLeaveAckDataSchema = v.strictObject({
+  roomId: RoomIdSchema,
+  roomCode: RoomCodeSchema,
+  roomClosed: v.boolean(),
+});
+export type RoomLeaveAckData = v.InferOutput<
+  typeof RoomLeaveAckDataSchema
+>;
+
+export const RoomLeaveAckSchema = v.union([
+  UncorrelatedFailureAckSchema,
+  UnscopedAckFailureSchema,
+  createRoomScopedAckSchema(RoomLeaveAckDataSchema),
+]);
+export type RoomLeaveAck = v.InferOutput<typeof RoomLeaveAckSchema>;
 
 export const SessionResumeAckSchema = createSnapshotCommandAckSchema();
 export type SessionResumeAck = v.InferOutput<typeof SessionResumeAckSchema>;
@@ -200,6 +219,17 @@ export type GameFinishedEvent = v.InferOutput<
   typeof GameFinishedEventSchema
 >;
 
+export const RoomClosedEventSchema = v.strictObject({
+  kind: v.literal("room:closed"),
+  protocolVersion: ProtocolVersionSchema,
+  serverTime: ServerTimeSchema,
+  payload: v.strictObject({
+    roomId: RoomIdSchema,
+    roomCode: RoomCodeSchema,
+  }),
+});
+export type RoomClosedEvent = v.InferOutput<typeof RoomClosedEventSchema>;
+
 export type SocketAcknowledgement<TAck> = (ack: TAck) => void;
 
 export interface ClientToServerEvents {
@@ -214,6 +244,10 @@ export interface ClientToServerEvents {
   "room:join": (
     command: RoomJoinCommand,
     acknowledge: SocketAcknowledgement<RoomJoinAck>,
+  ) => void;
+  "room:leave": (
+    command: RoomLeaveCommand,
+    acknowledge: SocketAcknowledgement<RoomLeaveAck>,
   ) => void;
   "session:resume": (
     command: SessionResumeCommand,
@@ -245,5 +279,6 @@ export interface ServerToClientEvents {
   "state:snapshot": (event: StateSnapshotEvent) => void;
   "turn:started": (event: TurnStartedEvent) => void;
   "game:finished": (event: GameFinishedEvent) => void;
+  "room:closed": (event: RoomClosedEvent) => void;
   "session:replaced": (event: SessionReplacedNotification) => void;
 }

@@ -14,8 +14,9 @@
 - Phase 12(Client TurnDraft): **완료** (2026-09-03)
 - Phase 13(원자적 Submit pipeline): **완료** (2026-09-03)
 - Phase 14(Draw·Pass와 server timer): **완료** (2026-09-03)
+- Phase 15(Disconnect, Host 이탈 policy, Room cleanup): **완료** (2026-09-03)
 
-공식 physical Tile inventory와 디지털 symbol 표현의 canonical 기준은 C-22와 C-23이다. Phase 8은 Hangul composer를 구현했고 Phase 9는 아래 승인된 fixture를 `test-dictionary-v1` adapter로 구현했다. Phase 10은 server-only Board·Tile validation descriptor와 순수 RuleEngine을 구현했다. Phase 11은 exact inventory로 canonical GameState와 immutable RulesConfig를 만들고 `game:start`, Player별 PLAYING projection을 연결했다. Phase 12는 active Player의 browser-only TurnDraft editor를 연결했고 Phase 13은 원자적 `turn:submit`과 rack-empty 종료를 연결했다. Phase 14는 `turn:draw`, 두 bag이 모두 empty일 때의 `turn:pass`, server-authoritative timeout penalty와 다음 Turn scheduling을 연결했다. 25분 종료, stalemate와 offline forfeit는 아직 실행하지 않는다.
+공식 physical Tile inventory와 디지털 symbol 표현의 canonical 기준은 C-22와 C-23이다. Phase 8은 Hangul composer를 구현했고 Phase 9는 아래 승인된 fixture를 `test-dictionary-v1` adapter로 구현했다. Phase 10은 server-only Board·Tile validation descriptor와 순수 RuleEngine을 구현했다. Phase 11은 exact inventory로 canonical GameState와 immutable RulesConfig를 만들고 `game:start`, Player별 PLAYING projection을 연결했다. Phase 12는 active Player의 browser-only TurnDraft editor를 연결했고 Phase 13은 원자적 `turn:submit`과 rack-empty 종료를 연결했다. Phase 14는 `turn:draw`, 두 bag이 모두 empty일 때의 `turn:pass`, server-authoritative timeout penalty와 다음 Turn scheduling을 연결했다. Phase 15는 Lobby disconnect grace, Host 승계, PLAYING offline-timeout forfeit, explicit leave와 Room retention/cleanup을 연결했다. 25분 종료, stalemate와 active non-forfeit Player 한 명에 따른 종료는 아직 실행하지 않는다.
 
 규칙 문장에서 “해야 한다”, “허용한다”, “거절한다”는 서버 판정에 적용되는 규범적 표현이다. 예시는 규칙을 설명하지만 규범 문장을 대체하지 않는다.
 
@@ -586,6 +587,8 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 - **DIGITAL_MVP_POLICY:** forfeit Player는 active rotation에서 제외하되 rack과 result metadata를 Game 종료까지 유지한다.
 - **DIGITAL_MVP_POLICY:** active non-forfeit Player가 1명만 남으면 그 Player를 winner로 하고 Game을 종료한다.
 - **DIGITAL_MVP_POLICY:** PLAYING 중 explicit leave는 즉시 forfeit이며 동일한 결과 보존 규칙을 적용한다.
+- **DIGITAL_MVP_POLICY:** 현재 active Player의 explicit leave는 penalty 없이 현재 Turn을 끝내고 다음 non-forfeit Player의 새 Turn을 만든다. 다른 Player의 explicit leave는 현재 Turn identity와 deadline을 유지한다.
+- **DIGITAL_MVP_POLICY:** FINISHED의 explicit leave는 session과 connection만 종료하며 보존 중인 Player, rack summary와 result를 바꾸지 않는다.
 
 ### 정상 예
 
@@ -600,18 +603,21 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 
 ### Server validation implication
 
-- presence는 ConnectionRegistry projection state이고 forfeit/streak는 canonical Game state다.
-- timeout 시점의 authoritative presence와 current turnId를 직렬화 경계 안에서 다시 확인한다.
+- presence는 ConnectionRegistry projection state이고 forfeit/streak는 canonical Game state다. offline-timeout streak 자체는 projection하지 않는다.
+- timeout 시점의 authoritative presence lease와 current turnId를 직렬화 경계 및 commit precondition에서 다시 확인한다.
+- 단순 disconnect/resume과 resume에 따른 streak reset은 `gameRevision`, `roomRevision` 또는 `turnId`를 바꾸지 않는다. 두 번째 offline timeout의 penalty, forfeit와 next Turn은 한 번의 canonical commit이다.
 
 ## C-19. Host policy
 
 ### Normative rule
 
 - **DIGITAL_MVP_POLICY:** Host는 Lobby 운영 role이며 PLAYING 중 규칙을 우회할 권한이 없다.
-- **DIGITAL_MVP_POLICY:** LOBBY에서 Host가 explicit leave하면 남아 있는 CONNECTED Player 중 joinOrder가 가장 낮은 Player에게 즉시 Host를 이전한다.
-- **DIGITAL_MVP_POLICY:** LOBBY에서 Host disconnect만으로 즉시 이전하지 않고 60초 동안 resume grace를 둔다.
-- **DIGITAL_MVP_POLICY:** 60초 동안 계속 OFFLINE이면 당시 CONNECTED Player 중 joinOrder가 가장 낮은 Player에게 Host를 이전한다.
-- **DIGITAL_MVP_POLICY:** 이전 대상이 없으면 기존 Host identity를 유지하고 Room cleanup policy를 기다린다. grace가 이미 지난 뒤 eligible Player가 생기면 Host 상태를 재평가해 즉시 이전한다.
+- **DIGITAL_MVP_POLICY:** 모든 LOBBY Player는 current-primary disconnect 뒤 60초 resume grace를 갖는다. disconnect만으로 Player, session, joinOrder 또는 Host identity를 즉시 삭제하지 않는다.
+- **DIGITAL_MVP_POLICY:** 60초 전에 같은 valid session이 resume되면 같은 playerId와 joinOrder를 유지하고 현재 grace action을 취소한다. 60초 동안 계속 OFFLINE이면 해당 Player와 session을 제거한다.
+- **DIGITAL_MVP_POLICY:** LOBBY explicit leave는 grace 없이 Player와 session을 즉시 제거한다.
+- **DIGITAL_MVP_POLICY:** LOBBY에서 Host가 explicit leave하거나 grace 만료로 제거되면 남아 있는 CONNECTED Player 중 joinOrder가 가장 낮은 Player에게 즉시 Host를 이전한다.
+- **DIGITAL_MVP_POLICY:** Host가 disconnect한 뒤 60초 안에 resume하면 기존 Host를 유지한다. grace 만료 뒤 제거된 Host의 old session은 더 이상 resume할 수 없다.
+- **DIGITAL_MVP_POLICY:** Host 제거 시 남은 Player가 없으면 Room을 즉시 cleanup한다. Player는 남았지만 모두 OFFLINE이어서 eligible successor가 없으면 Lobby는 일시적으로 hostless가 되며, 이후 resume한 CONNECTED Player 중 가장 낮은 joinOrder를 canonical Host로 선출한다.
 - **DIGITAL_MVP_POLICY:** 한번 Host가 이전되면 이전 Host가 reconnect해도 자동으로 Host를 돌려주지 않는다.
 - **DIGITAL_MVP_POLICY:** PLAYING에서 Host disconnect는 특별한 gameplay 효과가 없고 explicit leave는 다른 Player와 동일하게 forfeit다.
 - **DIGITAL_MVP_POLICY:** FINISHED의 Host role은 result와 ranking에 영향을 주지 않는다.
@@ -620,17 +626,20 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 
 - Host가 Lobby에서 나가고 joinOrder 1과 2가 연결돼 있으면 joinOrder 1이 Host가 된다.
 - Host가 40초 만에 resume하면 Host를 유지한다.
+- 비-Host가 60초 전에 resume하면 membership과 joinOrder가 바뀌지 않는다.
 
 ### 거절·edge case
 
 - OFFLINE Player를 Host 승계 대상으로 선택하지 않는다.
 - stale socket disconnect로 Host grace timer를 다시 시작하지 않는다.
 - 60초 뒤 승계된 Host를 기존 Host reconnect만으로 되돌리지 않는다.
+- Host가 제거됐는데 `hostPlayerId`가 nonexistent Player를 가리키게 하지 않는다.
 
 ### Server validation implication
 
 - Host grace는 server Clock와 current-primary presence를 사용한다.
-- hostPlayerId 변경은 canonical Room mutation이므로 roomRevision/storageRevision을 정상적으로 갱신한다.
+- Player 제거와 hostPlayerId 변경은 같은 canonical mutation이며 roomRevision/storageRevision을 각각 한 번만 갱신한다.
+- disconnect generation과 presence lease가 달라진 stale grace callback은 no-op이다.
 
 ## C-20. Gameplay visibility
 
@@ -867,6 +876,35 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 - 성공하면 exact inventory 156개, bag별 shuffle·7/7 배분, immutable turnOrder와 첫 Turn을 생성해 `roomRevision + 1`, 새 `gameRevision = 0`, `storageRevision + 1`을 원자적으로 반영한다.
 - `startedAt`은 server Clock 값이고 첫 `deadlineAt = startedAt + 60_000`, `gameDeadlineAt = startedAt + 1_500_000`이다. Phase 14는 첫 Turn과 이후 non-terminal Turn을 scheduler에 등록하지만 25분 Game deadline 종료는 아직 실행하지 않는다.
 
+## C-25. Room retention과 cleanup
+
+### Normative rule
+
+- **DIGITAL_MVP_POLICY:** LOBBY에는 별도 Room retention TTL을 두지 않는다. 모든 Player가 explicit leave 또는 60초 disconnect grace 만료로 제거되면 Room을 즉시 cleanup한다.
+- **DIGITAL_MVP_POLICY:** PLAYING에서 모든 보존 Player가 OFFLINE이 된 시점부터 30분 동안 아무도 resume하지 않으면 Room을 cleanup한다. 한 Player라도 resume하면 현재 all-offline timer를 취소하고, 다시 모두 OFFLINE이 된 시점에 새 30분 window를 시작한다.
+- **DIGITAL_MVP_POLICY:** FINISHED Room은 `finishedAt`부터 30분 동안 보존한 뒤 cleanup한다. connection이나 resume은 이 fixed deadline을 연장하지 않는다.
+- **DIGITAL_MVP_POLICY:** atomic cleanup이 끝난 roomCode에는 tombstone이나 cooldown을 두지 않으며 이후 random generator의 후보가 되면 다시 사용할 수 있다. generator가 과거 code를 우선 재사용하지는 않는다.
+- **IMPLEMENTATION_INVARIANT:** cleanup은 Room record와 roomCode index, Room의 bound session 및 idempotency record를 하나의 persistent atomic boundary에서 제거한다. connection registry와 Room의 grace/retention/Turn timer는 canonical cleanup 뒤 stale-safe infrastructure cleanup으로 제거한다.
+- **IMPLEMENTATION_INVARIANT:** connected FINISHED client에 보내는 `room:closed`는 secret-free advisory일 뿐이며 cleanup 권한이나 canonical state를 대신하지 않는다.
+
+### 정상 예
+
+- PLAYING의 마지막 CONNECTED Player가 T0에 disconnect하고 아무도 resume하지 않으면 T0 + 30분에 Room이 제거된다.
+- 같은 Player가 T0 + 10분에 resume하면 첫 timer는 stale/no-op이고, 이후 다시 전원이 OFFLINE이 된 시점부터 새 30분을 센다.
+- FINISHED at T0인 Room은 T0 + 30분에 제거되며 T0 + 20분의 resume으로 deadline이 연장되지 않는다.
+
+### 거절·edge case
+
+- LOBBY disconnect 직후 Player나 Room을 삭제하지 않는다.
+- 일부 PLAYING Player가 CONNECTED인데 all-offline cleanup을 실행하지 않는다.
+- stale grace·retention·Turn timer가 cleanup 뒤 Room을 재생성하거나 다른 Room을 변경하지 않는다.
+
+### Server validation implication
+
+- policy timer callback은 Room을 직접 mutate하지 않고 Room별 serialized application command에 current phase, presence generation, game identity와 deadline을 다시 검증하도록 enqueue한다.
+- in-process scheduler는 composition root에서 명시적으로 시작·종료하며 실제 60초/30분 sleep에 의존하지 않는 fake-clock/manual-fire test를 제공한다.
+- process restart 시 Room 자체가 사라지는 기존 single-process in-memory 제약은 그대로다.
+
 ---
 
 # PHASE_7_GATE_RESULT
@@ -881,6 +919,7 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 - **Phase 12 Client TurnDraft implementation:** COMPLETE (2026-09-03)
 - **Phase 13 atomic Submit pipeline implementation:** COMPLETE (2026-09-03)
 - **Phase 14 Draw/Pass/server timer implementation:** COMPLETE (2026-09-03)
+- **Phase 15 disconnect/Host/Room cleanup implementation:** COMPLETE (2026-09-03)
 
 공식 exact consonant/vowel inventory, 두 Joker의 physical bag handling, rotation family, physical identity와 assignedSymbol 분리, 쌍자음·복합모음·겹받침 표현, Joker one-position replacement, 초기 7/7 draw semantics, 전체 156개 합계와 Phase 8 input/output semantics를 모두 확정했다. Tile representation에 관한 Phase 7B 미확정 항목은 없다.
 
@@ -899,11 +938,6 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 - upstream data 변경 시 기존 dictionaryVersion 재현 방법
 - Phase 9에서는 `test-dictionary-v1` fixture/adapter만 구현했다. production provider를 승인하는 별도 작업 전에 위 항목을 확정한다.
 
-## TBC-D. Lobby의 비-Host explicit leave와 Room retention
-
-- 비-Host가 Lobby를 나갈 때 Player/session을 제거하는 정확한 mutation
-- 빈 Room cleanup 지연, FINISHED retention, roomCode 재사용 정책
-
 ## TBC-E. 운영 한도
 
 - Room/IP별 command rate limit
@@ -919,7 +953,7 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 
 - forfeit로 active non-forfeit Player 한 명만 남아 종료될 때 winner의 positive score 계산
 - forfeited Player와 이미 forfeit하지 않은 Player의 remaining rack penalty를 winner score에 어떤 범위로 합산할지
-- 이 결정은 Phase 15의 forfeit result 구현 전에 확정한다.
+- 이 결정은 Phase 16의 forfeit result 구현 전에 확정한다.
 
 ---
 
@@ -936,13 +970,13 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 | TBC-07 rearrangement | C-06에 확정 |
 | TBC-08 draw/pass | C-08에 확정 |
 | TBC-09 turn 제한시간/timeout | C-14에 확정 |
-| TBC-10 disconnect/leave | PLAYING 정책은 C-18, Host 정책은 C-19 확정; Lobby 비-Host leave는 TBC-D |
+| TBC-10 disconnect/leave | PLAYING/FINISHED 정책은 C-18, Lobby/Host 정책은 C-19, retention과 cleanup은 C-25로 해소 |
 | TBC-11 Host succession | C-19에 확정 |
 | TBC-12 승리/점수/stalemate | rack-empty/time-cap/stalemate는 C-17에 확정, forfeit 종료 positive score는 TBC-G |
 | TBC-13 dictionary | deterministic MVP 방향은 C-16 확정, production dataset은 TBC-C |
 
 ## 다음 결정 절차
 
-1. Phase 7 gate부터 Phase 14 Draw·Pass와 server timer까지 구현을 완료했다.
-2. 다음 작업은 Roadmap Phase 15의 disconnect, Host 이탈 policy와 Room cleanup이다.
-3. Phase 14는 60초 Turn timeout과 최대 3 Tile penalty까지 제공한다. 25분·stalemate·offline forfeit 종료, explicit leave와 Host succession/Room cleanup은 구현하지 않았다.
+1. Phase 7 gate부터 Phase 15 disconnect, Host 이탈 policy와 Room cleanup까지 구현을 완료했다.
+2. 다음 작업은 Roadmap Phase 16의 종료와 결과다.
+3. Phase 15는 Lobby grace/Host succession, PLAYING disconnect·offline timeout forfeit, explicit leave와 retention cleanup을 제공한다. 25분·stalemate·active non-forfeit Player 한 명에 따른 FINISHED/result 계산은 아직 구현하지 않았다.

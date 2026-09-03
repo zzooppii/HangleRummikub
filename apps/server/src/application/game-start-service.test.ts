@@ -154,9 +154,13 @@ function startInput(room: RoomRecord, overrides: Partial<{
   expectedRoomRevision: RoomRevision;
   authorization: Readonly<{ isCurrent(): boolean }>;
 }> = {}) {
+  const actorPlayerId = overrides.actorPlayerId ?? room.hostPlayerId;
+  if (actorPlayerId === null) {
+    throw new Error("Game start fixture requires a Host.");
+  }
   return {
     roomId: room.roomId,
-    actorPlayerId: overrides.actorPlayerId ?? room.hostPlayerId,
+    actorPlayerId,
     requestId: overrides.requestId ?? requestId("start-request"),
     expectedRoomRevision:
       overrides.expectedRoomRevision ?? room.roomRevision,

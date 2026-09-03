@@ -15,6 +15,7 @@ import {
   type AuthenticatedSocketBinding,
   type ConnectionGeneration,
 } from "./connection-registry.js";
+import { ConnectionRegistryPresenceReader } from "./connection-registry-presence-reader.js";
 
 function roomId(value: string): RoomId {
   return parse(RoomIdSchema, value);
@@ -195,4 +196,59 @@ test("같은 socketId를 두 Player에 동시에 인증하지 않는다", () => 
   );
   assert.equal(registry.getPresenceVersion(roomId("room-a")), 1);
   assert.equal(registry.getPresenceVersion(roomId("room-b")), 0);
+});
+
+test("offline generation lease는 resume 뒤 stale이고 Player removal은 새 primary 권한을 제거한다", async () => {
+  const registry = new ConnectionRegistry();
+  const room = roomId("room-policy");
+  const player = playerId("player-policy");
+  const first = registry.bindPrimary({
+    socketId: createSocketId("socket-policy-1"),
+    roomId: room,
+    playerId: player,
+  });
+  registry.disconnect(first.binding.socketId, first.binding.connectionGeneration);
+  assert.equal(
+    registry.isCurrentOfflineGeneration(
+      room,
+      player,
+      first.binding.connectionGeneration,
+    ),
+    true,
+  );
+  const reader = new ConnectionRegistryPresenceReader(registry);
+  const lease = await reader.acquireLobbyDisconnectLease(room, player);
+  assert.equal(lease.isCurrent(), true);
+
+  const resumed = registry.bindPrimary({
+    socketId: createSocketId("socket-policy-2"),
+    roomId: room,
+    playerId: player,
+  });
+  assert.equal(lease.isCurrent(), false);
+  const removed = registry.removePlayer(room, player);
+  assert.deepEqual(removed.removedBinding, resumed.binding);
+  assert.equal(registry.getAuthenticatedBinding(resumed.binding.socketId), null);
+  assert.equal(registry.getConnectionGeneration(room, player), null);
+});
+
+test("Room removal은 해당 Room binding과 presence state만 정리한다", () => {
+  const registry = new ConnectionRegistry();
+  const targetRoom = roomId("room-cleanup");
+  const otherRoom = roomId("room-retained");
+  const target = registry.bindPrimary({
+    socketId: createSocketId("socket-cleanup"),
+    roomId: targetRoom,
+    playerId: playerId("player-cleanup"),
+  });
+  const retained = registry.bindPrimary({
+    socketId: createSocketId("socket-retained"),
+    roomId: otherRoom,
+    playerId: playerId("player-retained"),
+  });
+
+  assert.deepEqual(registry.removeRoom(targetRoom).removedBindings, [target.binding]);
+  assert.equal(registry.getAuthenticatedBinding(target.binding.socketId), null);
+  assert.equal(registry.getPresenceVersion(targetRoom), 0);
+  assert.deepEqual(registry.getAuthenticatedBinding(retained.binding.socketId), retained.binding);
 });

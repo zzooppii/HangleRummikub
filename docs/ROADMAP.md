@@ -477,7 +477,7 @@ Definition of Done:
 - web은 active Player 전용 consonant/vowel Draw, both-empty Pass, dirty-draft 확인과 page-memory Submit/Draw/Pass 공용 single-flight를 제공한다. countdown은 snapshot serverTime offset과 deadlineAt으로만 표시하며 client에서 Turn을 변경하지 않는다.
 - Draw/Timeout 뒤 actor만 새 rack Tile 상세를 받고 다른 Player는 rack count만 본다. Phase 14는 25분 Game 종료, stalemate FINISHED, offline timeout streak/forfeit, Host succession과 cleanup을 구현하지 않았다.
 
-### Phase 15. Disconnect, Host 이탈 policy, Room cleanup
+### Phase 15. Disconnect, Host 이탈 policy, Room cleanup — COMPLETE
 
 목표: 연결 변화가 identity나 canonical game을 손상시키지 않게 한다.
 
@@ -499,6 +499,18 @@ Definition of Done:
 - 오래된 grace/cleanup timer는 current state를 재검증하고 no-op할 수 있다.
 - cleanup이 active Room을 삭제하지 않는다.
 - exact TTL과 결과가 fake clock test에 있다.
+
+완료 범위:
+
+- 모든 Lobby Player의 current-primary disconnect에 generation-safe 60초 grace를 등록한다. grace 전 resume은 같은 playerId/joinOrder/Host를 유지하고, 만료 시 Player/session을 원자적으로 제거한다.
+- Lobby Host explicit leave 또는 grace 만료는 남은 CONNECTED Player 중 최저 `joinOrder`를 successor로 선택한다. 모두 OFFLINE이면 Lobby를 일시적으로 hostless로 보존하고 다음 eligible resume에서 canonical Host를 선출한다.
+- PLAYING disconnect는 Player/rack/turn/timer와 game/room revision을 보존한다. OFFLINE인 자기 Turn timeout streak는 server-only로 관리하며 두 번째 timeout의 최대 3 Tile penalty, forfeit와 다음 Turn을 한 commit으로 반영한다.
+- immutable original turnOrder는 유지하면서 다음 Turn 선택에서 forfeited Player를 건너뛴다. explicit PLAYING leave는 penalty 없이 forfeit하고 current actor일 때만 fresh next Turn을 만든다. FINISHED leave는 session/connection만 종료한다.
+- `room:leave`는 current-primary binding, nullable expected game revision과 Room/Player-scoped idempotency를 검증한다. transport terminal retry cache도 Room/Player scope로 격리하며 accepted socket을 Room channel에서 제거한다.
+- `InProcessRoomPolicyScheduler`는 Lobby grace, PLAYING all-offline 30분과 FINISHED fixed 30분 retention을 composition root lifecycle에서 관리한다. generation/presence/game/deadline을 재검증하고 오래되거나 역순인 callback을 no-op 처리한다.
+- cleanup은 Room/code index, Room sessions와 Room idempotency를 copy-on-write atomic boundary에서 제거한 뒤 connection registry, policy/Turn timer를 정리한다. secret-free `room:closed`는 불변 roomId와 roomCode를 함께 전달한다.
+- public gameplay projection은 `forfeited`만 공개하고 offline streak, policy generation/timer, storage revision과 다른 Player rack 상세는 노출하지 않는다. web은 Lobby/Playing/Finished leave UX, Playing confirmation, forfeit 표시와 Room closed/stale-session 정리를 제공한다.
+- Phase 15는 25분 종료, stalemate 종료와 active non-forfeit Player 한 명에 따른 FINISHED/result 계산을 구현하지 않았다.
 
 ### Phase 16. 종료와 결과
 

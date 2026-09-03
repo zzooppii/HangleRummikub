@@ -450,6 +450,8 @@ function createCandidate(
     racks,
     board: cloneBoard(proposedBoard),
     initialMeldCompleted,
+    offlineTimeoutStreakByPlayerId: game.offlineTimeoutStreakByPlayerId,
+    forfeitedPlayerIds: game.forfeitedPlayerIds,
     turnOrder: Object.freeze([...game.turnOrder]),
     gameStartedAt: game.gameStartedAt,
     gameDeadlineAt: game.gameDeadlineAt,

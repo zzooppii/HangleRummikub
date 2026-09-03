@@ -22,6 +22,7 @@ import {
   type TurnSubmitAck,
   type PlayingStateSnapshot,
   type RoomCreateAck,
+  type RoomLeaveAck,
   RoomPhaseSchema,
   SessionReplacedNotificationSchema,
   type ServerToClientEvents,
@@ -45,6 +46,9 @@ import {
   validateRoomCode,
   validateRoomJoinAck,
   validateRoomJoinCommand,
+  validateRoomClosedEvent,
+  validateRoomLeaveAck,
+  validateRoomLeaveCommand,
   validateRoomScopedAck,
   validateSessionBootstrapAck,
   validateSessionBootstrapCommand,
@@ -170,6 +174,7 @@ function createPlayingSnapshot() {
           connectionStatus: "CONNECTED",
           rackCount: 2,
           initialMeldCompleted: false,
+          forfeited: false,
         },
         {
           playerId: "player_456",
@@ -178,6 +183,7 @@ function createPlayingSnapshot() {
           connectionStatus: "CONNECTED",
           rackCount: 2,
           initialMeldCompleted: false,
+          forfeited: false,
         },
       ],
     },
@@ -856,6 +862,12 @@ test("snapshot projection은 credential과 server-only field를 거절한다", (
     "sessionTokenHash",
     "socketId",
     "connectionGeneration",
+    "offlineTimeoutStreak",
+    "offlineTimeoutStreaks",
+    "hostGraceGeneration",
+    "hostGraceTimerId",
+    "cleanupTimerId",
+    "graceDeadlineAt",
     "bootstrapCredential",
     "storageRevision",
     "repositoryMetadata",
@@ -2412,4 +2424,166 @@ test("turn:draw/pass ack와 Socket.IO event map은 PLAYING snapshot만 전달한
 
   assert.equal(drawAcknowledged, true);
   assert.equal(passAcknowledged, true);
+});
+
+test("room:leave command는 phase-aware revision과 strict empty payload를 강제한다", () => {
+  const lobbyCommand = {
+    kind: "room:leave",
+    protocolVersion: PROTOCOL_VERSION,
+    requestId: "request_leave_lobby",
+    expectedRoomRevision: 4,
+    expectedGameRevision: null,
+    payload: {},
+  };
+  const playingCommand = {
+    ...lobbyCommand,
+    requestId: "request_leave_playing",
+    expectedGameRevision: 7,
+  };
+
+  assert.equal(validateRoomLeaveCommand(lobbyCommand).ok, true);
+  assert.equal(validateRoomLeaveCommand(playingCommand).ok, true);
+  assert.equal(validateClientCommand(lobbyCommand).ok, true);
+
+  const { expectedRoomRevision: _roomRevision, ...withoutRoomRevision } =
+    lobbyCommand;
+  const { expectedGameRevision: _gameRevision, ...withoutGameRevision } =
+    lobbyCommand;
+  for (const invalid of [
+    withoutRoomRevision,
+    withoutGameRevision,
+    { ...lobbyCommand, expectedRoomRevision: -1 },
+    { ...lobbyCommand, expectedGameRevision: -1 },
+    { ...lobbyCommand, actorPlayerId: "player_spoofed" },
+    { ...lobbyCommand, payload: { reason: "USER_REQUEST" } },
+  ]) {
+    assert.equal(validateRoomLeaveCommand(invalid).ok, false);
+  }
+});
+
+test("room:leave acknowledgement는 terminal metadata만 허용한다", () => {
+  const acknowledgement = {
+    scope: "ROOM" as const,
+    requestId: "request_leave_ack",
+    ok: true as const,
+    serverTime: 1_750_000_000_000,
+    versions: {
+      roomRevision: 5,
+      gameRevision: null,
+      presenceVersion: 8,
+    },
+    data: {
+      roomId: "room_123",
+      roomCode: "ABCD23",
+      roomClosed: false,
+    },
+  };
+  const parsed = validateRoomLeaveAck(acknowledgement);
+
+  assert.equal(parsed.ok, true);
+  assert.equal(
+    validateRoomLeaveAck({
+      ...acknowledgement,
+      data: { ...acknowledgement.data, snapshot: createSnapshot() },
+    }).ok,
+    false,
+  );
+  assert.equal(
+    validateRoomLeaveAck({
+      ...acknowledgement,
+      data: { ...acknowledgement.data, sessionToken },
+    }).ok,
+    false,
+  );
+
+  const command = validateRoomLeaveCommand({
+    kind: "room:leave",
+    protocolVersion: PROTOCOL_VERSION,
+    requestId: acknowledgement.requestId,
+    expectedRoomRevision: 4,
+    expectedGameRevision: null,
+    payload: {},
+  });
+  let acknowledged = false;
+  const handler: ClientToServerEvents["room:leave"] = (
+    received,
+    acknowledge,
+  ) => {
+    assert.equal(received.expectedGameRevision, null);
+    if (parsed.ok) {
+      acknowledge(parsed.value);
+    }
+  };
+  if (command.ok) {
+    handler(command.value, (received: RoomLeaveAck) => {
+      acknowledged = received.ok;
+    });
+  }
+  assert.equal(acknowledged, true);
+});
+
+test("room:closed advisory event는 재사용 가능한 code와 불변 public Room identity를 함께 전달한다", () => {
+  const event = {
+    kind: "room:closed",
+    protocolVersion: PROTOCOL_VERSION,
+    serverTime: 1_750_000_000_000,
+    payload: { roomId: "room_123", roomCode: "ABCD23" },
+  };
+  const parsed = validateRoomClosedEvent(event);
+
+  assert.equal(parsed.ok, true);
+  for (const invalid of [
+    { ...event, payload: { roomCode: event.payload.roomCode } },
+    { ...event, socketId: "socket_private" },
+    { ...event, connectionGeneration: 2 },
+    { ...event, payload: { ...event.payload, reason: "HOST_LEFT" } },
+    { ...event, payload: { ...event.payload, sessionToken } },
+  ]) {
+    assert.equal(validateRoomClosedEvent(invalid).ok, false);
+  }
+
+  let delivered = false;
+  const listener: ServerToClientEvents["room:closed"] = (received) => {
+    delivered =
+      received.payload.roomId === "room_123" &&
+      received.payload.roomCode === "ABCD23";
+  };
+  if (parsed.ok) {
+    listener(parsed.value);
+  }
+  assert.equal(delivered, true);
+});
+
+test("forfeited 공개 상태는 PLAYING과 FINISHED Player에만 존재한다", () => {
+  const playing = createPlayingSnapshot();
+  const finished = createFinishedSnapshot();
+  const lobby = createSnapshot();
+
+  assert.equal(validatePlayingStateSnapshot(playing).ok, true);
+  assert.equal(validateFinishedStateSnapshot(finished).ok, true);
+  assert.equal(
+    validatePlayingStateSnapshot({
+      ...playing,
+      room: {
+        ...playing.room,
+        players: playing.room.players.map(
+          ({ forfeited: _forfeited, ...player }) => player,
+        ),
+      },
+    }).ok,
+    false,
+  );
+  assert.equal(
+    validateLobbyStateSnapshot({
+      ...lobby,
+      room: {
+        ...lobby.room,
+        players: lobby.room.players.map((player) => ({
+          ...player,
+          forfeited: false,
+        })),
+      },
+    }).ok,
+    false,
+  );
 });

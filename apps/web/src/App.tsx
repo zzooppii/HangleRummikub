@@ -31,17 +31,27 @@ type PlayingRouteProps = Readonly<{
   sessionReplaced: boolean;
   turnSubmitPending: boolean;
   turnActionPending: boolean;
+  roomLeavePending: boolean;
   turnDraftResetGeneration: number;
   onSubmitTurn: ReturnType<typeof useLobbyApp>["submitTurn"];
   onDrawTurn: ReturnType<typeof useLobbyApp>["drawTurn"];
   onPassTurn: ReturnType<typeof useLobbyApp>["passTurn"];
+  onLeaveRoom: ReturnType<typeof useLobbyApp>["leaveRoom"];
   onGoHome: () => void;
 }>;
 
 function PlayingRoute(props: PlayingRouteProps) {
+  const selfPlayer = props.snapshot.room.players.find(
+    (player) => player.playerId === props.snapshot.self.playerId,
+  );
+  const commandCapable =
+    props.connectionState === "CONNECTED" &&
+    !props.sessionReplaced &&
+    !props.roomLeavePending &&
+    selfPlayer?.forfeited !== true;
   const turnDraft = useTurnDraft(
     props.snapshot,
-    props.connectionState === "CONNECTED",
+    commandCapable,
     props.sessionReplaced,
     props.turnDraftResetGeneration,
   );
@@ -56,19 +66,19 @@ function PlayingRoute(props: PlayingRouteProps) {
       turnDraft={turnDraft}
       turnSubmitPending={props.turnSubmitPending}
       turnActionPending={props.turnActionPending}
+      roomLeavePending={props.roomLeavePending}
       canSubmit={
-        props.connectionState === "CONNECTED" &&
-        !props.sessionReplaced &&
+        commandCapable &&
         !props.turnActionPending
       }
       canAct={
-        props.connectionState === "CONNECTED" &&
-        !props.sessionReplaced &&
+        commandCapable &&
         !props.turnSubmitPending
       }
       onSubmitTurn={props.onSubmitTurn}
       onDrawTurn={props.onDrawTurn}
       onPassTurn={props.onPassTurn}
+      onLeaveRoom={props.onLeaveRoom}
       onGoHome={props.onGoHome}
     />
   );
@@ -119,10 +129,12 @@ export function App() {
             sessionReplaced={app.sessionReplaced}
             turnSubmitPending={app.turnSubmitPending}
             turnActionPending={app.turnActionPending}
+            roomLeavePending={app.roomLeavePending}
             turnDraftResetGeneration={app.turnDraftResetGeneration}
             onSubmitTurn={app.submitTurn}
             onDrawTurn={app.drawTurn}
             onPassTurn={app.passTurn}
+            onLeaveRoom={app.leaveRoom}
             onGoHome={app.goHome}
           />
         </div>
@@ -138,6 +150,9 @@ export function App() {
             connectionLabel={connectionLabel}
             connectionTone={connection.tone}
             errorMessage={app.errorMessage}
+            sessionReplaced={app.sessionReplaced}
+            roomLeavePending={app.roomLeavePending}
+            onLeaveRoom={app.leaveRoom}
             onGoHome={app.goHome}
           />
         </div>
@@ -146,7 +161,9 @@ export function App() {
 
     const snapshotControl = getGameStartControl(
       app.snapshot,
-      app.gameStartPending || app.operationLabel !== null,
+      app.gameStartPending ||
+        app.roomLeavePending ||
+        app.operationLabel !== null,
     );
     const gameStartControl: GameStartControl =
       snapshotControl.isHost &&
@@ -170,8 +187,10 @@ export function App() {
           copyMessage={app.copyMessage}
           sessionReplaced={app.sessionReplaced}
           gameStartControl={gameStartControl}
+          roomLeavePending={app.roomLeavePending}
           onCopyInvitation={() => app.copyInvitation(invitationUrl)}
           onStartGame={app.startGame}
+          onLeaveRoom={app.leaveRoom}
           onGoHome={app.goHome}
         />
       </div>

@@ -49,6 +49,10 @@ import type {
   ScheduledTurnDeadline,
   TurnScheduler,
 } from "../ports/system.js";
+import type {
+  PlayerPresenceLease,
+  PlayerPresenceLeaseReader,
+} from "../ports/player-presence-lease.js";
 
 const PLAYER_A = parse(PlayerIdSchema, "player-a");
 const PLAYER_B = parse(PlayerIdSchema, "player-b");
@@ -143,6 +147,31 @@ class SequenceRandomSource implements RandomSource {
   }
 }
 
+class MutablePresenceLeaseReader implements PlayerPresenceLeaseReader {
+  #revision = 0;
+
+  constructor(public connectionStatus: "CONNECTED" | "OFFLINE") {}
+
+  setConnectionStatus(status: "CONNECTED" | "OFFLINE"): void {
+    this.connectionStatus = status;
+    this.#revision += 1;
+  }
+
+  invalidate(): void {
+    this.#revision += 1;
+  }
+
+  async acquirePlayerPresenceLease(): Promise<PlayerPresenceLease> {
+    const capturedRevision = this.#revision;
+    const connectionStatus = this.connectionStatus;
+    return Object.freeze({
+      connectionStatus,
+      connectionGeneration: 1,
+      isCurrent: () => this.#revision === capturedRevision,
+    });
+  }
+}
+
 type Harness = Readonly<{
   persistence: InMemoryPersistence;
   executor: KeyedSerialExecutor<RoomId>;
@@ -150,6 +179,7 @@ type Harness = Readonly<{
   randomSource: SequenceRandomSource;
   scheduler: RecordingScheduler;
   authorization: MutableAuthorization;
+  presenceLeaseReader: MutablePresenceLeaseReader;
   room: RoomRecord;
   drawService: TurnDrawService;
   passService: TurnPassService;
@@ -163,6 +193,9 @@ type HarnessOptions = Readonly<{
   deadlineAt?: number;
   randomSequence?: readonly number[];
   scheduler?: RecordingScheduler;
+  playerAOfflineTimeoutStreak?: number;
+  playerBForfeited?: boolean;
+  playerAPresence?: "CONNECTED" | "OFFLINE";
 }>;
 
 async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
@@ -194,6 +227,13 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
       [PLAYER_A, false],
       [PLAYER_B, true],
     ]),
+    offlineTimeoutStreakByPlayerId: new Map<PlayerId, number>([
+      [PLAYER_A, options.playerAOfflineTimeoutStreak ?? 0],
+      [PLAYER_B, 0],
+    ]),
+    forfeitedPlayerIds: new Set<PlayerId>(
+      options.playerBForfeited ? [PLAYER_B] : [],
+    ),
     turnOrder: Object.freeze([PLAYER_A, PLAYER_B]),
     turn: Object.freeze({
       turnId: parse(TurnIdSchema, "turn-current"),
@@ -242,6 +282,9 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   );
   const scheduler = options.scheduler ?? new RecordingScheduler();
   const authorization = new MutableAuthorization();
+  const presenceLeaseReader = new MutablePresenceLeaseReader(
+    options.playerAPresence ?? "CONNECTED",
+  );
   const common = {
     roomRepository: persistence,
     idempotencyRepository: persistence,
@@ -250,6 +293,7 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
     clock,
     idGenerator: new FakeIdGenerator(),
     turnScheduler: scheduler,
+    presenceLeaseReader,
   };
 
   return {
@@ -259,6 +303,7 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
     randomSource,
     scheduler,
     authorization,
+    presenceLeaseReader,
     room: created.room,
     drawService: new TurnDrawService(common),
     passService: new TurnPassService(common),
@@ -635,6 +680,146 @@ test("timeout at deadline +1ms is accepted and does not require a socket authori
   assert.equal(result.status, "APPLIED");
   const after = await harness.persistence.findById(harness.room.roomId);
   assert.equal(after?.game?.gameRevision, 5);
+});
+
+test("OFFLINE timeout streak increments once, then second timeout forfeits after penalty", async (context) => {
+  await context.test("first OFFLINE timeout records streak one", async () => {
+    const harness = await createHarness({
+      clockNow: 61_000,
+      playerAPresence: "OFFLINE",
+    });
+    const result = await harness.timeoutService.timeout(deadline(harness.room));
+    assert.equal(result.status, "APPLIED");
+    if (result.status !== "APPLIED") {
+      throw new Error("Expected first OFFLINE timeout application.");
+    }
+    assert.equal(result.data.offlineTimeoutStreak, 1);
+    assert.equal(result.data.timedOutPlayerForfeited, false);
+
+    const after = await harness.persistence.findById(harness.room.roomId);
+    assert.equal(after?.game?.offlineTimeoutStreakByPlayerId.get(PLAYER_A), 1);
+    assert.equal(after?.game?.forfeitedPlayerIds.has(PLAYER_A), false);
+    assert.equal(after?.game?.racks.get(PLAYER_A)?.length, 4);
+  });
+
+  await context.test(
+    "second consecutive OFFLINE timeout applies penalty and forfeit atomically",
+    async () => {
+      const harness = await createHarness({
+        clockNow: 61_000,
+        playerAPresence: "OFFLINE",
+        playerAOfflineTimeoutStreak: 1,
+      });
+      const before = await harness.persistence.findById(harness.room.roomId);
+      assert.ok(before?.game?.turn);
+      const result = await harness.timeoutService.timeout(deadline(harness.room));
+      assert.equal(result.status, "APPLIED");
+      if (result.status !== "APPLIED") {
+        throw new Error("Expected second OFFLINE timeout application.");
+      }
+      assert.equal(result.data.offlineTimeoutStreak, 2);
+      assert.equal(result.data.timedOutPlayerForfeited, true);
+
+      const after = await harness.persistence.findById(harness.room.roomId);
+      assert.ok(after?.game?.turn);
+      assert.equal(after.game.gameRevision, before.game.gameRevision + 1);
+      assert.equal(after.storageRevision, before.storageRevision + 1);
+      assert.equal(after.game.racks.get(PLAYER_A)?.length, 4);
+      assert.equal(
+        after.game.offlineTimeoutStreakByPlayerId.get(PLAYER_A),
+        2,
+      );
+      assert.equal(after.game.forfeitedPlayerIds.has(PLAYER_A), true);
+      assert.equal(after.game.turn.activePlayerId, PLAYER_B);
+    },
+  );
+});
+
+test("CONNECTED timeout resets an existing offline streak without forfeiting", async () => {
+  const harness = await createHarness({
+    clockNow: 61_000,
+    playerAPresence: "CONNECTED",
+    playerAOfflineTimeoutStreak: 1,
+  });
+  const result = await harness.timeoutService.timeout(deadline(harness.room));
+  assert.equal(result.status, "APPLIED");
+  if (result.status !== "APPLIED") {
+    throw new Error("Expected connected timeout application.");
+  }
+  assert.equal(result.data.offlineTimeoutStreak, 0);
+  assert.equal(result.data.timedOutPlayerForfeited, false);
+  const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.game?.offlineTimeoutStreakByPlayerId.get(PLAYER_A), 0);
+  assert.equal(after?.game?.forfeitedPlayerIds.has(PLAYER_A), false);
+});
+
+test("next Turn skips forfeited Players while immutable turnOrder stays complete", async () => {
+  const harness = await createHarness({
+    clockNow: 61_000,
+    playerBForfeited: true,
+  });
+  const result = await harness.timeoutService.timeout(deadline(harness.room));
+  assert.equal(result.status, "APPLIED");
+  const after = await harness.persistence.findById(harness.room.roomId);
+  assert.ok(after?.game?.turn);
+  assert.deepEqual(after.game.turnOrder, [PLAYER_A, PLAYER_B]);
+  assert.equal(after.game.forfeitedPlayerIds.has(PLAYER_B), true);
+  assert.equal(after.game.turn.activePlayerId, PLAYER_A);
+  assert.equal(after.game.turn.turnNumber, 9);
+});
+
+test("timeout that would leave no eligible Player fails without a partial penalty or forfeit", async () => {
+  const harness = await createHarness({
+    clockNow: 61_000,
+    playerAPresence: "OFFLINE",
+    playerAOfflineTimeoutStreak: 1,
+    playerBForfeited: true,
+    randomSequence: [],
+  });
+  const before = await harness.persistence.findById(harness.room.roomId);
+
+  assert.deepEqual(await harness.timeoutService.timeout(deadline(harness.room)), {
+    status: "FAILED",
+    reason: "INTERNAL_ERROR",
+  });
+  assert.deepEqual(
+    await harness.persistence.findById(harness.room.roomId),
+    before,
+  );
+  assert.deepEqual(harness.randomSource.calls, []);
+});
+
+test("presence lease changing before commit makes timeout a no-op without partial penalty or forfeit", async () => {
+  const harness = await createHarness({
+    clockNow: 61_000,
+    playerAPresence: "OFFLINE",
+    playerAOfflineTimeoutStreak: 1,
+  });
+  const before = await harness.persistence.findById(harness.room.roomId);
+  const timeoutService = new TurnTimeoutService({
+    roomRepository: harness.persistence,
+    idempotencyRepository: harness.persistence,
+    roomUnitOfWork: {
+      commit: (changeSet, precondition) => {
+        harness.presenceLeaseReader.setConnectionStatus("CONNECTED");
+        return harness.persistence.commit(changeSet, precondition);
+      },
+    },
+    roomMutationExecutor: harness.executor,
+    clock: harness.clock,
+    idGenerator: new FakeIdGenerator(),
+    randomSource: harness.randomSource,
+    presenceLeaseReader: harness.presenceLeaseReader,
+  });
+
+  assert.deepEqual(await timeoutService.timeout(deadline(harness.room)), {
+    status: "NO_OP",
+    reason: "PRESENCE_CHANGED",
+  });
+  assert.deepEqual(
+    await harness.persistence.findById(harness.room.roomId),
+    before,
+  );
 });
 
 test("stale timeout game/turn/revision/deadline identities are harmless no-ops", async (context) => {

@@ -157,6 +157,7 @@ export const PlayingPublicPlayerViewSchema = v.strictObject({
   ...PublicPlayerViewSchema.entries,
   rackCount: TileCountSchema,
   initialMeldCompleted: v.boolean(),
+  forfeited: v.boolean(),
 });
 export type PlayingPublicPlayerView = v.InferOutput<
   typeof PlayingPublicPlayerViewSchema

@@ -57,6 +57,16 @@ export type DisconnectConnectionResult =
       presenceVersion: PresenceVersion;
     }>;
 
+export type RemovePlayerConnectionsResult = Readonly<{
+  removedBinding: AuthenticatedSocketBinding | null;
+  presenceChanged: boolean;
+  presenceVersion: PresenceVersion;
+}>;
+
+export type RemoveRoomConnectionsResult = Readonly<{
+  removedBindings: readonly AuthenticatedSocketBinding[];
+}>;
+
 type PlayerConnectionState = Readonly<{
   connectionGeneration: ConnectionGeneration;
   primarySocketId: SocketId | null;
@@ -245,6 +255,82 @@ export class ConnectionRegistry {
     return this.getPrimaryBinding(roomId, playerId) === null
       ? "OFFLINE"
       : "CONNECTED";
+  }
+
+  getConnectionGeneration(
+    roomId: RoomId,
+    playerId: PlayerId,
+  ): ConnectionGeneration | null {
+    return (
+      this.#playersByRoom.get(roomId)?.get(playerId)?.connectionGeneration ??
+      null
+    );
+  }
+
+  /** Used by delayed Lobby policy commands to reject an obsolete disconnect. */
+  isCurrentOfflineGeneration(
+    roomId: RoomId,
+    playerId: PlayerId,
+    connectionGeneration: ConnectionGeneration,
+  ): boolean {
+    const current = this.#playersByRoom.get(roomId)?.get(playerId);
+    return (
+      current !== undefined &&
+      current.connectionGeneration === connectionGeneration &&
+      current.primarySocketId === null
+    );
+  }
+
+  removePlayer(
+    roomId: RoomId,
+    playerId: PlayerId,
+  ): RemovePlayerConnectionsResult {
+    const roomPlayers = this.#playersByRoom.get(roomId);
+    const current = roomPlayers?.get(playerId);
+    if (roomPlayers === undefined || current === undefined) {
+      return Object.freeze({
+        removedBinding: null,
+        presenceChanged: false,
+        presenceVersion: this.getPresenceVersion(roomId),
+      });
+    }
+
+    const removedBinding =
+      current.primarySocketId === null
+        ? null
+        : this.#bindingsBySocket.get(current.primarySocketId) ?? null;
+    if (removedBinding !== null) {
+      this.#bindingsBySocket.delete(removedBinding.socketId);
+    }
+    roomPlayers.delete(playerId);
+    if (roomPlayers.size === 0) {
+      this.#playersByRoom.delete(roomId);
+    }
+
+    const presenceChanged = removedBinding !== null;
+    const presenceVersion = presenceChanged
+      ? incrementPresenceVersion(this.getPresenceVersion(roomId))
+      : this.getPresenceVersion(roomId);
+    if (presenceChanged) {
+      this.#presenceVersionsByRoom.set(roomId, presenceVersion);
+    }
+
+    return Object.freeze({
+      removedBinding:
+        removedBinding === null ? null : cloneBinding(removedBinding),
+      presenceChanged,
+      presenceVersion,
+    });
+  }
+
+  removeRoom(roomId: RoomId): RemoveRoomConnectionsResult {
+    const removedBindings = this.listActiveBindings(roomId);
+    for (const binding of removedBindings) {
+      this.#bindingsBySocket.delete(binding.socketId);
+    }
+    this.#playersByRoom.delete(roomId);
+    this.#presenceVersionsByRoom.delete(roomId);
+    return Object.freeze({ removedBindings });
   }
 
   getPresenceVersion(roomId: RoomId): PresenceVersion {

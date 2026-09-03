@@ -49,6 +49,7 @@ function playingSnapshot(gameRevision = 7): PlayingStateSnapshot {
           connectionStatus: "CONNECTED",
           rackCount: 3,
           initialMeldCompleted: true,
+          forfeited: false,
         },
         {
           playerId: "player_other",
@@ -57,6 +58,7 @@ function playingSnapshot(gameRevision = 7): PlayingStateSnapshot {
           connectionStatus: "CONNECTED",
           rackCount: 14,
           initialMeldCompleted: true,
+          forfeited: false,
         },
       ],
     },

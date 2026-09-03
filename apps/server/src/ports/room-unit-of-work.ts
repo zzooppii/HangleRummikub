@@ -40,6 +40,11 @@ export type AtomicSessionPromotion =
       roomId: RoomId;
       playerId: PlayerId;
       now: ServerTime;
+    }>
+  | Readonly<{
+      kind: "DELETE_BOUND_PLAYER";
+      roomId: RoomId;
+      playerId: PlayerId;
     }>;
 
 export type AtomicSessionCleanup = Readonly<{
@@ -94,9 +99,29 @@ export type RoomUnitOfWorkResult =
   | { status: "IDEMPOTENCY_CONFLICT"; idempotency: IdempotencyRecord }
   | { status: "PRECONDITION_FAILED"; reason: RoomUnitOfWorkFailure };
 
+export type RoomCleanupChangeSet = Readonly<{
+  roomMutation: AtomicRoomDelete;
+  sessionMutation: AtomicSessionCleanup;
+}>;
+
+export type RoomCleanupResult =
+  | Readonly<{ status: "COMMITTED" }>
+  | Readonly<{
+      status: "PRECONDITION_FAILED";
+      reason: RoomUnitOfWorkFailure;
+    }>;
+
 export interface RoomUnitOfWork {
   commit(
     changeSet: RoomUnitOfWorkChangeSet,
     precondition?: RoomUnitOfWorkCommitPrecondition,
   ): Promise<RoomUnitOfWorkResult>;
+}
+
+/** Separate lifecycle capability so ordinary mutation test doubles stay small. */
+export interface RoomCleanupUnitOfWork {
+  cleanup(
+    changeSet: RoomCleanupChangeSet,
+    precondition?: RoomUnitOfWorkCommitPrecondition,
+  ): Promise<RoomCleanupResult>;
 }

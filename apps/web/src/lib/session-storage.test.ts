@@ -223,7 +223,7 @@ test("pending turn:submit은 Room entry sessionStorage 경계에서 복원되지
   assert.equal(storage.getItem(PENDING_ROOM_OPERATION_STORAGE_KEY), null);
 });
 
-test("pending turn:draw/pass는 sessionStorage가 아닌 page memory에만 남는다", () => {
+test("pending turn:draw/pass와 room:leave는 sessionStorage가 아닌 page memory에만 남는다", () => {
   for (const operation of [
     {
       kind: "turn:draw",
@@ -239,6 +239,14 @@ test("pending turn:draw/pass는 sessionStorage가 아닌 page memory에만 남�
       requestId: "request_turn_pass_must_stay_in_page_memory",
       expectedGameRevision: 0,
       turnId: "turn_page_memory_only",
+      payload: {},
+    },
+    {
+      kind: "room:leave",
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "request_room_leave_must_stay_in_page_memory",
+      expectedRoomRevision: 4,
+      expectedGameRevision: 2,
       payload: {},
     },
   ]) {

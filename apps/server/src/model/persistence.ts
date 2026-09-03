@@ -44,7 +44,8 @@ export type RoomRecord = Readonly<{
   roomId: RoomId;
   roomCode: RoomCode;
   phase: RoomPhase;
-  hostPlayerId: PlayerId;
+  /** A Lobby may briefly be hostless while all remaining members are offline. */
+  hostPlayerId: PlayerId | null;
   players: readonly PlayerRecord[];
   game: GameState | null;
   roomRevision: RoomRevision;

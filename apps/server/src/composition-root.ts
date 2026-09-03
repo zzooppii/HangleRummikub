@@ -1,7 +1,12 @@
-import type { RoomId } from "@hangul-rummikub/shared";
+import type { PlayerId, RoomId } from "@hangul-rummikub/shared";
 
 import { GameStartService } from "./application/game-start-service.js";
+import { LobbyDisconnectGraceService } from "./application/lobby-disconnect-grace-service.js";
 import { LobbyStateSnapshotProjector } from "./application/lobby-state-snapshot-projector.js";
+import { RoomCleanupService } from "./application/room-cleanup-service.js";
+import { RoomLeaveService } from "./application/room-leave-service.js";
+import { RoomPresencePolicyService } from "./application/room-presence-policy-service.js";
+import { RoomRetentionService } from "./application/room-retention-service.js";
 import { RoomSessionApplicationService } from "./application/room-session-service.js";
 import { SessionResumeService } from "./application/session-resume-service.js";
 import { TurnDrawService } from "./application/turn-draw-service.js";
@@ -11,9 +16,14 @@ import { TurnTimeoutService } from "./application/turn-timeout-service.js";
 import { ConnectionRegistry } from "./infrastructure/connection-registry.js";
 import { ConnectionRegistryPresenceReader } from "./infrastructure/connection-registry-presence-reader.js";
 import { InMemoryPersistence } from "./infrastructure/in-memory-persistence.js";
+import { InProcessRoomPolicyScheduler } from "./infrastructure/in-process-room-policy-scheduler.js";
 import { InProcessTurnScheduler } from "./infrastructure/in-process-turn-scheduler.js";
 import { KeyedSerialExecutor } from "./infrastructure/keyed-serial-executor.js";
 import { OverdueTurnSweeper } from "./infrastructure/overdue-turn-sweeper.js";
+import {
+  RoomLifecycleResources,
+  type RoomClosedAdvisoryListener,
+} from "./infrastructure/room-lifecycle-resources.js";
 import { TestDictionaryProvider } from "./infrastructure/test-dictionary-provider.js";
 import {
   CryptoRandomSource,
@@ -28,6 +38,9 @@ export type ApplicationRuntime = Readonly<{
   connectionRegistry: ConnectionRegistry;
   gameStartService: GameStartService;
   persistence: InMemoryPersistence;
+  roomLeaveService: RoomLeaveService;
+  roomPolicyScheduler: InProcessRoomPolicyScheduler;
+  roomPresencePolicyService: RoomPresencePolicyService;
   roomSessionService: RoomSessionApplicationService;
   sessionResumeService: SessionResumeService;
   snapshotProjector: LobbyStateSnapshotProjector;
@@ -37,6 +50,14 @@ export type ApplicationRuntime = Readonly<{
   turnSubmitService: TurnSubmitService;
   turnTimeoutService: TurnTimeoutService;
   overdueTurnSweeper: OverdueTurnSweeper;
+  subscribeRoomClosed(listener: RoomClosedAdvisoryListener): () => void;
+  subscribeRoomPlayerRemoved(
+    listener: (roomId: RoomId, playerId: PlayerId) => void | Promise<void>,
+  ): () => void;
+  runRoomMutation<TResult>(
+    roomId: RoomId,
+    task: () => Promise<TResult>,
+  ): Promise<TResult>;
   start(): void;
   stop(): void;
 }>;
@@ -53,6 +74,12 @@ function reportTurnTimeoutFailure(): void {
   );
 }
 
+function reportRoomPolicyFailure(): void {
+  console.error(
+    "A Room lifecycle policy could not be processed; a later connection or policy callback may retry it.",
+  );
+}
+
 /** Creates one isolated process-memory runtime; importing this module has no side effects. */
 export function createApplicationRuntime(): ApplicationRuntime {
   const persistence = new InMemoryPersistence();
@@ -66,8 +93,14 @@ export function createApplicationRuntime(): ApplicationRuntime {
   const presenceReader = new ConnectionRegistryPresenceReader(
     connectionRegistry,
   );
+  const roomClosedListeners = new Set<RoomClosedAdvisoryListener>();
+  const roomPlayerRemovedListeners = new Set<
+    (roomId: RoomId, playerId: PlayerId) => void | Promise<void>
+  >();
   let acceptsTimeoutWork = false;
+  let acceptsRoomPolicyWork = false;
   let turnTimeoutService: TurnTimeoutService | undefined;
+  let roomPresencePolicyService: RoomPresencePolicyService | undefined;
   const enqueueTimeout = async (
     deadline: Parameters<TurnTimeoutService["timeout"]>[0],
   ): Promise<void> => {
@@ -89,6 +122,87 @@ export function createApplicationRuntime(): ApplicationRuntime {
     clock,
     enqueueTimeout,
     onFailure: reportTurnTimeoutFailure,
+  });
+  const roomPolicyScheduler = new InProcessRoomPolicyScheduler({
+    clock,
+    onDeadline: async (deadline) => {
+      if (!acceptsRoomPolicyWork || roomPresencePolicyService === undefined) {
+        return;
+      }
+      await roomPresencePolicyService.onDeadline(deadline);
+    },
+    onCallbackFailure: reportRoomPolicyFailure,
+  });
+  const notifyRoomClosed: RoomClosedAdvisoryListener = async (
+    roomId,
+    roomCode,
+    bindings,
+  ) => {
+    for (const listener of roomClosedListeners) {
+      try {
+        await listener(roomId, roomCode, bindings);
+      } catch {
+        reportRoomPolicyFailure();
+      }
+    }
+  };
+  const notifyRoomPlayerRemoved = async (
+    roomId: RoomId,
+    playerId: PlayerId,
+  ): Promise<void> => {
+    if (roomPresencePolicyService !== undefined) {
+      try {
+        await roomPresencePolicyService.onPlayerRemoved(roomId, clock.now());
+      } catch {
+        reportRoomPolicyFailure();
+      }
+    }
+    for (const listener of roomPlayerRemovedListeners) {
+      try {
+        await listener(roomId, playerId);
+      } catch {
+        reportRoomPolicyFailure();
+      }
+    }
+  };
+  const roomLifecycleResources = new RoomLifecycleResources({
+    connectionRegistry,
+    policyScheduler: roomPolicyScheduler,
+    turnTimerCleanup: turnScheduler,
+    onRoomClosed: notifyRoomClosed,
+    onPlayerRemoved: notifyRoomPlayerRemoved,
+  });
+  const roomCleanupService = new RoomCleanupService({
+    roomRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    resources: roomLifecycleResources,
+  });
+  const lobbyDisconnectGraceService = new LobbyDisconnectGraceService({
+    roomRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomCleanupUnitOfWork: persistence,
+    roomMutationExecutor,
+    presenceReader,
+    clock,
+    resources: roomLifecycleResources,
+  });
+  const roomRetentionService = new RoomRetentionService({
+    cleanupService: roomCleanupService,
+    roomRepository: persistence,
+    presenceReader,
+    clock,
+  });
+  roomPresencePolicyService = new RoomPresencePolicyService({
+    roomRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    scheduler: roomPolicyScheduler,
+    roomPresenceReader: presenceReader,
+    playerPresenceLeaseReader: presenceReader,
+    clock,
+    lobbyGraceService: lobbyDisconnectGraceService,
+    retentionService: roomRetentionService,
   });
 
   const roomSessionService = new RoomSessionApplicationService({
@@ -158,12 +272,26 @@ export function createApplicationRuntime(): ApplicationRuntime {
     clock,
     idGenerator,
     randomSource,
+    presenceLeaseReader: presenceReader,
     turnScheduler,
     onTurnSchedulingFailure: reportTurnSchedulingFailure,
   });
   const snapshotProjector = new LobbyStateSnapshotProjector({
     clock,
     presenceReader,
+  });
+  const roomLeaveService = new RoomLeaveService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomCleanupUnitOfWork: persistence,
+    roomMutationExecutor,
+    presenceReader,
+    clock,
+    idGenerator,
+    resources: roomLifecycleResources,
+    turnScheduler,
+    onTurnSchedulingFailure: reportTurnSchedulingFailure,
   });
 
   let running = false;
@@ -172,6 +300,9 @@ export function createApplicationRuntime(): ApplicationRuntime {
     connectionRegistry,
     gameStartService,
     persistence,
+    roomLeaveService,
+    roomPolicyScheduler,
+    roomPresencePolicyService,
     roomSessionService,
     sessionResumeService,
     snapshotProjector,
@@ -181,12 +312,29 @@ export function createApplicationRuntime(): ApplicationRuntime {
     turnSubmitService,
     turnTimeoutService,
     overdueTurnSweeper,
+    subscribeRoomClosed(listener) {
+      roomClosedListeners.add(listener);
+      return () => {
+        roomClosedListeners.delete(listener);
+      };
+    },
+    subscribeRoomPlayerRemoved(listener) {
+      roomPlayerRemovedListeners.add(listener);
+      return () => {
+        roomPlayerRemovedListeners.delete(listener);
+      };
+    },
+    runRoomMutation(roomId, task) {
+      return roomMutationExecutor.run(roomId, task);
+    },
     start() {
       if (running) {
         return;
       }
       running = true;
       acceptsTimeoutWork = true;
+      acceptsRoomPolicyWork = true;
+      roomPolicyScheduler.start();
       turnScheduler.start();
       overdueTurnSweeper.start();
     },
@@ -196,6 +344,8 @@ export function createApplicationRuntime(): ApplicationRuntime {
       }
       running = false;
       acceptsTimeoutWork = false;
+      acceptsRoomPolicyWork = false;
+      roomPolicyScheduler.stop();
       overdueTurnSweeper.stop();
       turnScheduler.stop();
     },

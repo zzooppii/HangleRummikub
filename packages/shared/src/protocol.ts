@@ -200,6 +200,16 @@ export const RoomJoinCommandSchema = v.strictObject({
 });
 export type RoomJoinCommand = v.InferOutput<typeof RoomJoinCommandSchema>;
 
+export const RoomLeaveCommandSchema = v.strictObject({
+  kind: v.literal("room:leave"),
+  protocolVersion: ProtocolVersionSchema,
+  requestId: RequestIdSchema,
+  expectedRoomRevision: RoomRevisionSchema,
+  expectedGameRevision: v.nullable(GameRevisionSchema),
+  payload: v.strictObject({}),
+});
+export type RoomLeaveCommand = v.InferOutput<typeof RoomLeaveCommandSchema>;
+
 export const SessionResumeCommandSchema = v.strictObject({
   kind: v.literal("session:resume"),
   protocolVersion: ProtocolVersionSchema,
@@ -388,6 +398,7 @@ export const ClientCommandSchema = v.variant("kind", [
   SessionResumeCommandSchema,
   StateSyncCommandSchema,
   GameStartCommandSchema,
+  RoomLeaveCommandSchema,
   TurnSubmitCommandSchema,
   TurnDrawCommandSchema,
   TurnPassCommandSchema,

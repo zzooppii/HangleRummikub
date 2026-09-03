@@ -53,6 +53,7 @@ function playingSnapshot(
           connectionStatus: "CONNECTED",
           rackCount: 0,
           initialMeldCompleted: false,
+          forfeited: false,
         },
         {
           playerId: "player_other",
@@ -61,6 +62,7 @@ function playingSnapshot(
           connectionStatus: "CONNECTED",
           rackCount: 14,
           initialMeldCompleted: false,
+          forfeited: false,
         },
       ],
     },

@@ -21,11 +21,13 @@ export type PlayingScreenProps = Readonly<{
   turnDraft: TurnDraftController;
   turnSubmitPending: boolean;
   turnActionPending: boolean;
+  roomLeavePending: boolean;
   canSubmit: boolean;
   canAct: boolean;
   onSubmitTurn: (draft: TurnDraft) => void;
   onDrawTurn: (bagKind: TurnDrawBagKind) => void;
   onPassTurn: () => void;
+  onLeaveRoom: () => void;
   onGoHome: () => void;
 }>;
 
@@ -62,10 +64,23 @@ export function PlayingScreen(props: PlayingScreenProps) {
           <p className="eyebrow">ROOM {room.roomCode}</p>
           <h1>게임이 시작되었습니다.</h1>
         </div>
-        <span className={`connection-chip ${props.connectionTone}`}>
-          <span className="status-dot" aria-hidden="true" />
-          {props.connectionLabel}
-        </span>
+        <div className="room-header-actions">
+          <span className={`connection-chip ${props.connectionTone}`}>
+            <span className="status-dot" aria-hidden="true" />
+            {props.connectionLabel}
+          </span>
+          {!props.sessionReplaced ? (
+            <button
+              className="secondary-button compact-button"
+              type="button"
+              disabled={props.roomLeavePending}
+              aria-busy={props.roomLeavePending}
+              onClick={props.onLeaveRoom}
+            >
+              {props.roomLeavePending ? "나가는 중..." : "게임 나가기"}
+            </button>
+          ) : null}
+        </div>
       </header>
 
       {props.sessionReplaced ? (
@@ -136,7 +151,9 @@ export function PlayingScreen(props: PlayingScreenProps) {
         {room.players.map((player) => (
           <div
             className={`playing-player${
-              player.playerId === game.turn.activePlayerId ? " active" : ""
+              player.playerId === game.turn.activePlayerId && !player.forfeited
+                ? " active"
+                : ""
             }`}
             key={player.playerId}
           >
@@ -147,6 +164,7 @@ export function PlayingScreen(props: PlayingScreenProps) {
               {player.connectionStatus === "CONNECTED"
                 ? "접속 중"
                 : "오프라인"}
+              {player.forfeited ? " · 기권" : ""}
             </span>
             <small>
               랙 {player.rackCount}개 · 첫 등록{" "}

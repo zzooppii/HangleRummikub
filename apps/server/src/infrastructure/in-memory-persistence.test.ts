@@ -75,7 +75,15 @@ type RoomFixtureOptions = Readonly<{
   updatedAt?: number;
 }>;
 
-function roomFixture(options: RoomFixtureOptions = {}): RoomWriteCandidate {
+type RoomCandidateWithHost = RoomWriteCandidate &
+  Readonly<{ hostPlayerId: PlayerId }>;
+type RoomRecordWithHost = RoomRecord & Readonly<{ hostPlayerId: PlayerId }>;
+
+function roomHasHost(room: RoomRecord): room is RoomRecordWithHost {
+  return room.hostPlayerId !== null;
+}
+
+function roomFixture(options: RoomFixtureOptions = {}): RoomCandidateWithHost {
   const hostPlayerId = playerId(options.playerId ?? "player-a");
 
   return {
@@ -99,12 +107,15 @@ function roomFixture(options: RoomFixtureOptions = {}): RoomWriteCandidate {
 
 async function requireCreatedRoom(
   persistence: InMemoryPersistence,
-  candidate: RoomWriteCandidate,
-): Promise<RoomRecord> {
+  candidate: RoomCandidateWithHost,
+): Promise<RoomRecordWithHost> {
   const result = await persistence.createIfAbsent(candidate);
   assert.equal(result.status, "CREATED");
   if (result.status !== "CREATED") {
     throw new Error("Test fixture Room was not created.");
+  }
+  if (!roomHasHost(result.room)) {
+    throw new Error("Test fixture Room must retain its Host.");
   }
   return result.room;
 }
@@ -140,7 +151,7 @@ function idempotencyRecord(
 }
 
 function createRoomChangeSet(
-  candidate: RoomWriteCandidate,
+  candidate: RoomCandidateWithHost,
   session: UnboundSessionRecord,
   idempotency: IdempotencyRecord,
   now: ServerTime,
@@ -197,7 +208,7 @@ test("RoomRepository는 입력과 반환값의 외부 mutation에서 내부 stat
     joinOrder: 0,
   };
   const players = [host];
-  const candidate: RoomWriteCandidate = {
+  const candidate: RoomCandidateWithHost = {
     ...roomFixture(),
     hostPlayerId: host.playerId,
     players,
@@ -630,6 +641,9 @@ test("cleanup failure는 Room, bound session, 기존 idempotency scope를 모두
     throw new Error("Expected cleanup failure fixture to commit.");
   }
   const room = initialResult.room;
+  if (room.hostPlayerId === null) {
+    throw new Error("Cleanup fixture requires a Host.");
+  }
   const clock = new FakeClock(1_000);
   const session = await saveUnboundFixture(
     persistence,
@@ -754,6 +768,9 @@ test("RoomUnitOfWork cleanup은 Room code와 bound Room session을 함께 제거
     throw new Error("Expected cleanup Room fixture to commit.");
   }
   const room = initialResult.room;
+  if (room.hostPlayerId === null) {
+    throw new Error("Cleanup fixture requires a Host.");
+  }
   const clock = new FakeClock(1_000);
   const session = await saveUnboundFixture(
     persistence,
@@ -1168,5 +1185,261 @@ test("PLAYING Room의 GameState deep copy는 caller mutation에서 persistence�
   assert.deepEqual(
     await persistence.findById(created.room.roomId),
     baseline,
+  );
+});
+
+test("RoomUnitOfWork는 Player 제거와 해당 bound session 삭제를 원자적으로 commit한다", async () => {
+  const persistence = new InMemoryPersistence();
+  const host = playerId("player-leave-host");
+  const guest = playerId("player-leave-guest");
+  const candidate: RoomCandidateWithHost = {
+    ...roomFixture({ roomId: "room-leave", roomCode: "BCDEFG" }),
+    hostPlayerId: host,
+    players: [
+      { playerId: host, nickname: parse(NicknameSchema, "Host"), joinOrder: 0 },
+      { playerId: guest, nickname: parse(NicknameSchema, "Guest"), joinOrder: 1 },
+    ],
+  };
+  const room = await requireCreatedRoom(persistence, candidate);
+  const clock = new FakeClock(2_000);
+  const hostSession = await saveUnboundFixture(persistence, verificationData("8"), clock);
+  const guestSession = await saveUnboundFixture(persistence, verificationData("9"), clock);
+  assert.equal((await persistence.promoteUnbound({
+    verificationData: hostSession.verificationData,
+    roomId: room.roomId,
+    playerId: host,
+    now: clock.now(),
+  })).status, "PROMOTED");
+  assert.equal((await persistence.promoteUnbound({
+    verificationData: guestSession.verificationData,
+    roomId: room.roomId,
+    playerId: guest,
+    now: clock.now(),
+  })).status, "PROMOTED");
+
+  const result = await persistence.commit({
+    roomMutation: {
+      kind: "REPLACE",
+      candidate: {
+        ...room,
+        players: room.players.filter((player) => player.playerId !== guest),
+        roomRevision: roomRevision(room.roomRevision + 1),
+        updatedAt: clock.now(),
+      },
+      expectedRoomRevision: room.roomRevision,
+      expectedStorageRevision: room.storageRevision,
+    },
+    sessionMutation: {
+      kind: "DELETE_BOUND_PLAYER",
+      roomId: room.roomId,
+      playerId: guest,
+    },
+    idempotency: idempotencyRecord(
+      `room-player:${room.roomId}:${guest}`,
+      "leave-player-request",
+      "leave-player",
+      { roomId: room.roomId, playerId: guest },
+      clock.now(),
+    ),
+  });
+
+  assert.equal(result.status, "COMMITTED");
+  assert.equal(
+    await persistence.findByVerificationData(guestSession.verificationData),
+    null,
+  );
+  assert.equal(
+    (await persistence.findByVerificationData(hostSession.verificationData))?.state,
+    "BOUND",
+  );
+  assert.deepEqual(
+    (await persistence.findById(room.roomId))?.players.map((player) => player.playerId),
+    [host],
+  );
+});
+
+test("Room cleanup UoW는 Room/code/session/Room idempotency를 모두 제거하고 다른 Room은 보존한다", async () => {
+  const persistence = new InMemoryPersistence();
+  const room = await requireCreatedRoom(
+    persistence,
+    roomFixture({ roomId: "room-clean-all", roomCode: "CDEFGH" }),
+  );
+  const retainedRoom = await requireCreatedRoom(
+    persistence,
+    roomFixture({ roomId: "room-keep", roomCode: "DEFGHJ", playerId: "player-keep" }),
+  );
+  const clock = new FakeClock(3_000);
+  const session = await saveUnboundFixture(persistence, verificationData("a"), clock);
+  assert.equal((await persistence.promoteUnbound({
+    verificationData: session.verificationData,
+    roomId: room.roomId,
+    playerId: room.hostPlayerId,
+    now: clock.now(),
+  })).status, "PROMOTED");
+  const roomScoped = idempotencyRecord(
+    `room-player:${room.roomId}:${room.hostPlayerId}`,
+    "cleanup-target-idempotency",
+    "target",
+    { roomId: room.roomId },
+    clock.now(),
+  );
+  await persistence.commit({
+    roomMutation: {
+      kind: "REPLACE",
+      candidate: { ...room, updatedAt: clock.now() },
+      expectedRoomRevision: room.roomRevision,
+      expectedStorageRevision: room.storageRevision,
+    },
+    sessionMutation: { kind: "NONE" },
+    idempotency: roomScoped,
+  });
+  const latest = await persistence.findById(room.roomId);
+  assert.ok(latest);
+
+  assert.deepEqual(await persistence.cleanup({
+    roomMutation: {
+      kind: "DELETE",
+      roomId: latest.roomId,
+      expectedRoomRevision: latest.roomRevision,
+      expectedStorageRevision: latest.storageRevision,
+    },
+    sessionMutation: { kind: "DELETE_BY_ROOM", roomId: latest.roomId },
+  }), { status: "COMMITTED" });
+
+  assert.equal(await persistence.findById(room.roomId), null);
+  assert.equal(await persistence.findByCode(room.roomCode), null);
+  assert.equal(await persistence.findByVerificationData(session.verificationData), null);
+  assert.deepEqual(
+    await persistence.classify(
+      roomScoped.scopeKey,
+      roomScoped.requestId,
+      roomScoped.payloadFingerprint,
+    ),
+    { status: "MISS" },
+  );
+  assert.ok(await persistence.findById(retainedRoom.roomId));
+});
+
+test("Room cleanup UoW checkpoint failure는 Room/code/session/idempotency를 모두 원자적으로 보존한다", async () => {
+  let failureArmed = false;
+  const persistence = new InMemoryPersistence({
+    onCommitCheckpoint(checkpoint): void {
+      if (failureArmed && checkpoint === "AFTER_IDEMPOTENCY_WRITE") {
+        throw new Error("injected atomic room cleanup failure");
+      }
+    },
+  });
+  const room = await requireCreatedRoom(
+    persistence,
+    roomFixture({
+      roomId: "room-atomic-cleanup-failure",
+      roomCode: "EFGHJK",
+    }),
+  );
+  const clock = new FakeClock(4_000);
+  const session = await saveUnboundFixture(
+    persistence,
+    verificationData("b"),
+    clock,
+  );
+  assert.equal(
+    (
+      await persistence.promoteUnbound({
+        verificationData: session.verificationData,
+        roomId: room.roomId,
+        playerId: room.hostPlayerId,
+        now: clock.now(),
+      })
+    ).status,
+    "PROMOTED",
+  );
+  const roomScoped = idempotencyRecord(
+    `room-player:${room.roomId}:${room.hostPlayerId}`,
+    "atomic-cleanup-existing-request",
+    "atomic-cleanup-existing-fingerprint",
+    { roomId: room.roomId },
+    clock.now(),
+  );
+  const seeded = await persistence.commit({
+    roomMutation: {
+      kind: "REPLACE",
+      candidate: { ...room, updatedAt: clock.now() },
+      expectedRoomRevision: room.roomRevision,
+      expectedStorageRevision: room.storageRevision,
+    },
+    sessionMutation: { kind: "NONE" },
+    idempotency: roomScoped,
+  });
+  assert.equal(seeded.status, "COMMITTED");
+  if (seeded.status !== "COMMITTED" || seeded.room === null) {
+    throw new Error("Expected atomic cleanup fixture to commit.");
+  }
+  failureArmed = true;
+
+  await assert.rejects(
+    persistence.cleanup({
+      roomMutation: {
+        kind: "DELETE",
+        roomId: seeded.room.roomId,
+        expectedRoomRevision: seeded.room.roomRevision,
+        expectedStorageRevision: seeded.room.storageRevision,
+      },
+      sessionMutation: {
+        kind: "DELETE_BY_ROOM",
+        roomId: seeded.room.roomId,
+      },
+    }),
+    /injected atomic room cleanup failure/u,
+  );
+
+  assert.ok(await persistence.findById(seeded.room.roomId));
+  assert.ok(await persistence.findByCode(seeded.room.roomCode));
+  assert.equal(
+    (await persistence.findByVerificationData(session.verificationData))?.state,
+    "BOUND",
+  );
+  assert.equal(
+    (
+      await persistence.classify(
+        roomScoped.scopeKey,
+        roomScoped.requestId,
+        roomScoped.payloadFingerprint,
+      )
+    ).status,
+    "REPLAY",
+  );
+});
+
+test("atomic cleanup 뒤 roomCode는 tombstone 없이 새 Room 후보로 다시 사용할 수 있다", async () => {
+  const persistence = new InMemoryPersistence();
+  const original = await requireCreatedRoom(
+    persistence,
+    roomFixture({ roomId: "room-code-original", roomCode: "FGHJKM" }),
+  );
+
+  assert.deepEqual(
+    await persistence.cleanup({
+      roomMutation: {
+        kind: "DELETE",
+        roomId: original.roomId,
+        expectedRoomRevision: original.roomRevision,
+        expectedStorageRevision: original.storageRevision,
+      },
+      sessionMutation: { kind: "DELETE_BY_ROOM", roomId: original.roomId },
+    }),
+    { status: "COMMITTED" },
+  );
+
+  const replacement = await persistence.createIfAbsent(
+    roomFixture({
+      roomId: "room-code-replacement",
+      roomCode: "FGHJKM",
+      playerId: "player-code-replacement",
+    }),
+  );
+  assert.equal(replacement.status, "CREATED");
+  assert.equal(
+    (await persistence.findByCode(original.roomCode))?.roomId,
+    replacement.status === "CREATED" ? replacement.room.roomId : null,
   );
 });

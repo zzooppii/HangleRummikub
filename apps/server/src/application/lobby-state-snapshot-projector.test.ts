@@ -37,7 +37,7 @@ function playerId(value: string): PlayerId {
   return parse(PlayerIdSchema, value);
 }
 
-function roomFixture(): RoomRecord {
+function roomFixture(): RoomRecord & Readonly<{ hostPlayerId: PlayerId }> {
   const hostId = playerId("player-host");
   const guestId = playerId("player-guest");
   return {
@@ -65,7 +65,7 @@ function roomFixture(): RoomRecord {
   };
 }
 
-function playingRoomFixture(): RoomRecord {
+function playingRoomFixture(): RoomRecord & Readonly<{ hostPlayerId: PlayerId }> {
   const lobby = roomFixture();
   return {
     ...lobby,

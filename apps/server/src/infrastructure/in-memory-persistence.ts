@@ -1,4 +1,5 @@
 import type {
+  PlayerId,
   RequestId,
   RoomCode,
   RoomId,
@@ -35,6 +36,9 @@ import type {
 import type {
   RoomUnitOfWorkCommitPrecondition,
   RoomUnitOfWork,
+  RoomCleanupUnitOfWork,
+  RoomCleanupChangeSet,
+  RoomCleanupResult,
   RoomUnitOfWorkChangeSet,
   RoomUnitOfWorkFailure,
   RoomUnitOfWorkResult,
@@ -158,6 +162,17 @@ function cloneRoomWriteCandidate(
     candidate.game.result === null
   ) {
     throw new TypeError("A FINISHED Room must contain a terminal GameState.");
+  }
+  if (
+    candidate.hostPlayerId !== null &&
+    !candidate.players.some(
+      (player) => player.playerId === candidate.hostPlayerId,
+    )
+  ) {
+    throw new TypeError("Room Host must reference a current Player.");
+  }
+  if (candidate.phase !== "LOBBY" && candidate.hostPlayerId === null) {
+    throw new TypeError("Only a LOBBY Room may be temporarily hostless.");
   }
 
   return Object.freeze({
@@ -476,6 +491,67 @@ function deleteSessionsByRoomId(
   return deletedCount;
 }
 
+function deleteSessionsByPlayer(
+  state: InMemoryState,
+  roomId: RoomId,
+  playerId: PlayerId,
+): number {
+  let deletedCount = 0;
+  for (const [key, session] of state.sessionsByVerificationKey) {
+    if (
+      session.state === "BOUND" &&
+      session.roomId === roomId &&
+      session.playerId === playerId
+    ) {
+      state.sessionsByVerificationKey.delete(key);
+      deletedCount += 1;
+    }
+  }
+  return deletedCount;
+}
+
+function idempotencyRecordBelongsToRoom(
+  record: IdempotencyRecord,
+  roomId: RoomId,
+): boolean {
+  if (
+    record.scopeKey.startsWith(`room-player:${roomId}:`) ||
+    record.scopeKey.startsWith(`room-timeout:${roomId}:`)
+  ) {
+    return true;
+  }
+  const terminalResult = record.terminalResult;
+  return (
+    terminalResult !== null &&
+    !isJsonArray(terminalResult) &&
+    typeof terminalResult === "object" &&
+    terminalResult.roomId === roomId
+  );
+}
+
+function deleteIdempotencyByRoomId(
+  state: InMemoryState,
+  roomId: RoomId,
+): number {
+  let deletedCount = 0;
+  for (const [scopeKey, records] of state.idempotencyByScope) {
+    const retained = new Map<RequestId, IdempotencyRecord>();
+    for (const [requestId, record] of records) {
+      if (idempotencyRecordBelongsToRoom(record, roomId)) {
+        deletedCount += 1;
+      } else {
+        retained.set(requestId, record);
+      }
+    }
+    if (retained.size === 0) {
+      state.idempotencyByScope.delete(scopeKey);
+    } else {
+      state.idempotencyByScope.set(scopeKey, retained);
+    }
+  }
+  return deletedCount;
+}
+
 function roomFailure(result: Exclude<CreateRoomResult, { status: "CREATED" }>): RoomUnitOfWorkFailure;
 function roomFailure(result: Exclude<ReplaceRoomResult, { status: "REPLACED" }>): RoomUnitOfWorkFailure;
 function roomFailure(result: Exclude<DeleteRoomResult, { status: "DELETED" }>): RoomUnitOfWorkFailure;
@@ -553,6 +629,18 @@ function applySessionMutation(
       const result = promoteSessionInState(state, mutation);
       return result.status === "PROMOTED" ? null : result.status;
     }
+    case "DELETE_BOUND_PLAYER": {
+      if (mutation.roomId !== targetRoomId(changeSet) || deletesRoom) {
+        return "SESSION_ROOM_MISMATCH";
+      }
+      return deleteSessionsByPlayer(
+        state,
+        mutation.roomId,
+        mutation.playerId,
+      ) > 0
+        ? null
+        : "SESSION_NOT_FOUND";
+    }
     case "DELETE_BY_ROOM":
       if (mutation.roomId !== targetRoomId(changeSet)) {
         return "SESSION_ROOM_MISMATCH";
@@ -568,6 +656,7 @@ export class InMemoryPersistence
     SessionRepository,
     IdempotencyRepository,
     RoomUnitOfWork,
+    RoomCleanupUnitOfWork,
     ActiveTurnReader
 {
   #state = emptyState();
@@ -823,5 +912,46 @@ export class InMemoryPersistence
         roomResult.room === null ? null : cloneRoomRecord(roomResult.room),
       idempotency: cloneIdempotencyRecord(idempotency),
     };
+  }
+
+
+  async cleanup(
+    changeSet: RoomCleanupChangeSet,
+    precondition?: RoomUnitOfWorkCommitPrecondition,
+  ): Promise<RoomCleanupResult> {
+    if (changeSet.sessionMutation.roomId !== changeSet.roomMutation.roomId) {
+      return {
+        status: "PRECONDITION_FAILED",
+        reason: "SESSION_ROOM_MISMATCH",
+      };
+    }
+
+    const nextState = copyState(this.#state);
+    const roomResult = deleteRoomInState(nextState, {
+      roomId: changeSet.roomMutation.roomId,
+      expectedRoomRevision: changeSet.roomMutation.expectedRoomRevision,
+      expectedStorageRevision: changeSet.roomMutation.expectedStorageRevision,
+    });
+    if (roomResult.status !== "DELETED") {
+      return {
+        status: "PRECONDITION_FAILED",
+        reason: roomFailure(roomResult),
+      };
+    }
+    this.#onCommitCheckpoint?.("AFTER_ROOM_WRITE");
+
+    deleteSessionsByRoomId(nextState, changeSet.sessionMutation.roomId);
+    this.#onCommitCheckpoint?.("AFTER_SESSION_WRITE");
+    deleteIdempotencyByRoomId(nextState, changeSet.roomMutation.roomId);
+    this.#onCommitCheckpoint?.("AFTER_IDEMPOTENCY_WRITE");
+
+    if (precondition !== undefined && !precondition.isSatisfied()) {
+      return {
+        status: "PRECONDITION_FAILED",
+        reason: "COMMIT_PRECONDITION_FAILED",
+      };
+    }
+    this.#state = nextState;
+    return { status: "COMMITTED" };
   }
 }

@@ -218,6 +218,8 @@ function createCandidate(
     racks,
     board: game.board,
     initialMeldCompleted: game.initialMeldCompleted,
+    offlineTimeoutStreakByPlayerId: game.offlineTimeoutStreakByPlayerId,
+    forfeitedPlayerIds: game.forfeitedPlayerIds,
     turnOrder: game.turnOrder,
     turn,
     result: null,

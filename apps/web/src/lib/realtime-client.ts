@@ -6,6 +6,9 @@ import {
   validateRoomCreateCommand,
   validateRoomJoinAck,
   validateRoomJoinCommand,
+  validateRoomClosedEvent,
+  validateRoomLeaveAck,
+  validateRoomLeaveCommand,
   validateSessionBootstrapAck,
   validateSessionBootstrapCommand,
   validateSessionReplacedNotification,
@@ -29,6 +32,9 @@ import {
   type RoomCreateCommand,
   type RoomJoinAck,
   type RoomJoinCommand,
+  type RoomClosedEvent,
+  type RoomLeaveAck,
+  type RoomLeaveCommand,
   type ServerToClientEvents,
   type SessionBootstrapAck,
   type SessionBootstrapCommand,
@@ -85,6 +91,7 @@ export type RealtimeProtocolIssue = Readonly<
         | "state:snapshot"
         | "turn:started"
         | "game:finished"
+        | "room:closed"
         | "session:replaced";
     }
 >;
@@ -118,6 +125,7 @@ type ConnectedListener = (event: TransportConnectedEvent) => void;
 type SnapshotListener = (event: StateSnapshotEvent) => void;
 type TurnStartedListener = (event: TurnStartedEvent) => void;
 type GameFinishedListener = (event: GameFinishedEvent) => void;
+type RoomClosedListener = (event: RoomClosedEvent) => void;
 type SessionReplacedListener = (
   event: SessionReplacedNotification,
 ) => void;
@@ -217,6 +225,7 @@ export class RealtimeClient {
   readonly #snapshotListeners = new Set<SnapshotListener>();
   readonly #turnStartedListeners = new Set<TurnStartedListener>();
   readonly #gameFinishedListeners = new Set<GameFinishedListener>();
+  readonly #roomClosedListeners = new Set<RoomClosedListener>();
   readonly #sessionReplacedListeners = new Set<SessionReplacedListener>();
   readonly #protocolIssueListeners = new Set<ProtocolIssueListener>();
 
@@ -244,6 +253,7 @@ export class RealtimeClient {
     this.#socket.on("state:snapshot", this.#handleSnapshot);
     this.#socket.on("turn:started", this.#handleTurnStarted);
     this.#socket.on("game:finished", this.#handleGameFinished);
+    this.#socket.on("room:closed", this.#handleRoomClosed);
     this.#socket.on("session:replaced", this.#handleSessionReplaced);
     this.#socket.io.on("reconnect_attempt", this.#handleReconnectAttempt);
     this.#socket.io.on("reconnect_failed", this.#handleReconnectFailed);
@@ -297,6 +307,7 @@ export class RealtimeClient {
     this.#socket.off("state:snapshot", this.#handleSnapshot);
     this.#socket.off("turn:started", this.#handleTurnStarted);
     this.#socket.off("game:finished", this.#handleGameFinished);
+    this.#socket.off("room:closed", this.#handleRoomClosed);
     this.#socket.off("session:replaced", this.#handleSessionReplaced);
     this.#socket.io.off(
       "reconnect_attempt",
@@ -311,6 +322,7 @@ export class RealtimeClient {
     this.#snapshotListeners.clear();
     this.#turnStartedListeners.clear();
     this.#gameFinishedListeners.clear();
+    this.#roomClosedListeners.clear();
     this.#sessionReplacedListeners.clear();
     this.#protocolIssueListeners.clear();
   }
@@ -368,6 +380,14 @@ export class RealtimeClient {
 
     return () => {
       this.#gameFinishedListeners.delete(listener);
+    };
+  }
+
+  subscribeRoomClosed(listener: RoomClosedListener): Unsubscribe {
+    this.#roomClosedListeners.add(listener);
+
+    return () => {
+      this.#roomClosedListeners.delete(listener);
     };
   }
 
@@ -450,6 +470,26 @@ export class RealtimeClient {
       },
       validateRoomJoinAck,
       hasConsistentSnapshotAcknowledgement,
+    );
+  }
+
+  leaveRoom(command: RoomLeaveCommand): Promise<RoomLeaveAck> {
+    const validatedCommand = validateRoomLeaveCommand(command);
+    if (!validatedCommand.ok) {
+      return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    }
+
+    return this.#emitAcknowledged(
+      "room:leave",
+      validatedCommand.value.requestId,
+      (acknowledge) => {
+        this.#socket.emit(
+          "room:leave",
+          validatedCommand.value,
+          acknowledge,
+        );
+      },
+      validateRoomLeaveAck,
     );
   }
 
@@ -768,6 +808,25 @@ export class RealtimeClient {
     }
 
     for (const listener of this.#gameFinishedListeners) {
+      listener(validation.value);
+    }
+  };
+
+  readonly #handleRoomClosed = (input: RoomClosedEvent): void => {
+    if (this.#closed || this.#replacementBlocked) {
+      return;
+    }
+
+    const validation = validateRoomClosedEvent(input);
+    if (!validation.ok) {
+      this.#notifyProtocolIssue({
+        kind: "INVALID_SERVER_EVENT",
+        event: "room:closed",
+      });
+      return;
+    }
+
+    for (const listener of this.#roomClosedListeners) {
       listener(validation.value);
     }
   };

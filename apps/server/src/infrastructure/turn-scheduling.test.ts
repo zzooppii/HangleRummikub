@@ -132,6 +132,25 @@ test("same turnId in different Room/Game schedules independently", async () => {
   assert.equal(timerDriver.scheduled.every((entry) => entry.cleared), true);
 });
 
+test("Room cleanup cancellation removes only that Room의 Turn timers", async () => {
+  const timerDriver = new ManualOneShotTimers();
+  const scheduler = new InProcessTurnScheduler({
+    clock: new FakeClock(0),
+    timerDriver,
+    onDeadline: () => undefined,
+  });
+  scheduler.start();
+
+  await scheduler.scheduleTimeout(deadline("cleanup", 10, "cleanup-turn"));
+  await scheduler.scheduleTimeout(deadline("retained", 10, "retained-turn"));
+  assert.equal(scheduler.scheduledCount, 2);
+
+  await scheduler.cancelRoom(parse(RoomIdSchema, "room-cleanup"));
+  assert.equal(scheduler.scheduledCount, 1);
+  assert.equal(timerDriver.scheduled[0]?.cleared, true);
+  assert.equal(timerDriver.scheduled[1]?.cleared, false);
+});
+
 test("scheduler lifecycle rejects scheduling before/after start and contains callback failure", async () => {
   const timerDriver = new ManualOneShotTimers();
   const failures: ScheduledTurnDeadline[] = [];

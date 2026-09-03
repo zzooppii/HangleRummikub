@@ -124,6 +124,7 @@ export class LobbyStateSnapshotProjector {
         ...publicView,
         rackCount: playerRack.length,
         initialMeldCompleted,
+        forfeited: game.forfeitedPlayerIds.has(player.playerId),
       };
     });
 

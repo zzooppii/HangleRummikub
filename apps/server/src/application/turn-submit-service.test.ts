@@ -261,6 +261,10 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
         id === PLAYER_A ? (options.initialMeldCompleted ?? false) : false,
       ]),
     ),
+    offlineTimeoutStreakByPlayerId: new Map(
+      players.map((id) => [id, 0]),
+    ),
+    forfeitedPlayerIds: new Set<PlayerId>(),
     turnOrder: Object.freeze([...players]),
     turn: Object.freeze({
       turnId: parse(TurnIdSchema, "turn-current"),

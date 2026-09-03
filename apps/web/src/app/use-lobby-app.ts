@@ -9,6 +9,7 @@ import {
   type RoomCode,
   type RoomCreateAck,
   type RoomJoinAck,
+  type RoomLeaveCommand,
   type SessionResumeCommand,
   type StateSnapshot,
   type StateSyncCommand,
@@ -29,6 +30,15 @@ import {
   type RealtimeConnectionState,
 } from "../lib/realtime-client.js";
 import { createRequestId } from "../lib/request-id.js";
+import {
+  createOrReuseRoomLeaveCommand,
+  decideRoomLeaveClientAction,
+  isStaleRoomLeaveSessionFailure,
+  roomClosedMatchesCurrentRoom,
+  roomLeaveConfirmationMessage,
+  runRoomLeaveSingleFlight,
+  shouldRequestSyncAfterRoomLeaveFailure,
+} from "../lib/room-leave.js";
 import {
   createRoomPath,
   parseAppPathname,
@@ -68,7 +78,7 @@ import {
 import type { TurnDraft } from "../lib/turn-draft.js";
 
 const STALE_SESSION_MESSAGE =
-  "이 방의 연결 정보가 더 이상 유효하지 않습니다. 새 방을 만들거나 다시 참가해주세요.";
+  "재접속 유예 시간이 만료되었거나 방이 종료되어 연결 정보가 더 이상 유효하지 않습니다. 새 방을 만들거나 다시 참가해주세요.";
 const STORAGE_UNAVAILABLE_MESSAGE =
   "브라우저 저장소를 사용할 수 없어 새로고침 복구가 제한됩니다. 이 창을 닫지 말고 다시 시도해주세요.";
 const CONNECTION_RETRY_MESSAGE =
@@ -92,6 +102,7 @@ export type LobbyAppState = Readonly<{
   gameStartPending: boolean;
   turnSubmitPending: boolean;
   turnActionPending: boolean;
+  roomLeavePending: boolean;
   turnDraftResetGeneration: number;
   setNickname: (value: string) => void;
   setRoomCodeInput: (value: string) => void;
@@ -101,6 +112,7 @@ export type LobbyAppState = Readonly<{
   submitTurn: (draft: TurnDraft) => void;
   drawTurn: (bagKind: TurnDrawBagKind) => void;
   passTurn: () => void;
+  leaveRoom: () => void;
   copyInvitation: (invitationUrl: string) => void;
   goHome: () => void;
 }>;
@@ -187,6 +199,7 @@ export function useLobbyApp(): LobbyAppState {
   const [gameStartPending, setGameStartPending] = useState(false);
   const [turnSubmitPending, setTurnSubmitPending] = useState(false);
   const [turnActionPending, setTurnActionPending] = useState(false);
+  const [roomLeavePending, setRoomLeavePending] = useState(false);
   const [turnDraftResetGeneration, setTurnDraftResetGeneration] = useState(0);
 
   const routeRef = useRef<AppRoute>(initialRoute);
@@ -208,6 +221,9 @@ export function useLobbyApp(): LobbyAppState {
   const pendingTurnActionCommandRef =
     useRef<PendingTurnActionCommand | null>(null);
   const turnActionRetryRequestedRef = useRef(false);
+  const roomLeaveFlightRef = useRef<Promise<void> | null>(null);
+  const pendingRoomLeaveCommandRef = useRef<RoomLeaveCommand | null>(null);
+  const roomLeaveRetryRequestedRef = useRef(false);
   const sessionReplacedRef = useRef(false);
 
   function clearPendingGameStartRequest(): void {
@@ -230,6 +246,14 @@ export function useLobbyApp(): LobbyAppState {
     }
   }
 
+  function clearPendingRoomLeaveRequest(settled = true): void {
+    pendingRoomLeaveCommandRef.current = null;
+    roomLeaveRetryRequestedRef.current = false;
+    if (settled) {
+      setRoomLeavePending(false);
+    }
+  }
+
   function resetTurnDraftFromAuthority(): void {
     setTurnDraftResetGeneration((current) => current + 1);
   }
@@ -242,6 +266,64 @@ export function useLobbyApp(): LobbyAppState {
   function updateSnapshot(nextSnapshot: StateSnapshot | null): void {
     snapshotRef.current = nextSnapshot;
     setSnapshot(nextSnapshot);
+  }
+
+  function clearCurrentRoomClientState(
+    message: string | null,
+    navigateHome: boolean,
+  ): void {
+    clearStoredPlayerSession(window.sessionStorage);
+    clearPendingRoomOperation(window.sessionStorage);
+    clearPendingGameStartRequest();
+    clearPendingTurnSubmitRequest();
+    clearPendingTurnActionRequest();
+    clearPendingRoomLeaveRequest();
+    updateSnapshot(null);
+    resetTurnDraftFromAuthority();
+    setOperationLabel(null);
+    setCopyMessage(null);
+    setErrorMessage(message);
+
+    if (sessionReplacedRef.current) {
+      sessionReplacedRef.current = false;
+      setSessionReplaced(false);
+      clientRef.current?.resetSessionReplacement();
+    }
+
+    if (navigateHome) {
+      if (window.location.pathname !== "/") {
+        window.history.pushState(null, "", "/");
+      }
+      updateRoute({ kind: "HOME" });
+    }
+  }
+
+  function handleStaleSession(): void {
+    if (pendingRoomLeaveCommandRef.current !== null) {
+      clearCurrentRoomClientState(STALE_SESSION_MESSAGE, true);
+      return;
+    }
+
+    clearCurrentRoomClientState(STALE_SESSION_MESSAGE, false);
+  }
+
+  function applyRoomLeaveClientOutcome(
+    outcome:
+      | "ACCEPTED"
+      | "ROOM_CLOSED"
+      | "DEFINITIVE_FAILURE"
+      | "RETRYABLE_FAILURE",
+    message: string | null,
+  ): void {
+    const action = decideRoomLeaveClientAction(outcome);
+    if (action.roomState === "CLEAR_AND_GO_HOME") {
+      clearCurrentRoomClientState(message, true);
+      return;
+    }
+
+    if (action.pendingCommand === "CLEAR") {
+      clearPendingRoomLeaveRequest(false);
+    }
   }
 
   function navigateToRoom(roomCode: RoomCode): void {
@@ -344,12 +426,7 @@ export function useLobbyApp(): LobbyAppState {
         const acknowledgement = await client.syncState(command);
         if (!acknowledgement.ok) {
           if (isStaleSessionError(acknowledgement.error)) {
-            clearStoredPlayerSession(window.sessionStorage);
-            clearPendingGameStartRequest();
-            clearPendingTurnSubmitRequest();
-            clearPendingTurnActionRequest();
-            updateSnapshot(null);
-            setErrorMessage(STALE_SESSION_MESSAGE);
+            handleStaleSession();
             return;
           }
 
@@ -686,6 +763,100 @@ export function useLobbyApp(): LobbyAppState {
     }
   }
 
+  async function executeRoomLeaveCommand(
+    command: RoomLeaveCommand,
+  ): Promise<void> {
+    if (roomLeaveFlightRef.current !== null) {
+      return roomLeaveFlightRef.current;
+    }
+
+    const client = clientRef.current;
+    const session = storedSessionForCurrentRoute();
+    if (
+      client === null ||
+      !client.connected ||
+      session === null ||
+      sessionReplacedRef.current
+    ) {
+      setErrorMessage("서버에 연결되지 않았습니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    pendingRoomLeaveCommandRef.current = command;
+    setRoomLeavePending(true);
+    setOperationLabel("방에서 나가는 중...");
+    setErrorMessage(null);
+
+    const flight = runRoomLeaveSingleFlight(
+      roomLeaveFlightRef,
+      async () => {
+        try {
+          const acknowledgement = await client.leaveRoom(command);
+          if (!acknowledgement.ok) {
+            if (
+              isStaleRoomLeaveSessionFailure(acknowledgement.error.code)
+            ) {
+              handleStaleSession();
+              return;
+            }
+            applyRoomLeaveClientOutcome("DEFINITIVE_FAILURE", null);
+            setErrorMessage(getUserErrorMessage(acknowledgement.error.code));
+            if (
+              shouldRequestSyncAfterRoomLeaveFailure(
+                acknowledgement.error.code,
+              )
+            ) {
+              void requestLatestSnapshot();
+            }
+            return;
+          }
+
+          const currentSnapshot = snapshotRef.current;
+          if (
+            acknowledgement.data.roomCode !==
+              session.credential.roomCode ||
+            (currentSnapshot !== null &&
+              acknowledgement.data.roomId !== currentSnapshot.room.roomId)
+          ) {
+            applyRoomLeaveClientOutcome("DEFINITIVE_FAILURE", null);
+            setErrorMessage(INVALID_SERVER_STATE_MESSAGE);
+            void requestLatestSnapshot();
+            return;
+          }
+
+          applyRoomLeaveClientOutcome("ACCEPTED", "방에서 나왔습니다.");
+        } catch (error: unknown) {
+          applyRoomLeaveClientOutcome(
+            isRetryableCommandFailure(error)
+              ? "RETRYABLE_FAILURE"
+              : "DEFINITIVE_FAILURE",
+            null,
+          );
+          setErrorMessage(clientFailureMessage(error));
+        }
+      },
+    );
+
+    try {
+      await flight;
+    } finally {
+      setRoomLeavePending(false);
+      setOperationLabel(null);
+    }
+
+    const retryRequestedWhileActive = roomLeaveRetryRequestedRef.current;
+    roomLeaveRetryRequestedRef.current = false;
+    const pendingCommand = pendingRoomLeaveCommandRef.current;
+    if (
+      retryRequestedWhileActive &&
+      pendingCommand !== null &&
+      client.connected &&
+      !sessionReplacedRef.current
+    ) {
+      await executeRoomLeaveCommand(pendingCommand);
+    }
+  }
+
   async function resumeCurrentSession(): Promise<void> {
     if (resumeFlightRef.current !== null || sessionReplacedRef.current) {
       return resumeFlightRef.current ?? Promise.resolve();
@@ -718,12 +889,7 @@ export function useLobbyApp(): LobbyAppState {
         const acknowledgement = await client.resumeSession(command);
         if (!acknowledgement.ok) {
           if (isStaleSessionError(acknowledgement.error)) {
-            clearStoredPlayerSession(window.sessionStorage);
-            clearPendingGameStartRequest();
-            clearPendingTurnSubmitRequest();
-            clearPendingTurnActionRequest();
-            updateSnapshot(null);
-            setErrorMessage(STALE_SESSION_MESSAGE);
+            handleStaleSession();
             return;
           }
 
@@ -1010,6 +1176,17 @@ export function useLobbyApp(): LobbyAppState {
       await resumeCurrentSession();
     }
 
+    const pendingRoomLeaveCommand = pendingRoomLeaveCommandRef.current;
+    if (pendingRoomLeaveCommand !== null && !sessionReplacedRef.current) {
+      if (roomLeaveFlightRef.current !== null) {
+        roomLeaveRetryRequestedRef.current = true;
+        await roomLeaveFlightRef.current;
+      } else {
+        await executeRoomLeaveCommand(pendingRoomLeaveCommand);
+      }
+      return;
+    }
+
     const pendingGameStartCommand = pendingGameStartCommandRef.current;
     if (pendingGameStartCommand !== null && !sessionReplacedRef.current) {
       if (gameStartFlightRef.current !== null) {
@@ -1087,6 +1264,25 @@ export function useLobbyApp(): LobbyAppState {
         void requestLatestSnapshot();
       }
     });
+    const unsubscribeRoomClosed = client.subscribeRoomClosed((event) => {
+      const currentRoute = routeRef.current;
+      const currentSnapshot = snapshotRef.current;
+      const currentRoomCode =
+        currentRoute.kind === "ROOM" ? currentRoute.roomCode : null;
+      if (
+        roomClosedMatchesCurrentRoom(
+          currentSnapshot?.room.roomId ?? null,
+          currentRoomCode,
+          event.payload.roomId,
+          event.payload.roomCode,
+        )
+      ) {
+        applyRoomLeaveClientOutcome(
+          "ROOM_CLOSED",
+          "방이 종료되어 홈으로 이동했습니다.",
+        );
+      }
+    });
     const unsubscribeReplaced = client.subscribeSessionReplaced(() => {
       sessionReplacedRef.current = true;
       setSessionReplaced(true);
@@ -1097,6 +1293,7 @@ export function useLobbyApp(): LobbyAppState {
       clearPendingGameStartRequest();
       clearPendingTurnSubmitRequest();
       clearPendingTurnActionRequest();
+      clearPendingRoomLeaveRequest();
       resetTurnDraftFromAuthority();
     });
     const unsubscribeProtocolIssue = client.subscribeProtocolIssue(() => {
@@ -1145,6 +1342,7 @@ export function useLobbyApp(): LobbyAppState {
         clearPendingGameStartRequest();
         clearPendingTurnSubmitRequest();
         clearPendingTurnActionRequest();
+        clearPendingRoomLeaveRequest();
         updateSnapshot(null);
         client.disconnect();
         client.connect();
@@ -1166,6 +1364,7 @@ export function useLobbyApp(): LobbyAppState {
       unsubscribeSnapshot();
       unsubscribeTurnStarted();
       unsubscribeGameFinished();
+      unsubscribeRoomClosed();
       unsubscribeReplaced();
       unsubscribeProtocolIssue();
       client.destroy();
@@ -1206,6 +1405,8 @@ export function useLobbyApp(): LobbyAppState {
       entryActionActiveRef.current ||
       entryFlightRef.current !== null ||
       resumeFlightRef.current !== null ||
+      roomLeaveFlightRef.current !== null ||
+      pendingRoomLeaveCommandRef.current !== null ||
       operationLabel !== null
     ) {
       return;
@@ -1226,6 +1427,8 @@ export function useLobbyApp(): LobbyAppState {
       entryActionActiveRef.current ||
       entryFlightRef.current !== null ||
       resumeFlightRef.current !== null ||
+      roomLeaveFlightRef.current !== null ||
+      pendingRoomLeaveCommandRef.current !== null ||
       operationLabel !== null
     ) {
       return;
@@ -1280,6 +1483,8 @@ export function useLobbyApp(): LobbyAppState {
       gameStartFlightRef.current !== null ||
       resumeFlightRef.current !== null ||
       entryFlightRef.current !== null ||
+      roomLeaveFlightRef.current !== null ||
+      pendingRoomLeaveCommandRef.current !== null ||
       operationLabel !== null
     ) {
       return;
@@ -1314,6 +1519,8 @@ export function useLobbyApp(): LobbyAppState {
       resumeFlightRef.current !== null ||
       entryFlightRef.current !== null ||
       gameStartFlightRef.current !== null ||
+      roomLeaveFlightRef.current !== null ||
+      pendingRoomLeaveCommandRef.current !== null ||
       operationLabel !== null
     ) {
       return;
@@ -1355,6 +1562,8 @@ export function useLobbyApp(): LobbyAppState {
       resumeFlightRef.current !== null ||
       entryFlightRef.current !== null ||
       gameStartFlightRef.current !== null ||
+      roomLeaveFlightRef.current !== null ||
+      pendingRoomLeaveCommandRef.current !== null ||
       operationLabel !== null
     ) {
       return;
@@ -1407,6 +1616,8 @@ export function useLobbyApp(): LobbyAppState {
       resumeFlightRef.current !== null ||
       entryFlightRef.current !== null ||
       gameStartFlightRef.current !== null ||
+      roomLeaveFlightRef.current !== null ||
+      pendingRoomLeaveCommandRef.current !== null ||
       operationLabel !== null
     ) {
       return;
@@ -1448,19 +1659,61 @@ export function useLobbyApp(): LobbyAppState {
     void executeTurnActionCommand(command);
   }
 
+  function leaveRoom(): void {
+    if (
+      roomLeaveFlightRef.current !== null ||
+      gameplayMutationFlightRef.current !== null ||
+      pendingTurnSubmitCommandRef.current !== null ||
+      pendingTurnActionCommandRef.current !== null ||
+      gameStartFlightRef.current !== null ||
+      pendingGameStartCommandRef.current !== null ||
+      resumeFlightRef.current !== null ||
+      entryFlightRef.current !== null ||
+      operationLabel !== null
+    ) {
+      setErrorMessage(
+        "이전 요청의 결과를 확인한 뒤 방에서 나갈 수 있습니다.",
+      );
+      return;
+    }
+
+    const currentSnapshot = snapshotRef.current;
+    const client = clientRef.current;
+    if (currentSnapshot === null || routeRef.current.kind !== "ROOM") {
+      return;
+    }
+    if (client === null || !client.connected || sessionReplacedRef.current) {
+      setErrorMessage("서버에 연결되지 않았습니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+    if (!window.confirm(roomLeaveConfirmationMessage(currentSnapshot.room.phase))) {
+      return;
+    }
+
+    const command = createOrReuseRoomLeaveCommand(
+      pendingRoomLeaveCommandRef.current,
+      currentSnapshot.versions.roomRevision,
+      currentSnapshot.versions.gameRevision,
+      createRequestId,
+    );
+    pendingRoomLeaveCommandRef.current = command;
+    void executeRoomLeaveCommand(command);
+  }
+
   function goHome(): void {
     if (sessionReplacedRef.current) {
-      clearStoredPlayerSession(window.sessionStorage);
-      clearPendingRoomOperation(window.sessionStorage);
-      sessionReplacedRef.current = false;
-      setSessionReplaced(false);
-      clientRef.current?.resetSessionReplacement();
+      clearCurrentRoomClientState(null, true);
+      if (clientRef.current !== null && !clientRef.current.connected) {
+        clientRef.current.connect();
+      }
+      return;
     }
 
     updateSnapshot(null);
     clearPendingGameStartRequest();
     clearPendingTurnSubmitRequest();
     clearPendingTurnActionRequest();
+    clearPendingRoomLeaveRequest();
     setErrorMessage(null);
     setCopyMessage(null);
     if (window.location.pathname !== "/") {
@@ -1485,6 +1738,7 @@ export function useLobbyApp(): LobbyAppState {
     gameStartPending,
     turnSubmitPending,
     turnActionPending,
+    roomLeavePending,
     turnDraftResetGeneration,
     setNickname,
     setRoomCodeInput,
@@ -1494,6 +1748,7 @@ export function useLobbyApp(): LobbyAppState {
     submitTurn,
     drawTurn,
     passTurn,
+    leaveRoom,
     copyInvitation,
     goHome,
   };

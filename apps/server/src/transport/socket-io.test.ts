@@ -9,6 +9,7 @@ import {
   RoomCodeSchema,
   RoomIdSchema,
   RoomRevisionSchema,
+  ServerTimeSchema,
   SessionTokenSchema,
   validateGameFinishedEvent,
   validateGameStartAck,
@@ -16,6 +17,8 @@ import {
   validatePlayingStateSnapshot,
   validateRoomCreateAck,
   validateRoomJoinAck,
+  validateRoomLeaveAck,
+  validateRoomClosedEvent,
   validateSessionBootstrapAck,
   validateSessionReplacedNotification,
   validateSessionResumeAck,
@@ -37,8 +40,11 @@ import {
   type RoomCode,
   type RoomCreateAck,
   type RoomCreateCommand,
+  type RoomClosedEvent,
   type RoomJoinAck,
   type RoomJoinCommand,
+  type RoomLeaveAck,
+  type RoomLeaveCommand,
   type RoomId,
   type ServerToClientEvents,
   type SessionBootstrapAck,
@@ -67,7 +73,12 @@ import {
 import { parse } from "valibot";
 
 import { GameStartService } from "../application/game-start-service.js";
+import { LobbyDisconnectGraceService } from "../application/lobby-disconnect-grace-service.js";
 import { LobbyStateSnapshotProjector } from "../application/lobby-state-snapshot-projector.js";
+import { RoomCleanupService } from "../application/room-cleanup-service.js";
+import { RoomLeaveService } from "../application/room-leave-service.js";
+import { RoomPresencePolicyService } from "../application/room-presence-policy-service.js";
+import { RoomRetentionService } from "../application/room-retention-service.js";
 import { RoomSessionApplicationService } from "../application/room-session-service.js";
 import { SessionResumeService } from "../application/session-resume-service.js";
 import { TurnDrawService } from "../application/turn-draw-service.js";
@@ -86,9 +97,14 @@ import {
 import { ConnectionRegistry } from "../infrastructure/connection-registry.js";
 import { ConnectionRegistryPresenceReader } from "../infrastructure/connection-registry-presence-reader.js";
 import { InMemoryPersistence } from "../infrastructure/in-memory-persistence.js";
+import { InProcessRoomPolicyScheduler } from "../infrastructure/in-process-room-policy-scheduler.js";
 import { InProcessTurnScheduler } from "../infrastructure/in-process-turn-scheduler.js";
 import { KeyedSerialExecutor } from "../infrastructure/keyed-serial-executor.js";
 import { OverdueTurnSweeper } from "../infrastructure/overdue-turn-sweeper.js";
+import {
+  RoomLifecycleResources,
+  type RoomClosedAdvisoryListener,
+} from "../infrastructure/room-lifecycle-resources.js";
 import { TestDictionaryProvider } from "../infrastructure/test-dictionary-provider.js";
 import type { RoomRecord } from "../model/persistence.js";
 import {
@@ -120,6 +136,10 @@ interface RawClientToServerEvents {
   "game:start": (
     command: unknown,
     acknowledge: (ack: GameStartAck) => void,
+  ) => void;
+  "room:leave": (
+    command: unknown,
+    acknowledge: (ack: RoomLeaveAck) => void,
   ) => void;
   "turn:submit": (
     command: unknown,
@@ -160,6 +180,7 @@ type ClientObserver = Readonly<{
   replacements: SessionReplacedNotification[];
   turnStarts: TurnStartedEvent[];
   gameFinishes: GameFinishedEvent[];
+  roomClosures: RoomClosedEvent[];
 }>;
 
 type HostedRoom = Readonly<{
@@ -293,8 +314,11 @@ function createDeterministicRuntime(): DeterministicRuntime {
   ]);
   const idGenerator = new FakeIdGenerator();
   const roomMutationExecutor = new KeyedSerialExecutor<RoomId>();
+  const registryPresenceReader = new ConnectionRegistryPresenceReader(
+    connectionRegistry,
+  );
   const presenceReader = new InjectableFailurePresenceReader(
-    new ConnectionRegistryPresenceReader(connectionRegistry),
+    registryPresenceReader,
   );
   let acceptsTimeoutWork = false;
   let turnTimeoutService: TurnTimeoutService | undefined;
@@ -314,6 +338,72 @@ function createDeterministicRuntime(): DeterministicRuntime {
     activeTurnReader: persistence,
     clock,
     enqueueTimeout,
+  });
+  const roomClosedListeners = new Set<RoomClosedAdvisoryListener>();
+  const roomPlayerRemovedListeners = new Set<
+    (roomId: RoomId, playerId: PlayerId) => void | Promise<void>
+  >();
+  let acceptsRoomPolicyWork = false;
+  let roomPresencePolicyService: RoomPresencePolicyService | undefined;
+  const roomPolicyScheduler = new InProcessRoomPolicyScheduler({
+    clock,
+    onDeadline: async (deadline) => {
+      if (!acceptsRoomPolicyWork || roomPresencePolicyService === undefined) {
+        return;
+      }
+      await roomPresencePolicyService.onDeadline(deadline);
+    },
+  });
+  const lifecycleResources = new RoomLifecycleResources({
+    connectionRegistry,
+    policyScheduler: roomPolicyScheduler,
+    turnTimerCleanup: turnScheduler,
+    onRoomClosed: async (closedRoomId, closedRoomCode, bindings) => {
+      for (const listener of roomClosedListeners) {
+        await listener(closedRoomId, closedRoomCode, bindings);
+      }
+    },
+    onPlayerRemoved: async (removedRoomId, removedPlayerId) => {
+      await roomPresencePolicyService?.onPlayerRemoved(
+        removedRoomId,
+        clock.now(),
+      );
+      for (const listener of roomPlayerRemovedListeners) {
+        await listener(removedRoomId, removedPlayerId);
+      }
+    },
+  });
+  const roomCleanupService = new RoomCleanupService({
+    roomRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    resources: lifecycleResources,
+  });
+  const lobbyDisconnectGraceService = new LobbyDisconnectGraceService({
+    roomRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomCleanupUnitOfWork: persistence,
+    roomMutationExecutor,
+    presenceReader: registryPresenceReader,
+    clock,
+    resources: lifecycleResources,
+  });
+  const roomRetentionService = new RoomRetentionService({
+    cleanupService: roomCleanupService,
+    roomRepository: persistence,
+    presenceReader: registryPresenceReader,
+    clock,
+  });
+  roomPresencePolicyService = new RoomPresencePolicyService({
+    roomRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    scheduler: roomPolicyScheduler,
+    roomPresenceReader: registryPresenceReader,
+    playerPresenceLeaseReader: registryPresenceReader,
+    clock,
+    lobbyGraceService: lobbyDisconnectGraceService,
+    retentionService: roomRetentionService,
   });
   const roomSessionService = new RoomSessionApplicationService({
     roomRepository: persistence,
@@ -378,11 +468,24 @@ function createDeterministicRuntime(): DeterministicRuntime {
     clock,
     idGenerator,
     randomSource: new ZeroRandomSource(),
+    presenceLeaseReader: registryPresenceReader,
     turnScheduler,
   });
   const snapshotProjector = new LobbyStateSnapshotProjector({
     clock,
     presenceReader,
+  });
+  const roomLeaveService = new RoomLeaveService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomCleanupUnitOfWork: persistence,
+    roomMutationExecutor,
+    presenceReader: registryPresenceReader,
+    clock,
+    idGenerator,
+    resources: lifecycleResources,
+    turnScheduler,
   });
 
   return {
@@ -391,6 +494,9 @@ function createDeterministicRuntime(): DeterministicRuntime {
       connectionRegistry,
       gameStartService,
       persistence,
+      roomLeaveService,
+      roomPolicyScheduler,
+      roomPresencePolicyService,
       roomSessionService,
       sessionResumeService,
       snapshotProjector,
@@ -400,13 +506,32 @@ function createDeterministicRuntime(): DeterministicRuntime {
       turnSubmitService,
       turnTimeoutService,
       overdueTurnSweeper,
+      subscribeRoomClosed(listener) {
+        roomClosedListeners.add(listener);
+        return () => {
+          roomClosedListeners.delete(listener);
+        };
+      },
+      subscribeRoomPlayerRemoved(listener) {
+        roomPlayerRemovedListeners.add(listener);
+        return () => {
+          roomPlayerRemovedListeners.delete(listener);
+        };
+      },
+      runRoomMutation(roomId, task) {
+        return roomMutationExecutor.run(roomId, task);
+      },
       start() {
         acceptsTimeoutWork = true;
+        acceptsRoomPolicyWork = true;
+        roomPolicyScheduler.start();
         turnScheduler.start();
         overdueTurnSweeper.start();
       },
       stop() {
         acceptsTimeoutWork = false;
+        acceptsRoomPolicyWork = false;
+        roomPolicyScheduler.stop();
         overdueTurnSweeper.stop();
         turnScheduler.stop();
       },
@@ -571,6 +696,7 @@ function observeClient(
   const replacements: SessionReplacedNotification[] = [];
   const turnStarts: TurnStartedEvent[] = [];
   const gameFinishes: GameFinishedEvent[] = [];
+  const roomClosures: RoomClosedEvent[] = [];
 
   socket.on("state:snapshot", (event) => {
     snapshots.push(event);
@@ -588,8 +714,18 @@ function observeClient(
     gameFinishes.push(event);
     networkPayloads.push(event);
   });
+  socket.on("room:closed", (event) => {
+    roomClosures.push(event);
+    networkPayloads.push(event);
+  });
 
-  return { snapshots, replacements, turnStarts, gameFinishes };
+  return {
+    snapshots,
+    replacements,
+    turnStarts,
+    gameFinishes,
+    roomClosures,
+  };
 }
 
 function emitWithAck<TAck>(
@@ -646,6 +782,15 @@ function emitResume(
 ): Promise<SessionResumeAck> {
   return emitWithAck("session:resume", (acknowledge) => {
     socket.emit("session:resume", command, acknowledge);
+  });
+}
+
+function emitRoomLeave(
+  socket: TypedClient,
+  command: RoomLeaveCommand,
+): Promise<RoomLeaveAck> {
+  return emitWithAck("room:leave", (acknowledge) => {
+    socket.emit("room:leave", command, acknowledge);
   });
 }
 
@@ -778,6 +923,14 @@ function waitForGameFinished(
 ): Promise<GameFinishedEvent> {
   return waitForValue("matching game:finished event", () =>
     takeMatching(observer.gameFinishes, predicate),
+  );
+}
+
+function waitForRoomClosed(
+  observer: ClientObserver,
+): Promise<RoomClosedEvent> {
+  return waitForValue("room:closed event", () =>
+    takeMatching(observer.roomClosures, () => true),
   );
 }
 
@@ -3593,5 +3746,707 @@ test(
         await stopServer(restarted);
       }
     });
+  },
+);
+
+test(
+  "Phase 15 Socket.IO Room lifecycle",
+  { concurrency: false },
+  async (context) => {
+    await context.test(
+      "Lobby Host leave는 successor snapshot을 fan-out하고 동일 요청만 terminal replay하며 socket channel을 떠난다",
+      async () => {
+        const deterministic = createDeterministicRuntime();
+        const harness = await startServer(deterministic.runtime);
+        try {
+          const host = await createHostedRoom(harness, "LeaveHost");
+          const guest = await joinHostedRoom(harness, host, "LeaveGuest");
+          const third = await joinHostedRoom(harness, host, "LeaveThird");
+          host.observer.turnStarts.splice(0);
+
+          const command: RoomLeaveCommand = {
+            kind: "room:leave",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: requestId("host-leave-terminal"),
+            expectedRoomRevision: third.snapshot.versions.roomRevision,
+            expectedGameRevision: null,
+            payload: {},
+          };
+          const acknowledgement = await emitRoomLeave(host.socket, command);
+          assert.equal(validateRoomLeaveAck(acknowledgement).ok, true);
+          assert.equal(acknowledgement.ok, true);
+          if (!acknowledgement.ok) {
+            throw new Error("Expected Host leave success.");
+          }
+          assert.equal(acknowledgement.data.roomClosed, false);
+
+          const successor = await waitForSnapshot(
+            guest.observer,
+            (event) =>
+              event.payload.snapshot.room.players.length === 2 &&
+              event.payload.snapshot.room.players.some(
+                (player) =>
+                  player.playerId === guest.snapshot.self.playerId &&
+                  player.isHost,
+              ),
+          );
+          assert.equal(
+            successor.payload.snapshot.room.players.some(
+              (player) => player.playerId === host.snapshot.self.playerId,
+            ),
+            false,
+          );
+
+          const replay = await emitRoomLeave(host.socket, command);
+          assert.deepEqual(replay, acknowledgement);
+          const conflict = await emitRoomLeave(host.socket, {
+            ...command,
+            expectedRoomRevision: parse(
+              RoomRevisionSchema,
+              command.expectedRoomRevision + 1,
+            ),
+          });
+          assert.equal(conflict.ok, false);
+          if (conflict.ok) {
+            throw new Error("Expected leave request ID conflict.");
+          }
+          assert.equal(conflict.error.code, "REQUEST_ID_REUSED");
+
+          const gameStart = await emitGameStart(guest.socket, {
+            kind: "game:start",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: requestId("successor-start"),
+            expectedRoomRevision:
+              successor.payload.snapshot.versions.roomRevision,
+            payload: {},
+          });
+          const playing = requireAnyPlayingSnapshot(
+            requireSnapshotSuccess(gameStart),
+          );
+          await waitForTurnStarted(
+            third.observer,
+            (event) => event.payload.gameId === playing.game.gameId,
+          );
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, 25);
+          });
+          assert.equal(host.observer.turnStarts.length, 0);
+
+          const resumeSocket = await connectTypedClient(harness);
+          const resume = await emitResume(resumeSocket, {
+            kind: "session:resume",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: requestId("left-host-resume"),
+            payload: {
+              credential: {
+                roomCode: host.snapshot.room.roomCode,
+                sessionToken: host.sessionToken,
+              },
+              lastSeenVersions: null,
+            },
+          });
+          requireFailureCode(resume, "SESSION_NOT_FOUND");
+        } finally {
+          await stopServer(harness);
+        }
+      },
+    );
+
+    await context.test(
+      "마지막 Lobby Player leave는 secret-free room:closed를 보내고 Room/session을 cleanup한다",
+      async () => {
+        const deterministic = createDeterministicRuntime();
+        const harness = await startServer(deterministic.runtime);
+        try {
+          const host = await createHostedRoom(harness, "SoloLeave");
+          const command: RoomLeaveCommand = {
+            kind: "room:leave",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: requestId("solo-leave"),
+            expectedRoomRevision: host.snapshot.versions.roomRevision,
+            expectedGameRevision: null,
+            payload: {},
+          };
+          const [acknowledgement, concurrentReplay] = await Promise.all([
+            emitRoomLeave(host.socket, command),
+            emitRoomLeave(host.socket, command),
+          ]);
+          assert.equal(validateRoomLeaveAck(acknowledgement).ok, true);
+          assert.equal(acknowledgement.ok, true);
+          if (!acknowledgement.ok) {
+            throw new Error("Expected last Player leave success.");
+          }
+          assert.equal(acknowledgement.data.roomClosed, true);
+          assert.deepEqual(concurrentReplay, acknowledgement);
+
+          const closed = await waitForRoomClosed(host.observer);
+          assert.equal(validateRoomClosedEvent(closed).ok, true);
+          assert.deepEqual(closed.payload, {
+            roomId: host.snapshot.room.roomId,
+            roomCode: host.snapshot.room.roomCode,
+          });
+          assert.equal(
+            await deterministic.runtime.persistence.findById(
+              host.snapshot.room.roomId,
+            ),
+            null,
+          );
+          assert.equal(
+            await deterministic.runtime.persistence.findByCode(
+              host.snapshot.room.roomCode,
+            ),
+            null,
+          );
+
+          const replay = await emitRoomLeave(host.socket, command);
+          assert.deepEqual(replay, acknowledgement);
+          assertNoNetworkSecrets(harness.networkPayloads, [host.sessionToken]);
+        } finally {
+          await stopServer(harness);
+        }
+      },
+    );
+
+    await context.test(
+      "room:leave terminal replay cache는 같은 socket의 새 Room scope로 새지 않는다",
+      async () => {
+        const deterministic = createDeterministicRuntime();
+        const harness = await startServer(deterministic.runtime);
+        try {
+          const first = await createHostedRoom(harness, "ScopeRoomA");
+          const sharedRequestId = requestId("scoped-terminal-leave");
+          const firstAck = await emitRoomLeave(first.socket, {
+            kind: "room:leave",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: sharedRequestId,
+            expectedRoomRevision: first.snapshot.versions.roomRevision,
+            expectedGameRevision: null,
+            payload: {},
+          });
+          assert.equal(firstAck.ok, true);
+          if (!firstAck.ok) {
+            throw new Error("Expected first scoped leave success.");
+          }
+
+          const secondBootstrap = await bootstrap(
+            first.socket,
+            "scope-room-b-bootstrap",
+          );
+          const secondCreate = await emitCreate(first.socket, {
+            kind: "room:create",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: requestId("scope-room-b-create"),
+            payload: {
+              bootstrapCredential: { sessionToken: secondBootstrap },
+              nickname: nickname("ScopeRoomB"),
+            },
+          });
+          const second = requireSnapshotSuccess(secondCreate);
+          assert.notEqual(second.room.roomId, first.snapshot.room.roomId);
+          assert.equal(
+            second.versions.roomRevision,
+            first.snapshot.versions.roomRevision,
+          );
+
+          const secondAck = await emitRoomLeave(first.socket, {
+            kind: "room:leave",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: sharedRequestId,
+            expectedRoomRevision: second.versions.roomRevision,
+            expectedGameRevision: null,
+            payload: {},
+          });
+          assert.equal(secondAck.ok, true);
+          if (!secondAck.ok) {
+            throw new Error("Expected second scoped leave success.");
+          }
+          assert.equal(secondAck.data.roomId, second.room.roomId);
+          assert.equal(secondAck.data.roomCode, second.room.roomCode);
+          assert.equal(
+            await deterministic.runtime.persistence.findById(
+              second.room.roomId,
+            ),
+            null,
+          );
+        } finally {
+          await stopServer(harness);
+        }
+      },
+    );
+
+    await context.test(
+      "current Player leave는 forfeit snapshot과 다음 Turn을 전달하고 떠난 socket에는 broadcast하지 않는다",
+      async () => {
+        const deterministic = createDeterministicRuntime();
+        const harness = await startServer(deterministic.runtime);
+        try {
+          const started = await startTwoPlayerRoom(
+            harness,
+            "PlayLeaveA",
+            "PlayLeaveB",
+          );
+          const actor =
+            started.snapshot.game.turn.activePlayerId ===
+            started.host.snapshot.self.playerId
+              ? started.host
+              : started.guest;
+          const other = actor === started.host ? started.guest : started.host;
+          actor.observer.turnStarts.splice(0);
+
+          const acknowledgement = await emitRoomLeave(actor.socket, {
+            kind: "room:leave",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: requestId("current-playing-leave"),
+            expectedRoomRevision: started.snapshot.versions.roomRevision,
+            expectedGameRevision: started.snapshot.versions.gameRevision,
+            payload: {},
+          });
+          assert.equal(validateRoomLeaveAck(acknowledgement).ok, true);
+          assert.equal(acknowledgement.ok, true);
+
+          const afterLeave = await waitForSnapshot(
+            other.observer,
+            (event) =>
+              event.payload.snapshot.room.phase === "PLAYING" &&
+              event.payload.snapshot.versions.gameRevision === 1,
+          );
+          const playing = requireAnyPlayingSnapshot(
+            afterLeave.payload.snapshot,
+          );
+          assert.equal(
+            playing.room.players.find(
+              (player) => player.playerId === actor.snapshot.self.playerId,
+            )?.forfeited,
+            true,
+          );
+          assert.notEqual(
+            playing.game.turn.activePlayerId,
+            actor.snapshot.self.playerId,
+          );
+          await waitForTurnStarted(
+            other.observer,
+            (event) => event.payload.turnId === playing.game.turn.turnId,
+          );
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, 25);
+          });
+          assert.equal(actor.observer.turnStarts.length, 0);
+        } finally {
+          await stopServer(harness);
+        }
+      },
+    );
+
+    await context.test(
+      "FINISHED commit은 actor delivery가 끊겨도 retention을 먼저 등록한다",
+      async () => {
+        const deterministic = createDeterministicRuntime();
+        const harness = await startServer(deterministic.runtime);
+        let releaseProjection = (): void => {};
+        try {
+          const started = await startTwoPlayerRoom(
+            harness,
+            "FinishDropA",
+            "FinishDropB",
+          );
+          const actor =
+            started.snapshot.game.turn.activePlayerId ===
+            started.host.snapshot.self.playerId
+              ? started.host
+              : started.guest;
+          const fixture = await seedDalgyalSubmitFixture(
+            deterministic.runtime.persistence,
+            started.snapshot.room.roomId,
+            actor.snapshot.self.playerId,
+            false,
+          );
+          const projectionRead = deterministic.presenceReader.blockNextRead();
+          releaseProjection = projectionRead.release;
+          actor.socket.emit(
+            "turn:submit",
+            {
+              kind: "turn:submit",
+              protocolVersion: PROTOCOL_VERSION,
+              requestId: requestId("finish-before-delivery-drop"),
+              expectedGameRevision: fixture.room.game.gameRevision,
+              turnId: fixture.room.game.turn.turnId,
+              payload: { proposedBoard: fixture.proposedBoard },
+            },
+            () => {},
+          );
+          await projectionRead.entered;
+
+          const committed = await deterministic.runtime.persistence.findById(
+            started.snapshot.room.roomId,
+          );
+          assert.equal(committed?.phase, "FINISHED");
+          assert.equal(
+            deterministic.runtime.roomPolicyScheduler.scheduledCount,
+            1,
+          );
+
+          actor.socket.disconnect();
+          releaseProjection();
+          await waitForValue("FINISHED retention remains scheduled", () =>
+            deterministic.runtime.roomPolicyScheduler.scheduledCount === 1
+              ? true
+              : null,
+          );
+        } finally {
+          releaseProjection();
+          await stopServer(harness);
+        }
+      },
+    );
+
+    await context.test(
+      "offline Player의 두 번째 own timeout은 forfeit를 fan-out하고 이후 turn에서 건너뛴다",
+      async () => {
+        const deterministic = createDeterministicRuntime();
+        const harness = await startServer(deterministic.runtime);
+        try {
+          const started = await startTwoPlayerRoom(
+            harness,
+            "OfflineTurnA",
+            "OfflineTurnB",
+          );
+          const offlineActor =
+            started.snapshot.game.turn.activePlayerId ===
+            started.host.snapshot.self.playerId
+              ? started.host
+              : started.guest;
+          const connectedActor =
+            offlineActor === started.host ? started.guest : started.host;
+          offlineActor.socket.disconnect();
+          await waitForSnapshot(
+            connectedActor.observer,
+            (event) =>
+              event.versions.gameRevision === 0 &&
+              playerStatus(
+                event.payload.snapshot,
+                offlineActor.snapshot.self.playerId,
+              ) === "OFFLINE",
+          );
+
+          const applyCurrentTimeout = async (): Promise<Readonly<{
+            result: Extract<
+              Awaited<
+                ReturnType<
+                  ApplicationRuntime["turnTimeoutService"]["timeout"]
+                >
+              >,
+              { status: "APPLIED" }
+            >;
+            snapshot: PlayingStateSnapshot;
+          }>> => {
+            const overdue = await seedOverdueCurrentTurn(
+              deterministic.runtime.persistence,
+              started.snapshot.room.roomId,
+            );
+            const result =
+              await deterministic.runtime.turnTimeoutService.timeout({
+                roomId: overdue.roomId,
+                gameId: overdue.game.gameId,
+                turnId: overdue.game.turn.turnId,
+                expectedGameRevision: overdue.game.gameRevision,
+                deadlineAt: overdue.game.turn.deadlineAt,
+              });
+            assert.equal(result.status, "APPLIED");
+            if (result.status !== "APPLIED") {
+              throw new Error("Expected current Turn timeout to apply.");
+            }
+            const event = await waitForSnapshot(
+              connectedActor.observer,
+              (candidate) =>
+                candidate.versions.gameRevision === result.data.gameRevision,
+            );
+            return {
+              result,
+              snapshot: requireAnyPlayingSnapshot(event.payload.snapshot),
+            };
+          };
+
+          const firstOfflineTimeout = await applyCurrentTimeout();
+          assert.equal(
+            firstOfflineTimeout.result.data.timedOutPlayerId,
+            offlineActor.snapshot.self.playerId,
+          );
+          assert.equal(
+            firstOfflineTimeout.result.data.offlineTimeoutStreak,
+            1,
+          );
+          assert.equal(
+            firstOfflineTimeout.result.data.timedOutPlayerForfeited,
+            false,
+          );
+
+          const connectedTimeout = await applyCurrentTimeout();
+          assert.equal(
+            connectedTimeout.result.data.timedOutPlayerId,
+            connectedActor.snapshot.self.playerId,
+          );
+          assert.equal(connectedTimeout.result.data.offlineTimeoutStreak, 0);
+
+          const secondOfflineTimeout = await applyCurrentTimeout();
+          assert.equal(
+            secondOfflineTimeout.result.data.timedOutPlayerId,
+            offlineActor.snapshot.self.playerId,
+          );
+          assert.equal(
+            secondOfflineTimeout.result.data.offlineTimeoutStreak,
+            2,
+          );
+          assert.equal(
+            secondOfflineTimeout.result.data.timedOutPlayerForfeited,
+            true,
+          );
+          assert.equal(
+            secondOfflineTimeout.snapshot.room.players.find(
+              (player) =>
+                player.playerId === offlineActor.snapshot.self.playerId,
+            )?.forfeited,
+            true,
+          );
+          assert.equal(
+            secondOfflineTimeout.snapshot.game.turn.activePlayerId,
+            connectedActor.snapshot.self.playerId,
+          );
+
+          const connectedViewStrings = new Set(
+            collectStringValues(secondOfflineTimeout.snapshot),
+          );
+          for (const penaltyTileId of [
+            ...firstOfflineTimeout.result.data.penaltyTileIds,
+            ...secondOfflineTimeout.result.data.penaltyTileIds,
+          ]) {
+            assert.equal(connectedViewStrings.has(penaltyTileId), false);
+          }
+
+          const afterSkip = await applyCurrentTimeout();
+          assert.equal(
+            afterSkip.result.data.timedOutPlayerId,
+            connectedActor.snapshot.self.playerId,
+          );
+          assert.equal(
+            afterSkip.snapshot.game.turn.activePlayerId,
+            connectedActor.snapshot.self.playerId,
+          );
+        } finally {
+          await stopServer(harness);
+        }
+      },
+    );
+
+    await context.test(
+      "current disconnect는 grace를 등록하고 같은 session resume은 old grace를 취소한다",
+      async () => {
+        const deterministic = createDeterministicRuntime();
+        const harness = await startServer(deterministic.runtime);
+        try {
+          const host = await createHostedRoom(harness, "GraceHost");
+          const guest = await joinHostedRoom(harness, host, "GraceGuest");
+          guest.socket.disconnect();
+          await waitForValue("Lobby disconnect grace registration", () =>
+            deterministic.runtime.roomPolicyScheduler.scheduledCount === 1
+              ? true
+              : null,
+          );
+          const offline = await waitForSnapshot(
+            host.observer,
+            (event) =>
+              event.payload.snapshot.room.players.some(
+                (player) =>
+                  player.playerId === guest.snapshot.self.playerId &&
+                  player.connectionStatus === "OFFLINE",
+              ),
+          );
+          assert.equal(offline.payload.snapshot.versions.gameRevision, null);
+
+          const resumedSocket = await connectTypedClient(harness);
+          const resumed = await emitResume(resumedSocket, {
+            kind: "session:resume",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: requestId("grace-resume"),
+            payload: {
+              credential: {
+                roomCode: guest.snapshot.room.roomCode,
+                sessionToken: guest.sessionToken,
+              },
+              lastSeenVersions: guest.snapshot.versions,
+            },
+          });
+          assert.equal(validateSessionResumeAck(resumed).ok, true);
+          assert.equal(resumed.ok, true);
+          await waitForValue("Lobby grace cancellation", () =>
+            deterministic.runtime.roomPolicyScheduler.scheduledCount === 0
+              ? true
+              : null,
+          );
+        } finally {
+          await stopServer(harness);
+        }
+      },
+    );
+
+    await context.test(
+      "Lobby grace expiry와 resume 경합은 새 primary generation을 보존한다",
+      async () => {
+        const deterministic = createDeterministicRuntime();
+        const harness = await startServer(deterministic.runtime);
+        try {
+          const host = await createHostedRoom(harness, "GraceRace");
+          const playerId = host.snapshot.self.playerId;
+          const currentRoomId = host.snapshot.room.roomId;
+          host.socket.disconnect();
+          await waitForValue("offline grace generation", () => {
+            const generation =
+              deterministic.runtime.connectionRegistry.getConnectionGeneration(
+                currentRoomId,
+                playerId,
+              );
+            return generation === null ? null : generation;
+          });
+          const generation =
+            deterministic.runtime.connectionRegistry.getConnectionGeneration(
+              currentRoomId,
+              playerId,
+            );
+          assert.notEqual(generation, null);
+          if (generation === null) {
+            throw new Error("Expected disconnected Player generation.");
+          }
+
+          let enterLane = (): void => {};
+          let releaseLane = (): void => {};
+          const laneEntered = new Promise<void>((resolve) => {
+            enterLane = resolve;
+          });
+          const laneRelease = new Promise<void>((resolve) => {
+            releaseLane = resolve;
+          });
+          const heldLane = deterministic.runtime.runRoomMutation(
+            currentRoomId,
+            async () => {
+              enterLane();
+              await laneRelease;
+            },
+          );
+          await laneEntered;
+
+          const now = deterministic.runtime.clock.now();
+          const graceExpiry =
+            deterministic.runtime.roomPresencePolicyService.onDeadline({
+              kind: "LOBBY_DISCONNECT_GRACE",
+              roomId: currentRoomId,
+              playerId,
+              connectionGeneration: generation,
+              disconnectedAt: parse(ServerTimeSchema, now - 60_001),
+              deadlineAt: parse(ServerTimeSchema, now - 1),
+            });
+
+          const resumedSocket = await connectTypedClient(harness);
+          const resumed = await emitResume(resumedSocket, {
+            kind: "session:resume",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: requestId("grace-expiry-resume-race"),
+            payload: {
+              credential: {
+                roomCode: host.snapshot.room.roomCode,
+                sessionToken: host.sessionToken,
+              },
+              lastSeenVersions: host.snapshot.versions,
+            },
+          });
+          assert.equal(resumed.ok, true);
+
+          releaseLane();
+          await heldLane;
+          await graceExpiry;
+          const room = await deterministic.runtime.persistence.findById(
+            currentRoomId,
+          );
+          assert.ok(room);
+          assert.equal(
+            room.players.some((player) => player.playerId === playerId),
+            true,
+          );
+          assert.equal(
+            deterministic.runtime.connectionRegistry.getConnectionStatus(
+              currentRoomId,
+              playerId,
+            ),
+            "CONNECTED",
+          );
+        } finally {
+          await stopServer(harness);
+        }
+      },
+    );
+
+    await context.test(
+      "hostless Lobby resume은 Host election이 반영된 snapshot을 반환한다",
+      async () => {
+        const deterministic = createDeterministicRuntime();
+        const harness = await startServer(deterministic.runtime);
+        try {
+          const host = await createHostedRoom(harness, "HostlessA");
+          const guest = await joinHostedRoom(harness, host, "HostlessB");
+          host.socket.disconnect();
+          guest.socket.disconnect();
+          await waitForValue("both Lobby grace registrations", () =>
+            deterministic.runtime.roomPolicyScheduler.scheduledCount === 2
+              ? true
+              : null,
+          );
+          const hostGeneration =
+            deterministic.runtime.connectionRegistry.getConnectionGeneration(
+              host.snapshot.room.roomId,
+              host.snapshot.self.playerId,
+            );
+          assert.notEqual(hostGeneration, null);
+          if (hostGeneration === null) {
+            throw new Error("Expected disconnected Host generation.");
+          }
+          const now = deterministic.runtime.clock.now();
+          await deterministic.runtime.roomPresencePolicyService.onDeadline({
+            kind: "LOBBY_DISCONNECT_GRACE",
+            roomId: host.snapshot.room.roomId,
+            playerId: host.snapshot.self.playerId,
+            connectionGeneration: hostGeneration,
+            disconnectedAt: parse(ServerTimeSchema, now - 60_001),
+            deadlineAt: parse(ServerTimeSchema, now - 1),
+          });
+          const hostless = await deterministic.runtime.persistence.findById(
+            host.snapshot.room.roomId,
+          );
+          assert.ok(hostless);
+          assert.equal(hostless.hostPlayerId, null);
+
+          const resumedSocket = await connectTypedClient(harness);
+          const resumed = await emitResume(resumedSocket, {
+            kind: "session:resume",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: requestId("hostless-lobby-resume"),
+            payload: {
+              credential: {
+                roomCode: guest.snapshot.room.roomCode,
+                sessionToken: guest.sessionToken,
+              },
+              lastSeenVersions: guest.snapshot.versions,
+            },
+          });
+          const resumedSnapshot = requireSnapshotSuccess(resumed);
+          assert.equal(resumedSnapshot.room.phase, "LOBBY");
+          assert.equal(
+            resumedSnapshot.room.players.find(
+              (player) => player.playerId === guest.snapshot.self.playerId,
+            )?.isHost,
+            true,
+          );
+        } finally {
+          await stopServer(harness);
+        }
+      },
+    );
   },
 );

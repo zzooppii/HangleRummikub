@@ -11,8 +11,10 @@ export type LobbyScreenProps = Readonly<{
   copyMessage: string | null;
   sessionReplaced: boolean;
   gameStartControl: GameStartControl;
+  roomLeavePending: boolean;
   onCopyInvitation: () => void;
   onStartGame: () => void;
+  onLeaveRoom: () => void;
   onGoHome: () => void;
 }>;
 
@@ -134,6 +136,17 @@ export function LobbyScreen(props: LobbyScreenProps) {
             <p id="game-start-guidance" className="game-start-guidance">
               {props.gameStartControl.guidance}
             </p>
+            {!props.sessionReplaced ? (
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={props.roomLeavePending}
+                aria-busy={props.roomLeavePending}
+                onClick={props.onLeaveRoom}
+              >
+                {props.roomLeavePending ? "나가는 중..." : "방 나가기"}
+              </button>
+            ) : null}
           </div>
         </section>
       </div>

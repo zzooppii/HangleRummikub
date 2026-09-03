@@ -19,6 +19,7 @@ import type { PlayingGameState } from "../domain/game/game-state.js";
 import type { TileSourceBag } from "../domain/game/tile-inventory.js";
 import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
 import type { IdempotencyRepository } from "../ports/idempotency-repository.js";
+import type { PlayerPresenceLeaseReader } from "../ports/player-presence-lease.js";
 import type { RoomRepository } from "../ports/room-repository.js";
 import type {
   RoomUnitOfWork,
@@ -47,6 +48,13 @@ export const TurnTimeoutAppliedDataSchema = v.strictObject({
   timedOutPlayerId: PlayerIdSchema,
   timedOutTurnId: TurnIdSchema,
   penaltyTileIds: v.array(TileIdSchema),
+  offlineTimeoutStreak: v.pipe(
+    v.number(),
+    v.integer(),
+    v.minValue(0),
+    v.maxValue(2),
+  ),
+  timedOutPlayerForfeited: v.boolean(),
   nextTurnId: TurnIdSchema,
   nextTurnNumber: TurnNumberSchema,
 });
@@ -67,6 +75,7 @@ export type TurnTimeoutNoOpReason =
   | "STALE_TURN"
   | "STALE_GAME_REVISION"
   | "STALE_DEADLINE"
+  | "PRESENCE_CHANGED"
   | "NOT_DUE";
 
 export type TurnTimeoutResult =
@@ -86,6 +95,7 @@ export type TurnTimeoutServiceDependencies = Readonly<{
   clock: Clock;
   idGenerator: IdGenerator;
   randomSource: RandomSource;
+  presenceLeaseReader: PlayerPresenceLeaseReader;
   turnScheduler?: TurnScheduler;
   onTurnSchedulingFailure?: TurnSchedulingFailureReporter;
 }>;
@@ -182,6 +192,7 @@ function createCandidate(
   committedAt: ServerTime,
   idGenerator: IdGenerator,
   randomSource: RandomSource,
+  connectionStatus: "CONNECTED" | "OFFLINE",
 ): Readonly<{
   roomCandidate: RoomWriteCandidate;
   terminalResult: TurnTimeoutAppliedData;
@@ -190,6 +201,36 @@ function createCandidate(
   const actorRack = game.racks.get(actorPlayerId);
   if (actorRack === undefined) {
     throw new Error("Canonical Game is missing the timed-out Player rack.");
+  }
+
+  const previousOfflineTimeoutStreak =
+    game.offlineTimeoutStreakByPlayerId.get(actorPlayerId);
+  if (previousOfflineTimeoutStreak === undefined) {
+    throw new Error(
+      "Canonical Game is missing the timed-out Player connection policy state.",
+    );
+  }
+  const offlineTimeoutStreak =
+    connectionStatus === "OFFLINE"
+      ? Math.min(previousOfflineTimeoutStreak + 1, 2)
+      : 0;
+  const offlineTimeoutStreakByPlayerId = new Map(
+    game.offlineTimeoutStreakByPlayerId,
+  );
+  offlineTimeoutStreakByPlayerId.set(
+    actorPlayerId,
+    offlineTimeoutStreak,
+  );
+  const forfeitedPlayerIds = new Set(game.forfeitedPlayerIds);
+  if (connectionStatus === "OFFLINE" && offlineTimeoutStreak === 2) {
+    forfeitedPlayerIds.add(actorPlayerId);
+  }
+  if (
+    game.turnOrder.every((playerId) => forfeitedPlayerIds.has(playerId))
+  ) {
+    throw new Error(
+      "Phase 16 must resolve a timeout that would forfeit every Player.",
+    );
   }
 
   const penalty = drawPenaltyTiles(game, randomSource);
@@ -204,7 +245,12 @@ function createCandidate(
     ]),
   );
   const gameRevision = incrementGameRevision(game.gameRevision);
-  const turn = createNextTurn(game, committedAt, idGenerator);
+  const turn = createNextTurn(
+    game,
+    committedAt,
+    idGenerator,
+    forfeitedPlayerIds,
+  );
   const nextGame: PlayingGameState = Object.freeze({
     gameId: game.gameId,
     gameRevision,
@@ -215,6 +261,10 @@ function createCandidate(
     racks,
     board: game.board,
     initialMeldCompleted: game.initialMeldCompleted,
+    offlineTimeoutStreakByPlayerId: Object.freeze(
+      offlineTimeoutStreakByPlayerId,
+    ),
+    forfeitedPlayerIds: Object.freeze(forfeitedPlayerIds),
     turnOrder: game.turnOrder,
     turn,
     result: null,
@@ -229,6 +279,8 @@ function createCandidate(
     timedOutPlayerId: actorPlayerId,
     timedOutTurnId: game.turn.turnId,
     penaltyTileIds: penalty.penaltyTileIds,
+    offlineTimeoutStreak,
+    timedOutPlayerForfeited: forfeitedPlayerIds.has(actorPlayerId),
     nextTurnId: turn.turnId,
     nextTurnNumber: turn.turnNumber,
   });
@@ -257,6 +309,7 @@ export class TurnTimeoutService {
   readonly #clock: Clock;
   readonly #idGenerator: IdGenerator;
   readonly #randomSource: RandomSource;
+  readonly #presenceLeaseReader: PlayerPresenceLeaseReader;
   readonly #turnScheduler: TurnScheduler | undefined;
   readonly #onTurnSchedulingFailure: TurnSchedulingFailureReporter | undefined;
   readonly #appliedListeners = new Set<TurnTimeoutAppliedListener>();
@@ -269,6 +322,7 @@ export class TurnTimeoutService {
     this.#clock = dependencies.clock;
     this.#idGenerator = dependencies.idGenerator;
     this.#randomSource = dependencies.randomSource;
+    this.#presenceLeaseReader = dependencies.presenceLeaseReader;
     this.#turnScheduler = dependencies.turnScheduler;
     this.#onTurnSchedulingFailure = dependencies.onTurnSchedulingFailure;
   }
@@ -405,29 +459,45 @@ export class TurnTimeoutService {
       };
     }
 
+    const presenceLease =
+      await this.#presenceLeaseReader.acquirePlayerPresenceLease(
+        room.roomId,
+        game.turn.activePlayerId,
+      );
+    if (!presenceLease.isCurrent()) {
+      return {
+        result: { status: "NO_OP", reason: "PRESENCE_CHANGED" },
+        committed: false,
+      };
+    }
+
     const candidate = createCandidate(
       room,
       game,
       committedAt,
       this.#idGenerator,
       this.#randomSource,
+      presenceLease.connectionStatus,
     );
-    const commitResult = await this.#roomUnitOfWork.commit({
-      roomMutation: {
-        kind: "REPLACE",
-        candidate: candidate.roomCandidate,
-        expectedRoomRevision: room.roomRevision,
-        expectedStorageRevision: room.storageRevision,
+    const commitResult = await this.#roomUnitOfWork.commit(
+      {
+        roomMutation: {
+          kind: "REPLACE",
+          candidate: candidate.roomCandidate,
+          expectedRoomRevision: room.roomRevision,
+          expectedStorageRevision: room.storageRevision,
+        },
+        sessionMutation: { kind: "NONE" },
+        idempotency: {
+          scopeKey,
+          requestId,
+          payloadFingerprint: fingerprint,
+          terminalResult: candidate.terminalResult,
+          createdAt: committedAt,
+        },
       },
-      sessionMutation: { kind: "NONE" },
-      idempotency: {
-        scopeKey,
-        requestId,
-        payloadFingerprint: fingerprint,
-        terminalResult: candidate.terminalResult,
-        createdAt: committedAt,
-      },
-    });
+      { isSatisfied: () => presenceLease.isCurrent() },
+    );
     return this.#mapCommitResult(commitResult);
   }
 
@@ -449,6 +519,12 @@ export class TurnTimeoutService {
           committed: false,
         };
       case "PRECONDITION_FAILED":
+        if (result.reason === "COMMIT_PRECONDITION_FAILED") {
+          return {
+            result: { status: "NO_OP", reason: "PRESENCE_CHANGED" },
+            committed: false,
+          };
+        }
         if (
           result.reason === "ROOM_NOT_FOUND" ||
           result.reason === "STALE_ROOM_REVISION" ||

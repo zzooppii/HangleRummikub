@@ -157,6 +157,7 @@ function snapshot(options: SnapshotOptions = {}): PlayingStateSnapshot {
           connectionStatus: "CONNECTED",
           rackCount: rack.length,
           initialMeldCompleted: options.initialMeldCompleted ?? false,
+          forfeited: false,
         },
         {
           playerId: "player_other",
@@ -165,6 +166,7 @@ function snapshot(options: SnapshotOptions = {}): PlayingStateSnapshot {
           connectionStatus: "CONNECTED",
           rackCount: 14,
           initialMeldCompleted: true,
+          forfeited: false,
         },
       ],
     },
