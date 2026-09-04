@@ -20,7 +20,7 @@
 
 ### 2.1 계획된 monorepo
 
-아래는 단계적으로 구현한 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. Phase 9에서는 versioned deterministic test dictionary adapter를 infrastructure 경계에 추가했고 Phase 10에서는 server-only Board·Tile validation model과 async pure RuleEngine을 domain 경계에 추가했다. Phase 11은 canonical inventory/GameState, `GameStartService`, player별 PLAYING projection과 `game:start` transport를 연결했다. Phase 12는 `apps/web`에 browser-only TurnDraft editor를, Phase 13은 원자적 `turn:submit`과 rack-empty terminal state를 연결했다. Phase 14는 `TurnDrawService`, `TurnPassService`, internal `TurnTimeoutService`, in-process scheduler/overdue sweeper와 client countdown을 연결했다. Phase 15는 phase-aware disconnect/resume, explicit leave, Host 승계, offline-timeout forfeit와 Room policy scheduler/cleanup lifecycle을 연결했다. Phase 16은 generalized Result Engine, stalemate tracker와 server-authoritative Game deadline scheduler/service를 이 경계에 통합했다. Phase 17은 multi-client E2E, transport resource limit, snapshot advisory ordering, responsive/accessibility UI와 FINISHED retention recovery를 검증·보강했다. 배포 구조는 Phase 18 범위다.
+아래는 단계적으로 구현한 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. Phase 9에서는 versioned deterministic test dictionary adapter를 infrastructure 경계에 추가했고 Phase 10에서는 server-only Board·Tile validation model과 async pure RuleEngine을 domain 경계에 추가했다. Phase 11은 canonical inventory/GameState, `GameStartService`, player별 PLAYING projection과 `game:start` transport를 연결했다. Phase 12는 `apps/web`에 browser-only TurnDraft editor를, Phase 13은 원자적 `turn:submit`과 rack-empty terminal state를 연결했다. Phase 14는 `TurnDrawService`, `TurnPassService`, internal `TurnTimeoutService`, in-process scheduler/overdue sweeper와 client countdown을 연결했다. Phase 15는 phase-aware disconnect/resume, explicit leave, Host 승계, offline-timeout forfeit와 Room policy scheduler/cleanup lifecycle을 연결했다. Phase 16은 generalized Result Engine, stalemate tracker와 server-authoritative Game deadline scheduler/service를 이 경계에 통합했다. Phase 17은 multi-client E2E, transport resource limit, snapshot advisory ordering, responsive/accessibility UI와 FINISHED retention recovery를 검증·보강했다. Phase 18은 한 Node process에서 React production asset, Express HTTP와 Socket.IO를 제공하는 local production 구조를 연결했으며 실제 Railway service 적용은 account 인증 뒤 검증해야 한다.
 
 ```text
 /
@@ -921,10 +921,11 @@ https://game.example/
 
 - browser Lobby route는 `/`와 `/room/{ROOM_CODE}`를 사용하고, 초대 URL은 `{origin}/room/{ROOM_CODE}`로 만든다. `sessionToken`, `playerId`, verification data와 `socketId`는 URL에 넣지 않는다.
 - browser는 상대 URL로 HTTP/Socket.IO에 연결한다.
-- API와 Socket.IO path를 static SPA fallback이 가로채지 않도록 route 순서를 정한다.
-- hashed asset은 장기 cache, `index.html`은 배포 갱신을 반영할 cache policy를 사용한다.
+- Express는 먼저 `/health`를 등록하고, `/assets`의 Vite hashed file과 web dist의 실제 file을 제공한 뒤, 확장자 없는 나머지 browser GET에만 SPA `index.html`을 제공한다. `/api`, `/socket.io`, `/assets`, file-like path와 non-GET은 fallback에서 제외한다.
+- hashed asset은 1년 immutable cache, `index.html`은 `no-cache`를 사용한다.
+- production web dist는 compiled server module에서 상대적으로 계산해 process working directory에 의존하지 않는다. directory와 `index.html`이 없으면 application runtime을 시작하기 전에 fail-fast한다.
 - 동일 origin을 기본으로 해 production CORS와 credential 복잡도를 줄인다.
-- 동일 origin이어도 Socket.IO handshake의 `Origin`을 explicit allowlist로 검증한다. same-origin 배포가 origin 검증을 자동으로 대신한다고 가정하지 않는다.
+- 동일 origin이어도 Socket.IO handshake의 `Origin`을 request `Host`와 exact scheme/host origin으로 검증한다. cross-origin browser handshake는 거절하며 Origin이 없는 non-browser client는 기존 session/protocol 인증을 계속 적용한다.
 - MVP credential 저장소는 `sessionStorage`다. 향후 cookie 방식으로 변경한다면 `HttpOnly`, `Secure`, `SameSite`와 CSRF 방어를 별도 보안 결정으로 함께 확정한다.
 - Railway reverse proxy 뒤에서 secure cookie나 IP 기반 rate limit을 사용할 때는 알려진 proxy hop에만 맞춘 정확한 Express `trust proxy` 설정을 사용한다.
 - client bundle에 server secret이나 private environment variable을 주입하지 않는다.
@@ -938,13 +939,14 @@ https://game.example/
 
 - Railway가 제공하는 `PORT`를 읽고 `0.0.0.0`에 bind한다.
 - reverse proxy의 HTTPS와 WebSocket upgrade를 고려한다.
-- health endpoint는 process readiness를 확인하되 private game state를 노출하지 않는다.
-- build는 shared contract, web asset, server output이 올바른 순서로 준비되게 한다.
-- production start command는 Express가 실제 web build output을 찾도록 한다.
-- graceful shutdown 시 새 command 수신을 중단하고 connection을 정리한다. 메모리 MVP는 Room durability를 보장하지 못한다.
+- `/health`는 `{ "ok": true }`만 반환하며 Railway deployment healthcheck path로 사용한다.
+- repository root의 `npm run build`는 shared contract, web asset, server output 순서로 만들고 `npm start`는 production Node server 하나만 실행한다.
+- production server는 `SIGTERM`/`SIGINT`를 한 번만 처리한다. HTTP/Socket.IO server를 닫고 composition-root의 Turn/Game deadline, grace/retention scheduler와 모든 overdue sweeper를 idempotent하게 중지한다.
 - Redis 등 공유 state를 도입하기 전에는 replica 수를 1로 유지한다.
+- GitHub monorepo import에서 repository root `/`를 사용하는 public service 하나만 유지하고 Railpack, root build/start와 `/health`를 Dashboard에서 설정한다. generated domain은 healthcheck 성공 뒤 Public Networking에서 별도로 생성한다.
+- 2026-09-04 현재 Railway 공식 문서상 legacy `railway.json`/`railway.toml` Config as Code는 deprecated이고 신규 service가 opt-in할 수 없다. 대체 `.railway/railway.ts`는 linked project 전체를 관리하며 tooling package와 실제 project/service identity가 필요하므로 인증 없이 값을 추측해 repository에 추가하지 않는다.
 
-현재 Railway 동작의 근거는 공식 [Socket.IO 배포 guide](https://docs.railway.com/guides/socketio)와 [monorepo 배포 문서](https://docs.railway.com/deployments/monorepo)를 구현 시점에 다시 확인한다.
+현재 Railway 동작의 근거는 공식 [Railpack](https://docs.railway.com/builds/railpack), [build/start](https://docs.railway.com/builds/build-and-start-commands), [monorepo](https://docs.railway.com/deployments/monorepo), [healthcheck](https://docs.railway.com/deployments/healthchecks), [Socket.IO](https://docs.railway.com/guides/socketio), [domain](https://docs.railway.com/networking/domains/working-with-domains), [scaling](https://docs.railway.com/deployments/scaling), [Config as Code](https://docs.railway.com/config-as-code)와 [Infrastructure as Code](https://docs.railway.com/infrastructure-as-code) 문서다.
 
 ## 15. 테스트 경계
 

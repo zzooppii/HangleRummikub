@@ -577,7 +577,7 @@ Definition of Done:
 - in-app browser에서 create/join/start, active/non-active Board, tap-to-place와 symbol picker, local-only TurnDraft, Undo/Reset, Draw, 실제 server timeout, refresh draft discard, presence-only draft 보존을 확인했다. 1280×720, 390×844, 320×568에서 page-level horizontal overflow가 없었다.
 - browser harness가 engine/version을 공개하지 않아 Safari/WebKit, Firefox와 실제 모바일 기기는 검증하지 않았다. release known limitation으로 README/PROJECT_SPEC에 기록했다.
 
-### Phase 18. Railway single-origin 배포
+### Phase 18. Railway single-origin 배포 — BLOCKED_AT_DEPLOYMENT (2026-09-04)
 
 목표: 하나의 Railway service에서 web과 realtime server를 production 방식으로 제공한다.
 
@@ -601,6 +601,16 @@ Definition of Done:
 - replica가 1개임과 restart/redeploy 시 Room 유실이 운영 문서에 명시되어 있다.
 - 실제 배포가 끝난 뒤 새 Room으로 create → join → start → reconnect 핵심 smoke flow가 통과한다. 메모리 MVP는 배포 중 기존 Room 복구를 보장하지 않는다.
 - root `typecheck`, `test`, `build`와 production start 검증이 성공한다.
+
+현재 상태:
+
+- repository root에 watcher/Vite 없이 production Node server 하나를 실행하는 `npm start`를 추가했다. root build의 `packages/shared/dist`, `apps/web/dist`, `apps/server/dist`를 그대로 사용한다.
+- Express 5와 호환되는 GET-only SPA fallback, Vite hashed asset cache, secret-free `/health`, stable web dist resolution과 missing-build fail-fast를 구현했다. `/health`, `/api`, `/socket.io`, `/assets`, file-like path와 non-GET은 SPA fallback에서 제외한다.
+- browser Socket.IO는 request Host와 같은 Origin만 허용하고 cross-origin handshake를 거절한다. web client와 invitation URL은 기존 상대 current-origin 방식을 유지한다.
+- `SIGTERM`/`SIGINT` graceful shutdown은 HTTP/Socket.IO와 composition-root scheduler/sweeper lifecycle을 idempotent하게 종료한다.
+- current Railway 공식 문서에서 신규 service의 `railway.json`/`railway.toml` Config as Code가 deprecated되어 해당 file을 추가하지 않았다. 실제 project에 연결된 modern IaC를 인증 없이 추측하지 않고 single root service, Railpack, build/start, `/health`, replica 1을 Dashboard deployment checklist로 고정했다.
+- local production HTTP/asset/Socket.IO와 full regression quality gate는 검증 대상에 포함했다.
+- Railway Dashboard가 GitHub authentication을 요구하고 현재 인증된 Railway session/CLI context가 없어 service 생성, build/healthcheck, generated public domain, HTTPS public smoke와 실제 replica 1 확인을 수행하지 못했다. 따라서 code preparation과 local verification이 성공하더라도 Phase 18은 `DEPLOYMENT_BLOCKED_BY_RAILWAY_AUTH`이며 COMPLETE가 아니다.
 
 ## 4. Phase 사이의 금지된 지름길
 

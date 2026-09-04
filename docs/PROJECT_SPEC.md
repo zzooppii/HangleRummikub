@@ -2,9 +2,9 @@
 
 ## 1. 문서 상태
 
-- 문서 버전: `0.14-phase-17-stabilization`
+- 문서 버전: `0.15-phase-18-production-prepared`
 - 대상: 첫 번째 playable MVP
-- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름과 Phase 7 gameplay 규칙 gate, Phase 8 Hangul composition, Phase 9 `TestDictionaryProvider`, Phase 10 Board RuleEngine, Phase 11 canonical Game start/state projection, Phase 12 browser-only TurnDraft, Phase 13 원자적 `turn:submit`/rack-empty 종료, Phase 14 Draw/Pass/server timer, Phase 15 disconnect grace·Host 승계·offline-timeout forfeit·explicit leave·Room cleanup, Phase 16 generalized result·25분·stalemate·forfeit 종료, Phase 17 multi-client E2E·보안·recovery·browser 안정화까지 구현되었다.
+- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름부터 Phase 17 multi-client E2E·보안·recovery·browser 안정화까지 구현되었다. Phase 18은 Express production static serving, same-origin Socket.IO, root build/start와 graceful shutdown을 로컬에서 준비했으나 실제 Railway account 인증, service 배포, generated domain과 replica 검증은 남아 있어 `BLOCKED_AT_DEPLOYMENT`다.
 - 규칙 기준: 확정된 내용과 미확정 내용은 [GAME_RULES.md](./GAME_RULES.md)를 따른다.
 - 기술 구조 기준: [ARCHITECTURE.md](./ARCHITECTURE.md)를 따른다.
 
@@ -285,7 +285,9 @@ Exact physical definition과 `assignedSymbol` 정보는 기존 player-specific �
 ### 9.6 배포와 운영
 
 - production에서는 하나의 Node.js HTTP server에 Express와 Socket.IO를 연결한다.
-- Express는 빌드된 React asset과 SPA fallback을 동일 origin에서 제공한다.
+- Express는 빌드된 React asset과 GET-only SPA fallback을 동일 origin에서 제공한다. `/health`, `/api`, `/socket.io`, `/assets`와 file-like path는 SPA fallback에서 제외한다.
+- Vite hashed asset은 장기 immutable cache를 사용하고 `index.html`은 장기 cache하지 않는다. web build가 없으면 production server는 fail-fast한다.
+- browser Socket.IO handshake는 현재 request Host와 같은 explicit Origin만 허용하며 server-to-server처럼 Origin이 없는 client는 기존 protocol 인증 경계를 사용한다.
 - Railway의 환경 기반 `PORT`와 reverse proxy/WebSocket 환경을 지원한다.
 - 메모리 MVP는 정확성을 위해 server replica 하나만 사용한다.
 - 프로세스 장애, restart, redeploy 시 모든 in-memory Room과 session이 사라질 수 있음을 사용자와 운영 문서에 명확히 알린다.
@@ -311,7 +313,7 @@ Exact physical definition과 `assignedSymbol` 정보는 기존 player-specific �
 12. Submit과 server timeout이 경합해도 둘 중 하나의 합법적인 결과만 commit된다.
 13. 확정된 종료 조건이 충족되면 서버만 `FINISHED`와 결과를 만들고 모든 client가 같은 결과를 본다.
 14. desktop과 mobile viewport에서 생성, 참가, draft 편집, Submit, reconnect 흐름을 완료할 수 있다.
-15. Railway production 환경에서 React route와 Socket.IO가 같은 public origin으로 동작한다.
+15. Railway production 환경에서 React route와 Socket.IO가 같은 public origin으로 동작한다. 이 시나리오는 local production server에서는 검증됐지만 실제 generated Railway domain에서는 account 인증 뒤 확인해야 한다.
 
 ## 11. MVP 제약과 알려진 한계
 
@@ -321,4 +323,5 @@ Exact physical definition과 `assignedSymbol` 정보는 기존 player-specific �
 - Phase 8 composer는 assigned jamo의 현대 한글 조합, Phase 9 provider는 NFC fixture membership, Phase 10 RuleEngine은 readonly proposed Board validation만 맡는다. Phase 11~13은 Game start, browser TurnDraft와 Submit/rack-empty finish를 연결했고 Phase 14는 draw/pass, 60초 timeout penalty와 다음 Turn scheduling을 원자적으로 실행한다. Phase 15는 disconnect grace, offline-timeout forfeit, explicit leave, Host succession과 Room cleanup을 연결한다. Phase 16은 25분, stalemate와 forfeit 종료를 공통 Result Engine으로 통합한다.
 - Game deadline, Turn timer와 Room retention은 single-process in-memory scheduler다. process가 살아 있는 동안 유실된 overdue Turn/Game/FINISHED-retention registration은 canonical deadline sweeper가 복구하지만, process restart 후에는 Room/Game 자체가 유실되므로 job도 복구하지 않는다.
 - Phase 17 browser smoke는 Codex in-app browser에서 1280×720, 390×844, 320×568 viewport를 검증했다. harness가 browser engine/version을 노출하지 않아 Safari/WebKit, Firefox와 실제 모바일 기기는 확인하지 않았다.
+- Phase 18 local production serving은 준비되었지만 실제 Railway project/service, public domain, HTTPS/WebSocket과 replica 1 설정은 인증된 Railway account에서 아직 확인하지 않았다.
 - production dictionary dataset/license, 운영 한도와 rate limit은 아직 미확정이다.
