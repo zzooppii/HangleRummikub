@@ -3103,3 +3103,459 @@ test("forfeited 공개 상태는 PLAYING과 FINISHED Player에만 존재한다",
     false,
   );
 });
+
+type SameUnion<TLeft, TRight> = [
+  Exclude<TLeft, TRight>,
+  Exclude<TRight, TLeft>,
+] extends [never, never]
+  ? true
+  : false;
+
+const LEGACY_HANGUL_V1_CLIENT_EVENT_NAMES = [
+  "session:bootstrap",
+  "room:create",
+  "room:join",
+  "room:leave",
+  "session:resume",
+  "state:sync",
+  "game:start",
+  "turn:submit",
+  "turn:draw",
+  "turn:pass",
+] as const;
+
+const LEGACY_HANGUL_V1_SERVER_EVENT_NAMES = [
+  "state:snapshot",
+  "turn:started",
+  "game:finished",
+  "room:closed",
+  "session:replaced",
+] as const;
+
+function sortedKeys(value: object): string[] {
+  return Object.keys(value).sort();
+}
+
+test("Legacy Hangul v1 Socket.IO event inventory와 strict command/event envelope를 고정한다", () => {
+  const clientEventNamesAreExact: SameUnion<
+    keyof ClientToServerEvents,
+    (typeof LEGACY_HANGUL_V1_CLIENT_EVENT_NAMES)[number]
+  > = true;
+  const serverEventNamesAreExact: SameUnion<
+    keyof ServerToClientEvents,
+    (typeof LEGACY_HANGUL_V1_SERVER_EVENT_NAMES)[number]
+  > = true;
+
+  const commonCommandKeys = [
+    "kind",
+    "payload",
+    "protocolVersion",
+    "requestId",
+  ] as const;
+  const commandFixtures: readonly {
+    eventName: (typeof LEGACY_HANGUL_V1_CLIENT_EVENT_NAMES)[number];
+    command: Record<string, unknown>;
+    expectedKeys: readonly string[];
+  }[] = [
+    {
+      eventName: "session:bootstrap",
+      command: {
+        kind: "session:bootstrap",
+        protocolVersion: PROTOCOL_VERSION,
+        requestId: "request_v1_inventory_bootstrap",
+        payload: {},
+      },
+      expectedKeys: commonCommandKeys,
+    },
+    {
+      eventName: "room:create",
+      command: {
+        kind: "room:create",
+        protocolVersion: PROTOCOL_VERSION,
+        requestId: "request_v1_inventory_create",
+        payload: {
+          bootstrapCredential: { sessionToken },
+          nickname: "Harvey",
+        },
+      },
+      expectedKeys: commonCommandKeys,
+    },
+    {
+      eventName: "room:join",
+      command: {
+        kind: "room:join",
+        protocolVersion: PROTOCOL_VERSION,
+        requestId: "request_v1_inventory_join",
+        payload: {
+          bootstrapCredential: { sessionToken },
+          nickname: "혁상",
+          roomCode: "ABCD23",
+        },
+      },
+      expectedKeys: commonCommandKeys,
+    },
+    {
+      eventName: "room:leave",
+      command: {
+        kind: "room:leave",
+        protocolVersion: PROTOCOL_VERSION,
+        requestId: "request_v1_inventory_leave",
+        expectedRoomRevision: 3,
+        expectedGameRevision: 0,
+        payload: {},
+      },
+      expectedKeys: [
+        "expectedGameRevision",
+        "expectedRoomRevision",
+        ...commonCommandKeys,
+      ].sort(),
+    },
+    {
+      eventName: "session:resume",
+      command: {
+        kind: "session:resume",
+        protocolVersion: PROTOCOL_VERSION,
+        requestId: "request_v1_inventory_resume",
+        payload: {
+          credential: { roomCode: "ABCD23", sessionToken },
+          lastSeenVersions: createVersions(),
+        },
+      },
+      expectedKeys: commonCommandKeys,
+    },
+    {
+      eventName: "state:sync",
+      command: {
+        kind: "state:sync",
+        protocolVersion: PROTOCOL_VERSION,
+        requestId: "request_v1_inventory_sync",
+        payload: {},
+      },
+      expectedKeys: commonCommandKeys,
+    },
+    {
+      eventName: "game:start",
+      command: {
+        kind: "game:start",
+        protocolVersion: PROTOCOL_VERSION,
+        requestId: "request_v1_inventory_start",
+        expectedRoomRevision: 2,
+        payload: {},
+      },
+      expectedKeys: [...commonCommandKeys, "expectedRoomRevision"].sort(),
+    },
+    {
+      eventName: "turn:submit",
+      command: {
+        ...turnSubmitCommand({ wordGroups: [] }),
+        requestId: "request_v1_inventory_submit",
+      },
+      expectedKeys: [
+        ...commonCommandKeys,
+        "expectedGameRevision",
+        "turnId",
+      ].sort(),
+    },
+    {
+      eventName: "turn:draw",
+      command: {
+        ...turnDrawCommand("CONSONANT"),
+        requestId: "request_v1_inventory_draw",
+      },
+      expectedKeys: [
+        ...commonCommandKeys,
+        "expectedGameRevision",
+        "turnId",
+      ].sort(),
+    },
+    {
+      eventName: "turn:pass",
+      command: {
+        ...turnPassCommand(),
+        requestId: "request_v1_inventory_pass",
+      },
+      expectedKeys: [
+        ...commonCommandKeys,
+        "expectedGameRevision",
+        "turnId",
+      ].sort(),
+    },
+  ];
+
+  assert.equal(clientEventNamesAreExact, true);
+  assert.equal(serverEventNamesAreExact, true);
+  assert.equal(PROTOCOL_VERSION, 1);
+  assert.deepEqual(
+    commandFixtures.map(({ eventName }) => eventName),
+    [...LEGACY_HANGUL_V1_CLIENT_EVENT_NAMES],
+  );
+
+  for (const { eventName, command, expectedKeys } of commandFixtures) {
+    assert.equal(command.kind, eventName);
+    assert.deepEqual(sortedKeys(command), [...expectedKeys].sort(), eventName);
+    assert.equal(validateClientCommand(command).ok, true, eventName);
+    assert.equal(
+      validateClientCommand({
+        ...command,
+        legacyV1UnexpectedField: true,
+      }).ok,
+      false,
+      `${eventName} must keep a strict top-level envelope`,
+    );
+  }
+
+  const lobby = createSnapshot();
+  const playing = createPlayingSnapshot();
+  const finished = createFinishedSnapshot();
+  const serverEventFixtures: readonly {
+    eventName: (typeof LEGACY_HANGUL_V1_SERVER_EVENT_NAMES)[number];
+    event: Record<string, unknown>;
+    expectedKeys: readonly string[];
+    validate: (input: unknown) => { ok: boolean };
+  }[] = [
+    {
+      eventName: "state:snapshot",
+      event: {
+        kind: "state:snapshot",
+        protocolVersion: PROTOCOL_VERSION,
+        versions: lobby.versions,
+        serverTime: lobby.serverTime,
+        payload: { snapshot: lobby },
+      },
+      expectedKeys: [
+        "kind",
+        "payload",
+        "protocolVersion",
+        "serverTime",
+        "versions",
+      ],
+      validate: validateStateSnapshotEvent,
+    },
+    {
+      eventName: "turn:started",
+      event: {
+        kind: "turn:started",
+        protocolVersion: PROTOCOL_VERSION,
+        versions: playing.versions,
+        serverTime: playing.serverTime,
+        payload: {
+          gameId: playing.game.gameId,
+          turnId: playing.game.turn.turnId,
+          turnNumber: playing.game.turn.turnNumber,
+          activePlayerId: playing.game.turn.activePlayerId,
+          deadlineAt: playing.game.turn.deadlineAt,
+        },
+      },
+      expectedKeys: [
+        "kind",
+        "payload",
+        "protocolVersion",
+        "serverTime",
+        "versions",
+      ],
+      validate: validateTurnStartedEvent,
+    },
+    {
+      eventName: "game:finished",
+      event: {
+        kind: "game:finished",
+        protocolVersion: PROTOCOL_VERSION,
+        versions: finished.versions,
+        serverTime: finished.serverTime,
+        payload: {
+          gameId: finished.game.gameId,
+          reason: finished.game.result.reason,
+          winnerPlayerIds: finished.game.result.winnerPlayerIds,
+          finalGameRevision: finished.versions.gameRevision,
+          finishedAt: finished.game.result.finishedAt,
+        },
+      },
+      expectedKeys: [
+        "kind",
+        "payload",
+        "protocolVersion",
+        "serverTime",
+        "versions",
+      ],
+      validate: validateGameFinishedEvent,
+    },
+    {
+      eventName: "room:closed",
+      event: {
+        kind: "room:closed",
+        protocolVersion: PROTOCOL_VERSION,
+        serverTime: lobby.serverTime,
+        payload: {
+          roomId: lobby.room.roomId,
+          roomCode: lobby.room.roomCode,
+        },
+      },
+      expectedKeys: ["kind", "payload", "protocolVersion", "serverTime"],
+      validate: validateRoomClosedEvent,
+    },
+    {
+      eventName: "session:replaced",
+      event: {
+        kind: "session:replaced",
+        protocolVersion: PROTOCOL_VERSION,
+        serverTime: lobby.serverTime,
+        reason: "NEW_PRIMARY_CONNECTION",
+      },
+      expectedKeys: ["kind", "protocolVersion", "reason", "serverTime"],
+      validate: validateSessionReplacedNotification,
+    },
+  ];
+
+  assert.deepEqual(
+    serverEventFixtures.map(({ eventName }) => eventName),
+    [...LEGACY_HANGUL_V1_SERVER_EVENT_NAMES],
+  );
+  for (const {
+    eventName,
+    event,
+    expectedKeys,
+    validate,
+  } of serverEventFixtures) {
+    assert.equal(event.kind, eventName);
+    assert.deepEqual(sortedKeys(event), [...expectedKeys].sort(), eventName);
+    assert.equal(validate(event).ok, true, eventName);
+    assert.equal(
+      validate({ ...event, legacyV1UnexpectedField: true }).ok,
+      false,
+      `${eventName} must keep a strict top-level envelope`,
+    );
+  }
+});
+
+test("Legacy Hangul v1 LOBBY/PLAYING/FINISHED snapshot key set과 discriminant를 고정한다", () => {
+  const lobby = createSnapshot();
+  const playing = createPlayingSnapshot();
+  const finished = createFinishedSnapshot();
+
+  assert.deepEqual(sortedKeys(lobby), [
+    "protocolVersion",
+    "room",
+    "self",
+    "serverTime",
+    "versions",
+  ]);
+  assert.deepEqual(sortedKeys(lobby.versions), [
+    "gameRevision",
+    "presenceVersion",
+    "roomRevision",
+  ]);
+  assert.deepEqual(sortedKeys(lobby.room), [
+    "phase",
+    "players",
+    "roomCode",
+    "roomId",
+  ]);
+  assert.deepEqual(sortedKeys(lobby.room.players[0] ?? {}), [
+    "connectionStatus",
+    "isHost",
+    "nickname",
+    "playerId",
+  ]);
+  assert.deepEqual(sortedKeys(lobby.self), ["playerId"]);
+  assert.equal(lobby.protocolVersion, 1);
+  assert.equal(lobby.room.phase, "LOBBY");
+  assert.equal(lobby.versions.gameRevision, null);
+  assert.equal("game" in lobby, false);
+
+  assert.deepEqual(sortedKeys(playing), [
+    "game",
+    "protocolVersion",
+    "room",
+    "self",
+    "serverTime",
+    "versions",
+  ]);
+  assert.deepEqual(sortedKeys(playing.room.players[0] ?? {}), [
+    "connectionStatus",
+    "forfeited",
+    "initialMeldCompleted",
+    "isHost",
+    "nickname",
+    "playerId",
+    "rackCount",
+  ]);
+  assert.deepEqual(sortedKeys(playing.game), [
+    "bagCounts",
+    "board",
+    "gameId",
+    "turn",
+    "turnOrder",
+  ]);
+  assert.deepEqual(sortedKeys(playing.game.board), ["wordGroups"]);
+  assert.deepEqual(sortedKeys(playing.game.bagCounts), [
+    "consonant",
+    "vowel",
+  ]);
+  assert.deepEqual(sortedKeys(playing.game.turn), [
+    "activePlayerId",
+    "deadlineAt",
+    "startedAt",
+    "turnId",
+    "turnNumber",
+  ]);
+  assert.deepEqual(sortedKeys(playing.self), ["playerId", "rack"]);
+  assert.deepEqual(sortedKeys(playing.self.rack[0] ?? {}), [
+    "allowedSymbols",
+    "kind",
+    "physicalType",
+    "sourceBag",
+    "tileId",
+  ]);
+  assert.equal(playing.protocolVersion, 1);
+  assert.equal(playing.room.phase, "PLAYING");
+  assert.equal(playing.versions.gameRevision, 0);
+  assert.equal("result" in playing.game, false);
+
+  assert.deepEqual(sortedKeys(finished), [
+    "game",
+    "protocolVersion",
+    "room",
+    "self",
+    "serverTime",
+    "versions",
+  ]);
+  assert.deepEqual(sortedKeys(finished.game), [
+    "bagCounts",
+    "board",
+    "gameId",
+    "result",
+    "turnOrder",
+  ]);
+  assert.deepEqual(sortedKeys(finished.game.result), [
+    "finishedAt",
+    "rankings",
+    "reason",
+    "winnerPlayerIds",
+  ]);
+  assert.deepEqual(sortedKeys(finished.game.result.rankings[0] ?? {}), [
+    "forfeited",
+    "penaltyCost",
+    "playerId",
+    "rank",
+    "remainingRackCount",
+    "score",
+  ]);
+  assert.equal(finished.protocolVersion, 1);
+  assert.equal(finished.room.phase, "FINISHED");
+  assert.equal(finished.versions.gameRevision, 1);
+  assert.equal("turn" in finished.game, false);
+
+  for (const [phase, snapshot, validate] of [
+    ["LOBBY", lobby, validateLobbyStateSnapshot],
+    ["PLAYING", playing, validatePlayingStateSnapshot],
+    ["FINISHED", finished, validateFinishedStateSnapshot],
+  ] as const) {
+    assert.equal(validate(snapshot).ok, true, phase);
+    assert.equal(validateStateSnapshot(snapshot).ok, true, phase);
+    assert.equal(
+      validate({ ...snapshot, legacyV1UnexpectedField: true }).ok,
+      false,
+      `${phase} must keep a strict top-level shape`,
+    );
+  }
+});

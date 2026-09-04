@@ -95,6 +95,35 @@ function collectKeys(value: unknown): readonly string[] {
   ]);
 }
 
+const LEGACY_HANGUL_FORBIDDEN_INTERNAL_KEYS = new Set([
+  "connectionGeneration",
+  "consonantBag",
+  "createdAt",
+  "digestHex",
+  "expectedGameRevision",
+  "forfeitedPlayerIds",
+  "gameDeadlineAt",
+  "gameStartedAt",
+  "idempotency",
+  "joinOrder",
+  "noMoveTurnEndPlayerIds",
+  "offlineTimeoutStreak",
+  "offlineTimeoutStreakByPlayerId",
+  "racks",
+  "randomSource",
+  "rulesConfig",
+  "scheduler",
+  "sessionToken",
+  "socketId",
+  "stalemateTracker",
+  "storageRevision",
+  "tilesById",
+  "tokenHash",
+  "updatedAt",
+  "verificationData",
+  "vowelBag",
+]);
+
 test("Lobby projector는 ordered player-specific StateSnapshot을 만든다", async () => {
   const room = roomFixture();
   const hostId = room.hostPlayerId;
@@ -300,6 +329,117 @@ test("PLAYING projection은 public Game과 각 self의 private rack만 분리한
   );
   assert.equal(validateStateSnapshot(hostSnapshot).ok, true);
   assert.equal(validateStateSnapshot(guestSnapshot).ok, true);
+});
+
+test("Legacy Hangul v1 PLAYING projection은 exact shape와 A/B rack·bag privacy를 유지한다", async () => {
+  const room = playingRoomFixture();
+  const game = room.game;
+  const guest = room.players[1];
+  if (game === null || guest === undefined) {
+    throw new Error("PLAYING privacy fixture requires a Game and Guest.");
+  }
+  const projector = new LobbyStateSnapshotProjector({
+    clock: new FakeClock(9_000),
+    presenceReader: {
+      readRoomPresence: async () => ({
+        presenceVersion: parse(PresenceVersionSchema, 4),
+        connectionStatusByPlayerId: new Map(
+          room.players.map((player) => [player.playerId, "CONNECTED"] as const),
+        ),
+      }),
+    },
+  });
+
+  const hostSnapshot = await projector.project({
+    room,
+    selfPlayerId: room.hostPlayerId,
+  });
+  const guestSnapshot = await projector.project({
+    room,
+    selfPlayerId: guest.playerId,
+  });
+  if (
+    hostSnapshot.room.phase !== "PLAYING" ||
+    !("game" in hostSnapshot) ||
+    guestSnapshot.room.phase !== "PLAYING" ||
+    !("game" in guestSnapshot)
+  ) {
+    throw new Error("Expected two PLAYING snapshots.");
+  }
+
+  assert.deepEqual(Object.keys(hostSnapshot).sort(), [
+    "game",
+    "protocolVersion",
+    "room",
+    "self",
+    "serverTime",
+    "versions",
+  ]);
+  assert.deepEqual(Object.keys(hostSnapshot.versions).sort(), [
+    "gameRevision",
+    "presenceVersion",
+    "roomRevision",
+  ]);
+  assert.deepEqual(Object.keys(hostSnapshot.room).sort(), [
+    "phase",
+    "players",
+    "roomCode",
+    "roomId",
+  ]);
+  assert.deepEqual(Object.keys(hostSnapshot.room.players[0] ?? {}).sort(), [
+    "connectionStatus",
+    "forfeited",
+    "initialMeldCompleted",
+    "isHost",
+    "nickname",
+    "playerId",
+    "rackCount",
+  ]);
+  assert.deepEqual(Object.keys(hostSnapshot.game).sort(), [
+    "bagCounts",
+    "board",
+    "gameId",
+    "turn",
+    "turnOrder",
+  ]);
+  assert.deepEqual(Object.keys(hostSnapshot.self).sort(), ["playerId", "rack"]);
+
+  const hostWire = JSON.stringify(hostSnapshot);
+  const guestWire = JSON.stringify(guestSnapshot);
+  const hostRack = game.racks.get(room.hostPlayerId);
+  const guestRack = game.racks.get(guest.playerId);
+  if (hostRack === undefined || guestRack === undefined) {
+    throw new Error("PLAYING privacy fixture requires both canonical racks.");
+  }
+  assert.deepEqual(
+    hostSnapshot.self.rack.map((tile) => tile.tileId),
+    hostRack,
+  );
+  assert.deepEqual(
+    guestSnapshot.self.rack.map((tile) => tile.tileId),
+    guestRack,
+  );
+  for (const tileId of guestRack) {
+    assert.equal(hostWire.includes(`"${tileId}"`), false, `guest rack Tile leaked: ${tileId}`);
+  }
+  for (const tileId of hostRack) {
+    assert.equal(guestWire.includes(`"${tileId}"`), false, `host rack Tile leaked: ${tileId}`);
+  }
+  for (const tileId of [...game.consonantBag, ...game.vowelBag]) {
+    assert.equal(hostWire.includes(`"${tileId}"`), false, `bag Tile leaked to Host: ${tileId}`);
+    assert.equal(guestWire.includes(`"${tileId}"`), false, `bag Tile leaked to Guest: ${tileId}`);
+  }
+
+  for (const snapshot of [hostSnapshot, guestSnapshot]) {
+    for (const key of collectKeys(snapshot)) {
+      assert.equal(
+        LEGACY_HANGUL_FORBIDDEN_INTERNAL_KEYS.has(key),
+        false,
+        `forbidden key: ${key}`,
+      );
+    }
+    assert.equal(validateStateSnapshot(snapshot).ok, true);
+  }
 });
 
 test("PLAYING projection은 Board Tile 편집 metadata만 public으로 투영한다", async () => {
@@ -541,6 +681,45 @@ test("FINISHED projection은 일반화된 ranking을 공개하고 상대 rack de
   assert.deepEqual(hostSnapshot.game, guestSnapshot.game);
   assert.equal(validateStateSnapshot(hostSnapshot).ok, true);
   assert.equal(validateStateSnapshot(guestSnapshot).ok, true);
+
+  const hostRack = game.racks.get(playingRoom.hostPlayerId);
+  const guestRack = game.racks.get(guest.playerId);
+  if (hostRack === undefined || guestRack === undefined) {
+    throw new Error("FINISHED privacy fixture requires both canonical racks.");
+  }
+  assert.deepEqual(
+    hostSnapshot.self.rack.map((tile) => tile.tileId),
+    hostRack,
+  );
+  assert.deepEqual(
+    guestSnapshot.self.rack.map((tile) => tile.tileId),
+    guestRack,
+  );
+  const hostWire = JSON.stringify(hostSnapshot);
+  const guestWire = JSON.stringify(guestSnapshot);
+  for (const tileId of guestRack) {
+    assert.equal(
+      hostWire.includes(`"${tileId}"`),
+      false,
+      `guest rack Tile leaked: ${tileId}`,
+    );
+  }
+  for (const tileId of hostRack) {
+    assert.equal(
+      guestWire.includes(`"${tileId}"`),
+      false,
+      `host rack Tile leaked: ${tileId}`,
+    );
+  }
+  for (const snapshot of [hostSnapshot, guestSnapshot]) {
+    for (const key of collectKeys(snapshot)) {
+      assert.equal(
+        LEGACY_HANGUL_FORBIDDEN_INTERNAL_KEYS.has(key),
+        false,
+        `forbidden key: ${key}`,
+      );
+    }
+  }
   for (const forbidden of [
     "tileId",
     "physicalType",

@@ -1,8 +1,4 @@
-import {
-  PROTOCOL_VERSION,
-  validateFinishedStateSnapshot,
-  validatePlayingStateSnapshot,
-} from "@hangul-rummikub/shared";
+import { PROTOCOL_VERSION } from "@hangul-rummikub/shared";
 
 import { useLobbyApp } from "./app/use-lobby-app.js";
 import { PlayingScreen } from "./features/game/PlayingScreen.js";
@@ -14,6 +10,7 @@ import {
   getGameStartControl,
   type GameStartControl,
 } from "./lib/game-start.js";
+import { resolveLegacyHangulRoomView } from "./lib/legacy-hangul-room-view.js";
 import { createInvitationUrl } from "./lib/room-url.js";
 import type { RealtimeConnectionState } from "./lib/realtime-client.js";
 
@@ -115,13 +112,13 @@ export function App() {
       window.location.origin,
       app.snapshot.room.roomCode,
     );
-    const playingSnapshot = validatePlayingStateSnapshot(app.snapshot);
+    const roomView = resolveLegacyHangulRoomView(app.snapshot);
 
-    if (playingSnapshot.ok) {
+    if (roomView.kind === "PLAYING") {
       return (
         <div data-protocol-version={PROTOCOL_VERSION}>
           <PlayingRoute
-            snapshot={playingSnapshot.value}
+            snapshot={roomView.snapshot}
             connectionState={app.connectionState}
             connectionLabel={connectionLabel}
             connectionTone={connection.tone}
@@ -141,12 +138,11 @@ export function App() {
       );
     }
 
-    const finishedSnapshot = validateFinishedStateSnapshot(app.snapshot);
-    if (finishedSnapshot.ok) {
+    if (roomView.kind === "FINISHED") {
       return (
         <div data-protocol-version={PROTOCOL_VERSION}>
           <FinishedScreen
-            snapshot={finishedSnapshot.value}
+            snapshot={roomView.snapshot}
             connectionLabel={connectionLabel}
             connectionTone={connection.tone}
             errorMessage={app.errorMessage}

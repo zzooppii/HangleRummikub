@@ -20,6 +20,7 @@ import {
 import { parse } from "valibot";
 
 import { createInitialGameState } from "../domain/game/game-state.js";
+import { createTimeLimitResult } from "../domain/game/result-engine.js";
 import {
   createStorageRevision,
   createUnboundSessionRecord,
@@ -235,6 +236,99 @@ test("RoomRepository는 입력과 반환값의 외부 mutation에서 내부 stat
   assert.equal(Object.isFrozen(stored), true);
   assert.equal(Object.isFrozen(stored?.players), true);
   assert.equal(Object.isFrozen(stored?.players[0]), true);
+});
+
+test("Legacy Hangul v1 Room phase는 concrete GameState lifecycle과 정확히 일치해야 한다", async () => {
+  const persistence = new InMemoryPersistence();
+  const lobby = roomFixture();
+  const guestPlayerId = playerId("player-phase-guest");
+  const players = [
+    ...lobby.players,
+    {
+      playerId: guestPlayerId,
+      nickname: parse(NicknameSchema, "Guest"),
+      joinOrder: 1,
+    },
+  ];
+  const game = createInitialGameState({
+    playerIds: players.map((player) => player.playerId),
+    startedAt: serverTime(10_000),
+    idGenerator: new FakeIdGenerator(),
+    randomSource: { nextInt: () => 0 },
+  });
+  const terminalGame = {
+    ...game,
+    turn: null,
+    result: createTimeLimitResult({
+      playerIds: game.turnOrder,
+      racks: game.racks,
+      tilesById: game.tilesById,
+      forfeitedPlayerIds: game.forfeitedPlayerIds,
+      finishedAt: game.gameDeadlineAt,
+    }),
+  } as const;
+  const cases: readonly Readonly<{
+    candidate: RoomWriteCandidate;
+    expectedMessage: RegExp;
+  }>[] = [
+    {
+      candidate: { ...lobby, players, game },
+      expectedMessage: /LOBBY Room must not contain a GameState/u,
+    },
+    {
+      candidate: {
+        ...lobby,
+        roomId: roomId("room-playing-without-game"),
+        roomCode: roomCode("BCDEFG"),
+        phase: "PLAYING",
+        players,
+        game: null,
+      },
+      expectedMessage: /PLAYING Room must contain an active GameState/u,
+    },
+    {
+      candidate: {
+        ...lobby,
+        roomId: roomId("room-finished-with-active-game"),
+        roomCode: roomCode("CDEFGH"),
+        phase: "FINISHED",
+        players,
+        game,
+      },
+      expectedMessage: /FINISHED Room must contain a terminal GameState/u,
+    },
+    {
+      candidate: {
+        ...lobby,
+        roomId: roomId("room-playing-with-finished-game"),
+        roomCode: roomCode("DEFGHJ"),
+        phase: "PLAYING",
+        players,
+        game: terminalGame,
+      },
+      expectedMessage: /PLAYING Room must contain an active GameState/u,
+    },
+    {
+      candidate: {
+        ...lobby,
+        roomId: roomId("room-finished-without-game"),
+        roomCode: roomCode("EFGHJK"),
+        phase: "FINISHED",
+        players,
+        game: null,
+      },
+      expectedMessage: /FINISHED Room must contain a terminal GameState/u,
+    },
+  ];
+
+  for (const { candidate, expectedMessage } of cases) {
+    await assert.rejects(
+      persistence.createIfAbsent(candidate),
+      expectedMessage,
+    );
+    assert.equal(await persistence.findById(candidate.roomId), null);
+    assert.equal(await persistence.findByCode(candidate.roomCode), null);
+  }
 });
 
 test("RoomRepository는 roomRevision과 storageRevision CAS를 분리한다", async () => {

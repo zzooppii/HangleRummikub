@@ -1,11 +1,11 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0에서 작성한 단계별 실행 계획  
+> 상태: P0·P1 완료, P2 이후 실행 계획
 > 작성일: 2026-09-04  
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
 
-제품 범위는 [MULTI_GAME_PLATFORM_SPEC.md](./MULTI_GAME_PLATFORM_SPEC.md), current/target architecture는 [MULTI_GAME_ARCHITECTURE.md](./MULTI_GAME_ARCHITECTURE.md)를 따른다.
+제품 범위는 [MULTI_GAME_PLATFORM_SPEC.md](./MULTI_GAME_PLATFORM_SPEC.md), current/target architecture는 [MULTI_GAME_ARCHITECTURE.md](./MULTI_GAME_ARCHITECTURE.md)를 따른다. P1의 exact compatibility inventory와 migration handoff는 [MULTI_GAME_P1_CHARACTERIZATION.md](./MULTI_GAME_P1_CHARACTERIZATION.md)에 있다.
 
 ## 1. 공통 실행 원칙
 
@@ -99,6 +99,8 @@ Multi-game Platform P0를 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 
 
 ## 4. P1 — Platform/game boundary preparation
 
+> 완료: 2026-09-04. Legacy Hangul v1 wire/snapshot/privacy/persistence/projector/service/scheduler/web 경계를 characterization했고, production behavior를 바꾸지 않은 App renderer decision seam만 추출했다. 기존 573 tests를 유지하며 characterization 9개를 추가했다.
+
 ### 목표
 
 public behavior와 wire shape를 동결한 채 이후 추출이 깨뜨리기 쉬운 경계를 test와 작은 내부 seam으로 명시한다.
@@ -129,9 +131,9 @@ public behavior와 wire shape를 동결한 채 이후 추출이 깨뜨리기 쉬
 ### Required tests
 
 - 기존 573 tests 전부
-- 새 server characterization: create→join→start→turn→finish 및 leave/presence/deadline 경쟁
+- 기존 server integration의 create→join→start→turn→finish와 leave/presence/deadline 경쟁을 재사용하고, projector privacy/shape, Room phase invariant, transport routing의 부족한 경계만 추가
 - 새 shared characterization: strict v1 command/snapshot/event shape와 root export
-- 새 web characterization: 현재 route fallback/retry/snapshot ordering; unknown game fail-closed 동작 자체는 P5에서 추가
+- 기존 web route/retry/snapshot ordering을 재사용하고 현재 renderer fallback decision만 추가; unknown game fail-closed 동작 자체는 P5에서 추가
 - root typecheck/build/diff-check
 
 ### Codex 실행 명령

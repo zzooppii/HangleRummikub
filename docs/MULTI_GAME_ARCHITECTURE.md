@@ -1,10 +1,10 @@
 # Multi-game Platform Architecture
 
-> 상태: P0 current-state analysis 및 target boundary 후보  
+> 상태: P0 target boundary 후보 + P1 Legacy Hangul v1 characterization
 > 작성일: 2026-09-04  
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 이 문서의 후보 type이나 directory를 P0에서 구현하지 않는다.
 
-제품 범위는 [MULTI_GAME_PLATFORM_SPEC.md](./MULTI_GAME_PLATFORM_SPEC.md), 실행 순서와 Phase별 명령은 [MULTI_GAME_MIGRATION_ROADMAP.md](./MULTI_GAME_MIGRATION_ROADMAP.md)를 따른다.
+제품 범위는 [MULTI_GAME_PLATFORM_SPEC.md](./MULTI_GAME_PLATFORM_SPEC.md), 실행 순서와 Phase별 명령은 [MULTI_GAME_MIGRATION_ROADMAP.md](./MULTI_GAME_MIGRATION_ROADMAP.md)를 따른다. P1에서 확인한 exact wire, persistence/projector/service/scheduler/web ownership은 [MULTI_GAME_P1_CHARACTERIZATION.md](./MULTI_GAME_P1_CHARACTERIZATION.md)에 기록한다.
 
 ## 1. 분석 범위와 방법
 
@@ -742,3 +742,15 @@ strict old client가 unknown snapshot field를 거부할 수 있으므로 wire�
 멀티게임화의 첫 기술 과제는 directory를 나누는 일이 아니다. `RoomRecord`, snapshot projector, persistence recovery, Socket.IO handler, `App.tsx`, `use-lobby-app.ts`가 한글 state 내부를 직접 아는 지점을 registry/module 경계로 감싸는 일이다.
 
 최소 공통 표면은 Room/session/presence/idempotency/serialization/persistence·scheduler mechanism과 player별 projection 호출이다. game state, command, result, timer의 구체 모양은 module에 남긴다. 이 경계는 `NUMBER_TILE`로 한 번, `GEM_CARD`로 다시 검증한 뒤에만 안정된 platform abstraction으로 확정한다.
+
+## 20. P1 characterized boundary checkpoint
+
+P1은 public contract를 변경하지 않고 다음 사실을 test와 inventory로 고정했다.
+
+- 실제 v1 event set은 Client 10개, Server 5개이며 protocol과 strict snapshot shape는 그대로다.
+- `RoomRecord.game: GameState | null`, persistence clone/recovery reader, projector, leave/presence/deadline path가 concrete Hangul state를 직접 안다.
+- scheduler engine과 sweepers는 비교적 중립적이지만 state extraction과 timeout/deadline result decision은 current Hangul game에 속한다.
+- web의 `App.tsx`, `use-lobby-app.ts`, realtime client는 platform lifecycle과 Hangul action/rendering을 함께 소유한다.
+- production source에서 추출한 seam은 기존 App renderer decision을 보존하는 순수 `resolveLegacyHangulRoomView`뿐이다.
+
+`GameLifecycleInspector`, game-state cloner adapter, projector collaborator, command facade는 실제 migration owner가 생기는 P2/P3로 보류한다. P1에서 이를 빈 generic interface로 추가하지 않은 것은 target 방향의 철회가 아니라, `gameType` 없이 concrete Hangul dependency를 한 단계 감추는 무의미한 indirection을 피하기 위한 stop gate다.
