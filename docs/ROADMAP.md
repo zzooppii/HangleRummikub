@@ -4,6 +4,8 @@
 
 큰 기능을 검증 가능한 작은 단계로 나눈다. 각 단계는 앞 단계의 contract만 사용하며, 뒤 단계의 기능을 미리 끼워 넣지 않는다. `TO_BE_CONFIRMED` 규칙을 임시값으로 구현해 다음 단계로 넘어가지 않는다.
 
+이 문서는 production 한글 게임 완성까지의 기존 roadmap이다. 이후 멀티게임 전환의 P0~P12는 [MULTI_GAME_MIGRATION_ROADMAP.md](./MULTI_GAME_MIGRATION_ROADMAP.md)를 따른다.
+
 ## 2. 모든 단계의 공통 Definition of Done
 
 각 단계는 아래 조건을 공통으로 만족해야 완료다.

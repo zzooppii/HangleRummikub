@@ -4,6 +4,8 @@
 
 이 문서는 한글 루미큐브 MVP의 client/server/shared 경계, 상태 수명주기, 실시간 protocol, 원자적 검증, 재접속, 배포 및 확장 지점을 정의한다. Phase 7에서 확정한 gameplay 수치, exact Tile inventory와 symbol 표현은 [GAME_RULES.md](./GAME_RULES.md)를 규범적 source로 삼는다. exact inventory table은 그 문서의 C-22에만 두고 여기서는 구조 경계만 정의한다.
 
+이 문서는 production 한글 게임의 v1 architecture 기준선으로 유지한다. 향후 멀티게임 전환의 current-state 분류와 target boundary는 [MULTI_GAME_PLATFORM_SPEC.md](./MULTI_GAME_PLATFORM_SPEC.md)와 [MULTI_GAME_ARCHITECTURE.md](./MULTI_GAME_ARCHITECTURE.md)를 따른다.
+
 핵심 원칙은 다음과 같다.
 
 1. 서버가 유일한 authority다.
