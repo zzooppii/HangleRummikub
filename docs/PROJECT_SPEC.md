@@ -2,9 +2,9 @@
 
 ## 1. 문서 상태
 
-- 문서 버전: `0.15-phase-18-production-prepared`
+- 문서 버전: `0.16-phase-18-production-deployed`
 - 대상: 첫 번째 playable MVP
-- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름부터 Phase 17 multi-client E2E·보안·recovery·browser 안정화까지 구현되었다. Phase 18은 Express production static serving, same-origin Socket.IO, root build/start와 graceful shutdown을 로컬에서 준비했으나 실제 Railway account 인증, service 배포, generated domain과 replica 검증은 남아 있어 `BLOCKED_AT_DEPLOYMENT`다.
+- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름부터 Phase 17 multi-client E2E·보안·recovery·browser 안정화까지 구현했다. Phase 18은 Express production static serving, same-origin Socket.IO, root build/start와 graceful shutdown을 Railway generated domain <https://hanglerummikub-production.up.railway.app>에 배포하고 public lifecycle을 검증해 `COMPLETE`다. service/source/replica는 사용자가 Dashboard에서 확인했다.
 - 규칙 기준: 확정된 내용과 미확정 내용은 [GAME_RULES.md](./GAME_RULES.md)를 따른다.
 - 기술 구조 기준: [ARCHITECTURE.md](./ARCHITECTURE.md)를 따른다.
 
@@ -313,7 +313,7 @@ Exact physical definition과 `assignedSymbol` 정보는 기존 player-specific �
 12. Submit과 server timeout이 경합해도 둘 중 하나의 합법적인 결과만 commit된다.
 13. 확정된 종료 조건이 충족되면 서버만 `FINISHED`와 결과를 만들고 모든 client가 같은 결과를 본다.
 14. desktop과 mobile viewport에서 생성, 참가, draft 편집, Submit, reconnect 흐름을 완료할 수 있다.
-15. Railway production 환경에서 React route와 Socket.IO가 같은 public origin으로 동작한다. 이 시나리오는 local production server에서는 검증됐지만 실제 generated Railway domain에서는 account 인증 뒤 확인해야 한다.
+15. Railway production 환경에서 React route와 Socket.IO가 같은 public origin으로 동작한다. generated domain에서 health, Home/assets, direct Room route, WebSocket create/join/start/Draw와 refresh/resume를 검증했다.
 
 ## 11. MVP 제약과 알려진 한계
 
@@ -323,5 +323,5 @@ Exact physical definition과 `assignedSymbol` 정보는 기존 player-specific �
 - Phase 8 composer는 assigned jamo의 현대 한글 조합, Phase 9 provider는 NFC fixture membership, Phase 10 RuleEngine은 readonly proposed Board validation만 맡는다. Phase 11~13은 Game start, browser TurnDraft와 Submit/rack-empty finish를 연결했고 Phase 14는 draw/pass, 60초 timeout penalty와 다음 Turn scheduling을 원자적으로 실행한다. Phase 15는 disconnect grace, offline-timeout forfeit, explicit leave, Host succession과 Room cleanup을 연결한다. Phase 16은 25분, stalemate와 forfeit 종료를 공통 Result Engine으로 통합한다.
 - Game deadline, Turn timer와 Room retention은 single-process in-memory scheduler다. process가 살아 있는 동안 유실된 overdue Turn/Game/FINISHED-retention registration은 canonical deadline sweeper가 복구하지만, process restart 후에는 Room/Game 자체가 유실되므로 job도 복구하지 않는다.
 - Phase 17 browser smoke는 Codex in-app browser에서 1280×720, 390×844, 320×568 viewport를 검증했다. harness가 browser engine/version을 노출하지 않아 Safari/WebKit, Firefox와 실제 모바일 기기는 확인하지 않았다.
-- Phase 18 local production serving은 준비되었지만 실제 Railway project/service, public domain, HTTPS/WebSocket과 replica 1 설정은 인증된 Railway account에서 아직 확인하지 않았다.
+- Phase 18 public deployment는 <https://hanglerummikub-production.up.railway.app>에서 HTTPS와 WebSocket lifecycle을 검증했다. 사용자는 `HangleRummikub` 단일 service, GitHub source의 `master` 연결과 Dashboard `1 Replica`를 확인했다. Codex는 Railway 내부 build/healthcheck log, region과 multi-region 설정을 직접 확인하지 않았다.
 - production dictionary dataset/license, 운영 한도와 rate limit은 아직 미확정이다.

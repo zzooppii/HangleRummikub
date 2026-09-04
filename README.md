@@ -1,6 +1,6 @@
 # 한글 루미큐브
 
-Roadmap Phase 17까지의 첫 playable MVP와 통합 안정화를 완료한 실시간 한글 타일 게임이다. Room 생성·참가부터 server-authoritative Game start, browser-only TurnDraft, Submit/Draw/Pass/timeout, disconnect/resume/leave/forfeit, 다섯 종료 reason과 Room cleanup까지 하나의 lifecycle로 연결되어 있다. Phase 18의 single-origin production serving은 로컬 검증 가능한 상태로 준비했으며 실제 Railway 배포는 account 인증 뒤 완료해야 한다.
+Roadmap Phase 18까지의 첫 playable MVP와 Railway single-origin production 배포를 완료한 실시간 한글 타일 게임이다. Room 생성·참가부터 server-authoritative Game start, browser-only TurnDraft, Submit/Draw/Pass/timeout, disconnect/resume/leave/forfeit, 다섯 종료 reason과 Room cleanup까지 하나의 lifecycle로 연결되어 있다.
 
 ## 요구 환경
 
@@ -43,7 +43,7 @@ TurnDraft의 rack/Board 편집은 해당 tab 메모리에서만 동작한다. �
 - Codex in-app browser에서 1280×720 desktop, 390×844와 320×568 viewport의 Home/Lobby/Playing 흐름, tap-to-place, local-only draft, Draw, timeout, refresh discard와 presence-only draft 보존을 확인했다.
 - browser harness가 엔진/version을 공개하지 않아 Chromium/WebKit별 호환성을 따로 인증하지 않았다. Safari/WebKit과 실제 모바일 기기는 아직 별도 확인 대상이다.
 - 서버와 session은 single-process memory에만 존재하며 process restart 뒤 복구되지 않는다. 사전은 production 사전이 아닌 deterministic `test-dictionary-v1`이다.
-- production single-origin 정적 제공과 Railway 배포는 Phase 18 범위다.
+- production single-origin 정적 제공과 Railway public lifecycle은 <https://hanglerummikub-production.up.railway.app>에서 검증했다.
 
 ## 품질 gate
 
@@ -81,6 +81,8 @@ SPA fallback은 GET에만 적용하며 `/health`, `/api`, `/socket.io`, `/assets
 
 ## Railway production 배포
 
+Public URL: <https://hanglerummikub-production.up.railway.app>
+
 현재 Railway 신규 service에서는 legacy `railway.json`/`railway.toml` Config as Code를 새로 적용할 수 없으므로 deprecated file을 repository에 추가하지 않는다. project-level `.railway/railway.ts`는 linked Railway project/service 이름과 실제 account state를 읽은 뒤 도입해야 하며, 이 repository에는 Railway SDK나 CLI를 application dependency로 추가하지 않았다.
 
 Railway Dashboard에서 GitHub repository root `/`를 사용하는 service **하나만** 만들고 다음 값을 확인한다.
@@ -99,13 +101,15 @@ Railway Dashboard에서 GitHub repository root `/`를 사용하는 service **하
 
 monorepo 자동 import가 `apps/web`과 `apps/server`를 별도 service로 제안하더라도 사용하지 않는다. public application service는 하나여야 하며 Redis, PostgreSQL, Volume 또는 별도 frontend service를 추가하지 않는다.
 
-배포 뒤 다음을 실제 generated HTTPS domain에서 확인해야 Phase 18이 완료된다.
+다음을 실제 generated HTTPS domain에서 확인했다.
 
 1. `/health`, `/`, `/room/ABC234`와 HTML이 참조한 `/assets/*`가 성공한다.
 2. 같은 origin의 Socket.IO가 연결되고 browser console에 CORS, mixed-content 또는 asset 오류가 없다.
 3. 독립 session A/B가 create → join → start를 완료한다.
 4. 양쪽 private rack projection이 분리되고 Draw, snapshot fan-out과 다음 turn이 동작한다.
 5. refresh/resume이 같은 playerId, gameId와 rack으로 복구한다.
-6. service 설정에서 replica가 정확히 1개이고 multi-region이 꺼져 있다.
+6. Railway Dashboard에 replica가 정확히 1개로 표시된다. 이 항목은 사용자가 확인했으며 multi-region 설정은 확인하지 않았다.
 
-현재 실제 Railway project, service, generated domain과 replica는 인증된 Railway account가 없어 아직 검증하지 않았다. Railway deploy/restart 또는 process crash 시 process-memory Room, Game과 session은 모두 사라질 수 있으므로 친구들과 진행 중인 Game에서 재배포하지 않는다. generated domain이면 충분하며 custom domain은 필요하지 않다.
+Codex는 public HTTPS에서 `/health`, Home, hashed asset, direct Room route와 reload, actual WebSocket connection, 독립 session A/B의 create → join → start, private rack 분리, Draw fan-out과 refresh/resume를 검증했다. 사용자는 Railway service `HangleRummikub` 하나가 GitHub source의 `master`와 연결되고 Dashboard에 `1 Replica`가 표시되는 것을 확인했다. Railway 내부 build/healthcheck log와 region·multi-region 설정은 Codex가 직접 확인하지 않았다.
+
+Railway deploy/restart 또는 process crash 시 process-memory Room, Game과 session은 모두 사라질 수 있으므로 친구들과 진행 중인 Game에서 재배포하지 않는다. generated domain이면 충분하며 custom domain은 필요하지 않다. production 사전도 아직 deterministic `test-dictionary-v1`이다.

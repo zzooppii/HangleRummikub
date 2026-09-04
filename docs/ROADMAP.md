@@ -577,7 +577,7 @@ Definition of Done:
 - in-app browser에서 create/join/start, active/non-active Board, tap-to-place와 symbol picker, local-only TurnDraft, Undo/Reset, Draw, 실제 server timeout, refresh draft discard, presence-only draft 보존을 확인했다. 1280×720, 390×844, 320×568에서 page-level horizontal overflow가 없었다.
 - browser harness가 engine/version을 공개하지 않아 Safari/WebKit, Firefox와 실제 모바일 기기는 검증하지 않았다. release known limitation으로 README/PROJECT_SPEC에 기록했다.
 
-### Phase 18. Railway single-origin 배포 — BLOCKED_AT_DEPLOYMENT (2026-09-04)
+### Phase 18. Railway single-origin 배포 — COMPLETE (2026-09-04)
 
 목표: 하나의 Railway service에서 web과 realtime server를 production 방식으로 제공한다.
 
@@ -608,9 +608,10 @@ Definition of Done:
 - Express 5와 호환되는 GET-only SPA fallback, Vite hashed asset cache, secret-free `/health`, stable web dist resolution과 missing-build fail-fast를 구현했다. `/health`, `/api`, `/socket.io`, `/assets`, file-like path와 non-GET은 SPA fallback에서 제외한다.
 - browser Socket.IO는 request Host와 같은 Origin만 허용하고 cross-origin handshake를 거절한다. web client와 invitation URL은 기존 상대 current-origin 방식을 유지한다.
 - `SIGTERM`/`SIGINT` graceful shutdown은 HTTP/Socket.IO와 composition-root scheduler/sweeper lifecycle을 idempotent하게 종료한다.
-- current Railway 공식 문서에서 신규 service의 `railway.json`/`railway.toml` Config as Code가 deprecated되어 해당 file을 추가하지 않았다. 실제 project에 연결된 modern IaC를 인증 없이 추측하지 않고 single root service, Railpack, build/start, `/health`, replica 1을 Dashboard deployment checklist로 고정했다.
-- local production HTTP/asset/Socket.IO와 full regression quality gate는 검증 대상에 포함했다.
-- Railway Dashboard가 GitHub authentication을 요구하고 현재 인증된 Railway session/CLI context가 없어 service 생성, build/healthcheck, generated public domain, HTTPS public smoke와 실제 replica 1 확인을 수행하지 못했다. 따라서 code preparation과 local verification이 성공하더라도 Phase 18은 `DEPLOYMENT_BLOCKED_BY_RAILWAY_AUTH`이며 COMPLETE가 아니다.
+- current Railway 공식 문서에서 신규 service의 `railway.json`/`railway.toml` Config as Code가 deprecated되어 해당 file을 추가하지 않았다. 실제 Railway service 설정은 Dashboard에서 적용했으며 repository에는 인증된 project identity를 추측한 modern IaC를 추가하지 않았다.
+- local production HTTP/asset/Socket.IO와 `573/573` regression, root typecheck/build를 통과했다.
+- <https://hanglerummikub-production.up.railway.app>에서 `/health`, Home/assets, direct Room route/reload, actual WebSocket을 검증했다. 독립 A/B는 create/join/start 후 private rack 14개씩과 bag 81/47을 확인했고, active B의 자음 Draw는 game revision `0 → 1`, rack `14 → 15`, 자음 bag `81 → 80`, next Player 전환을 만들었다. 새 WebSocket으로 B를 resume해 같은 player/game/rack/turn과 Player 2명을 확인했다.
+- 사용자는 Railway service `HangleRummikub` 하나, GitHub source의 `master` 연결, Dashboard `1 Replica`와 successful deployment를 확인했다. Codex는 Railway 내부 build/healthcheck log, region과 multi-region 설정을 직접 확인하지 않았다.
 
 ## 4. Phase 사이의 금지된 지름길
 
