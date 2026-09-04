@@ -21,6 +21,15 @@ import { TurnDrawService } from "./application/turn-draw-service.js";
 import { TurnPassService } from "./application/turn-pass-service.js";
 import { TurnSubmitService } from "./application/turn-submit-service.js";
 import { TurnTimeoutService } from "./application/turn-timeout-service.js";
+import {
+  GameRegistry,
+  type GameRegistration,
+  type GameRegistrationReader,
+} from "./games/game-registry.js";
+import {
+  LEGACY_V1_DEFAULT_GAME_TYPE,
+  createLegacyHangulCompatibilityRegistration,
+} from "./games/legacy-hangul-compatibility-registration.js";
 import { ConnectionRegistry } from "./infrastructure/connection-registry.js";
 import { ConnectionRegistryPresenceReader } from "./infrastructure/connection-registry-presence-reader.js";
 import { InMemoryPersistence } from "./infrastructure/in-memory-persistence.js";
@@ -47,6 +56,7 @@ import {
 export type ApplicationRuntime = Readonly<{
   clock: SystemClock;
   connectionRegistry: ConnectionRegistry;
+  gameRegistry: GameRegistrationReader;
   gameStartService: GameStartService;
   gameDeadlineService: GameDeadlineService;
   gameDeadlineScheduler: InProcessGameDeadlineScheduler;
@@ -74,6 +84,10 @@ export type ApplicationRuntime = Readonly<{
   ): Promise<TResult>;
   start(): void;
   stop(): void;
+}>;
+
+export type ApplicationRuntimeOptions = Readonly<{
+  gameRegistrations?: readonly GameRegistration[];
 }>;
 
 function reportTurnSchedulingFailure(): void {
@@ -113,7 +127,16 @@ function reportRoomPolicyFailure(): void {
 }
 
 /** Creates one isolated process-memory runtime; importing this module has no side effects. */
-export function createApplicationRuntime(): ApplicationRuntime {
+export function createApplicationRuntime(
+  options: ApplicationRuntimeOptions = {},
+): ApplicationRuntime {
+  const gameRegistry = new GameRegistry(
+    options.gameRegistrations ?? [
+      createLegacyHangulCompatibilityRegistration(),
+    ],
+  );
+  gameRegistry.getRequired(LEGACY_V1_DEFAULT_GAME_TYPE);
+
   const persistence = new InMemoryPersistence();
   const clock = new SystemClock();
   const randomSource = new CryptoRandomSource();
@@ -319,6 +342,7 @@ export function createApplicationRuntime(): ApplicationRuntime {
     roomCodeGenerator,
     sessionTokenIssuer,
     roomMutationExecutor,
+    gameRegistrationReader: gameRegistry,
   });
   const sessionResumeService = new SessionResumeService({
     sessionRepository: persistence,
@@ -338,6 +362,7 @@ export function createApplicationRuntime(): ApplicationRuntime {
     onTurnSchedulingFailure: reportTurnSchedulingFailure,
     gameDeadlineScheduler,
     onGameDeadlineSchedulingFailure: reportGameDeadlineSchedulingFailure,
+    gameRegistrationReader: gameRegistry,
   });
   const turnSubmitService = new TurnSubmitService({
     roomRepository: persistence,
@@ -408,6 +433,7 @@ export function createApplicationRuntime(): ApplicationRuntime {
   return Object.freeze({
     clock,
     connectionRegistry,
+    gameRegistry,
     gameStartService,
     gameDeadlineService,
     gameDeadlineScheduler,

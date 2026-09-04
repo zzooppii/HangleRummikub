@@ -138,6 +138,7 @@ export function createFinishedRoomTransition(
     roomCandidate: Object.freeze({
       roomId: room.roomId,
       roomCode: room.roomCode,
+      gameType: room.gameType,
       phase: "FINISHED",
       hostPlayerId: room.hostPlayerId,
       players: room.players,

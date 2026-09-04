@@ -273,6 +273,7 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   const candidate: RoomWriteCandidate = {
     roomId: parse(RoomIdSchema, "room-turn-end"),
     roomCode: parse(RoomCodeSchema, "ABCDEF"),
+    gameType: "HANGUL_TILE",
     phase: "PLAYING",
     hostPlayerId: PLAYER_A,
     players: playerIds.map((playerId, index) => ({
@@ -420,6 +421,7 @@ test("turn:draw removes one server-selected Tile, appends it to rack, and advanc
 
       const after = await harness.persistence.findById(harness.room.roomId);
       assert.ok(after?.game?.turn);
+      assert.equal(after.gameType, "HANGUL_TILE");
       assert.equal(after.roomRevision, before.roomRevision);
       assert.equal(after.storageRevision, before.storageRevision + 1);
       assert.equal(after.game.gameRevision, before.game.gameRevision + 1);
@@ -574,6 +576,7 @@ test("turn:pass succeeds only with both bags empty and preserves rack/Board", as
 
   const after = await harness.persistence.findById(harness.room.roomId);
   assert.ok(after?.game?.turn);
+  assert.equal(after.gameType, "HANGUL_TILE");
   assert.equal(after.roomRevision, before.roomRevision);
   assert.equal(after.storageRevision, before.storageRevision + 1);
   assert.equal(after.game.gameRevision, before.game.gameRevision + 1);
@@ -675,6 +678,7 @@ test("timeout is Clock-authoritative at the exact deadline and draws three deter
 
   const after = await harness.persistence.findById(harness.room.roomId);
   assert.ok(after?.game?.turn && before?.game?.turn);
+  assert.equal(after.gameType, "HANGUL_TILE");
   assert.equal(after.game.racks.get(PLAYER_A)?.length, 4);
   assert.equal(after.game.consonantBag.length, 2);
   assert.equal(after.game.vowelBag.length, 3);

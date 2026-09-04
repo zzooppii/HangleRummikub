@@ -45,6 +45,7 @@ function roomFixture(): RoomRecord & Readonly<{ hostPlayerId: PlayerId }> {
   return {
     roomId: roomId("room-snapshot"),
     roomCode: parse(RoomCodeSchema, "ABCDEF"),
+    gameType: "HANGUL_TILE",
     phase: "LOBBY",
     hostPlayerId: hostId,
     players: [

@@ -77,6 +77,7 @@ async function createHarness(): Promise<Harness> {
   const candidate: RoomWriteCandidate = Object.freeze({
     roomId,
     roomCode: parse(RoomCodeSchema, "ABCDEF"),
+    gameType: "HANGUL_TILE",
     phase: "PLAYING",
     hostPlayerId: PLAYER_A,
     players: Object.freeze([

@@ -292,6 +292,7 @@ function createCandidate(
     roomCandidate: Object.freeze({
       roomId: room.roomId,
       roomCode: room.roomCode,
+      gameType: room.gameType,
       phase: "PLAYING",
       hostPlayerId: room.hostPlayerId,
       players: room.players,

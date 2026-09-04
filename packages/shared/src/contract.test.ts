@@ -13,6 +13,8 @@ import {
   PROPOSED_WORD_GROUP_MAX_SYLLABLES,
   PROPOSED_WORD_GROUP_ID_MAX_LENGTH,
   PROTOCOL_VERSION,
+  SUPPORTED_GAME_TYPES,
+  GameTypeSchema,
   GameResultSchema,
   ProposedWordGroupSchema,
   ROOM_CODE_ALPHABET,
@@ -20,6 +22,7 @@ import {
   SESSION_TOKEN_MAX_LENGTH,
   type ClientToServerEvents,
   type GameStartAck,
+  type GameType,
   type TurnDrawAck,
   type TurnPassAck,
   type TurnSubmitAck,
@@ -934,6 +937,25 @@ test("Room phase와 session replacement notification은 exhaustive shape를 가�
     }).success,
     false,
   );
+});
+
+test("GameType runtime contract는 현재 HANGUL_TILE 하나만 지원한다", () => {
+  assert.deepEqual(SUPPORTED_GAME_TYPES, ["HANGUL_TILE"]);
+  assert.equal(Object.isFrozen(SUPPORTED_GAME_TYPES), true);
+
+  const supported = v.safeParse(GameTypeSchema, "HANGUL_TILE");
+  const unknown = v.safeParse(GameTypeSchema, "UNKNOWN_GAME");
+  const futureNumberTile = v.safeParse(GameTypeSchema, "NUMBER_TILE");
+  const futureGemCard = v.safeParse(GameTypeSchema, "GEM_CARD");
+
+  assert.equal(supported.success, true);
+  if (supported.success) {
+    const gameType: GameType = supported.output;
+    assert.equal(gameType, "HANGUL_TILE");
+  }
+  assert.equal(unknown.success, false);
+  assert.equal(futureNumberTile.success, false);
+  assert.equal(futureGemCard.success, false);
 });
 
 test("snapshot projection은 credential과 server-only field를 거절한다", () => {
@@ -3424,6 +3446,35 @@ test("Legacy Hangul v1 Socket.IO event inventory와 strict command/event envelop
       false,
       `${eventName} must keep a strict top-level envelope`,
     );
+  }
+});
+
+test("Legacy Hangul v1 room:create wire는 gameType field를 허용하지 않는다", () => {
+  const command = {
+    kind: "room:create",
+    protocolVersion: PROTOCOL_VERSION,
+    requestId: "request_v1_create_without_game_type",
+    payload: {
+      bootstrapCredential: { sessionToken },
+      nickname: "Harvey",
+    },
+  } as const;
+
+  assert.equal(validateRoomCreateCommand(command).ok, true);
+
+  for (const input of [
+    { ...command, gameType: "HANGUL_TILE" },
+    {
+      ...command,
+      payload: { ...command.payload, gameType: "HANGUL_TILE" },
+    },
+  ]) {
+    const result = validateRoomCreateCommand(input);
+
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(result.error.code, "INVALID_PAYLOAD");
+    }
   }
 });
 

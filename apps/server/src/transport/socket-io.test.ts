@@ -99,6 +99,10 @@ import {
   JOKER_ALLOWED_SYMBOLS,
   type OrdinaryTileInstance,
 } from "../domain/game/tile-inventory.js";
+import { GameRegistry } from "../games/game-registry.js";
+import {
+  createLegacyHangulCompatibilityRegistration,
+} from "../games/legacy-hangul-compatibility-registration.js";
 import { ConnectionRegistry } from "../infrastructure/connection-registry.js";
 import { ConnectionRegistryPresenceReader } from "../infrastructure/connection-registry-presence-reader.js";
 import { InMemoryPersistence } from "../infrastructure/in-memory-persistence.js";
@@ -313,6 +317,9 @@ type DeterministicRuntime = Readonly<{
 
 function createDeterministicRuntime(): DeterministicRuntime {
   const persistence = new InMemoryPersistence();
+  const gameRegistry = new GameRegistry([
+    createLegacyHangulCompatibilityRegistration(),
+  ]);
   const clock = new SystemClock();
   const connectionRegistry = new ConnectionRegistry();
   const tokenIssuer = new NodeCryptoSessionTokenIssuer();
@@ -462,6 +469,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
     roomCodeGenerator,
     sessionTokenIssuer: tokenIssuer,
     roomMutationExecutor,
+    gameRegistrationReader: gameRegistry,
   });
   const sessionResumeService = new SessionResumeService({
     sessionRepository: persistence,
@@ -479,6 +487,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
     randomSource: new ZeroRandomSource(),
     turnScheduler,
     gameDeadlineScheduler,
+    gameRegistrationReader: gameRegistry,
   });
   const turnSubmitService = new TurnSubmitService({
     roomRepository: persistence,
@@ -544,6 +553,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
     runtime: {
       clock,
       connectionRegistry,
+      gameRegistry,
       gameStartService,
       gameDeadlineService,
       gameDeadlineScheduler,
@@ -1209,6 +1219,7 @@ async function seedBothBagsEmpty(
     candidate: {
       roomId: room.roomId,
       roomCode: room.roomCode,
+      gameType: room.gameType,
       phase: "PLAYING",
       hostPlayerId: room.hostPlayerId,
       players: room.players,
@@ -1256,6 +1267,7 @@ async function seedOverdueCurrentTurn(
     candidate: {
       roomId: room.roomId,
       roomCode: room.roomCode,
+      gameType: room.gameType,
       phase: "PLAYING",
       hostPlayerId: room.hostPlayerId,
       players: room.players,
@@ -1302,6 +1314,7 @@ async function seedOverdueGameDeadline(
     candidate: {
       roomId: room.roomId,
       roomCode: room.roomCode,
+      gameType: room.gameType,
       phase: "PLAYING",
       hostPlayerId: room.hostPlayerId,
       players: room.players,
@@ -1451,6 +1464,7 @@ async function seedDalgyalSubmitFixture(
     candidate: {
       roomId: room.roomId,
       roomCode: room.roomCode,
+      gameType: room.gameType,
       phase: "PLAYING",
       hostPlayerId: room.hostPlayerId,
       players: room.players,
@@ -3120,6 +3134,7 @@ test(
           candidate: {
             roomId: room.roomId,
             roomCode: room.roomCode,
+            gameType: room.gameType,
             phase: "FINISHED",
             hostPlayerId: room.hostPlayerId,
             players: room.players,

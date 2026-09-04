@@ -18,6 +18,8 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
+import type { GameRegistrationReader } from "../games/game-registry.js";
+import { LEGACY_V1_DEFAULT_GAME_TYPE } from "../games/legacy-hangul-compatibility-registration.js";
 import {
   createUnboundSessionRecord,
   type IdempotencyRecord,
@@ -96,6 +98,7 @@ export type RoomSessionApplicationDependencies = Readonly<{
   roomCodeGenerator: RoomCodeGenerator;
   sessionTokenIssuer: SessionTokenIssuer;
   roomMutationExecutor: RoomMutationSerialExecutor;
+  gameRegistrationReader: GameRegistrationReader;
 }>;
 
 type PreparedMutation = Readonly<{
@@ -224,6 +227,7 @@ export class RoomSessionApplicationService {
   readonly #roomCodeGenerator: RoomCodeGenerator;
   readonly #sessionTokenIssuer: SessionTokenIssuer;
   readonly #roomMutationExecutor: RoomMutationSerialExecutor;
+  readonly #gameRegistrationReader: GameRegistrationReader;
 
   constructor(dependencies: RoomSessionApplicationDependencies) {
     this.#roomRepository = dependencies.roomRepository;
@@ -235,6 +239,7 @@ export class RoomSessionApplicationService {
     this.#roomCodeGenerator = dependencies.roomCodeGenerator;
     this.#sessionTokenIssuer = dependencies.sessionTokenIssuer;
     this.#roomMutationExecutor = dependencies.roomMutationExecutor;
+    this.#gameRegistrationReader = dependencies.gameRegistrationReader;
   }
 
   async bootstrapSession(): Promise<BootstrapSessionResult> {
@@ -289,6 +294,10 @@ export class RoomSessionApplicationService {
           INVALID_BOOTSTRAP_ERROR,
         );
       }
+
+      this.#gameRegistrationReader.getRequired(
+        LEGACY_V1_DEFAULT_GAME_TYPE,
+      );
 
       return await this.#createRoom(
         prepared.value,
@@ -476,6 +485,7 @@ export class RoomSessionApplicationService {
           candidate: {
             roomId,
             roomCode,
+            gameType: LEGACY_V1_DEFAULT_GAME_TYPE,
             phase: "LOBBY",
             hostPlayerId: playerId,
             players: [{ playerId, nickname, joinOrder: 0 }],
@@ -588,6 +598,7 @@ export class RoomSessionApplicationService {
     const candidate: RoomWriteCandidate = {
       roomId: room.roomId,
       roomCode: room.roomCode,
+      gameType: room.gameType,
       phase: room.phase,
       hostPlayerId: room.hostPlayerId,
       players: [

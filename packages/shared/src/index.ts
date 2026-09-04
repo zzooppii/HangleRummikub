@@ -1,5 +1,6 @@
 export const APP_NAME = "한글 루미큐브";
 
+export * from "./game-type.js";
 export * from "./identifiers.js";
 export * from "./policies.js";
 export * from "./projections.js";

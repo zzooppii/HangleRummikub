@@ -13,6 +13,7 @@ import {
 import * as v from "valibot";
 
 import { createInitialGameState } from "../domain/game/game-state.js";
+import type { GameRegistrationReader } from "../games/game-registry.js";
 import type {
   IdempotencyRecord,
   RoomWriteCandidate,
@@ -86,6 +87,7 @@ export type GameStartServiceDependencies = Readonly<{
   onTurnSchedulingFailure?: TurnSchedulingFailureReporter;
   gameDeadlineScheduler?: GameDeadlineScheduler;
   onGameDeadlineSchedulingFailure?: GameDeadlineSchedulingFailureReporter;
+  gameRegistrationReader: GameRegistrationReader;
 }>;
 
 const ROOM_NOT_FOUND_ERROR: ErrorDto = Object.freeze({
@@ -181,6 +183,7 @@ export class GameStartService {
   readonly #turnScheduler: TurnScheduler | undefined;
   readonly #onTurnSchedulingFailure: TurnSchedulingFailureReporter | undefined;
   readonly #gameDeadlineScheduler: GameDeadlineScheduler | undefined;
+  readonly #gameRegistrationReader: GameRegistrationReader;
   readonly #onGameDeadlineSchedulingFailure:
     | GameDeadlineSchedulingFailureReporter
     | undefined;
@@ -197,6 +200,7 @@ export class GameStartService {
     this.#turnScheduler = dependencies.turnScheduler;
     this.#onTurnSchedulingFailure = dependencies.onTurnSchedulingFailure;
     this.#gameDeadlineScheduler = dependencies.gameDeadlineScheduler;
+    this.#gameRegistrationReader = dependencies.gameRegistrationReader;
     this.#onGameDeadlineSchedulingFailure =
       dependencies.onGameDeadlineSchedulingFailure;
   }
@@ -257,6 +261,7 @@ export class GameStartService {
     if (room === null) {
       return failed(ROOM_NOT_FOUND_ERROR);
     }
+    this.#gameRegistrationReader.getRequired(room.gameType);
     if (room.phase !== "LOBBY" || room.game !== null) {
       return failed(INVALID_PHASE_ERROR);
     }
@@ -301,6 +306,7 @@ export class GameStartService {
     const candidate: RoomWriteCandidate = {
       roomId: room.roomId,
       roomCode: room.roomCode,
+      gameType: room.gameType,
       phase: "PLAYING",
       hostPlayerId: room.hostPlayerId,
       players: room.players,

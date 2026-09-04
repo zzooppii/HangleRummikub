@@ -25,6 +25,7 @@ export type ReplaceRoomResult =
   | { status: "REPLACED"; room: RoomRecord }
   | { status: "ROOM_NOT_FOUND" }
   | { status: "ROOM_CODE_CONFLICT" }
+  | { status: "GAME_TYPE_MISMATCH" }
   | { status: "STALE_ROOM_REVISION" }
   | { status: "STALE_STORAGE_REVISION" }
   | { status: "STORAGE_REVISION_EXHAUSTED" };

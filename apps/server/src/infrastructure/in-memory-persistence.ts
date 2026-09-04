@@ -5,7 +5,11 @@ import type {
   RoomId,
   ServerTime,
 } from "@hangul-rummikub/shared";
-import { BOOTSTRAP_SESSION_TTL_MS } from "@hangul-rummikub/shared";
+import {
+  BOOTSTRAP_SESSION_TTL_MS,
+  GameTypeSchema,
+} from "@hangul-rummikub/shared";
+import * as v from "valibot";
 
 import { cloneGameState } from "../domain/game/game-state.js";
 import {
@@ -148,6 +152,7 @@ function clonePlayerRecord(
 function cloneRoomWriteCandidate(
   candidate: RoomWriteCandidate,
 ): RoomWriteCandidate {
+  const gameType = v.parse(GameTypeSchema, candidate.gameType);
   requireNonNegativeSafeInteger(candidate.roomRevision, "roomRevision");
   requireNonNegativeSafeInteger(candidate.createdAt, "createdAt");
   requireNonNegativeSafeInteger(candidate.updatedAt, "updatedAt");
@@ -186,6 +191,7 @@ function cloneRoomWriteCandidate(
   return Object.freeze({
     roomId: candidate.roomId,
     roomCode: candidate.roomCode,
+    gameType,
     phase: candidate.phase,
     hostPlayerId: candidate.hostPlayerId,
     players: Object.freeze(candidate.players.map(clonePlayerRecord)),
@@ -204,6 +210,7 @@ function persistRoom(
   return Object.freeze({
     roomId: detached.roomId,
     roomCode: detached.roomCode,
+    gameType: detached.gameType,
     phase: detached.phase,
     hostPlayerId: detached.hostPlayerId,
     players: detached.players,
@@ -408,6 +415,9 @@ function replaceRoomInState(
   }
   if (current.storageRevision !== input.expectedStorageRevision) {
     return { status: "STALE_STORAGE_REVISION" };
+  }
+  if (current.gameType !== input.candidate.gameType) {
+    return { status: "GAME_TYPE_MISMATCH" };
   }
 
   const codeOwner = state.roomIdByCode.get(input.candidate.roomCode);

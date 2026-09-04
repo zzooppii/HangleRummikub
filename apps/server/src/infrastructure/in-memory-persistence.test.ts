@@ -90,6 +90,7 @@ function roomFixture(options: RoomFixtureOptions = {}): RoomCandidateWithHost {
   return {
     roomId: roomId(options.roomId ?? "room-a"),
     roomCode: roomCode(options.roomCode ?? "ABCDEF"),
+    gameType: "HANGUL_TILE",
     phase: "LOBBY",
     hostPlayerId,
     players: [
@@ -176,8 +177,13 @@ test("RoomRepository는 create-if-absent, 두 index lookup, collision, delete를
   const created = await requireCreatedRoom(persistence, candidate);
 
   assert.equal(created.storageRevision, 0);
-  assert.deepEqual(await persistence.findById(candidate.roomId), created);
-  assert.deepEqual(await persistence.findByCode(candidate.roomCode), created);
+  assert.equal(created.gameType, "HANGUL_TILE");
+  const foundById = await persistence.findById(candidate.roomId);
+  const foundByCode = await persistence.findByCode(candidate.roomCode);
+  assert.equal(foundById?.gameType, "HANGUL_TILE");
+  assert.equal(foundByCode?.gameType, "HANGUL_TILE");
+  assert.deepEqual(foundById, created);
+  assert.deepEqual(foundByCode, created);
 
   assert.deepEqual(await persistence.createIfAbsent(candidate), {
     status: "ROOM_ID_CONFLICT",
@@ -216,6 +222,7 @@ test("RoomRepository는 입력과 반환값의 외부 mutation에서 내부 stat
   };
   const created = await requireCreatedRoom(persistence, candidate);
 
+  Reflect.set(candidate, "gameType", "UNSUPPORTED_GAME");
   Reflect.set(host, "nickname", parse(NicknameSchema, "Changed"));
   players.push({
     playerId: playerId("player-b"),
@@ -230,12 +237,26 @@ test("RoomRepository는 입력과 반환값의 외부 mutation에서 내부 stat
 
   const stored = await persistence.findById(candidate.roomId);
   assert.notEqual(stored, null);
+  assert.equal(stored?.gameType, "HANGUL_TILE");
+  assert.equal(Reflect.set(created, "gameType", "UNSUPPORTED_GAME"), false);
   assert.equal(stored?.phase, "LOBBY");
   assert.equal(stored?.players.length, 1);
   assert.equal(stored?.players[0]?.nickname, "Harvey");
   assert.equal(Object.isFrozen(stored), true);
   assert.equal(Object.isFrozen(stored?.players), true);
   assert.equal(Object.isFrozen(stored?.players[0]), true);
+});
+
+test("RoomRepository는 지원하지 않는 gameType을 create 경계에서 거절한다", async () => {
+  const persistence = new InMemoryPersistence();
+  const malformedCandidate = {
+    ...roomFixture(),
+    gameType: "UNSUPPORTED_GAME",
+  } as unknown as RoomWriteCandidate;
+
+  await assert.rejects(persistence.createIfAbsent(malformedCandidate));
+  assert.equal(await persistence.findById(malformedCandidate.roomId), null);
+  assert.equal(await persistence.findByCode(malformedCandidate.roomCode), null);
 });
 
 test("Legacy Hangul v1 Room phase는 concrete GameState lifecycle과 정확히 일치해야 한다", async () => {
@@ -345,6 +366,7 @@ test("RoomRepository는 roomRevision과 storageRevision CAS를 분리한다", as
   if (replaced.status !== "REPLACED") {
     throw new Error("Expected Room replacement to succeed.");
   }
+  assert.equal(replaced.room.gameType, "HANGUL_TILE");
   assert.equal(replaced.room.roomRevision, 1);
   assert.equal(replaced.room.storageRevision, 1);
 
@@ -363,9 +385,59 @@ test("RoomRepository는 roomRevision과 storageRevision CAS를 분리한다", as
   assert.deepEqual(staleStorage, { status: "STALE_STORAGE_REVISION" });
 
   const stored = await persistence.findById(created.roomId);
+  assert.equal(stored?.gameType, "HANGUL_TILE");
   assert.equal(stored?.roomRevision, 1);
   assert.equal(stored?.storageRevision, 1);
   assert.equal(stored?.updatedAt, 2_000);
+});
+
+test("RoomRepository와 UnitOfWork는 기존 Room의 gameType 변경을 원자적으로 거절한다", async () => {
+  const persistence = new InMemoryPersistence();
+  const created = await requireCreatedRoom(persistence, roomFixture());
+  const mismatchedCandidate = {
+    ...created,
+    gameType: "UNSUPPORTED_GAME",
+    roomRevision: roomRevision(1),
+    updatedAt: serverTime(2_000),
+  } as unknown as RoomWriteCandidate;
+
+  assert.deepEqual(
+    await persistence.replace({
+      candidate: mismatchedCandidate,
+      expectedRoomRevision: created.roomRevision,
+      expectedStorageRevision: created.storageRevision,
+    }),
+    { status: "GAME_TYPE_MISMATCH" },
+  );
+  assert.deepEqual(await persistence.findById(created.roomId), created);
+
+  const record = idempotencyRecord(
+    "room:game-type-mismatch",
+    "request-game-type-mismatch",
+    "fingerprint-game-type-mismatch",
+  );
+  assert.deepEqual(
+    await persistence.commit({
+      roomMutation: {
+        kind: "REPLACE",
+        candidate: mismatchedCandidate,
+        expectedRoomRevision: created.roomRevision,
+        expectedStorageRevision: created.storageRevision,
+      },
+      sessionMutation: { kind: "NONE" },
+      idempotency: record,
+    }),
+    { status: "PRECONDITION_FAILED", reason: "GAME_TYPE_MISMATCH" },
+  );
+  assert.deepEqual(await persistence.findById(created.roomId), created);
+  assert.deepEqual(
+    await persistence.classify(
+      record.scopeKey,
+      record.requestId,
+      record.payloadFingerprint,
+    ),
+    { status: "MISS" },
+  );
 });
 
 test("같은 Room의 competing CAS write는 하나만 commit한다", async () => {
@@ -692,6 +764,7 @@ test("join-like REPLACE failure는 Room과 UNBOUND session을 모두 보존한�
   );
 
   const unchanged = await persistence.findById(room.roomId);
+  assert.equal(unchanged?.gameType, "HANGUL_TILE");
   assert.equal(unchanged?.players.length, 1);
   assert.equal(unchanged?.roomRevision, 0);
   assert.equal(unchanged?.storageRevision, 0);
@@ -1211,6 +1284,7 @@ test("PLAYING Room의 GameState deep copy는 caller mutation에서 persistence�
   const created = await persistence.createIfAbsent({
     roomId: roomId("room-game-isolation"),
     roomCode: roomCode("BCDEFG"),
+    gameType: "HANGUL_TILE",
     phase: "PLAYING",
     hostPlayerId,
     players,

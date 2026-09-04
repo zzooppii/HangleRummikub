@@ -121,6 +121,7 @@ async function createHarness(playerCount = 2): Promise<LifecycleHarness> {
   const created = await persistence.createIfAbsent({
     roomId: parse(RoomIdSchema, "room-lifecycle"),
     roomCode: parse(RoomCodeSchema, "ABC234"),
+    gameType: "HANGUL_TILE",
     phase: "LOBBY",
     hostPlayerId: host.playerId,
     players,
@@ -244,6 +245,7 @@ test("Lobby disconnect grace는 60초 전 보존하고 만료 시 Host를 lowest
   assert.equal(expired.status, "REMOVED");
   const room = await harness.persistence.findById(harness.room.roomId);
   assert.ok(room);
+  assert.equal(room.gameType, "HANGUL_TILE");
   assert.equal(room.hostPlayerId, harness.room.players[1]?.playerId);
   assert.deepEqual(room.players.map((player) => player.playerId), [
     harness.room.players[1]?.playerId,

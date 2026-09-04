@@ -36,6 +36,13 @@ import {
 } from "../domain/game/game-state.js";
 import { createRackEmptyResult } from "../domain/game/result-engine.js";
 import {
+  GameRegistry,
+  type GameRegistrationReader,
+} from "../games/game-registry.js";
+import {
+  createLegacyHangulCompatibilityRegistration,
+} from "../games/legacy-hangul-compatibility-registration.js";
+import {
   type IdempotencyRecord,
   type RoomRecord,
   type RoomWriteCandidate,
@@ -152,6 +159,7 @@ type HarnessOptions = Readonly<{
   onCommitCheckpoint?: (checkpoint: InMemoryCommitCheckpoint) => void;
   commitInterceptor?: CommitInterceptor;
   initialTime?: number;
+  gameRegistrationReader?: GameRegistrationReader;
 }>;
 
 type Harness = Readonly<{
@@ -172,6 +180,12 @@ const DEFAULT_ROOM_CODES = [
   "EFGHJK",
   "FGHJKM",
 ] as const;
+
+function createLegacyHangulRegistry(): GameRegistry {
+  return new GameRegistry([
+    createLegacyHangulCompatibilityRegistration(),
+  ]);
+}
 
 function createHarness(options: HarnessOptions = {}): Harness {
   const persistence =
@@ -200,6 +214,8 @@ function createHarness(options: HarnessOptions = {}): Harness {
     roomCodeGenerator: codeGenerator,
     sessionTokenIssuer: issuer,
     roomMutationExecutor: new KeyedSerialExecutor<RoomId>(),
+    gameRegistrationReader:
+      options.gameRegistrationReader ?? createLegacyHangulRegistry(),
   });
 
   return {
@@ -293,6 +309,7 @@ async function seedRoom(
   const candidate: RoomWriteCandidate = {
     roomId: roomId(seedRoomId),
     roomCode: roomCode(options.roomCode ?? "ABCDEF"),
+    gameType: "HANGUL_TILE",
     phase,
     hostPlayerId: host.playerId,
     players,
@@ -436,6 +453,7 @@ test("createRoom은 normalized Host와 초기 revision을 원자적으로 생성
   const room = await harness.persistence.findById(created.roomId);
   assert.notEqual(room, null);
   assert.equal(room?.phase, "LOBBY");
+  assert.equal(room?.gameType, "HANGUL_TILE");
   assert.equal(room?.hostPlayerId, created.playerId);
   assert.equal(room?.players.length, 1);
   assert.deepEqual(room?.players[0], {
@@ -576,6 +594,10 @@ test("createRoom accepted retry는 ack loss 뒤 같은 결과를 replay하고 �
   );
 
   assert.deepEqual(replay, first);
+  assert.equal(
+    (await harness.persistence.findById(first.roomId))?.gameType,
+    "HANGUL_TILE",
+  );
   assert.equal(harness.codeGenerator.callCount, 1);
   assert.equal(harness.unitOfWork.changeSets.length, 1);
   requireError(
@@ -585,6 +607,43 @@ test("createRoom accepted retry는 ack loss 뒤 같은 결과를 replay하고 �
       nickname: "Different",
     }),
     "REQUEST_ID_REUSED",
+  );
+});
+
+test("legacy v1 default registration이 없으면 createRoom은 어떤 canonical state도 만들지 않는다", async () => {
+  const harness = createHarness({
+    gameRegistrationReader: new GameRegistry([]),
+  });
+  const credential = await bootstrap(harness);
+  const verificationData = harness.issuer.deriveVerificationData(
+    credential.sessionToken,
+  );
+  const id = requestId("missing-game-registration");
+
+  requireError(
+    await harness.service.createRoom({
+      sessionToken: credential.sessionToken,
+      requestId: id,
+      nickname: "Harvey",
+    }),
+    "INTERNAL_ERROR",
+  );
+
+  assert.equal(await harness.persistence.findByCode(roomCode("ABCDEF")), null);
+  assert.equal(await harness.persistence.findById(roomId("test-room-1")), null);
+  assert.equal(harness.unitOfWork.changeSets.length, 0);
+  assert.equal(harness.codeGenerator.callCount, 0);
+  assert.equal(
+    (await harness.persistence.findByVerificationData(verificationData))?.state,
+    "UNBOUND",
+  );
+  assert.deepEqual(
+    await harness.persistence.classify(
+      `bootstrap:${verificationData.algorithm}:${verificationData.digestHex}`,
+      id,
+      JSON.stringify(["room:create", "Harvey"]),
+    ),
+    { status: "MISS" },
   );
 });
 
@@ -632,6 +691,7 @@ test("동시 동일 accepted request는 BOUND 관찰 race에서도 둘 다 같�
     roomCodeGenerator: codes,
     sessionTokenIssuer: issuer,
     roomMutationExecutor: new KeyedSerialExecutor<RoomId>(),
+    gameRegistrationReader: createLegacyHangulRegistry(),
   });
   const credential = requireSuccess(await service.bootstrapSession());
   const input = {
@@ -675,6 +735,7 @@ test("late idempotency lookup failure는 안전한 INTERNAL_ERROR로 변환된�
     roomCodeGenerator: new SequenceRoomCodeGenerator([roomCode("ABCDEF")]),
     sessionTokenIssuer: issuer,
     roomMutationExecutor: new KeyedSerialExecutor<RoomId>(),
+    gameRegistrationReader: createLegacyHangulRegistry(),
   });
   const credential = requireSuccess(await service.bootstrapSession());
   clock.set(credential.expiresAt);
@@ -719,6 +780,7 @@ test("joinRoom은 canonical roomCode, ordered Player, revision을 원자적으�
     roomRevision: roomRevision(1),
   });
   const room = await harness.persistence.findById(created.roomId);
+  assert.equal(room?.gameType, "HANGUL_TILE");
   assert.equal(room?.players.length, 2);
   assert.deepEqual(room?.players.map(({ nickname, joinOrder }) => ({ nickname, joinOrder })), [
     { nickname: "Host", joinOrder: 0 },

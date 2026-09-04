@@ -80,6 +80,7 @@ async function createFinishedFixture() {
   const created = await persistence.createIfAbsent({
     roomId,
     roomCode: parse(RoomCodeSchema, "ABC234"),
+    gameType: "HANGUL_TILE",
     phase: "FINISHED",
     hostPlayerId: playerIds[0],
     players: playerIds.map((playerId, joinOrder) => ({

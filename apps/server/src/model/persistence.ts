@@ -1,6 +1,7 @@
 import {
   BOOTSTRAP_SESSION_TTL_MS,
   ServerTimeSchema,
+  type GameType,
   type Nickname,
   type PlayerId,
   type RequestId,
@@ -43,6 +44,7 @@ export type PlayerRecord = Readonly<{
 export type RoomRecord = Readonly<{
   roomId: RoomId;
   roomCode: RoomCode;
+  gameType: GameType;
   phase: RoomPhase;
   /** A Lobby may briefly be hostless while all remaining members are offline. */
   hostPlayerId: PlayerId | null;

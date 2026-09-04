@@ -50,6 +50,7 @@ function roomCandidate(
   return {
     roomId: roomId("room-resume"),
     roomCode: roomCode(code),
+    gameType: "HANGUL_TILE",
     phase: "LOBBY",
     hostPlayerId: host.playerId,
     players: players.map((player, joinOrder) => ({
@@ -287,6 +288,7 @@ test("resumeSession은 Room에 없는 stale bound Player를 SESSION_NOT_FOUND로
     candidate: {
       roomId: fixture.room.roomId,
       roomCode: fixture.room.roomCode,
+      gameType: fixture.room.gameType,
       phase: fixture.room.phase,
       hostPlayerId: hostId,
       players: [fixture.room.players[0]].flatMap((player) =>

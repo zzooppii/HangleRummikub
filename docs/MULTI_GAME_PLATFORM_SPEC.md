@@ -1,7 +1,7 @@
 # Multi-game Platform Specification
 
-> 상태: P0 분석/설계 기준선  
-> 작성일: 2026-09-04  
+> 상태: P0 설계 기준선 + P1 characterization + P2 internal identity checkpoint
+> 작성일: 2026-09-05
 > 적용 범위: 현재 production 한글 타일 게임을 보존하면서 여러 턴제 보드게임을 수용하기 위한 제품 경계  
 > 비고: 이 문서는 구현 계약이 아니라 후속 Phase의 의사결정 기준이다.
 
@@ -51,7 +51,9 @@ P0 및 초기 migration의 비목표는 다음과 같다.
 | `NUMBER_TILE` | 숫자 타일 게임 | 후속 rules gate 대상 |
 | `GEM_CARD` | 보석·카드형 게임 | 후속 rules gate 대상 |
 
-이 ID는 protocol, persistence, registry, telemetry에서 일관되게 사용할 수 있는 내부 식별자다. 공개 UI 명칭과 licensing은 별도 결정이며, 내부 ID에 특정 상용 게임 브랜드나 asset 이름을 결합하지 않는다.
+이 ID는 장기적으로 protocol, persistence, registry, telemetry에서 일관되게 사용할 내부 식별자 후보다. 공개 UI 명칭과 licensing은 별도 결정이며, 내부 ID에 특정 상용 게임 브랜드나 asset 이름을 결합하지 않는다.
+
+P2의 실제 runtime contract인 `SUPPORTED_GAME_TYPES`와 `GameTypeSchema`는 `HANGUL_TILE` 하나만 허용한다. `NUMBER_TILE`과 `GEM_CARD`는 후속 rules/implementation gate를 설명하는 중립 이름일 뿐, 아직 지원 값이나 module registration이 아니다.
 
 ## 5. 공통 플랫폼 범위
 
@@ -147,6 +149,8 @@ P0 및 초기 migration의 비목표는 다음과 같다.
 
 ## 8. `gameType` 정책
 
+다음은 catalog와 versioned contract가 도입될 때의 장기 정책이다.
+
 - 사용자는 Home catalog에서 Room을 만들기 전 game을 선택한다.
 - `gameType`은 Room 생성 요청에서 선택되고 서버가 검증한다.
 - 생성된 Room의 `gameType`은 immutable이다.
@@ -156,7 +160,9 @@ P0 및 초기 migration의 비목표는 다음과 같다.
 - join, resume, state sync 이후 client는 서버 snapshot의 `gameType`으로 game client를 선택한다.
 - 알 수 없거나 지원하지 않는 `gameType`은 `HANGUL_TILE`로 조용히 fallback하지 않고 game command를 차단한다.
 
-초기 migration 동안 기존 gameType 없는 create 흐름은 서버 내부에서만 `HANGUL_TILE`로 해석할 수 있다. 이 호환 정책은 versioned contract가 도입되기 전까지 기존 URL, event 이름, DOM 동작을 보존하기 위한 임시 전략이며 영구적인 ambiguous default가 아니다.
+P2에서는 이 장기 public create contract를 아직 열지 않았다. `protocolVersion = 1`과 strict `room:create` schema는 그대로이며, top-level 또는 payload에 `gameType`을 추가한 요청은 기존과 같이 `INVALID_PAYLOAD`다. 서버 application만 field가 없는 기존 v1 create를 `HANGUL_TILE`로 해석한다.
+
+생성된 `RoomRecord.gameType`은 canonical lifetime identity다. persistence create 경계는 지원하지 않는 값을 거부하고, replace/UoW는 기존 Room의 값을 바꾸려는 candidate를 거부한다. 현재 저장소는 process-memory이고 배포·restart 시 Room이 사라지므로 P2에는 durable pre-P2 record backfill이나 migration이 없다.
 
 ## 9. Room과 lifecycle
 
@@ -227,7 +233,9 @@ P0 시작 시 기준은 다음과 같다.
 - state: process-memory
 - dictionary: `test-dictionary-v1`
 
-초기 구조 전환은 registry에 `HANGUL_TILE` 하나만 등록하고 기존 create 요청을 그 game으로 resolve한다. catalog와 새 snapshot discriminator는 내부 경계가 검증된 뒤 별도 Phase에서 연다. production rollout 전에는 현재 한글 user journey를 smoke/E2E로 다시 검증한다.
+P2 구조 전환은 identity-only registry에 `HANGUL_TILE` 하나만 등록했다. composition root는 이 필수 registration의 누락·중복을 startup에서 fail-fast하고, Room create와 game start는 각각 legacy default와 canonical Room `gameType`의 registration을 확인한다. 이 entry는 service callback이나 state capability를 갖지 않으며 `GameModule`도 구현하지 않았다.
+
+외부 v1 wire, `StateSnapshot` shape, web route/rendering은 그대로다. catalog와 새 snapshot discriminator는 내부 경계가 검증된 뒤 별도 Phase에서 열고, production rollout 전에는 현재 한글 user journey를 smoke/E2E로 다시 검증한다.
 
 ## 13. 결과 모델 방향
 

@@ -224,6 +224,7 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   const roomCandidate: RoomWriteCandidate = Object.freeze({
     roomId: parse(RoomIdSchema, "phase16-room"),
     roomCode: parse(RoomCodeSchema, "ABCDEF"),
+    gameType: "HANGUL_TILE",
     phase: "PLAYING",
     hostPlayerId: playerIds[0]!,
     players: Object.freeze(
@@ -420,6 +421,7 @@ test("a zero-penalty timeout advances the no-move cycle and can finish STALEMATE
     assert.equal(result.data.finishReason, "STALEMATE");
   }
   const room = await currentRoom(harness);
+  assert.equal(room.gameType, "HANGUL_TILE");
   assert.equal(room.phase, "FINISHED");
   assert.equal(room.game?.result?.reason, "STALEMATE");
   assert.equal(room.game?.turn, null);

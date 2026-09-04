@@ -1,8 +1,8 @@
 # Multi-game Platform Architecture
 
-> 상태: P0 target boundary 후보 + P1 Legacy Hangul v1 characterization
-> 작성일: 2026-09-04  
-> 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 이 문서의 후보 type이나 directory를 P0에서 구현하지 않는다.
+> 상태: P0 target boundary 후보 + P1 characterization + P2 internal identity checkpoint
+> 작성일: 2026-09-05
+> 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
 제품 범위는 [MULTI_GAME_PLATFORM_SPEC.md](./MULTI_GAME_PLATFORM_SPEC.md), 실행 순서와 Phase별 명령은 [MULTI_GAME_MIGRATION_ROADMAP.md](./MULTI_GAME_MIGRATION_ROADMAP.md)를 따른다. P1에서 확인한 exact wire, persistence/projector/service/scheduler/web ownership은 [MULTI_GAME_P1_CHARACTERIZATION.md](./MULTI_GAME_P1_CHARACTERIZATION.md)에 기록한다.
 
@@ -33,7 +33,7 @@ Web App / useLobbyApp
   -> shared StateSnapshot, command, realtime contract
   -> Socket.IO transport
   -> room/session service 또는 Hangul turn service
-  -> RoomRecord { platform fields + concrete GameState }
+  -> RoomRecord { immutable gameType + platform fields + concrete GameState }
   -> in-memory repositories / deadline schedulers
 
 concrete GameState
@@ -122,7 +122,7 @@ concrete GameState
 | `game-deadline-service.ts`, `game-deadline-transition.ts`, `game-finish-transition.ts` | Room lane/UoW/deadline·finish orchestration과 현재 Hangul timeout/result/turn 규칙이 함께 있다. |
 | `active-turn-reader.ts`, `active-game-reader.ts`, `finished-room-retention-reader.ts` 및 overdue sweepers | recovery mechanism이 concrete `turn`, `gameDeadlineAt`, `result.finishedAt` query shape를 전제한다. |
 | `apps/server/src/transport/socket-io.ts` | session/create/join/resume/sync와 `turn:submit/draw/pass`, Hangul turn/result advisory validation·broadcast가 한 transport에 있다. |
-| `apps/server/src/composition-root.ts` | 하나의 `TestDictionaryProvider`와 한글 service/scheduler만 직접 조립하며 game registry가 없다. |
+| `apps/server/src/composition-root.ts` | 하나의 `TestDictionaryProvider`와 한글 service/scheduler를 직접 조립하며, P2의 identity-only `GameRegistry`는 availability만 확인하고 state/command/projection을 위임받지 않는다. |
 | `packages/shared/src/protocol.ts` | platform command와 ProposedBoard/WordGroup/`turn:*` command, generic·Hangul error code가 한 union에 있다. |
 | `packages/shared/src/projections.ts` | generic 이름의 `StateSnapshot`이 한글 symbol, Board/rack/bag, 2~4명, initial meld, 한글 ranking 수식까지 직접 조립한다. |
 | `packages/shared/src/realtime.ts` | socket lifecycle event와 현재 한글 start/turn/finish ack·advisory가 한 event map에 있다. |
@@ -198,6 +198,8 @@ cleanup/closed                 no further module mutation
 ## 6. `GameModule` 후보 contract
 
 다음은 platform application이 보는 개념적 facade 역할을 설명하기 위한 P0 후보이며 TypeScript 구현안이 아니다. 실제 registry entry는 아래의 좁은 capability collaborator를 조합해 이 facade를 제공한다. 같은 command나 projection을 facade와 collaborator가 두 번 실행하는 병렬 경로를 만들지 않는다.
+
+P2는 이 `GameModule` 또는 capability surface를 구현하지 않았다. 실제 runtime registry entry는 `gameType` identity만 가지며, 아래 후보의 최소 표면은 P3A~P3C에서 현재 Hangul dependency를 하나씩 옮기면서 검증한다.
 
 ```ts
 interface GameModule {
@@ -292,9 +294,9 @@ registry가 맡지 않을 책임은 다음과 같다.
 
 catalog metadata와 executable registry의 책임은 분리한다. production enablement, 표시 이름, 설명은 catalog/policy가 담당하고 exact engine lookup은 registry가 담당한다. catalog가 enabled라고 해도 registry에 executable module이 없으면 startup/configuration error이며, registry 등록만으로 production UI에 노출하지 않는다.
 
-첫 registry에는 `HANGUL_TILE` 하나만 등록한다. `NUMBER_TILE` placeholder module이나 throw-only dummy implementation은 추가하지 않는다.
+P2의 registry에는 `HANGUL_TILE` identity 하나만 등록되어 있다. `GameRegistration`의 실제 surface는 `{ gameType }`뿐이고 `find`/`getRequired`는 runtime-validated exact lookup만 수행한다. 입력 목록과 entry는 private registry state로 복사되고 저장 entry와 registry object는 freeze된다. unknown lookup, 필수 registration 누락, duplicate registration은 fallback 없이 실패한다.
 
-P2의 첫 entry는 final `GameModule`을 선구현하지 않는다. 현재 production service 집합에 그대로 위임하는 `LegacyHangulCompatibilityFacade`로 exact lookup과 immutable gameType만 검증한다. P3A~P3C에서 state codec/projector, command adapter, optional server action을 각각 facade 뒤로 옮긴 뒤에야 최종 registry entry surface를 평가한다.
+composition root는 legacy Hangul registration 하나를 기본 등록하고 필수 default가 없으면 startup에서 fail-fast한다. `RoomSessionApplicationService.createRoom`은 canonical state를 만들기 전에 legacy default registration을 확인하고, `GameStartService`는 초기 한글 state를 만들기 전에 저장된 `RoomRecord.gameType` registration을 확인한다. 이 registry는 아직 service callback, state codec/projector, command adapter 또는 server action을 소유하지 않는다. `NUMBER_TILE`/`GEM_CARD` placeholder와 final `GameModule`도 없다.
 
 ## 8. Command architecture
 
@@ -516,6 +518,8 @@ platform completion metadata 후보는 `resultVersion`, `finishedAt`, `winnerPla
 
 초기에는 strict discriminated envelope를 사용하되 persistence adapter가 state 내부를 해석하지 않게 한다.
 
+P2가 실제로 추가한 저장 경계는 envelope가 아니라 `RoomRecord.gameType` 한 field다. create 시 `GameTypeSchema`로 값을 검증하고, clone/read/UoW candidate 전반에서 그 값을 보존하며, replace에서 기존 값과 다르면 `GAME_TYPE_MISMATCH`로 원자적으로 거부한다. concrete `GameState | null`과 그 clone/phase/recovery direct access는 그대로이므로 아래 envelope와 module-owned codec은 P3A 이후의 target이다.
+
 ```text
 RoomRecord
   + immutable gameType
@@ -533,7 +537,7 @@ RoomRecord
 
 초기 envelope가 legacy Hangul state를 감쌀 때 module state가 source of truth이고 inspector가 기존 `gameId`, `gameRevision`, `turn/result`로 operational summary를 산출한다. summary를 persistence에 cache한다면 candidate commit마다 inspector 결과와 일치를 검증한다. 같은 정보를 독립적으로 수정 가능한 두 source로 만들지 않는다.
 
-현재 in-memory 단계의 clone/validate/operational metadata 산출은 정확한 registry entry의 module-owned codec/inspector에 위임한다. 외부 database를 도입할 때만 이 envelope의 serialize/deserialize와 `stateSchemaVersion`별 decoder/migrator를 확장한다. `JsonValue`라는 이유만으로 validation 없는 arbitrary state를 허용하지 않는다.
+P3A에서는 현재 in-memory clone/validate/operational metadata 산출을 정확한 registry entry의 module-owned codec/inspector에 위임하는 방안을 검증한다. 외부 database를 도입할 때만 이 envelope의 serialize/deserialize와 `stateSchemaVersion`별 decoder/migrator를 확장한다. `JsonValue`라는 이유만으로 validation 없는 arbitrary state를 허용하지 않는다.
 
 idempotency cleanup에는 module이 임의 문자열 prefix를 만들게 하지 않고 platform-owned Room association metadata를 둬야 한다. P0에서는 schema나 repository를 변경하지 않는다.
 
@@ -680,7 +684,7 @@ TurnDraft, Submit, Draw, Pass, timer, rack method를 web registry interface에 �
 | Phase 범위 | compatibility 전략 |
 | --- | --- |
 | P1 boundary 준비 | public type, event, URL, UI, behavior 변경 없음 |
-| P2 gameType/registry | registry에는 Hangul 하나만 등록하고 누락된 기존 create를 내부 default로 해석; 외부 wire는 유지 |
+| P2 gameType/registry | `HANGUL_TILE` identity-only registration, v1 create 내부 default, Room lifetime immutability와 create/start availability check; 외부 wire·snapshot·web 유지 |
 | P3A~P3D Hangul extraction | state/projection/persistence, command, server action, 물리 이동을 별도 stop gate로 수행; rule/state semantics 불변 |
 | P4 regression | 573 tests + 새 characterization/E2E + production-like smoke; 기능 추가 없음 |
 | P5A~P5C catalog/protocol | versioned snapshot, web routing/storage, catalog/create를 별도 stop gate로 수행; invitation URL 유지 |
@@ -692,7 +696,7 @@ strict old client가 unknown snapshot field를 거부할 수 있으므로 wire�
 
 ## 17. 테스트 migration과 safety net
 
-현재 기준은 shared 55, web 87, server 431로 총 573 tests다. 이동이나 경계 추출 때문에 test를 삭제·skip하거나 assertion을 약화하지 않는다.
+production 기준선은 shared 55, web 87, server 431로 총 573 tests였다. 이후 추가된 characterization과 migration test도 이동이나 경계 추출 때문에 삭제·skip하거나 assertion을 약화하지 않는다.
 
 ### 17.1 계속 보존할 회귀
 
@@ -753,4 +757,18 @@ P1은 public contract를 변경하지 않고 다음 사실을 test와 inventory�
 - web의 `App.tsx`, `use-lobby-app.ts`, realtime client는 platform lifecycle과 Hangul action/rendering을 함께 소유한다.
 - production source에서 추출한 seam은 기존 App renderer decision을 보존하는 순수 `resolveLegacyHangulRoomView`뿐이다.
 
-`GameLifecycleInspector`, game-state cloner adapter, projector collaborator, command facade는 실제 migration owner가 생기는 P2/P3로 보류한다. P1에서 이를 빈 generic interface로 추가하지 않은 것은 target 방향의 철회가 아니라, `gameType` 없이 concrete Hangul dependency를 한 단계 감추는 무의미한 indirection을 피하기 위한 stop gate다.
+`GameLifecycleInspector`, game-state cloner adapter, projector collaborator, command adapter는 P3로 보류했다. P1에서 이를 빈 generic interface로 추가하지 않은 것은 target 방향의 철회가 아니라, `gameType` 없이 concrete Hangul dependency를 한 단계 감추는 무의미한 indirection을 피하기 위한 stop gate였다.
+
+## 21. P2 internal game identity checkpoint
+
+P2는 public multi-game 기능 없이 다음 내부 identity 경계만 추가했다.
+
+- shared `GameType` runtime 값은 `HANGUL_TILE` 하나뿐이며 future ID는 아직 허용하지 않는다.
+- 기존 strict v1 `room:create`에는 `gameType` field가 없고, server가 누락된 값을 legacy default로 해석한다.
+- `RoomRecord.gameType`은 생성부터 cleanup까지 보존되며 persistence replace/UoW에서 변경할 수 없다.
+- identity-only `GameRegistry`와 legacy registration은 exact availability만 나타낸다. composition startup 및 create/start 경로는 필수 registration 부재를 fail-closed한다.
+- `protocolVersion = 1`, v1 command/event/ack, `StateSnapshot`, Socket.IO 이름, URL, web renderer는 바뀌지 않았다.
+- process-memory 저장소에는 restart를 넘는 old Room이 없으므로 state backfill/codec migration은 수행하지 않았다.
+- `GameModule`, state envelope, game command dispatch, catalog, `NUMBER_TILE`, `GEM_CARD`는 구현하지 않았다.
+
+P2의 root quality gate가 모두 통과한 checkpoint를 기준으로 다음 실행 Phase는 P3A다.

@@ -19,11 +19,19 @@ import {
 import { parse } from "valibot";
 
 import { GameStartService } from "./game-start-service.js";
+import {
+  GameRegistry,
+  type GameRegistrationReader,
+} from "../games/game-registry.js";
+import {
+  createLegacyHangulCompatibilityRegistration,
+} from "../games/legacy-hangul-compatibility-registration.js";
 import { InMemoryPersistence } from "../infrastructure/in-memory-persistence.js";
 import { KeyedSerialExecutor } from "../infrastructure/keyed-serial-executor.js";
 import { FakeClock, FakeIdGenerator } from "../infrastructure/system.js";
 import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
 import type { PlayerPresenceReader } from "../ports/player-presence-reader.js";
+import type { RoomRepository } from "../ports/room-repository.js";
 import type { RoomUnitOfWork } from "../ports/room-unit-of-work.js";
 import type {
   GameDeadlineScheduler,
@@ -99,6 +107,36 @@ class RecordingGameDeadlineScheduler implements GameDeadlineScheduler {
   }
 }
 
+class CorruptGameTypeRoomRepository implements RoomRepository {
+  constructor(private readonly delegate: RoomRepository) {}
+
+  async findById(id: RoomId): Promise<RoomRecord | null> {
+    const room = await this.delegate.findById(id);
+    return room === null
+      ? null
+      : ({ ...room, gameType: "UNKNOWN_GAME" } as unknown as RoomRecord);
+  }
+
+  async findByCode(code: Parameters<RoomRepository["findByCode"]>[0]) {
+    const room = await this.delegate.findByCode(code);
+    return room === null
+      ? null
+      : ({ ...room, gameType: "UNKNOWN_GAME" } as unknown as RoomRecord);
+  }
+
+  createIfAbsent(candidate: RoomWriteCandidate) {
+    return this.delegate.createIfAbsent(candidate);
+  }
+
+  replace(input: Parameters<RoomRepository["replace"]>[0]) {
+    return this.delegate.replace(input);
+  }
+
+  delete(input: Parameters<RoomRepository["delete"]>[0]) {
+    return this.delegate.delete(input);
+  }
+}
+
 type Harness = Readonly<{
   persistence: InMemoryPersistence;
   service: GameStartService;
@@ -116,7 +154,14 @@ type HarnessOptions = Readonly<{
   turnScheduler?: TurnScheduler;
   gameDeadlineScheduler?: GameDeadlineScheduler;
   onGameDeadlineSchedulingFailure?: () => void;
+  gameRegistrationReader?: GameRegistrationReader;
 }>;
+
+function createLegacyHangulRegistry(): GameRegistry {
+  return new GameRegistry([
+    createLegacyHangulCompatibilityRegistration(),
+  ]);
+}
 
 async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   const persistence = options.persistence ?? new InMemoryPersistence();
@@ -133,6 +178,7 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   const candidate: RoomWriteCandidate = {
     roomId: roomId("room-start"),
     roomCode: parse(RoomCodeSchema, "ABCDEF"),
+    gameType: "HANGUL_TILE",
     phase: "LOBBY",
     hostPlayerId: host.playerId,
     players,
@@ -161,6 +207,8 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
     clock,
     idGenerator: options.idGenerator ?? new FakeIdGenerator(),
     randomSource: options.randomSource ?? new ZeroRandomSource(),
+    gameRegistrationReader:
+      options.gameRegistrationReader ?? createLegacyHangulRegistry(),
     ...(options.turnScheduler === undefined
       ? {}
       : { turnScheduler: options.turnScheduler }),
@@ -219,6 +267,7 @@ test("Host와 연결된 2명은 Game을 원자적으로 시작한다", async () 
   }
   const persisted = await harness.persistence.findById(harness.room.roomId);
   assert.ok(persisted);
+  assert.equal(persisted.gameType, "HANGUL_TILE");
   assert.equal(persisted.phase, "PLAYING");
   assert.equal(persisted.roomRevision, harness.room.roomRevision + 1);
   assert.equal(persisted.storageRevision, harness.room.storageRevision + 1);
@@ -227,11 +276,80 @@ test("Host와 연결된 2명은 Game을 원자적으로 시작한다", async () 
   assert.equal(persisted.game.gameRevision, 0);
   assert.equal(result.data.gameId, persisted.game.gameId);
   assert.equal(result.data.turnId, persisted.game.turn.turnId);
+  assert.equal(Reflect.has(result.data, "gameType"), false);
   assert.equal(persisted.game.turn.turnNumber, 1);
   assert.equal(persisted.game.gameStartedAt, harness.clock.now());
   assert.equal(persisted.game.turn.startedAt, harness.clock.now());
   assert.equal(persisted.game.turn.deadlineAt, harness.clock.now() + 60_000);
   assert.equal(persisted.game.gameDeadlineAt, harness.clock.now() + 1_500_000);
+});
+
+test("등록되지 않은 Room gameType은 Hangul start 전에 fail-closed하고 state를 보존한다", async () => {
+  const harness = await createHarness({
+    gameRegistrationReader: new GameRegistry([]),
+  });
+  const input = startInput(harness.room, {
+    requestId: requestId("missing-start-registration"),
+  });
+
+  requireError(await harness.service.start(input), "INTERNAL_ERROR");
+  assert.deepEqual(
+    await harness.persistence.findById(harness.room.roomId),
+    harness.room,
+  );
+  assert.deepEqual(
+    await harness.persistence.classify(
+      `room-player:${input.roomId}:${input.actorPlayerId}`,
+      input.requestId,
+      JSON.stringify(["game:start", input.expectedRoomRevision]),
+    ),
+    { status: "MISS" },
+  );
+});
+
+test("corrupt unknown stored gameType은 Hangul state 생성 전에 fail-closed한다", async () => {
+  const harness = await createHarness();
+  const delegateIdGenerator = new FakeIdGenerator();
+  let generatedGameIds = 0;
+  const countingIdGenerator: IdGenerator = {
+    generateRoomId: () => delegateIdGenerator.generateRoomId(),
+    generatePlayerId: () => delegateIdGenerator.generatePlayerId(),
+    generateGameId: () => {
+      generatedGameIds += 1;
+      return delegateIdGenerator.generateGameId();
+    },
+    generateTurnId: () => delegateIdGenerator.generateTurnId(),
+    generateTileId: () => delegateIdGenerator.generateTileId(),
+  };
+  const service = new GameStartService({
+    roomRepository: new CorruptGameTypeRoomRepository(harness.persistence),
+    idempotencyRepository: harness.persistence,
+    roomUnitOfWork: harness.persistence,
+    roomMutationExecutor: new KeyedSerialExecutor<RoomId>(),
+    presenceReader: harness.presence,
+    clock: harness.clock,
+    idGenerator: countingIdGenerator,
+    randomSource: new ZeroRandomSource(),
+    gameRegistrationReader: createLegacyHangulRegistry(),
+  });
+  const input = startInput(harness.room, {
+    requestId: requestId("corrupt-start-game-type"),
+  });
+
+  requireError(await service.start(input), "INTERNAL_ERROR");
+  assert.equal(generatedGameIds, 0);
+  assert.deepEqual(
+    await harness.persistence.findById(harness.room.roomId),
+    harness.room,
+  );
+  assert.deepEqual(
+    await harness.persistence.classify(
+      `room-player:${input.roomId}:${input.actorPlayerId}`,
+      input.requestId,
+      JSON.stringify(["game:start", input.expectedRoomRevision]),
+    ),
+    { status: "MISS" },
+  );
 });
 
 test("accepted game:start는 first Turn과 고정 Game deadline을 모두 등록한다", async () => {

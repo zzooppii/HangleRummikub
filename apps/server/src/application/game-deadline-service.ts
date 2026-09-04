@@ -230,6 +230,7 @@ export class GameDeadlineService {
     const candidate: RoomWriteCandidate = Object.freeze({
       roomId: room.roomId,
       roomCode: room.roomCode,
+      gameType: room.gameType,
       phase: "FINISHED",
       hostPlayerId: room.hostPlayerId,
       players: room.players,

@@ -1,7 +1,7 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0·P1 완료, P2 이후 실행 계획
-> 작성일: 2026-09-04  
+> 상태: P0·P1·P2 COMPLETE, P3A READY
+> 작성일: 2026-09-05
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
 
@@ -23,7 +23,7 @@
 - contract, lifecycle, event, rules가 바뀌면 관련 문서와 test를 같은 Phase에서 갱신한다.
 - 범위 밖 발견 사항은 구현하지 않고 해당 문서의 open decision/후속 Phase에 기록한다.
 
-현재 573 tests는 shared 55, web 87, server 431로 구성된다. 이후 숫자는 신규 test만큼 증가해야 하며 이유 없이 감소하면 해당 Phase는 완료가 아니다.
+production 기준선 573 tests는 shared 55, web 87, server 431로 구성됐다. 이후 추가된 test를 포함한 수는 이유 없이 감소하면 해당 Phase는 완료가 아니다.
 
 ## 2. Phase 개요
 
@@ -33,7 +33,7 @@
 | --- | --- | --- |
 | P0 | Current-state analysis and transition design | 현재 구조를 분류하고 production을 보존하는 target boundary와 migration 순서를 문서화한다. |
 | P1 | Platform/game boundary preparation | wire와 behavior를 바꾸지 않고 결합 지점의 characterization 및 narrow seam 준비를 한다. |
-| P2 | Immutable gameType and minimal registry | 기존 Room을 `HANGUL_TILE`로 동일하게 동작시키는 내부 gameType과 single-entry registry를 도입한다. |
+| P2 | Immutable gameType and minimal registry | v1 create로 생성되는 Room을 `HANGUL_TILE`로 동일하게 동작시키는 내부 gameType과 single-entry identity registry를 도입한다. |
 | P3A | Hangul state/projection/persistence seam | 한글 state의 clone·lifecycle·projection을 narrow module seam 뒤에 둔다. |
 | P3B | Hangul start and command routing seam | 기존 start와 `turn:*`를 wire 변경 없이 Hangul module로 위임한다. |
 | P3C | Hangul lifecycle server-action seam | leave/presence/deadline을 optional Hangul server action 경계로 분리한다. |
@@ -144,18 +144,22 @@ Multi-game Platform P1만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 
 
 ## 5. P2 — Immutable gameType and minimal registry
 
+> 완료: 2026-09-05. P2는 identity와 availability 경계만 추가했으며 public v1 wire/snapshot/web behavior는 유지했다. **P2 COMPLETE / P3A READY** 표기는 root의 최종 typecheck, 전체 test, build, `git diff --check`가 모두 통과한 checkpoint를 전제로 한다.
+
 ### 목표
 
-사용자-visible 동작은 그대로 두고 모든 기존 Room을 `HANGUL_TILE`로 해석하는 authoritative immutable gameType과 single-entry registry를 도입한다.
+사용자-visible 동작은 그대로 두고 기존 v1 create로 생성되는 Room에 authoritative immutable `HANGUL_TILE` identity와 single-entry registry를 도입한다.
 
 ### Scope
 
-- neutral `GameType` contract와 runtime validation
-- Room create 시 immutable gameType 저장; v1 create에서 누락되면 명시적으로 `HANGUL_TILE`
+- `HANGUL_TILE` 하나만 지원하는 neutral `GameType` contract와 runtime validation
+- Room create 시 immutable gameType 저장; field가 없는 기존 v1 create는 server 내부에서 `HANGUL_TILE` default로 해석
 - exact lookup, duplicate registration fail-fast, unknown type fail-closed인 최소 server registry
-- composition root에 현재 service 집합으로 그대로 위임하는 `LegacyHangulCompatibilityFacade` 하나만 등록
-- Room persistence clone/phase 동작은 기존 그대로 유지하는 compatibility adapter
-- snapshot v1에는 breaking field를 무심코 추가하지 않는 내부-only migration
+- composition root에 `{ gameType: "HANGUL_TILE" }` identity-only legacy registration 하나를 등록하고 필수 default 누락·중복을 startup에서 fail-fast
+- create는 legacy default registration, start는 canonical Room registration을 state 변경 전에 확인
+- Room persistence clone/phase 동작을 유지하며 unsupported create와 lifetime gameType 변경을 원자적으로 거부
+- process-memory 저장소 특성상 durable old-Room migration 없이 수행하는 내부-only migration
+- protocol v1, snapshot v1, Socket.IO event, URL, web을 변경하지 않음
 
 ### 금지사항
 
@@ -164,13 +168,16 @@ Multi-game Platform P1만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 
 - StateSnapshot v2 공개
 - concrete Hangul state 추출 또는 규칙 변경
 - unknown stored type의 implicit Hangul fallback
+- `GameModule`, state envelope, command dispatch capability 구현
 
 ### Definition of Done
 
-- 새 Room과 v1 compatibility Room이 authoritative `HANGUL_TILE`을 가진다.
+- 기존 v1 create로 생성된 새 Room이 authoritative `HANGUL_TILE`을 가진다.
 - 생성 뒤 gameType 변경이 모든 mutation path에서 거부된다.
-- registry에는 기존 service 집합으로 위임하는 실제 compatibility facade 하나만 있고 unknown/duplicate가 fail-fast한다.
+- registry에는 identity-only legacy registration 하나만 있고 unknown/missing/duplicate가 fail-closed 또는 fail-fast한다.
+- composition root와 create/start 경로가 registration availability를 확인하며 실패 시 canonical state를 변경하지 않는다.
 - 기존 public response, URL, gameplay가 P1 characterization과 동일하다.
+- `GameModule`이나 state/command/projection capability는 아직 존재하지 않는다.
 
 ### Required tests
 
@@ -179,12 +186,12 @@ Multi-game Platform P1만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 
 - duplicate/missing registration startup failure
 - create replay/resume/reconnect 후 type 보존
 - persistence copy/UoW rollback에서 type 보존
-- 기존 573 + P1 tests, typecheck/build/diff-check
+- production 기준선 573 + P1/P2 tests, typecheck/build/diff-check
 
 ### Codex 실행 명령
 
 ```text
-Multi-game Platform P2만 구현하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 P0/P1 characterization을 준수하고, Room 생성 시 고정되는 neutral GameType과 현재 service 집합에 그대로 위임하는 LegacyHangulCompatibilityFacade 하나만 등록한 최소 registry를 내부에 추가하라. 기존 v1 room:create의 type 누락은 HANGUL_TILE로 호환하고 canonical Room 값만 신뢰하라. final GameModule surface, catalog, protocol v2, event rename, Hangul state 이동, NUMBER_TILE/GEM_CARD는 금지한다. immutable/unknown/duplicate/replay/resume test와 전체 typecheck/test/build/diff-check를 통과시켜라.
+Multi-game Platform P2만 구현하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 P0/P1 characterization을 준수하고, Room 생성 시 고정되는 neutral GameType에는 실제 지원 값 HANGUL_TILE 하나만 두며 `{ gameType }` identity-only legacy registration 하나를 가진 최소 registry를 내부에 추가하라. 기존 v1 room:create schema는 바꾸지 않고 server가 누락된 값을 HANGUL_TILE로 해석하게 하며 canonical Room 값만 신뢰하라. composition startup과 create/start 경로에서 registration availability를 확인하고 Room lifetime gameType 변경을 persistence에서 원자적으로 거부하라. GameModule, state envelope, catalog, protocol v2, event rename, Hangul state 이동, NUMBER_TILE/GEM_CARD는 금지한다. immutable/unknown/missing/duplicate/replay/resume test와 전체 typecheck/test/build/diff-check를 통과시켜라.
 ```
 
 ## 6. P3 — Existing Hangul module extraction
@@ -199,7 +206,7 @@ P3는 한 번에 실행하지 않는다. 아래 P3A~P3D를 각각 독립 작업�
 
 #### Scope
 
-- P2 Hangul compatibility facade에 state codec/clone, narrow lifecycle summary, player projector 연결
+- P2 identity-only Hangul registration에 state codec/clone, narrow lifecycle summary, player projector capability를 처음 연결
 - `RoomRecord.game`의 direct concrete import를 discriminated internal envelope로 감싸는 최소 변경
 - in-memory UoW의 copy/rollback/phase validation을 module seam으로 위임
 - current Lobby/Playing/Finished v1 projection shape를 Hangul projector가 동일하게 생성
@@ -231,7 +238,7 @@ P3는 한 번에 실행하지 않는다. 아래 P3A~P3D를 각각 독립 작업�
 #### Codex 실행 명령
 
 ```text
-Multi-game Platform P3A만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙을 지키고 P2의 HANGUL_TILE compatibility facade 뒤로 state clone/validation, narrow lifecycle inspection, player projection을 옮기며 Room persistence와 outer snapshot projector가 board·rack·turn·result 내부를 직접 읽지 않게 하라. 기존 v1 snapshot wire schema와 observable semantics, UoW rollback, recovery metadata, private rack projection을 그대로 보존하라. command routing, leave/presence/deadline, directory 이동, 공통 lifecycle 확정, 새 게임은 건드리지 말고 전체 typecheck/test/build/diff-check를 통과시켜라.
+Multi-game Platform P3A만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙을 지키고 P2의 identity-only HANGUL_TILE registration에 필요한 state clone/validation, narrow lifecycle inspection, player projection capability를 최소 표면으로 추가하며 Room persistence와 outer snapshot projector가 board·rack·turn·result 내부를 직접 읽지 않게 하라. 기존 v1 snapshot wire schema와 observable semantics, UoW rollback, recovery metadata, private rack projection을 그대로 보존하라. command routing, leave/presence/deadline, directory 이동, 공통 lifecycle 확정, 새 게임은 건드리지 말고 전체 typecheck/test/build/diff-check를 통과시켜라.
 ```
 
 ### 6.2 P3B — Hangul start and command routing seam

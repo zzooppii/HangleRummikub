@@ -288,6 +288,7 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   const candidate: RoomWriteCandidate = {
     roomId: roomId("room-submit"),
     roomCode: parse(RoomCodeSchema, "ABCDEF"),
+    gameType: "HANGUL_TILE",
     phase: "PLAYING",
     hostPlayerId: players[0] ?? PLAYER_A,
     players: players.map((id, index) => ({
@@ -388,6 +389,7 @@ test("valid initial meld Submit은 Board/rack/meld/revision/next Turn을 원자�
 
   const persisted = await harness.persistence.findById(harness.room.roomId);
   assert.ok(persisted?.game);
+  assert.equal(persisted.gameType, "HANGUL_TILE");
   assert.equal(persisted.phase, "PLAYING");
   assert.equal(persisted.roomRevision, harness.room.roomRevision);
   assert.equal(persisted.storageRevision, harness.room.storageRevision + 1);
@@ -1156,6 +1158,7 @@ test("마지막 rack Tile Submit은 RACK_EMPTY result와 score를 같은 commit�
 
   const persisted = await harness.persistence.findById(harness.room.roomId);
   assert.ok(persisted?.game);
+  assert.equal(persisted.gameType, "HANGUL_TILE");
   assert.equal(persisted.phase, "FINISHED");
   assert.equal(persisted.roomRevision, harness.room.roomRevision + 1);
   assert.equal(persisted.storageRevision, harness.room.storageRevision + 1);
