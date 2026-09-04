@@ -16,6 +16,7 @@
 - Phase 14(Draw·Pass와 server timer): **완료** (2026-09-03)
 - Phase 15(Disconnect, Host 이탈 policy, Room cleanup): **완료** (2026-09-03)
 - Phase 16(종료와 결과): **완료** (2026-09-03)
+- Phase 17(통합 E2E와 안정화): **완료** (2026-09-04)
 
 공식 physical Tile inventory와 디지털 symbol 표현의 canonical 기준은 C-22와 C-23이다. Phase 8은 Hangul composer를 구현했고 Phase 9는 아래 승인된 fixture를 `test-dictionary-v1` adapter로 구현했다. Phase 10은 server-only Board·Tile validation descriptor와 순수 RuleEngine을 구현했다. Phase 11은 exact inventory로 canonical GameState와 immutable RulesConfig를 만들고 `game:start`, Player별 PLAYING projection을 연결했다. Phase 12는 active Player의 browser-only TurnDraft editor를 연결했고 Phase 13은 원자적 `turn:submit`과 rack-empty 종료를 연결했다. Phase 14는 `turn:draw`, 두 bag이 모두 empty일 때의 `turn:pass`, server-authoritative timeout penalty와 다음 Turn scheduling을 연결했다. Phase 15는 Lobby disconnect grace, Host 승계, PLAYING offline-timeout forfeit, explicit leave와 Room retention/cleanup을 연결했다. Phase 16은 C-17에 확정한 다섯 종료 reason, 공통 result, 25분 deadline, stalemate와 forfeit 종료를 하나의 server-authoritative 경계로 통합했다.
 
@@ -907,6 +908,7 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 - **DIGITAL_MVP_POLICY:** atomic cleanup이 끝난 roomCode에는 tombstone이나 cooldown을 두지 않으며 이후 random generator의 후보가 되면 다시 사용할 수 있다. generator가 과거 code를 우선 재사용하지는 않는다.
 - **IMPLEMENTATION_INVARIANT:** cleanup은 Room record와 roomCode index, Room의 bound session 및 idempotency record를 하나의 persistent atomic boundary에서 제거한다. connection registry와 Room의 grace/retention/Turn/Game deadline timer는 canonical cleanup 뒤 stale-safe infrastructure cleanup으로 제거한다.
 - **IMPLEMENTATION_INVARIANT:** connected FINISHED client에 보내는 `room:closed`는 secret-free advisory일 뿐이며 cleanup 권한이나 canonical state를 대신하지 않는다.
+- **IMPLEMENTATION_INVARIANT:** primary FINISHED retention 등록과 bounded retry가 모두 실패해도 1초 recovery sweep이 canonical `finishedAt + 30분`을 다시 발견한다. detached identity만 읽고 기존 serialized cleanup command를 재사용하며 stale/duplicate callback은 no-op이다.
 
 ### 정상 예
 
@@ -942,6 +944,7 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 - **Phase 14 Draw/Pass/server timer implementation:** COMPLETE (2026-09-03)
 - **Phase 15 disconnect/Host/Room cleanup implementation:** COMPLETE (2026-09-03)
 - **Phase 16 finish/result implementation:** COMPLETE (2026-09-03)
+- **Phase 17 integration E2E/stabilization:** COMPLETE (2026-09-04)
 
 공식 exact consonant/vowel inventory, 두 Joker의 physical bag handling, rotation family, physical identity와 assignedSymbol 분리, 쌍자음·복합모음·겹받침 표현, Joker one-position replacement, 초기 7/7 draw semantics, 전체 156개 합계와 Phase 8 input/output semantics를 모두 확정했다. Tile representation에 관한 Phase 7B 미확정 항목은 없다.
 
@@ -993,6 +996,6 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 
 ## 다음 결정 절차
 
-1. Phase 7 gate부터 Phase 16 종료·결과까지 구현을 완료했다.
+1. Phase 7 gate부터 Phase 17 통합 E2E·안정화까지 구현을 완료했다.
 2. 다섯 종료 reason, 점수·competition ranking, deadline 우선순위와 stalemate/forfeit 의미는 C-17을 따른다.
-3. 다음 구현 단계는 Roadmap Phase 17 통합 E2E와 안정화다.
+3. 다음 구현 단계는 Roadmap Phase 18 Railway single-origin 배포다.

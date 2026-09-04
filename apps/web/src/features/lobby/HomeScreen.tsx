@@ -1,5 +1,10 @@
-import type { RoomCode } from "@hangul-rummikub/shared";
+import {
+  NICKNAME_MAX_CODE_POINTS,
+  type RoomCode,
+} from "@hangul-rummikub/shared";
 import type { FormEvent } from "react";
+
+import { limitNicknameInput } from "../../lib/nickname-input.js";
 
 export type HomeScreenProps = Readonly<{
   nickname: string;
@@ -81,13 +86,16 @@ export function HomeScreen(props: HomeScreenProps) {
               name="nickname"
               type="text"
               autoComplete="off"
-              maxLength={24}
+              maxLength={NICKNAME_MAX_CODE_POINTS * 2}
+              aria-describedby="nickname-help"
               value={props.nickname}
               disabled={isBusy}
-              onChange={(event) => props.onNicknameChange(event.target.value)}
+              onChange={(event) =>
+                props.onNicknameChange(limitNicknameInput(event.target.value))
+              }
               placeholder="예: 혁상"
             />
-            <p className="field-help">
+            <p className="field-help" id="nickname-help">
               한글·영문·숫자·밑줄을 사용해 1~12자로 입력하세요.
             </p>
 

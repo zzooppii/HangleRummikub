@@ -27,6 +27,10 @@ import type {
 import type { ActiveTurnReader } from "../ports/active-turn-reader.js";
 import type { ActiveGameReader } from "../ports/active-game-reader.js";
 import type {
+  FinishedRoomRetentionIdentity,
+  FinishedRoomRetentionReader,
+} from "../ports/finished-room-retention-reader.js";
+import type {
   CreateRoomResult,
   DeleteRoomInput,
   DeleteRoomResult,
@@ -662,7 +666,8 @@ export class InMemoryPersistence
     RoomUnitOfWork,
     RoomCleanupUnitOfWork,
     ActiveGameReader,
-    ActiveTurnReader
+    ActiveTurnReader,
+    FinishedRoomRetentionReader
 {
   #state = emptyState();
   readonly #onCommitCheckpoint:
@@ -737,6 +742,31 @@ export class InMemoryPersistence
       );
     }
     return Object.freeze(deadlines);
+  }
+
+  async listFinishedRoomRetentions(): Promise<
+    readonly FinishedRoomRetentionIdentity[]
+  > {
+    const identities: FinishedRoomRetentionIdentity[] = [];
+    for (const room of this.#state.roomsById.values()) {
+      const game = room.game;
+      if (
+        room.phase !== "FINISHED" ||
+        game === null ||
+        game.result === null ||
+        game.turn !== null
+      ) {
+        continue;
+      }
+      identities.push(
+        Object.freeze({
+          roomId: room.roomId,
+          gameId: game.gameId,
+          finishedAt: game.result.finishedAt,
+        }),
+      );
+    }
+    return Object.freeze(identities);
   }
 
   async createIfAbsent(

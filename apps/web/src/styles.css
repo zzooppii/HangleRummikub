@@ -292,7 +292,7 @@ h3 {
 }
 
 .text-button {
-  min-height: 40px;
+  min-height: 44px;
   padding: 6px 2px;
   background: transparent;
   color: inherit;
@@ -553,6 +553,7 @@ h3 {
   font-size: clamp(2rem, 7vw, 3.6rem);
   line-height: 1;
   letter-spacing: -0.045em;
+  overflow-wrap: anywhere;
 }
 
 .turn-countdown {
@@ -610,11 +611,17 @@ h3 {
 
 .playing-player {
   display: grid;
+  min-width: 0;
   gap: 4px;
   border: 1px solid #dddeda;
   border-radius: 14px;
   padding: 13px 15px;
   background: rgb(255 255 255 / 72%);
+}
+
+.playing-player > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .playing-player.active {
@@ -787,6 +794,7 @@ h3 {
 
 .score-list li {
   display: flex;
+  min-width: 0;
   min-height: 48px;
   align-items: center;
   justify-content: space-between;
@@ -804,8 +812,10 @@ h3 {
 
 .result-player {
   display: grid;
+  min-width: 0;
   flex: 1;
   gap: 2px;
+  overflow-wrap: anywhere;
 }
 
 .result-player small {
@@ -1042,6 +1052,11 @@ button.game-tile:hover:not(:disabled) {
   overscroll-behavior-x: contain;
 }
 
+.rack-empty-copy {
+  margin: 0;
+  color: #5c6672;
+}
+
 .selection-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(180px, 0.7fr) auto;
@@ -1197,6 +1212,15 @@ button.game-tile:hover:not(:disabled) {
   .turn-action-panel {
     border-radius: 18px;
     padding: 16px 12px;
+  }
+
+  .finish-panel {
+    padding: 20px 14px;
+  }
+
+  .score-list li {
+    gap: 8px;
+    padding-inline: 10px;
   }
 
   .editor-section-header,

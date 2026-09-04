@@ -1,6 +1,8 @@
 import type {
+  GameFinishedEvent,
   StateSnapshot,
   StateVersions,
+  TurnStartedEvent,
 } from "@hangul-rummikub/shared";
 
 export type SnapshotUpdateDecision =
@@ -8,6 +10,8 @@ export type SnapshotUpdateDecision =
   | "KEEP_EQUAL"
   | "IGNORE_STALE"
   | "REQUEST_SYNC";
+
+export type AdvisorySnapshotDecision = "IGNORE" | "REQUEST_SYNC";
 
 type RevisionComparison = -1 | 0 | 1;
 
@@ -98,4 +102,96 @@ export function decideSnapshotUpdate(
     currentSnapshot.versions,
     incomingSnapshot.versions,
   );
+}
+
+/**
+ * Advisory events never replace canonical state. They only trigger a sync when
+ * they prove that the currently held snapshot is missing or contradicts state.
+ */
+export function decideTurnStartedAdvisory(
+  currentSnapshot: StateSnapshot | null,
+  event: TurnStartedEvent,
+): AdvisorySnapshotDecision {
+  if (currentSnapshot === null) {
+    return "REQUEST_SYNC";
+  }
+
+  if (
+    "game" in currentSnapshot &&
+    currentSnapshot.game.gameId !== event.payload.gameId
+  ) {
+    return "IGNORE";
+  }
+
+  const versionDecision = compareStateVersions(
+    currentSnapshot.versions,
+    event.versions,
+  );
+  if (versionDecision === "APPLY" || versionDecision === "REQUEST_SYNC") {
+    return "REQUEST_SYNC";
+  }
+  if (versionDecision === "IGNORE_STALE") {
+    return "IGNORE";
+  }
+
+  if (
+    currentSnapshot.room.phase !== "PLAYING" ||
+    !("game" in currentSnapshot) ||
+    !("turn" in currentSnapshot.game)
+  ) {
+    return "IGNORE";
+  }
+
+  const currentTurn = currentSnapshot.game.turn;
+  return currentTurn.turnId === event.payload.turnId &&
+    currentTurn.turnNumber === event.payload.turnNumber &&
+    currentTurn.activePlayerId === event.payload.activePlayerId &&
+    currentTurn.deadlineAt === event.payload.deadlineAt
+    ? "IGNORE"
+    : "REQUEST_SYNC";
+}
+
+export function decideGameFinishedAdvisory(
+  currentSnapshot: StateSnapshot | null,
+  event: GameFinishedEvent,
+): AdvisorySnapshotDecision {
+  if (currentSnapshot === null || !("game" in currentSnapshot)) {
+    return "REQUEST_SYNC";
+  }
+
+  if (currentSnapshot.game.gameId !== event.payload.gameId) {
+    return "IGNORE";
+  }
+
+  const versionDecision = compareStateVersions(
+    currentSnapshot.versions,
+    event.versions,
+  );
+  if (versionDecision === "APPLY" || versionDecision === "REQUEST_SYNC") {
+    return "REQUEST_SYNC";
+  }
+  if (versionDecision === "IGNORE_STALE") {
+    return "IGNORE";
+  }
+
+  if (
+    currentSnapshot.room.phase !== "FINISHED" ||
+    !("result" in currentSnapshot.game)
+  ) {
+    return "REQUEST_SYNC";
+  }
+
+  const currentResult = currentSnapshot.game.result;
+  const sameWinners =
+    currentResult.winnerPlayerIds.length ===
+      event.payload.winnerPlayerIds.length &&
+    currentResult.winnerPlayerIds.every(
+      (playerId, index) => playerId === event.payload.winnerPlayerIds[index],
+    );
+
+  return currentResult.reason === event.payload.reason &&
+    currentResult.finishedAt === event.payload.finishedAt &&
+    sameWinners
+    ? "IGNORE"
+    : "REQUEST_SYNC";
 }

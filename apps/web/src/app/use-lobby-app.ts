@@ -56,8 +56,9 @@ import {
   type PendingRoomOperation,
 } from "../lib/session-storage.js";
 import {
-  compareStateVersions,
+  decideGameFinishedAdvisory,
   decideSnapshotUpdate,
+  decideTurnStartedAdvisory,
 } from "../lib/snapshot-state.js";
 import {
   createOrReuseTurnDrawCommand,
@@ -1237,30 +1238,17 @@ export function useLobbyApp(): LobbyAppState {
       receiveSnapshot(event.payload.snapshot);
     });
     const unsubscribeTurnStarted = client.subscribeTurnStarted((event) => {
-      const currentSnapshot = snapshotRef.current;
-      if (currentSnapshot === null) {
-        void requestLatestSnapshot();
-        return;
-      }
-
-      const decision = compareStateVersions(
-        currentSnapshot.versions,
-        event.versions,
-      );
-      if (decision === "APPLY" || decision === "REQUEST_SYNC") {
+      if (
+        decideTurnStartedAdvisory(snapshotRef.current, event) ===
+        "REQUEST_SYNC"
+      ) {
         void requestLatestSnapshot();
       }
     });
     const unsubscribeGameFinished = client.subscribeGameFinished((event) => {
-      const currentSnapshot = snapshotRef.current;
       if (
-        currentSnapshot === null ||
-        !("game" in currentSnapshot) ||
-        currentSnapshot.room.phase !== "FINISHED" ||
-        "turn" in currentSnapshot.game ||
-        currentSnapshot.game.gameId !== event.payload.gameId ||
-        currentSnapshot.versions.gameRevision <
-          event.payload.finalGameRevision
+        decideGameFinishedAdvisory(snapshotRef.current, event) ===
+        "REQUEST_SYNC"
       ) {
         void requestLatestSnapshot();
       }

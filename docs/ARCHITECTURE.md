@@ -20,7 +20,7 @@
 
 ### 2.1 계획된 monorepo
 
-아래는 단계적으로 구현할 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. Phase 9에서는 versioned deterministic test dictionary adapter를 infrastructure 경계에 추가했고 Phase 10에서는 server-only Board·Tile validation model과 async pure RuleEngine을 domain 경계에 추가했다. Phase 11은 canonical inventory/GameState, `GameStartService`, player별 PLAYING projection과 `game:start` transport를 연결했다. Phase 12는 `apps/web`에 browser-only TurnDraft editor를, Phase 13은 원자적 `turn:submit`과 rack-empty terminal state를 연결했다. Phase 14는 `TurnDrawService`, `TurnPassService`, internal `TurnTimeoutService`, in-process scheduler/overdue sweeper와 client countdown을 연결했다. Phase 15는 phase-aware disconnect/resume, explicit leave, Host 승계, offline-timeout forfeit와 Room policy scheduler/cleanup lifecycle을 연결했다. Phase 16은 generalized Result Engine, stalemate tracker와 server-authoritative Game deadline scheduler/service를 이 경계에 통합했다. 나머지 구조는 해당 Roadmap 단계에서 필요할 때 생성한다.
+아래는 단계적으로 구현한 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. Phase 9에서는 versioned deterministic test dictionary adapter를 infrastructure 경계에 추가했고 Phase 10에서는 server-only Board·Tile validation model과 async pure RuleEngine을 domain 경계에 추가했다. Phase 11은 canonical inventory/GameState, `GameStartService`, player별 PLAYING projection과 `game:start` transport를 연결했다. Phase 12는 `apps/web`에 browser-only TurnDraft editor를, Phase 13은 원자적 `turn:submit`과 rack-empty terminal state를 연결했다. Phase 14는 `TurnDrawService`, `TurnPassService`, internal `TurnTimeoutService`, in-process scheduler/overdue sweeper와 client countdown을 연결했다. Phase 15는 phase-aware disconnect/resume, explicit leave, Host 승계, offline-timeout forfeit와 Room policy scheduler/cleanup lifecycle을 연결했다. Phase 16은 generalized Result Engine, stalemate tracker와 server-authoritative Game deadline scheduler/service를 이 경계에 통합했다. Phase 17은 multi-client E2E, transport resource limit, snapshot advisory ordering, responsive/accessibility UI와 FINISHED retention recovery를 검증·보강했다. 배포 구조는 Phase 18 범위다.
 
 ```text
 /
@@ -82,7 +82,7 @@ Web client가 담당하는 일:
 - pointer drag, tap-to-place와 keyboard가 같은 draft action 경로를 사용하는 board/rack editor
 - command 전송, acknowledgement, loading/error/reconnect UX
 - `serverTime`과 `deadlineAt`을 이용한 표시용 countdown 보정
-- delta/advisory event에서 version gap 발견 시 full sync 요청
+- delta/advisory event에서 version gap 또는 같은 version의 canonical contradiction을 발견하면 full sync를 요청하고, stale·일치 advisory는 무시한다. advisory 자체는 authoritative snapshot을 대체하지 않는다.
 
 Web client가 최종 판정하지 않는 일:
 
@@ -105,6 +105,8 @@ Express/Socket.IO adapter는 다음만 담당한다.
 - client command를 application command로 변환
 - acknowledgement와 server event 직렬화
 - protocol-level rate limiting 및 안전한 error mapping
+
+Phase 17 transport resource guard는 모든 opaque identifier를 최대 128자, session token을 최대 512자로 제한한다. 이는 현재 생성값보다 여유 있는 ingress 상한이며 전체 serialized command byte 한도나 rate-limit 운영 정책을 대신하지 않는다.
 
 Socket.IO handler 안에서 Room state를 직접 수정하거나 게임 규칙을 판정하지 않는다.
 
@@ -804,6 +806,7 @@ cache 크기와 TTL은 운영 정책으로 정하지만, active Room의 정상�
 - internal deadline service는 latest Room phase, gameId, canonical deadline과 `Clock.now() >= gameDeadlineAt`을 다시 확인한다. early/stale/duplicate callback은 state를 바꾸지 않는다.
 - Game deadline이 도달한 상태에서는 `TIME_LIMIT` finish가 turn timeout penalty와 next Turn보다 우선한다. turn timeout service는 이 경계를 넘은 candidate를 commit하지 않는다.
 - FINISHED transition은 Turn/Game deadline timer를 취소·stale 처리하고 `finishedAt + 30분` retention을 등록한다. 최초 retention 등록은 동일 absolute deadline으로 bounded retry하며, timer 취소, retention 등록 또는 realtime delivery 실패는 canonical finish를 rollback하지 않는다.
+- detached `FinishedRoomRetentionReader`를 사용하는 1,000ms overdue retention sweeper가 primary 등록과 bounded retry가 모두 실패한 FINISHED Room도 canonical `finishedAt`에서 다시 발견한다. recovery callback은 기존 `RoomRetentionService`와 Room mutation lane을 사용하므로 정상 timer와 경합해도 cleanup은 idempotent하며 repository의 mutable Map을 노출하지 않는다.
 - composition root가 deadline scheduler/sweeper의 start/stop을 명시적으로 관리하고 Room cleanup은 Room의 Turn/Game/policy timer를 모두 취소한다.
 
 ## 11. Host와 Player disconnect 설계
@@ -821,7 +824,7 @@ Phase 15는 gameplay/Host policy와 Room retention을 별도 application command
 | duplicate session connect | 새 resume 성공 시 새 `connectionGeneration`만 primary, 이전 권한 회수와 stale disconnect 무시 | 없음 |
 | explicit leave during PLAYING | 즉시 forfeit, rack/result metadata 유지; non-forfeit 1/0명이면 즉시 finish | 없음 |
 
-`InProcessRoomPolicyScheduler`는 Lobby grace, PLAYING all-offline retention과 FINISHED retention deadline만 보관한다. callback은 Room을 직접 바꾸지 않고 phase/identity/deadline/presence lease를 다시 검증하는 application service를 enqueue한다. composition root가 scheduler를 명시적으로 start/stop하며 cleanup은 Room 관련 policy/Turn timer와 connection state를 취소한다.
+`InProcessRoomPolicyScheduler`는 Lobby grace, PLAYING all-offline retention과 FINISHED retention deadline만 보관한다. callback은 Room을 직접 바꾸지 않고 phase/identity/deadline/presence lease를 다시 검증하는 application service를 enqueue한다. `OverdueFinishedRetentionSweeper`는 canonical FINISHED identity만 detached read하여 누락된 fixed deadline을 복구한다. composition root가 scheduler와 sweeper를 명시적으로 start/stop하며 cleanup은 Room 관련 policy/Turn/Game timer와 connection state를 취소한다.
 
 `room:leave`는 current-primary binding에서 actor를 얻고 nullable game revision을 포함한 optimistic concurrency와 request fingerprint를 검증한다. LOBBY removal/Host succession, PLAYING forfeit, FINISHED session termination은 phase별 candidate를 만들며 partial cleanup을 허용하지 않는다. PLAYING forfeit 후 non-forfeit Player가 1명이면 `LAST_PLAYER_STANDING`, 0명이면 `ALL_PLAYERS_FORFEITED`를 같은 candidate에 만들고, Game이 계속될 때만 현재 Turn 유지 또는 next Turn 생성을 적용한다. Room cleanup UoW는 Room, roomCode index, bound sessions와 Room idempotency records를 copy-on-write state 교체 한 번으로 삭제한다.
 
@@ -953,7 +956,7 @@ https://game.example/
 - Socket integration test: bootstrap/create/join/start/submit/draw/pass/timeout/leave/resume, 다섯 finish reason의 player-specific snapshot/`game:finished`, 잘못된 token, stale scoped version, duplicate request와 post-commit delivery failure를 검증
 - Projection test: generalized FINISHED result를 모두가 보되 visibility policy상 private인 다른 rack/bag 정보, tracker/scheduler identity와 token이 payload에 포함되지 않는지 검증
 - Client test: snapshot version vector 처리, immutable TurnDraft 편집·Tile uniqueness·undo/reset, page-memory gameplay retry, deadline rejection의 sync, generalized reason/ranking FinishedScreen와 reconnect/refresh/replaced 수명주기를 검증
-- End-to-end test: 2~4 browser, refresh, disconnect, valid/invalid Submit, Railway smoke flow
+- End-to-end test: 실제 Socket.IO client 기반 2·3·4 Player lifecycle, refresh/disconnect/replacement, valid/invalid command, privacy와 finish 회귀; in-app browser 기반 desktop/mobile/tap/focus smoke. Railway smoke는 Phase 18 범위다.
 
 테스트가 가능하도록 system time, random, dictionary, repository, publisher를 전역 singleton에 숨기지 않는다.
 
@@ -962,7 +965,6 @@ https://game.example/
 | 미확정 결정 | 영향을 받는 component |
 | --- | --- |
 | production dictionary dataset·license·exact 어휘 범위 | `DictionaryProvider`, version storage |
-| Lobby 비-Host explicit leave와 Room retention/code 재사용 | session/Room cleanup, generator, abuse controls |
 | command byte-size/rate 운영 한도 | transport ingress, rate limiting |
 | rematch와 누적 match | result model, Room lifecycle |
 

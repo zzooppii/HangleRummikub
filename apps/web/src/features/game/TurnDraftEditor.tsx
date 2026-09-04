@@ -455,6 +455,13 @@ export function TurnDraftEditor(props: TurnDraftEditorProps) {
   const [drawConfirmation, setDrawConfirmation] =
     useState<TurnDrawBagKind | null>(null);
   const dragSelectionRef = useRef<DragSelection>(null);
+  const drawConfirmationButtonRef = useRef<HTMLButtonElement>(null);
+  const consonantDrawButtonRef = useRef<HTMLButtonElement>(null);
+  const vowelDrawButtonRef = useRef<HTMLButtonElement>(null);
+  const drawTriggerRefs = {
+    CONSONANT: consonantDrawButtonRef,
+    VOWEL: vowelDrawButtonRef,
+  } as const;
 
   useEffect(() => {
     setSelected((current) => {
@@ -497,6 +504,12 @@ export function TurnDraftEditor(props: TurnDraftEditorProps) {
     controller.isDirty,
     snapshot.game.turn.turnId,
   ]);
+
+  useEffect(() => {
+    if (drawConfirmation !== null) {
+      drawConfirmationButtonRef.current?.focus();
+    }
+  }, [drawConfirmation]);
 
   const selectTile = (
     tile: PrivateRackTileView | DraftPlacedTile,
@@ -571,6 +584,16 @@ export function TurnDraftEditor(props: TurnDraftEditorProps) {
     }
 
     props.onDraw(bagKind);
+  };
+
+  const cancelDrawConfirmation = (): void => {
+    if (drawConfirmation === null) {
+      return;
+    }
+
+    const cancelledBagKind = drawConfirmation;
+    setDrawConfirmation(null);
+    drawTriggerRefs[cancelledBagKind].current?.focus();
   };
 
   return (
@@ -697,17 +720,19 @@ export function TurnDraftEditor(props: TurnDraftEditorProps) {
           </header>
 
           {drawConfirmation !== null ? (
-            <div className="draw-confirmation" role="status">
-              <p>
+            <div className="draw-confirmation">
+              <p id="draw-confirmation-message" role="status">
                 편집 중인 배치가 사라집니다.{" "}
                 {drawConfirmation === "CONSONANT" ? "자음" : "모음"} 타일을
                 가져올까요?
               </p>
               <div>
                 <button
+                  ref={drawConfirmationButtonRef}
                   className="primary-button"
                   type="button"
                   disabled={props.turnActionPending}
+                  aria-describedby="draw-confirmation-message"
                   onClick={() => {
                     const bagKind = drawConfirmation;
                     setDrawConfirmation(null);
@@ -720,7 +745,8 @@ export function TurnDraftEditor(props: TurnDraftEditorProps) {
                   className="secondary-button"
                   type="button"
                   disabled={props.turnActionPending}
-                  onClick={() => setDrawConfirmation(null)}
+                  aria-describedby="draw-confirmation-message"
+                  onClick={cancelDrawConfirmation}
                 >
                   취소
                 </button>
@@ -730,6 +756,7 @@ export function TurnDraftEditor(props: TurnDraftEditorProps) {
 
           <div className="turn-action-buttons">
             <button
+              ref={consonantDrawButtonRef}
               className="secondary-button"
               type="button"
               disabled={!turnActionControls.canDrawConsonant}
@@ -739,6 +766,7 @@ export function TurnDraftEditor(props: TurnDraftEditorProps) {
               자음 타일 가져오기
             </button>
             <button
+              ref={vowelDrawButtonRef}
               className="secondary-button"
               type="button"
               disabled={!turnActionControls.canDrawVowel}
@@ -785,11 +813,11 @@ export function TurnDraftEditor(props: TurnDraftEditorProps) {
           </p>
         ) : null}
 
-        <div className="rack-strip" role="list" aria-label="내 랙 타일 목록">
-          {rackTiles.length === 0 ? (
-            <p>현재 랙 영역에 남은 타일이 없습니다.</p>
-          ) : (
-            rackTiles.map((tile) => (
+        {rackTiles.length === 0 ? (
+          <p className="rack-empty-copy">현재 랙 영역에 남은 타일이 없습니다.</p>
+        ) : (
+          <div className="rack-strip" role="list" aria-label="내 랙 타일 목록">
+            {rackTiles.map((tile) => (
               <div role="listitem" key={tile.tileId}>
                 <TileVisual
                   tile={tile}
@@ -810,9 +838,9 @@ export function TurnDraftEditor(props: TurnDraftEditorProps) {
                   }}
                 />
               </div>
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        )}
 
         {selectedLocation !== null && controller.canEdit ? (
           <div className="selection-panel">

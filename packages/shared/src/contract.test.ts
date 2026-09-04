@@ -6,6 +6,7 @@ import {
   BOOTSTRAP_SESSION_TTL_MS,
   BROWSER_CREDENTIAL_STORAGE,
   DUPLICATE_CONNECTION_POLICY,
+  OPAQUE_IDENTIFIER_MAX_LENGTH,
   PROPOSED_ASSIGNED_SYMBOL_MAX_LENGTH,
   PROPOSED_BOARD_MAX_TILE_REFERENCES,
   PROPOSED_BOARD_MAX_WORD_GROUPS,
@@ -16,6 +17,7 @@ import {
   ProposedWordGroupSchema,
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LENGTH,
+  SESSION_TOKEN_MAX_LENGTH,
   type ClientToServerEvents,
   type GameStartAck,
   type TurnDrawAck,
@@ -433,6 +435,70 @@ test("revision은 0과 양의 safe integer만 허용한다", () => {
       `${input} should be an invalid revision`,
     );
   }
+});
+
+test("opaque identifier와 session token은 oversized transport input을 제한한다", () => {
+  const identifierAtLimit = "i".repeat(OPAQUE_IDENTIFIER_MAX_LENGTH);
+  const oversizedIdentifier = `${identifierAtLimit}i`;
+  const tokenAtLimit = "t".repeat(SESSION_TOKEN_MAX_LENGTH);
+  const oversizedToken = `${tokenAtLimit}t`;
+
+  assert.equal(
+    validateSessionBootstrapCommand({
+      kind: "session:bootstrap",
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: identifierAtLimit,
+      payload: {},
+    }).ok,
+    true,
+  );
+  assert.equal(
+    validateSessionBootstrapCommand({
+      kind: "session:bootstrap",
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: oversizedIdentifier,
+      payload: {},
+    }).ok,
+    false,
+  );
+
+  assert.equal(
+    validateBootstrapCredential({ sessionToken: tokenAtLimit }).ok,
+    true,
+  );
+  assert.equal(
+    validateBootstrapCredential({ sessionToken: oversizedToken }).ok,
+    false,
+  );
+
+  const submit = turnSubmitCommand({
+    wordGroups: [
+      {
+        groupId: "group_oversized_id_boundary",
+        syllables: [proposedSyllable("tile_id_boundary")],
+      },
+    ],
+  });
+  assert.equal(
+    validateTurnSubmitCommand({ ...submit, turnId: oversizedIdentifier }).ok,
+    false,
+  );
+  assert.equal(
+    validateTurnSubmitCommand({
+      ...submit,
+      payload: {
+        proposedBoard: {
+          wordGroups: [
+            {
+              groupId: "group_oversized_tile_id",
+              syllables: [proposedSyllable(oversizedIdentifier)],
+            },
+          ],
+        },
+      },
+    }).ok,
+    false,
+  );
 });
 
 test("StateVersions는 Game 부재 null과 유효 revision 0을 구분한다", () => {

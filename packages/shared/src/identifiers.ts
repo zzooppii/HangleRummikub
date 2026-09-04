@@ -6,9 +6,17 @@ import {
   ROOM_CODE_LENGTH,
 } from "./policies.js";
 
+/** Transport resource limits; generated identifiers are currently at most 43 characters. */
+export const OPAQUE_IDENTIFIER_MAX_LENGTH = 128;
+export const SESSION_TOKEN_MAX_LENGTH = 512;
+
 const OpaqueIdentifierValueSchema = v.pipe(
   v.string(),
   v.nonEmpty("Identifier must not be empty."),
+  v.maxLength(
+    OPAQUE_IDENTIFIER_MAX_LENGTH,
+    "Identifier exceeds the transport length limit.",
+  ),
 );
 
 export const RoomIdSchema = v.pipe(
@@ -50,6 +58,10 @@ export type RequestId = v.InferOutput<typeof RequestIdSchema>;
 export const SessionTokenSchema = v.pipe(
   v.string(),
   v.nonEmpty("Session token must not be empty."),
+  v.maxLength(
+    SESSION_TOKEN_MAX_LENGTH,
+    "Session token exceeds the transport length limit.",
+  ),
   v.regex(/^\S+$/u, "Session token must not contain whitespace."),
   v.brand("SessionToken"),
 );
@@ -88,4 +100,3 @@ export const RoomCodeSchema = v.pipe(
   v.brand("RoomCode"),
 );
 export type RoomCode = v.InferOutput<typeof RoomCodeSchema>;
-

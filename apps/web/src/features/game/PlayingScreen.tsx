@@ -11,6 +11,7 @@ import {
   calculateServerClockOffset,
   calculateTurnCountdown,
 } from "../../lib/turn-countdown.js";
+import { getPlayingLiveRegionMessage } from "../../lib/playing-status.js";
 
 export type PlayingScreenProps = Readonly<{
   snapshot: PlayingStateSnapshot;
@@ -187,9 +188,12 @@ export function PlayingScreen(props: PlayingScreenProps) {
       />
 
       <p className="live-region" aria-live="polite">
-        {props.turnDraft.noticeMessage ??
-          props.turnDraft.editErrorMessage ??
-          props.connectionLabel}
+        {getPlayingLiveRegionMessage({
+          countdownExpired: countdown.expired,
+          noticeMessage: props.turnDraft.noticeMessage,
+          editErrorMessage: props.turnDraft.editErrorMessage,
+          connectionLabel: props.connectionLabel,
+        })}
       </p>
     </main>
   );

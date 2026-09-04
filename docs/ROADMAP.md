@@ -544,7 +544,7 @@ Definition of Done:
 - Submit/Draw/Pass/timeout/leave/Game deadline 경로, deadline scheduler와 overdue recovery, fixed FINISHED retention, projection/Socket.IO/FinishedScreen을 연결했다.
 - 종료 reason·score·tie, stalemate reset/advance, forfeit, 양방향 deadline·stale timer 경합, retention 등록 failure와 privacy 회귀를 검증했고 root quality gate를 통과했다.
 
-### Phase 17. 통합 E2E와 안정화
+### Phase 17. 통합 E2E와 안정화 — COMPLETE (2026-09-04)
 
 목표: 실제 2~4 browser 흐름, 보안 경계, 모바일 UX를 release 수준으로 검증한다.
 
@@ -567,6 +567,15 @@ Definition of Done:
 - visibility policy상 private인 rack/bag 정보와 token이 허용되지 않은 network payload와 log에 노출되지 않는 test가 있다.
 - 주요 브라우저와 목표 mobile viewport의 smoke test 결과가 기록된다.
 - known limitation과 미확정 후속 항목이 문서에 반영된다.
+
+현재 상태:
+
+- 실제 Socket.IO client로 2·3·4인 lifecycle, 5번째 참가와 non-Host start 거절, old-turn/stale/duplicate command, forged actor, malformed·oversized payload, unauthorized Tile probe, reconnect storm과 결과 privacy를 반복 검증했다.
+- FINISHED retention 등록이 두 번 실패하면 cleanup job이 사라지던 결함을 canonical `finishedAt` 기반 1초 overdue sweeper로 복구했다. 정상 timer와 recovery가 경합해도 기존 Room mutation lane/UoW에서 cleanup은 한 번만 적용된다.
+- opaque identifier 128자, session token 512자의 transport resource limit을 추가했다. 허용 경계는 보존하고 초과 입력은 runtime schema에서 `INVALID_PAYLOAD`로 차단한다.
+- snapshot보다 먼저·늦게 도착하는 advisory event가 canonical state를 덮지 않도록 ordering을 안정화했고, timeout live status, Draw confirmation focus, Unicode 12-code-point nickname, 320px overflow와 최소 44px touch target을 회귀 테스트로 고정했다.
+- in-app browser에서 create/join/start, active/non-active Board, tap-to-place와 symbol picker, local-only TurnDraft, Undo/Reset, Draw, 실제 server timeout, refresh draft discard, presence-only draft 보존을 확인했다. 1280×720, 390×844, 320×568에서 page-level horizontal overflow가 없었다.
+- browser harness가 engine/version을 공개하지 않아 Safari/WebKit, Firefox와 실제 모바일 기기는 검증하지 않았다. release known limitation으로 README/PROJECT_SPEC에 기록했다.
 
 ### Phase 18. Railway single-origin 배포
 

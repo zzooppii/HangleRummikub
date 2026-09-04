@@ -94,6 +94,10 @@ export function FinishedScreen(props: FinishedScreenProps) {
           </button>
         ) : null}
       </section>
+
+      <p className="live-region" aria-live="polite">
+        {props.connectionLabel}
+      </p>
     </main>
   );
 }

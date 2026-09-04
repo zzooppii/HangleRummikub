@@ -2,9 +2,9 @@
 
 ## 1. 문서 상태
 
-- 문서 버전: `0.13-phase-16-results`
+- 문서 버전: `0.14-phase-17-stabilization`
 - 대상: 첫 번째 playable MVP
-- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름과 Phase 7 gameplay 규칙 gate, Phase 8 Hangul composition, Phase 9 `TestDictionaryProvider`, Phase 10 Board RuleEngine, Phase 11 canonical Game start/state projection, Phase 12 browser-only TurnDraft, Phase 13 원자적 `turn:submit`/rack-empty 종료, Phase 14 Draw/Pass/server timer, Phase 15 disconnect grace·Host 승계·offline-timeout forfeit·explicit leave·Room cleanup, Phase 16 generalized result·25분·stalemate·forfeit 종료와 deadline recovery까지 구현되었다.
+- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름과 Phase 7 gameplay 규칙 gate, Phase 8 Hangul composition, Phase 9 `TestDictionaryProvider`, Phase 10 Board RuleEngine, Phase 11 canonical Game start/state projection, Phase 12 browser-only TurnDraft, Phase 13 원자적 `turn:submit`/rack-empty 종료, Phase 14 Draw/Pass/server timer, Phase 15 disconnect grace·Host 승계·offline-timeout forfeit·explicit leave·Room cleanup, Phase 16 generalized result·25분·stalemate·forfeit 종료, Phase 17 multi-client E2E·보안·recovery·browser 안정화까지 구현되었다.
 - 규칙 기준: 확정된 내용과 미확정 내용은 [GAME_RULES.md](./GAME_RULES.md)를 따른다.
 - 기술 구조 기준: [ARCHITECTURE.md](./ARCHITECTURE.md)를 따른다.
 
@@ -319,5 +319,6 @@ Exact physical definition과 `assignedSymbol` 정보는 기존 player-specific �
 - single replica만 지원한다. 공유 저장소 없이 replica를 늘리면 Room state와 connection routing이 갈라질 수 있다.
 - 테스트용 `DictionaryProvider`는 게임 메커니즘 검증용이며 실제 한국어 사전 완전성을 보장하지 않는다.
 - Phase 8 composer는 assigned jamo의 현대 한글 조합, Phase 9 provider는 NFC fixture membership, Phase 10 RuleEngine은 readonly proposed Board validation만 맡는다. Phase 11~13은 Game start, browser TurnDraft와 Submit/rack-empty finish를 연결했고 Phase 14는 draw/pass, 60초 timeout penalty와 다음 Turn scheduling을 원자적으로 실행한다. Phase 15는 disconnect grace, offline-timeout forfeit, explicit leave, Host succession과 Room cleanup을 연결한다. Phase 16은 25분, stalemate와 forfeit 종료를 공통 Result Engine으로 통합한다.
-- Game deadline, Turn timer와 Room retention은 single-process in-memory scheduler이므로 process restart 후 job 복구는 지원하지 않는다. 현재 Room/Game 자체가 restart에서 유실되는 MVP 제약과 동일하다.
+- Game deadline, Turn timer와 Room retention은 single-process in-memory scheduler다. process가 살아 있는 동안 유실된 overdue Turn/Game/FINISHED-retention registration은 canonical deadline sweeper가 복구하지만, process restart 후에는 Room/Game 자체가 유실되므로 job도 복구하지 않는다.
+- Phase 17 browser smoke는 Codex in-app browser에서 1280×720, 390×844, 320×568 viewport를 검증했다. harness가 browser engine/version을 노출하지 않아 Safari/WebKit, Firefox와 실제 모바일 기기는 확인하지 않았다.
 - production dictionary dataset/license, 운영 한도와 rate limit은 아직 미확정이다.

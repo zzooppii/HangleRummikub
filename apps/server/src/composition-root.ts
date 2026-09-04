@@ -10,7 +10,10 @@ import { LobbyDisconnectGraceService } from "./application/lobby-disconnect-grac
 import { LobbyStateSnapshotProjector } from "./application/lobby-state-snapshot-projector.js";
 import { RoomCleanupService } from "./application/room-cleanup-service.js";
 import { RoomLeaveService } from "./application/room-leave-service.js";
-import { RoomPresencePolicyService } from "./application/room-presence-policy-service.js";
+import {
+  ROOM_RETENTION_MS,
+  RoomPresencePolicyService,
+} from "./application/room-presence-policy-service.js";
 import { RoomRetentionService } from "./application/room-retention-service.js";
 import { RoomSessionApplicationService } from "./application/room-session-service.js";
 import { SessionResumeService } from "./application/session-resume-service.js";
@@ -25,6 +28,7 @@ import { InProcessGameDeadlineScheduler } from "./infrastructure/in-process-game
 import { InProcessRoomPolicyScheduler } from "./infrastructure/in-process-room-policy-scheduler.js";
 import { InProcessTurnScheduler } from "./infrastructure/in-process-turn-scheduler.js";
 import { KeyedSerialExecutor } from "./infrastructure/keyed-serial-executor.js";
+import { OverdueFinishedRetentionSweeper } from "./infrastructure/overdue-finished-retention-sweeper.js";
 import { OverdueTurnSweeper } from "./infrastructure/overdue-turn-sweeper.js";
 import { OverdueGameDeadlineSweeper } from "./infrastructure/overdue-game-deadline-sweeper.js";
 import {
@@ -246,6 +250,25 @@ export function createApplicationRuntime(): ApplicationRuntime {
     presenceReader,
     clock,
   });
+  const enqueueFinishedRetention = async (
+    deadline: Parameters<RoomRetentionService["expire"]>[0],
+  ): Promise<void> => {
+    if (!acceptsRoomPolicyWork) {
+      return;
+    }
+    const result = await roomRetentionService.expire(deadline);
+    if (result.status === "FAILED") {
+      throw new Error("FINISHED Room retention cleanup failed.");
+    }
+  };
+  const overdueFinishedRetentionSweeper =
+    new OverdueFinishedRetentionSweeper({
+      finishedRoomRetentionReader: persistence,
+      clock,
+      retentionMs: ROOM_RETENTION_MS,
+      enqueueRetention: enqueueFinishedRetention,
+      onFailure: reportRoomPolicyFailure,
+    });
   roomPresencePolicyService = new RoomPresencePolicyService({
     roomRepository: persistence,
     roomUnitOfWork: persistence,
@@ -430,6 +453,7 @@ export function createApplicationRuntime(): ApplicationRuntime {
       gameDeadlineScheduler.start();
       overdueTurnSweeper.start();
       overdueGameDeadlineSweeper.start();
+      overdueFinishedRetentionSweeper.start();
     },
     stop() {
       if (!running) {
@@ -442,6 +466,7 @@ export function createApplicationRuntime(): ApplicationRuntime {
       roomPolicyScheduler.stop();
       overdueTurnSweeper.stop();
       overdueGameDeadlineSweeper.stop();
+      overdueFinishedRetentionSweeper.stop();
       turnScheduler.stop();
       gameDeadlineScheduler.stop();
     },

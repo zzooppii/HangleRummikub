@@ -195,6 +195,7 @@ type HarnessOptions = Readonly<{
   canonicalBoard?: Board;
   actorRackOverride?: readonly TileInstance[];
   knownTiles?: readonly TileInstance[];
+  consonantBagTiles?: readonly TileInstance[];
   otherRacks?: ReadonlyMap<PlayerId, readonly TileInstance[]>;
   activePlayerId?: PlayerId;
   clock?: FakeClock;
@@ -233,6 +234,9 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   for (const tile of options.knownTiles ?? []) {
     allTiles.set(tile.tileId, tile);
   }
+  for (const tile of options.consonantBagTiles ?? []) {
+    allTiles.set(tile.tileId, tile);
+  }
 
   const racks = new Map<PlayerId, readonly TileId[]>();
   for (const id of players) {
@@ -251,7 +255,9 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
     gameRevision: parse(GameRevisionSchema, 4),
     rulesConfig,
     tilesById: allTiles,
-    consonantBag: Object.freeze([]),
+    consonantBag: Object.freeze(
+      (options.consonantBagTiles ?? []).map((tile) => tile.tileId),
+    ),
     vowelBag: Object.freeze([]),
     racks,
     board: canonicalBoard,
@@ -601,6 +607,108 @@ test("actual RuleEngine rejection은 invalid Tile 정보와 initial-meld partial
       harness.room,
     );
   });
+});
+
+test("unknown/other-rack/bag/stale Tile probe는 동일한 public 오류로 존재 여부를 숨긴다", async (context) => {
+  const otherRackTile = ordinaryTile(
+    "probe-other-rack",
+    "IEUNG",
+    "CONSONANT",
+    ["ㅇ"],
+  );
+  const bagTile = ordinaryTile(
+    "probe-bag",
+    "IEUNG",
+    "CONSONANT",
+    ["ㅇ"],
+  );
+  const staleTile = ordinaryTile(
+    "probe-stale",
+    "IEUNG",
+    "CONSONANT",
+    ["ㅇ"],
+  );
+  const fixtures = [
+    {
+      name: "unknown",
+      tileId: tileId("probe-unknown"),
+      options: {},
+    },
+    {
+      name: "other rack",
+      tileId: otherRackTile.tileId,
+      options: {
+        otherRacks: new Map([[PLAYER_B, [otherRackTile]]]),
+      },
+    },
+    {
+      name: "bag",
+      tileId: bagTile.tileId,
+      options: { consonantBagTiles: [bagTile] },
+    },
+    {
+      name: "stale location",
+      tileId: staleTile.tileId,
+      options: { knownTiles: [staleTile] },
+    },
+  ] as const;
+  const publicErrors: Array<{
+    code: string;
+    message: string;
+    recoverable: boolean;
+  }> = [];
+
+  for (const [index, fixture] of fixtures.entries()) {
+    await context.test(fixture.name, async () => {
+      const harness = await createHarness(fixture.options);
+      const [firstGroup] = harness.proposedBoard.wordGroups;
+      if (firstGroup === undefined) {
+        throw new Error("Probe fixture requires a proposed WordGroup.");
+      }
+      const proposedBoard = parse(ProposedBoardSchema, {
+        wordGroups: [
+          {
+            ...firstGroup,
+            syllables: firstGroup.syllables.map((syllable, syllableIndex) =>
+              syllableIndex === 0
+                ? {
+                    ...syllable,
+                    choseong: [
+                      { tileId: fixture.tileId, assignedSymbol: "ㅇ" },
+                    ],
+                  }
+                : syllable,
+            ),
+          },
+        ],
+      });
+      const before = await harness.persistence.findById(harness.room.roomId);
+      const result = await harness.service.submit(
+        submitInput(harness, {
+          requestId: requestId(`tile-probe-${index}`),
+          proposedBoard,
+        }),
+      );
+
+      assert.equal(result.ok, false);
+      if (result.ok) {
+        throw new Error("Expected privacy-safe Tile probe rejection.");
+      }
+      assert.deepEqual(result.error, {
+        code: "INVALID_TILE_ACCESS",
+        message: "The proposed Board contains an unavailable Tile.",
+        recoverable: true,
+      });
+      publicErrors.push(result.error);
+      assert.deepEqual(
+        await harness.persistence.findById(harness.room.roomId),
+        before,
+      );
+    });
+  }
+
+  assert.equal(publicErrors.length, fixtures.length);
+  assert.ok(publicErrors.every((error) => error === publicErrors[0]));
 });
 
 test("RuleEngine error는 privacy-safe application error로 mapping된다", async (context) => {
