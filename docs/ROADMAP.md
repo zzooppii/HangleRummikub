@@ -512,24 +512,37 @@ Definition of Done:
 - public gameplay projection은 `forfeited`만 공개하고 offline streak, policy generation/timer, storage revision과 다른 Player rack 상세는 노출하지 않는다. web은 Lobby/Playing/Finished leave UX, Playing confirmation, forfeit 표시와 Room closed/stale-session 정리를 제공한다.
 - Phase 15는 25분 종료, stalemate 종료와 active non-forfeit Player 한 명에 따른 FINISHED/result 계산을 구현하지 않았다.
 
-### Phase 16. 종료와 결과
+### Phase 16. 종료와 결과 — COMPLETE (2026-09-03)
 
 목표: 확정된 조건에서만 Game을 종료하고 모든 Player에게 같은 결과를 제공한다.
 
 범위:
 
-- 확정된 victory/end condition과 해당되는 stalemate/forfeit 조건
-- score 또는 remaining-rack 계산이 확정된 경우의 계산
-- `PLAYING → FINISHED`
-- finished projection과 gameplay command 거절
+- `RACK_EMPTY | TIME_LIMIT | STALEMATE | LAST_PLAYER_STANDING | ALL_PLAYERS_FORFEITED` generalized Result Engine
+- ordinary/Joker rack penalty, reason별 score, zero-or-more winner collection과 competition ranking `1, 1, 3`
+- 25분 Game deadline scheduler/service, 1초 overdue recovery와 Turn timeout에 대한 deadline 우선순위
+- both-empty Pass/무-penalty timeout의 stalemate tracker와 Submit/Draw/penalty timeout reset
+- explicit leave/두 번째 offline timeout의 forfeit 종료
+- 모든 경로의 원자적 `PLAYING → FINISHED`, timer 취소와 fixed 30분 retention
+- generalized finished projection, `game:finished`, FinishedScreen과 gameplay command 거절
 
 Definition of Done:
 
 - 각 종료 사유에 positive/negative unit test가 있다.
+- `TIME_LIMIT`의 rack count→penalty tie-break, `STALEMATE`/all-forfeit penalty ordering, rack-empty/last-standing transfer score와 공동 순위가 deterministic하다.
 - 마지막 accepted command와 result가 같은 atomic commit에 포함된다.
 - 모든 client가 같은 server-computed result, reason, final version vector를 받는다.
+- Game deadline/Turn timeout/Player command/forfeit/stalemate 경합에서 terminal transition은 최대 하나만 commit되고 stale callback은 no-op이다.
+- primary Game deadline registration 실패를 overdue sweeper가 복구하고, 모든 finish reason이 Phase 15 fixed retention에 연결된다.
+- FINISHED projection은 reason/winner/ranking/score/count/penalty/forfeit를 공개하되 상대 rack Tile 상세와 server-only tracker/scheduler state를 노출하지 않는다.
 - `FINISHED` 이후 Submit/draw/no-draw turn end가 명확한 error로 거절된다.
 - rematch가 scope 밖이면 UI/API에 임의로 추가하지 않았다.
+
+현재 상태:
+
+- C-17의 다섯 종료 reason, forfeit 점수, all-forfeited edge, competition ranking과 deadline 우선순위를 공통 Result Engine에 구현했다.
+- Submit/Draw/Pass/timeout/leave/Game deadline 경로, deadline scheduler와 overdue recovery, fixed FINISHED retention, projection/Socket.IO/FinishedScreen을 연결했다.
+- 종료 reason·score·tie, stalemate reset/advance, forfeit, 양방향 deadline·stale timer 경합, retention 등록 failure와 privacy 회귀를 검증했고 root quality gate를 통과했다.
 
 ### Phase 17. 통합 E2E와 안정화
 

@@ -152,10 +152,24 @@ function finishedSnapshot(): FinishedStateSnapshot {
       bagCounts: { consonant: 81, vowel: 47 },
       result: {
         reason: "RACK_EMPTY",
-        winnerPlayerId: "player_snapshot_test",
-        scores: [
-          { playerId: "player_snapshot_test", score: 3 },
-          { playerId: "player_snapshot_guest", score: -3 },
+        winnerPlayerIds: ["player_snapshot_test"],
+        rankings: [
+          {
+            playerId: "player_snapshot_test",
+            rank: 1,
+            score: 3,
+            remainingRackCount: 0,
+            penaltyCost: 0,
+            forfeited: false,
+          },
+          {
+            playerId: "player_snapshot_guest",
+            rank: 2,
+            score: -3,
+            remainingRackCount: 3,
+            penaltyCost: 3,
+            forfeited: false,
+          },
         ],
         finishedAt: 1_750_000_001_000,
       },

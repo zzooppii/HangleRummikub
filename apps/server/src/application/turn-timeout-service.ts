@@ -1,5 +1,6 @@
 import {
   GameIdSchema,
+  GameFinishReasonSchema,
   GameRevisionSchema,
   PlayerIdSchema,
   RequestIdSchema,
@@ -16,6 +17,14 @@ import {
 import * as v from "valibot";
 
 import type { PlayingGameState } from "../domain/game/game-state.js";
+import {
+  createForfeitResult,
+  createStalemateResult,
+} from "../domain/game/result-engine.js";
+import {
+  advanceNoMoveTurnEnds,
+  isStalemateCycleComplete,
+} from "../domain/game/stalemate.js";
 import type { TileSourceBag } from "../domain/game/tile-inventory.js";
 import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
 import type { IdempotencyRepository } from "../ports/idempotency-repository.js";
@@ -34,13 +43,18 @@ import type {
 } from "../ports/system.js";
 import type { RoomMutationSerialExecutor } from "./room-session-service.js";
 import {
+  createFinishedRoomTransition,
+  notifyGameFinishedBestEffort,
+  type GameFinishedPostCommit,
+} from "./game-finish-transition.js";
+import {
   createNextTurn,
   incrementGameRevision,
   scheduleCurrentTurnBestEffort,
   type TurnSchedulingFailureReporter,
 } from "./turn-transition.js";
 
-export const TurnTimeoutAppliedDataSchema = v.strictObject({
+const TurnTimeoutAppliedCommonSchema = v.strictObject({
   roomId: RoomIdSchema,
   gameId: GameIdSchema,
   roomRevision: RoomRevisionSchema,
@@ -55,17 +69,29 @@ export const TurnTimeoutAppliedDataSchema = v.strictObject({
     v.maxValue(2),
   ),
   timedOutPlayerForfeited: v.boolean(),
+});
+
+const TurnTimeoutAdvancedDataSchema = v.strictObject({
+  ...TurnTimeoutAppliedCommonSchema.entries,
+  outcome: v.literal("ADVANCED"),
   nextTurnId: TurnIdSchema,
   nextTurnNumber: TurnNumberSchema,
 });
 
-type ParsedTurnTimeoutAppliedData = v.InferOutput<
+const TurnTimeoutFinishedDataSchema = v.strictObject({
+  ...TurnTimeoutAppliedCommonSchema.entries,
+  outcome: v.literal("FINISHED"),
+  finishReason: GameFinishReasonSchema,
+  winnerPlayerIds: v.array(PlayerIdSchema),
+});
+
+export const TurnTimeoutAppliedDataSchema = v.variant("outcome", [
+  TurnTimeoutAdvancedDataSchema,
+  TurnTimeoutFinishedDataSchema,
+]);
+
+export type TurnTimeoutAppliedData = v.InferOutput<
   typeof TurnTimeoutAppliedDataSchema
->;
-export type TurnTimeoutAppliedData = Readonly<
-  Omit<ParsedTurnTimeoutAppliedData, "penaltyTileIds"> & {
-    penaltyTileIds: readonly TileId[];
-  }
 >;
 
 export type TurnTimeoutNoOpReason =
@@ -76,6 +102,7 @@ export type TurnTimeoutNoOpReason =
   | "STALE_GAME_REVISION"
   | "STALE_DEADLINE"
   | "PRESENCE_CHANGED"
+  | "GAME_EXPIRED"
   | "NOT_DUE";
 
 export type TurnTimeoutResult =
@@ -98,6 +125,7 @@ export type TurnTimeoutServiceDependencies = Readonly<{
   presenceLeaseReader: PlayerPresenceLeaseReader;
   turnScheduler?: TurnScheduler;
   onTurnSchedulingFailure?: TurnSchedulingFailureReporter;
+  onGameFinished?: GameFinishedPostCommit;
 }>;
 
 type TimeoutExecution = Readonly<{
@@ -225,14 +253,6 @@ function createCandidate(
   if (connectionStatus === "OFFLINE" && offlineTimeoutStreak === 2) {
     forfeitedPlayerIds.add(actorPlayerId);
   }
-  if (
-    game.turnOrder.every((playerId) => forfeitedPlayerIds.has(playerId))
-  ) {
-    throw new Error(
-      "Phase 16 must resolve a timeout that would forfeit every Player.",
-    );
-  }
-
   const penalty = drawPenaltyTiles(game, randomSource);
   const racks = new Map<PlayerId, readonly TileId[]>(
     [...game.racks].map(([playerId, rack]) => [
@@ -245,6 +265,71 @@ function createCandidate(
     ]),
   );
   const gameRevision = incrementGameRevision(game.gameRevision);
+  const noMoveTurnEndPlayerIds =
+    penalty.penaltyTileIds.length > 0
+      ? Object.freeze(new Set<PlayerId>())
+      : advanceNoMoveTurnEnds(
+          game.turnOrder,
+          forfeitedPlayerIds,
+          game.noMoveTurnEndPlayerIds,
+          actorPlayerId,
+        );
+  const resultInput = {
+    playerIds: game.turnOrder,
+    racks,
+    tilesById: game.tilesById,
+    forfeitedPlayerIds,
+    finishedAt: committedAt,
+  } as const;
+  const forfeitResult = createForfeitResult(resultInput);
+  const result =
+    forfeitResult ??
+    (isStalemateCycleComplete(
+      game.turnOrder,
+      forfeitedPlayerIds,
+      noMoveTurnEndPlayerIds,
+    )
+      ? createStalemateResult(resultInput)
+      : null);
+  const gameBase: PlayingGameState = Object.freeze({
+    ...game,
+    gameRevision,
+    consonantBag: penalty.consonantBag,
+    vowelBag: penalty.vowelBag,
+    racks,
+    offlineTimeoutStreakByPlayerId: Object.freeze(
+      offlineTimeoutStreakByPlayerId,
+    ),
+    forfeitedPlayerIds: Object.freeze(forfeitedPlayerIds),
+    noMoveTurnEndPlayerIds,
+  });
+  if (result !== null) {
+    const transition = createFinishedRoomTransition(
+      room,
+      game,
+      result,
+      committedAt,
+      gameBase,
+    );
+    return Object.freeze({
+      roomCandidate: transition.roomCandidate,
+      terminalResult: Object.freeze({
+        roomId: room.roomId,
+        gameId: game.gameId,
+        roomRevision: transition.roomCandidate.roomRevision,
+        gameRevision: transition.finishedGame.gameRevision,
+        timedOutPlayerId: actorPlayerId,
+        timedOutTurnId: game.turn.turnId,
+        penaltyTileIds: [...penalty.penaltyTileIds],
+        offlineTimeoutStreak,
+        timedOutPlayerForfeited: forfeitedPlayerIds.has(actorPlayerId),
+        outcome: "FINISHED",
+        finishReason: result.reason,
+        winnerPlayerIds: [...result.winnerPlayerIds],
+      }),
+    });
+  }
+
   const turn = createNextTurn(
     game,
     committedAt,
@@ -252,24 +337,9 @@ function createCandidate(
     forfeitedPlayerIds,
   );
   const nextGame: PlayingGameState = Object.freeze({
-    gameId: game.gameId,
-    gameRevision,
-    rulesConfig: game.rulesConfig,
-    tilesById: game.tilesById,
-    consonantBag: penalty.consonantBag,
-    vowelBag: penalty.vowelBag,
-    racks,
-    board: game.board,
-    initialMeldCompleted: game.initialMeldCompleted,
-    offlineTimeoutStreakByPlayerId: Object.freeze(
-      offlineTimeoutStreakByPlayerId,
-    ),
-    forfeitedPlayerIds: Object.freeze(forfeitedPlayerIds),
-    turnOrder: game.turnOrder,
+    ...gameBase,
     turn,
     result: null,
-    gameStartedAt: game.gameStartedAt,
-    gameDeadlineAt: game.gameDeadlineAt,
   });
   const terminalResult: TurnTimeoutAppliedData = Object.freeze({
     roomId: room.roomId,
@@ -278,9 +348,10 @@ function createCandidate(
     gameRevision,
     timedOutPlayerId: actorPlayerId,
     timedOutTurnId: game.turn.turnId,
-    penaltyTileIds: penalty.penaltyTileIds,
+    penaltyTileIds: [...penalty.penaltyTileIds],
     offlineTimeoutStreak,
     timedOutPlayerForfeited: forfeitedPlayerIds.has(actorPlayerId),
+    outcome: "ADVANCED",
     nextTurnId: turn.turnId,
     nextTurnNumber: turn.turnNumber,
   });
@@ -312,6 +383,7 @@ export class TurnTimeoutService {
   readonly #presenceLeaseReader: PlayerPresenceLeaseReader;
   readonly #turnScheduler: TurnScheduler | undefined;
   readonly #onTurnSchedulingFailure: TurnSchedulingFailureReporter | undefined;
+  readonly #onGameFinished: GameFinishedPostCommit | undefined;
   readonly #appliedListeners = new Set<TurnTimeoutAppliedListener>();
 
   constructor(dependencies: TurnTimeoutServiceDependencies) {
@@ -325,6 +397,7 @@ export class TurnTimeoutService {
     this.#presenceLeaseReader = dependencies.presenceLeaseReader;
     this.#turnScheduler = dependencies.turnScheduler;
     this.#onTurnSchedulingFailure = dependencies.onTurnSchedulingFailure;
+    this.#onGameFinished = dependencies.onGameFinished;
   }
 
   subscribeApplied(listener: TurnTimeoutAppliedListener): () => void {
@@ -344,7 +417,10 @@ export class TurnTimeoutService {
       return { status: "FAILED", reason: "INTERNAL_ERROR" };
     }
 
-    if (execution.result.status === "APPLIED") {
+    if (
+      execution.result.status === "APPLIED" &&
+      execution.result.data.outcome === "ADVANCED"
+    ) {
       const appliedData = execution.result.data;
       await scheduleCurrentTurnBestEffort(
         this.#roomRepository,
@@ -357,13 +433,14 @@ export class TurnTimeoutService {
         },
         this.#onTurnSchedulingFailure,
       );
-      if (execution.committed) {
-        await Promise.allSettled(
-          [...this.#appliedListeners].map((listener) =>
-            listener(appliedData),
-          ),
-        );
-      }
+    } else if (
+      execution.result.status === "APPLIED" &&
+      execution.result.data.outcome === "FINISHED"
+    ) {
+      await notifyGameFinishedBestEffort(this.#onGameFinished, {
+        roomId: execution.result.data.roomId,
+        gameId: execution.result.data.gameId,
+      });
     } else if (
       execution.result.status === "NO_OP" &&
       execution.result.reason === "NOT_DUE"
@@ -378,6 +455,13 @@ export class TurnTimeoutService {
           turnId: input.turnId,
         },
         this.#onTurnSchedulingFailure,
+      );
+    }
+
+    if (execution.result.status === "APPLIED" && execution.committed) {
+      const appliedData = execution.result.data;
+      await Promise.allSettled(
+        [...this.#appliedListeners].map((listener) => listener(appliedData)),
       );
     }
 
@@ -431,6 +515,12 @@ export class TurnTimeoutService {
       };
     }
     const committedAt = this.#clock.now();
+    if (committedAt >= game.gameDeadlineAt) {
+      return {
+        result: { status: "NO_OP", reason: "GAME_EXPIRED" },
+        committed: false,
+      };
+    }
     if (committedAt < game.turn.deadlineAt) {
       return {
         result: { status: "NO_OP", reason: "NOT_DUE" },

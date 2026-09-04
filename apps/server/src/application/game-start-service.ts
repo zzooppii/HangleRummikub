@@ -26,11 +26,16 @@ import type {
 } from "../ports/room-unit-of-work.js";
 import type {
   Clock,
+  GameDeadlineScheduler,
   IdGenerator,
   RandomSource,
   TurnScheduler,
 } from "../ports/system.js";
 import type { RoomMutationSerialExecutor } from "./room-session-service.js";
+import {
+  scheduleGameDeadlineBestEffort,
+  type GameDeadlineSchedulingFailureReporter,
+} from "./game-deadline-transition.js";
 import {
   scheduleCurrentTurnBestEffort,
   type TurnSchedulingFailureReporter,
@@ -79,6 +84,8 @@ export type GameStartServiceDependencies = Readonly<{
   randomSource: RandomSource;
   turnScheduler?: TurnScheduler;
   onTurnSchedulingFailure?: TurnSchedulingFailureReporter;
+  gameDeadlineScheduler?: GameDeadlineScheduler;
+  onGameDeadlineSchedulingFailure?: GameDeadlineSchedulingFailureReporter;
 }>;
 
 const ROOM_NOT_FOUND_ERROR: ErrorDto = Object.freeze({
@@ -173,6 +180,10 @@ export class GameStartService {
   readonly #randomSource: RandomSource;
   readonly #turnScheduler: TurnScheduler | undefined;
   readonly #onTurnSchedulingFailure: TurnSchedulingFailureReporter | undefined;
+  readonly #gameDeadlineScheduler: GameDeadlineScheduler | undefined;
+  readonly #onGameDeadlineSchedulingFailure:
+    | GameDeadlineSchedulingFailureReporter
+    | undefined;
 
   constructor(dependencies: GameStartServiceDependencies) {
     this.#roomRepository = dependencies.roomRepository;
@@ -185,6 +196,9 @@ export class GameStartService {
     this.#randomSource = dependencies.randomSource;
     this.#turnScheduler = dependencies.turnScheduler;
     this.#onTurnSchedulingFailure = dependencies.onTurnSchedulingFailure;
+    this.#gameDeadlineScheduler = dependencies.gameDeadlineScheduler;
+    this.#onGameDeadlineSchedulingFailure =
+      dependencies.onGameDeadlineSchedulingFailure;
   }
 
   async start(input: StartGameInput): Promise<GameStartResult> {
@@ -198,17 +212,25 @@ export class GameStartService {
     }
 
     if (result.ok) {
-      await scheduleCurrentTurnBestEffort(
-        this.#roomRepository,
-        this.#turnScheduler,
-        {
-          roomId: result.data.roomId,
-          gameId: result.data.gameId,
-          gameRevision: result.data.gameRevision,
-          turnId: result.data.turnId,
-        },
-        this.#onTurnSchedulingFailure,
-      );
+      await Promise.all([
+        scheduleCurrentTurnBestEffort(
+          this.#roomRepository,
+          this.#turnScheduler,
+          {
+            roomId: result.data.roomId,
+            gameId: result.data.gameId,
+            gameRevision: result.data.gameRevision,
+            turnId: result.data.turnId,
+          },
+          this.#onTurnSchedulingFailure,
+        ),
+        scheduleGameDeadlineBestEffort(
+          this.#roomRepository,
+          this.#gameDeadlineScheduler,
+          { roomId: result.data.roomId, gameId: result.data.gameId },
+          this.#onGameDeadlineSchedulingFailure,
+        ),
+      ]);
     }
     return result;
   }

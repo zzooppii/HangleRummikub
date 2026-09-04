@@ -15,8 +15,9 @@
 - Phase 13(원자적 Submit pipeline): **완료** (2026-09-03)
 - Phase 14(Draw·Pass와 server timer): **완료** (2026-09-03)
 - Phase 15(Disconnect, Host 이탈 policy, Room cleanup): **완료** (2026-09-03)
+- Phase 16(종료와 결과): **완료** (2026-09-03)
 
-공식 physical Tile inventory와 디지털 symbol 표현의 canonical 기준은 C-22와 C-23이다. Phase 8은 Hangul composer를 구현했고 Phase 9는 아래 승인된 fixture를 `test-dictionary-v1` adapter로 구현했다. Phase 10은 server-only Board·Tile validation descriptor와 순수 RuleEngine을 구현했다. Phase 11은 exact inventory로 canonical GameState와 immutable RulesConfig를 만들고 `game:start`, Player별 PLAYING projection을 연결했다. Phase 12는 active Player의 browser-only TurnDraft editor를 연결했고 Phase 13은 원자적 `turn:submit`과 rack-empty 종료를 연결했다. Phase 14는 `turn:draw`, 두 bag이 모두 empty일 때의 `turn:pass`, server-authoritative timeout penalty와 다음 Turn scheduling을 연결했다. Phase 15는 Lobby disconnect grace, Host 승계, PLAYING offline-timeout forfeit, explicit leave와 Room retention/cleanup을 연결했다. 25분 종료, stalemate와 active non-forfeit Player 한 명에 따른 종료는 아직 실행하지 않는다.
+공식 physical Tile inventory와 디지털 symbol 표현의 canonical 기준은 C-22와 C-23이다. Phase 8은 Hangul composer를 구현했고 Phase 9는 아래 승인된 fixture를 `test-dictionary-v1` adapter로 구현했다. Phase 10은 server-only Board·Tile validation descriptor와 순수 RuleEngine을 구현했다. Phase 11은 exact inventory로 canonical GameState와 immutable RulesConfig를 만들고 `game:start`, Player별 PLAYING projection을 연결했다. Phase 12는 active Player의 browser-only TurnDraft editor를 연결했고 Phase 13은 원자적 `turn:submit`과 rack-empty 종료를 연결했다. Phase 14는 `turn:draw`, 두 bag이 모두 empty일 때의 `turn:pass`, server-authoritative timeout penalty와 다음 Turn scheduling을 연결했다. Phase 15는 Lobby disconnect grace, Host 승계, PLAYING offline-timeout forfeit, explicit leave와 Room retention/cleanup을 연결했다. Phase 16은 C-17에 확정한 다섯 종료 reason, 공통 result, 25분 deadline, stalemate와 forfeit 종료를 하나의 server-authoritative 경계로 통합했다.
 
 규칙 문장에서 “해야 한다”, “허용한다”, “거절한다”는 서버 판정에 적용되는 규범적 표현이다. 예시는 규칙을 설명하지만 규범 문장을 대체하지 않는다.
 
@@ -546,33 +547,51 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 - **OFFICIAL_BASE_RULE:** 한 Game의 전체 제한시간은 25분이다.
 - **OFFICIAL_BASE_RULE:** 종료 시 remaining non-Joker Tile은 각 -1점, remaining Joker는 각 -30점이다.
 - **OFFICIAL_BASE_RULE:** rack을 비운 winner는 다른 Player들의 음수 penalty 절댓값 합계를 positive score로 받는다.
-- **DIGITAL_MVP_POLICY:** gameDeadlineAt = gameStartedAt + 25분이며 deadline 도달 시 진행 중 TurnDraft를 폐기하고 Game을 종료한다.
-- **DIGITAL_MVP_POLICY:** 25분 종료 ranking은 remaining rack Tile 수가 적은 순, 동률이면 penaltyCost가 낮은 순, 그래도 같으면 공동 순위다. penaltyCost는 remaining non-Joker 수 + 30 × remaining Joker 수인 non-negative 값이다.
+- **DIGITAL_MVP_POLICY:** MVP의 canonical 종료 reason은 `RACK_EMPTY`, `TIME_LIMIT`, `STALEMATE`, `LAST_PLAYER_STANDING`, `ALL_PLAYERS_FORFEITED` 다섯 가지다.
+- **DIGITAL_MVP_POLICY:** `gameDeadlineAt = gameStartedAt + 25분`이며 server `Clock` 기준 `now >= gameDeadlineAt`이면 `TIME_LIMIT`로 종료한다. 진행 중 TurnDraft는 canonical state가 아니므로 결과 계산에 포함하지 않고 폐기한다.
+- **DIGITAL_MVP_POLICY:** `TIME_LIMIT` ranking은 remaining rack physical Tile 수가 적은 순, 동률이면 penaltyCost가 낮은 순, 그래도 같으면 공동 순위다. score는 각 Player의 `-penaltyCost`이고 rank 1 Player 전원이 winner다.
 - **DIGITAL_MVP_POLICY:** 두 bag이 모두 empty여도 Board move가 가능하면 Game은 계속된다.
-- **DIGITAL_MVP_POLICY:** 두 bag이 empty인 상태에서 모든 active non-forfeit Player가 연속으로 no-draw turn end를 한 번씩 완료하면 stalemate로 FINISHED한다.
-- **DIGITAL_MVP_POLICY:** accepted Board move 또는 active Player 집합 변경은 진행 중 stalemate 연속 기록을 reset한다.
-- **DIGITAL_MVP_POLICY:** stalemate ranking은 penaltyCost가 낮은 순이며 동률은 공동 순위다.
-- **DIGITAL_MVP_POLICY:** rack-empty 종료에서는 winner가 다른 Player penalty 절댓값 합계의 positive score를 얻는다. time cap·stalemate 종료에서는 각 Player의 remaining rack penalty score를 결과로 기록한다.
+- **DIGITAL_MVP_POLICY:** 두 bag이 empty인 상태에서 모든 current non-forfeit Player가 하나의 연속 cycle 안에서 Tile을 새로 가져오지 않고 valid Board move도 만들지 않은 turn end를 한 번씩 완료하면 `STALEMATE`로 종료한다. both-empty accepted `turn:pass`와 penalty Tile을 0개 받은 timeout이 이 cycle을 진행시킨다.
+- **DIGITAL_MVP_POLICY:** Game start, accepted valid Submit, successful Draw, penalty Tile을 1개 이상 받은 timeout은 stalemate tracker를 reset한다. forfeit로 active Player 집합이 바뀌면 forfeited Player의 기록만 제외하여 current non-forfeit 집합에 맞춘다.
+- **DIGITAL_MVP_POLICY:** `STALEMATE` ranking은 penaltyCost가 낮은 순이며 score는 각 Player의 `-penaltyCost`이고, 동일 penaltyCost는 공동 순위이며 rank 1 Player 전원이 winner다. remaining rack count는 result metadata이지 선행 tie-breaker가 아니다.
+- **DIGITAL_MVP_POLICY:** forfeit 처리 뒤 non-forfeit Player가 정확히 한 명이면 `LAST_PLAYER_STANDING`으로 즉시 종료하고 그 Player를 단독 winner로 한다. 다른 모든 Player는 자신의 `-penaltyCost`를 score로 가지며 winner score는 다른 모든 Player의 penaltyCost 합이다. winner 자신의 remaining rack penalty는 positive score에서 빼지 않는다.
+- **DIGITAL_MVP_POLICY:** forfeit 처리 뒤 non-forfeit Player가 0명이면 `ALL_PLAYERS_FORFEITED`로 즉시 종료한다. winner는 없고 모든 Player score는 자신의 `-penaltyCost`이며, penaltyCost가 낮은 순으로 ranking하고 동점은 공동 순위다.
+- **DIGITAL_MVP_POLICY:** `RACK_EMPTY`/`LAST_PLAYER_STANDING` ranking은 명시적 단독 winner를 rank 1로 두고, 나머지 Player를 penaltyCost가 낮은 순으로 rank 2부터 배치한다. loser 동점에도 competition ranking을 적용한다.
+- **DIGITAL_MVP_POLICY:** 공동 순위는 competition ranking을 사용한다. 두 Player가 rank 1이면 다음 Player는 rank 2가 아니라 rank 3이다.
+- **DIGITAL_MVP_POLICY:** `LAST_PLAYER_STANDING`/`ALL_PLAYERS_FORFEITED`는 같은 mutation에서 평가하며 `STALEMATE`보다 우선한다.
+- **DIGITAL_MVP_POLICY:** penaltyCost는 remaining ordinary Tile 수 + 30 × remaining Joker 수인 non-negative 값이다. `RACK_EMPTY`와 `LAST_PLAYER_STANDING`은 단독 winner의 positive transfer score를 사용하고, 나머지 종료 reason은 각 Player의 negative penalty score를 사용한다.
 - **DIGITAL_MVP_POLICY:** 장기 match나 여러 Game의 누적 점수는 MVP 범위가 아니다.
-- **IMPLEMENTATION_INVARIANT:** Phase 13의 rack-empty accepted Submit은 active Player rack이 비면 다음 Turn을 만들지 않고 terminal Game의 `turn = null`, `result.reason = RACK_EMPTY`, winner, turnOrder 순서의 Player별 score와 `finishedAt`을 같은 canonical commit에 저장한다.
+- **IMPLEMENTATION_INVARIANT:** `GameResult`는 reason, `finishedAt`, `winnerPlayerIds`와 Player별 `playerId`, competition `rank`, `score`, `remainingRackCount`, `penaltyCost`, `forfeited`를 갖는 ranking entry를 보존한다. `winnerPlayerIds`는 0명, 1명 또는 동점인 여러 Player를 표현할 수 있어야 한다.
+- **IMPLEMENTATION_INVARIANT:** ranking entry는 rank 순으로 정렬하고 같은 rank 안의 표시 순서는 immutable `turnOrder`를 따라 deterministic하게 유지한다. 표시 순서는 공동 순위를 깨지 않는다.
+- **IMPLEMENTATION_INVARIANT:** 모든 종료 path는 final Board/rack/forfeit 상태, `turn = null`, result, `gameRevision + 1`, Room `FINISHED`, `roomRevision + 1`, `storageRevision + 1`과 client command인 경우 accepted idempotency result를 하나의 commit에 포함한다.
+- **IMPLEMENTATION_INVARIANT:** server Clock 기준 Game deadline이 도달했으면 `TIME_LIMIT`가 turn timeout penalty와 next Turn보다 우선한다. Player command는 `receivedAt < gameDeadlineAt`일 때만 Game-time 조건을 통과한다.
+- **IMPLEMENTATION_INVARIANT:** Game deadline timer callback은 authority가 아니다. latest Room/Game identity, canonical `gameDeadlineAt`과 `Clock.now() >= gameDeadlineAt`을 Room mutation lane에서 다시 확인하고 stale callback은 no-op으로 끝낸다. primary timer 등록 실패는 Game start를 rollback하지 않으며 detached active-Game read boundary와 1,000ms overdue sweeper가 누락을 복구한다.
+- **IMPLEMENTATION_INVARIANT:** FINISHED commit 뒤 current Turn timer와 Game deadline timer를 취소·stale 처리하고 Phase 15의 fixed `finishedAt + 30분` retention을 등록한다. 후처리 실패는 이미 commit된 result를 rollback하지 않는다.
 
 ### 정상 예
 
 - B의 일반 Tile 4개는 -4, C의 일반 Tile 2개와 Joker 1개는 -32이고 A가 rack을 비우면 A는 +36이다.
 - 25분 종료 때 P1은 Tile 3개와 penaltyCost 3, P2는 Tile 3개와 Joker 포함 penaltyCost 32라면 P1이 앞선다.
+- `TIME_LIMIT`에서 P1과 P2의 rack count와 penaltyCost가 모두 같으면 둘 다 rank 1이고 두 playerId가 모두 `winnerPlayerIds`에 든다.
+- A가 `LAST_PLAYER_STANDING`으로 남았고 B의 penaltyCost가 4, C의 penaltyCost가 32이면 A는 +36, B는 -4, C는 -32다.
+- `ALL_PLAYERS_FORFEITED`에서 A의 penaltyCost가 4, B의 penaltyCost가 32이면 winner는 없고 A rank 1/-4, B rank 2/-32다.
 
 ### 거절·edge case
 
 - 한 bag만 비었다는 이유로 Game을 끝내지 않는다.
-- 두 bag이 비어도 모든 active Player가 한 차례씩 no-draw 종료하기 전에는 stalemate가 아니다.
-- 25분 deadline 뒤 도착한 Submit으로 rack-empty 승리를 만들 수 없다.
-- forfeit로 active Player 한 명만 남아 끝난 Game의 winner는 확정하지만, 그 종료 원인의 positive score 계산은 공식 근거와 사용자 결정이 없어 아직 확정하지 않는다.
+- 두 bag이 비어도 모든 current non-forfeit Player가 한 차례씩 no-draw 종료하기 전에는 stalemate가 아니다.
+- 25분 deadline에 같거나 늦게 도착한 Submit/Draw/Pass로 rack-empty 승리, draw 또는 stalemate와 다른 결과를 만들 수 없다.
+- deadline에 같거나 늦게 도착한 Player command는 stable `GAME_EXPIRED`로 거절하고 canonical state를 바꾸지 않는다.
+- Game deadline과 turn timeout이 동시에 overdue인 때 timeout penalty를 추가한 뒤 `TIME_LIMIT`로 끝내지 않는다.
+- `ALL_PLAYERS_FORFEITED`에 임의 winner를 지정하지 않는다.
+- 동점 Player 다음 순위를 dense ranking `1, 1, 2`로 계산하지 않는다.
 
 ### Server validation implication
 
-- Game 종료는 FINISHED phase, result/ranking과 active timer 취소를 하나의 canonical mutation으로 commit한다.
-- 종료 원인별 scoring path를 명시적으로 구분한다.
-- Phase 13은 rack-empty 종료만 실행한다. 25분 cap, stalemate와 forfeit 종료 mutation은 후속 Phase의 범위다.
+- penalty, score, winner와 competition ranking을 종료 reason별 pure deterministic Result Engine에서 계산하고 service별로 수식을 복제하지 않는다.
+- `RACK_EMPTY`는 accepted Submit, `STALEMATE`는 Pass/무-penalty timeout, forfeit 종료는 leave/두 번째 offline timeout candidate에서 result와 해당 state change를 한 번에 commit한다.
+- `TIME_LIMIT` internal command와 Submit/Draw/Pass/turn timeout/leave는 같은 Room mutation lane을 사용해 단 하나의 terminal transition만 commit하게 한다.
+- FINISHED Game은 `turn = null`, `result != null`이며 gameplay command와 늦은 timer callback을 거절 또는 no-op 처리한다.
 
 ## C-18. PLAYING 중 disconnect와 explicit leave
 
@@ -586,8 +605,9 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 - **DIGITAL_MVP_POLICY:** 성공적으로 resume해 CONNECTED가 되면 offline-timeout 연속 횟수를 0으로 reset한다. CONNECTED 상태의 timeout은 이 forfeit 횟수에 포함하지 않는다.
 - **DIGITAL_MVP_POLICY:** forfeit Player는 active rotation에서 제외하되 rack과 result metadata를 Game 종료까지 유지한다.
 - **DIGITAL_MVP_POLICY:** active non-forfeit Player가 1명만 남으면 그 Player를 winner로 하고 Game을 종료한다.
+- **DIGITAL_MVP_POLICY:** non-forfeit Player가 0명이 되면 winner 없이 `ALL_PLAYERS_FORFEITED`로 종료한다. 점수와 ranking은 C-17을 따른다.
 - **DIGITAL_MVP_POLICY:** PLAYING 중 explicit leave는 즉시 forfeit이며 동일한 결과 보존 규칙을 적용한다.
-- **DIGITAL_MVP_POLICY:** 현재 active Player의 explicit leave는 penalty 없이 현재 Turn을 끝내고 다음 non-forfeit Player의 새 Turn을 만든다. 다른 Player의 explicit leave는 현재 Turn identity와 deadline을 유지한다.
+- **DIGITAL_MVP_POLICY:** 현재 active Player의 explicit leave는 penalty 없이 현재 Turn을 끝낸다. C-17의 forfeit 종료 조건이 아니면 다음 non-forfeit Player의 새 Turn을 만들고, 종료 조건이면 새 Turn을 만들지 않는다. non-current Player의 explicit leave는 Game이 계속되는 경우에만 현재 Turn identity와 deadline을 유지한다.
 - **DIGITAL_MVP_POLICY:** FINISHED의 explicit leave는 session과 connection만 종료하며 보존 중인 Player, rack summary와 result를 바꾸지 않는다.
 
 ### 정상 예
@@ -605,7 +625,7 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 
 - presence는 ConnectionRegistry projection state이고 forfeit/streak는 canonical Game state다. offline-timeout streak 자체는 projection하지 않는다.
 - timeout 시점의 authoritative presence lease와 current turnId를 직렬화 경계 및 commit precondition에서 다시 확인한다.
-- 단순 disconnect/resume과 resume에 따른 streak reset은 `gameRevision`, `roomRevision` 또는 `turnId`를 바꾸지 않는다. 두 번째 offline timeout의 penalty, forfeit와 next Turn은 한 번의 canonical commit이다.
+- 단순 disconnect/resume과 resume에 따른 streak reset은 `gameRevision`, `roomRevision` 또는 `turnId`를 바꾸지 않는다. 두 번째 offline timeout은 penalty를 먼저 candidate에 반영한 뒤 forfeit와 C-17의 종료 조건을 같은 commit에서 평가하며, Game이 계속될 때만 next Turn을 만든다.
 
 ## C-19. Host policy
 
@@ -646,7 +666,7 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 ### Normative rule
 
 - **DIGITAL_MVP_POLICY:** 본인에게 자신의 rack Tile 상세, initialMeldCompleted, connection 상태와 forfeit 여부를 공개한다.
-- **DIGITAL_MVP_POLICY:** 모든 Player에게 Board 전체, activePlayerId, turn deadline, immutable turnOrder, 각 Player nickname·Host·presence·remaining rack Tile 수·initial meld 완료 여부, Game phase와 result/ranking을 공개한다.
+- **DIGITAL_MVP_POLICY:** 모든 Player에게 Board 전체, activePlayerId, turn deadline, immutable turnOrder, 각 Player nickname·Host·presence·remaining rack Tile 수·initial meld 완료 여부, Game phase와 result/ranking을 공개한다. FINISHED result에는 reason, `finishedAt`, `winnerPlayerIds`, rank, score, remaining rack count, penaltyCost와 forfeited 여부를 포함한다.
 - **DIGITAL_MVP_POLICY:** consonant remaining count와 vowel remaining count를 모든 Player에게 공개한다.
 - **DIGITAL_MVP_POLICY:** 상대 rack Tile 상세, bag Tile 순서, future draw Tile, session credential과 server random state는 공개하지 않는다.
 - **IMPLEMENTATION_INVARIANT:** 모든 snapshot은 Player별 projection으로 생성하며 canonical GameState를 그대로 broadcast하지 않는다.
@@ -659,6 +679,7 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 
 - Room 전체에 한 개의 동일한 canonical snapshot을 broadcast하지 않는다.
 - draw 전에 다음 tileId나 symbol을 공개하지 않는다.
+- result 계산에 rack이 필요했다는 이유로 FINISHED projection에 다른 Player의 tileId, physicalType 또는 assigned symbol을 공개하지 않는다.
 
 ### Server validation implication
 
@@ -874,7 +895,7 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 - `GameStartService`는 Room별 직렬화 경계 안에서 최신 Room과 `PlayerPresenceReader`를 다시 읽어 phase, Host, 인원, revision과 모든 Player의 CONNECTED 상태를 검증한다. transport가 캡처한 current-primary authorization은 candidate와 idempotency record를 만든 뒤 live state를 교체하는 바로 직전에 동기 precondition으로 재검증한다.
 - 거절된 요청은 Room phase, Room/Game/storage revision, Tile, rack, bag과 idempotency state를 변경하지 않는다.
 - 성공하면 exact inventory 156개, bag별 shuffle·7/7 배분, immutable turnOrder와 첫 Turn을 생성해 `roomRevision + 1`, 새 `gameRevision = 0`, `storageRevision + 1`을 원자적으로 반영한다.
-- `startedAt`은 server Clock 값이고 첫 `deadlineAt = startedAt + 60_000`, `gameDeadlineAt = startedAt + 1_500_000`이다. Phase 14는 첫 Turn과 이후 non-terminal Turn을 scheduler에 등록하지만 25분 Game deadline 종료는 아직 실행하지 않는다.
+- `startedAt`은 server Clock 값이고 첫 `deadlineAt = startedAt + 60_000`, `gameDeadlineAt = startedAt + 1_500_000`이다. commit 후 첫 Turn과 Game deadline을 각 scheduler에 등록하되 어느 등록 실패도 이미 accepted된 Game start를 rollback하지 않는다.
 
 ## C-25. Room retention과 cleanup
 
@@ -884,7 +905,7 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 - **DIGITAL_MVP_POLICY:** PLAYING에서 모든 보존 Player가 OFFLINE이 된 시점부터 30분 동안 아무도 resume하지 않으면 Room을 cleanup한다. 한 Player라도 resume하면 현재 all-offline timer를 취소하고, 다시 모두 OFFLINE이 된 시점에 새 30분 window를 시작한다.
 - **DIGITAL_MVP_POLICY:** FINISHED Room은 `finishedAt`부터 30분 동안 보존한 뒤 cleanup한다. connection이나 resume은 이 fixed deadline을 연장하지 않는다.
 - **DIGITAL_MVP_POLICY:** atomic cleanup이 끝난 roomCode에는 tombstone이나 cooldown을 두지 않으며 이후 random generator의 후보가 되면 다시 사용할 수 있다. generator가 과거 code를 우선 재사용하지는 않는다.
-- **IMPLEMENTATION_INVARIANT:** cleanup은 Room record와 roomCode index, Room의 bound session 및 idempotency record를 하나의 persistent atomic boundary에서 제거한다. connection registry와 Room의 grace/retention/Turn timer는 canonical cleanup 뒤 stale-safe infrastructure cleanup으로 제거한다.
+- **IMPLEMENTATION_INVARIANT:** cleanup은 Room record와 roomCode index, Room의 bound session 및 idempotency record를 하나의 persistent atomic boundary에서 제거한다. connection registry와 Room의 grace/retention/Turn/Game deadline timer는 canonical cleanup 뒤 stale-safe infrastructure cleanup으로 제거한다.
 - **IMPLEMENTATION_INVARIANT:** connected FINISHED client에 보내는 `room:closed`는 secret-free advisory일 뿐이며 cleanup 권한이나 canonical state를 대신하지 않는다.
 
 ### 정상 예
@@ -920,6 +941,7 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 - **Phase 13 atomic Submit pipeline implementation:** COMPLETE (2026-09-03)
 - **Phase 14 Draw/Pass/server timer implementation:** COMPLETE (2026-09-03)
 - **Phase 15 disconnect/Host/Room cleanup implementation:** COMPLETE (2026-09-03)
+- **Phase 16 finish/result implementation:** COMPLETE (2026-09-03)
 
 공식 exact consonant/vowel inventory, 두 Joker의 physical bag handling, rotation family, physical identity와 assignedSymbol 분리, 쌍자음·복합모음·겹받침 표현, Joker one-position replacement, 초기 7/7 draw semantics, 전체 156개 합계와 Phase 8 input/output semantics를 모두 확정했다. Tile representation에 관한 Phase 7B 미확정 항목은 없다.
 
@@ -949,12 +971,6 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 - FINISHED Room에서 새 Game을 시작하는 rematch
 - 여러 Game 누적 점수와 match winner
 
-## TBC-G. Forfeit 종료의 positive score
-
-- forfeit로 active non-forfeit Player 한 명만 남아 종료될 때 winner의 positive score 계산
-- forfeited Player와 이미 forfeit하지 않은 Player의 remaining rack penalty를 winner score에 어떤 범위로 합산할지
-- 이 결정은 Phase 16의 forfeit result 구현 전에 확정한다.
-
 ---
 
 # 기존 TBC 추적
@@ -972,11 +988,11 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 | TBC-09 turn 제한시간/timeout | C-14에 확정 |
 | TBC-10 disconnect/leave | PLAYING/FINISHED 정책은 C-18, Lobby/Host 정책은 C-19, retention과 cleanup은 C-25로 해소 |
 | TBC-11 Host succession | C-19에 확정 |
-| TBC-12 승리/점수/stalemate | rack-empty/time-cap/stalemate는 C-17에 확정, forfeit 종료 positive score는 TBC-G |
+| TBC-12 승리/점수/stalemate | rack-empty/time-cap/stalemate와 forfeit 종료 점수·ranking을 C-17에 모두 확정 |
 | TBC-13 dictionary | deterministic MVP 방향은 C-16 확정, production dataset은 TBC-C |
 
 ## 다음 결정 절차
 
-1. Phase 7 gate부터 Phase 15 disconnect, Host 이탈 policy와 Room cleanup까지 구현을 완료했다.
-2. 다음 작업은 Roadmap Phase 16의 종료와 결과다.
-3. Phase 15는 Lobby grace/Host succession, PLAYING disconnect·offline timeout forfeit, explicit leave와 retention cleanup을 제공한다. 25분·stalemate·active non-forfeit Player 한 명에 따른 FINISHED/result 계산은 아직 구현하지 않았다.
+1. Phase 7 gate부터 Phase 16 종료·결과까지 구현을 완료했다.
+2. 다섯 종료 reason, 점수·competition ranking, deadline 우선순위와 stalemate/forfeit 의미는 C-17을 따른다.
+3. 다음 구현 단계는 Roadmap Phase 17 통합 E2E와 안정화다.

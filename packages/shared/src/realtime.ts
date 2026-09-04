@@ -10,6 +10,7 @@ import {
 import {
   FinishedStateSnapshotSchema,
   FinishedStateVersionsSchema,
+  GameFinishReasonSchema,
   PlayingStateSnapshotSchema,
   PlayingStateVersionsSchema,
   StateSnapshotSchema,
@@ -148,7 +149,10 @@ export const TurnDrawAckSchema = v.union([
 export type TurnDrawAck = v.InferOutput<typeof TurnDrawAckSchema>;
 
 export const TurnPassAckDataSchema = v.strictObject({
-  snapshot: PlayingStateSnapshotSchema,
+  snapshot: v.union([
+    PlayingStateSnapshotSchema,
+    FinishedStateSnapshotSchema,
+  ]),
 });
 export type TurnPassAckData = v.InferOutput<typeof TurnPassAckDataSchema>;
 
@@ -190,12 +194,39 @@ export const TurnStartedEventSchema = v.strictObject({
 });
 export type TurnStartedEvent = v.InferOutput<typeof TurnStartedEventSchema>;
 
-export const GameFinishedEventPayloadSchema = v.strictObject({
+const GameFinishedEventPayloadObjectSchema = v.strictObject({
   gameId: GameIdSchema,
-  reason: v.literal("RACK_EMPTY"),
-  winnerPlayerId: PlayerIdSchema,
-  gameRevision: FinishedStateVersionsSchema.entries.gameRevision,
+  reason: GameFinishReasonSchema,
+  winnerPlayerIds: v.pipe(
+    v.array(PlayerIdSchema),
+    v.maxLength(4),
+  ),
+  finalGameRevision: FinishedStateVersionsSchema.entries.gameRevision,
+  finishedAt: ServerTimeSchema,
 });
+export const GameFinishedEventPayloadSchema = v.pipe(
+  GameFinishedEventPayloadObjectSchema,
+  v.check(
+    (payload) =>
+      new Set(payload.winnerPlayerIds).size === payload.winnerPlayerIds.length,
+    "Finished event winners must not contain duplicates.",
+  ),
+  v.check(
+    (payload) =>
+      payload.reason === "ALL_PLAYERS_FORFEITED"
+        ? payload.winnerPlayerIds.length === 0
+        : payload.winnerPlayerIds.length > 0,
+    "Only an all-players-forfeited event may omit winners.",
+  ),
+  v.check(
+    (payload) =>
+      payload.reason === "RACK_EMPTY" ||
+      payload.reason === "LAST_PLAYER_STANDING"
+        ? payload.winnerPlayerIds.length === 1
+        : true,
+    "Rack-empty and last-player-standing events require one winner.",
+  ),
+);
 export type GameFinishedEventPayload = v.InferOutput<
   typeof GameFinishedEventPayloadSchema
 >;
@@ -211,7 +242,8 @@ const GameFinishedEventObjectSchema = v.strictObject({
 export const GameFinishedEventSchema = v.pipe(
   GameFinishedEventObjectSchema,
   v.check(
-    (event) => event.payload.gameRevision === event.versions.gameRevision,
+    (event) =>
+      event.payload.finalGameRevision === event.versions.gameRevision,
     "The finished event revision must match its version vector.",
   ),
 );

@@ -264,6 +264,7 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
     offlineTimeoutStreakByPlayerId: new Map(
       players.map((id) => [id, 0]),
     ),
+    noMoveTurnEndPlayerIds: new Set<PlayerId>(),
     forfeitedPlayerIds: new Set<PlayerId>(),
     turnOrder: Object.freeze([...players]),
     turn: Object.freeze({
@@ -1042,7 +1043,7 @@ test("마지막 rack Tile Submit은 RACK_EMPTY result와 score를 같은 commit�
     gameRevision: 5,
     outcome: "FINISHED",
     finishReason: "RACK_EMPTY",
-    winnerPlayerId: PLAYER_A,
+    winnerPlayerIds: [PLAYER_A],
   });
 
   const persisted = await harness.persistence.findById(harness.room.roomId);
@@ -1055,11 +1056,32 @@ test("마지막 rack Tile Submit은 RACK_EMPTY result와 score를 같은 commit�
   assert.equal(persisted.game.turn, null);
   assert.deepEqual(persisted.game.result, {
     reason: "RACK_EMPTY",
-    winnerPlayerId: PLAYER_A,
-    scores: [
-      { playerId: PLAYER_A, score: 36, remainingRackTileCount: 0 },
-      { playerId: PLAYER_B, score: -4, remainingRackTileCount: 4 },
-      { playerId: PLAYER_C, score: -32, remainingRackTileCount: 3 },
+    winnerPlayerIds: [PLAYER_A],
+    rankings: [
+      {
+        playerId: PLAYER_A,
+        rank: 1,
+        score: 36,
+        remainingRackCount: 0,
+        penaltyCost: 0,
+        forfeited: false,
+      },
+      {
+        playerId: PLAYER_B,
+        rank: 2,
+        score: -4,
+        remainingRackCount: 4,
+        penaltyCost: 4,
+        forfeited: false,
+      },
+      {
+        playerId: PLAYER_C,
+        rank: 3,
+        score: -32,
+        remainingRackCount: 3,
+        penaltyCost: 32,
+        forfeited: false,
+      },
     ],
     finishedAt: harness.clock.now(),
   });
@@ -1083,8 +1105,22 @@ test("2-player rack-empty score도 ordinary/Joker penalty를 계산한다", asyn
   requireSuccess(await harness.service.submit(submitInput(harness)));
   const result = (await harness.persistence.findById(harness.room.roomId))?.game
     ?.result;
-  assert.deepEqual(result?.scores, [
-    { playerId: PLAYER_A, score: 31, remainingRackTileCount: 0 },
-    { playerId: PLAYER_B, score: -31, remainingRackTileCount: 2 },
+  assert.deepEqual(result?.rankings, [
+    {
+      playerId: PLAYER_A,
+      rank: 1,
+      score: 31,
+      remainingRackCount: 0,
+      penaltyCost: 0,
+      forfeited: false,
+    },
+    {
+      playerId: PLAYER_B,
+      rank: 2,
+      score: -31,
+      remainingRackCount: 2,
+      penaltyCost: 31,
+      forfeited: false,
+    },
   ]);
 });

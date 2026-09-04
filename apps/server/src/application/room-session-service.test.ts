@@ -34,6 +34,7 @@ import {
   createInitialGameState,
   type GameState,
 } from "../domain/game/game-state.js";
+import { createRackEmptyResult } from "../domain/game/result-engine.js";
 import {
   type IdempotencyRecord,
   type RoomRecord,
@@ -269,42 +270,22 @@ async function seedRoom(
       );
       const racks = new Map(activeGame.racks);
       racks.set(host.playerId, []);
-      const rackPenalty = (playerId: PlayerId): number => {
-        const rack = racks.get(playerId) ?? [];
-        return rack.reduce((sum, tileId) => {
-          const tile = activeGame.tilesById.get(tileId);
-          return sum + (tile?.kind === "JOKER" ? 30 : 1);
-        }, 0);
-      };
-      const winnerScore = activeGame.turnOrder.reduce(
-        (sum, playerId) =>
-          playerId === host.playerId ? sum : sum + rackPenalty(playerId),
-        0,
-      );
       game = {
         ...activeGame,
         consonantBag: [...activeGame.consonantBag, ...returnedConsonants],
         vowelBag: [...activeGame.vowelBag, ...returnedVowels],
         racks,
         turn: null,
-        result: {
-          reason: "RACK_EMPTY",
-          winnerPlayerId: host.playerId,
-          scores: activeGame.turnOrder.map((playerId) =>
-            playerId === host.playerId
-              ? {
-                  playerId,
-                  score: winnerScore,
-                  remainingRackTileCount: 0,
-                }
-              : {
-                  playerId,
-                  score: -rackPenalty(playerId),
-                  remainingRackTileCount: (racks.get(playerId) ?? []).length,
-                },
-          ),
-          finishedAt: serverTime(500),
-        },
+        result: createRackEmptyResult(
+          {
+            playerIds: activeGame.turnOrder,
+            racks,
+            tilesById: activeGame.tilesById,
+            forfeitedPlayerIds: activeGame.forfeitedPlayerIds,
+            finishedAt: serverTime(500),
+          },
+          host.playerId,
+        ),
       };
     }
   }

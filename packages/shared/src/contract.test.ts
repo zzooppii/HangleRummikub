@@ -12,6 +12,7 @@ import {
   PROPOSED_WORD_GROUP_MAX_SYLLABLES,
   PROPOSED_WORD_GROUP_ID_MAX_LENGTH,
   PROTOCOL_VERSION,
+  GameResultSchema,
   ProposedWordGroupSchema,
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LENGTH,
@@ -268,10 +269,24 @@ function createFinishedSnapshot() {
       bagCounts: playing.game.bagCounts,
       result: {
         reason: "RACK_EMPTY",
-        winnerPlayerId: "player_123",
-        scores: [
-          { playerId: "player_123", score: 2 },
-          { playerId: "player_456", score: -2 },
+        winnerPlayerIds: ["player_123"],
+        rankings: [
+          {
+            playerId: "player_123",
+            rank: 1,
+            score: 2,
+            remainingRackCount: 0,
+            penaltyCost: 0,
+            forfeited: false,
+          },
+          {
+            playerId: "player_456",
+            rank: 2,
+            score: -2,
+            remainingRackCount: 2,
+            penaltyCost: 2,
+            forfeited: false,
+          },
         ],
         finishedAt: 1_750_000_030_000,
       },
@@ -2188,7 +2203,7 @@ test("FINISHED snapshot은 no-active-turn result와 본인 rack만 공개한다"
   if (result.ok) {
     assert.equal(result.value.room.phase, "FINISHED");
     assert.equal(result.value.game.result.reason, "RACK_EMPTY");
-    assert.equal(result.value.game.result.winnerPlayerId, "player_123");
+    assert.deepEqual(result.value.game.result.winnerPlayerIds, ["player_123"]);
     assert.equal("turn" in result.value.game, false);
   }
 
@@ -2209,6 +2224,409 @@ test("FINISHED snapshot은 no-active-turn result와 본인 rack만 공개한다"
   ]) {
     assert.equal(validateFinishedStateSnapshot(leaked).ok, false);
   }
+});
+
+test("일반화된 Game result는 5개 reason과 competition ranking을 검증한다", () => {
+  const penaltyRankings = [
+    {
+      playerId: "player_123",
+      rank: 1,
+      score: -3,
+      remainingRackCount: 3,
+      penaltyCost: 3,
+      forfeited: false,
+    },
+    {
+      playerId: "player_456",
+      rank: 1,
+      score: -3,
+      remainingRackCount: 3,
+      penaltyCost: 3,
+      forfeited: false,
+    },
+    {
+      playerId: "player_789",
+      rank: 3,
+      score: -32,
+      remainingRackCount: 3,
+      penaltyCost: 32,
+      forfeited: false,
+    },
+  ] as const;
+
+  for (const reason of ["TIME_LIMIT", "STALEMATE"] as const) {
+    assert.equal(
+      v.safeParse(GameResultSchema, {
+        reason,
+        winnerPlayerIds: ["player_123", "player_456"],
+        rankings: penaltyRankings,
+        finishedAt: 1_750_000_030_000,
+      }).success,
+      true,
+      reason,
+    );
+  }
+
+  assert.equal(
+    v.safeParse(GameResultSchema, {
+      reason: "RACK_EMPTY",
+      winnerPlayerIds: ["player_123"],
+      rankings: [
+        {
+          ...penaltyRankings[0],
+          score: 35,
+          remainingRackCount: 0,
+          penaltyCost: 0,
+        },
+        { ...penaltyRankings[1], rank: 2 },
+        { ...penaltyRankings[2], rank: 3 },
+      ],
+      finishedAt: 1_750_000_030_000,
+    }).success,
+    true,
+  );
+
+  assert.equal(
+    v.safeParse(GameResultSchema, {
+      reason: "LAST_PLAYER_STANDING",
+      winnerPlayerIds: ["player_123"],
+      rankings: [
+        { ...penaltyRankings[0], score: 35 },
+        { ...penaltyRankings[1], rank: 2, forfeited: true },
+        { ...penaltyRankings[2], rank: 3, forfeited: true },
+      ],
+      finishedAt: 1_750_000_030_000,
+    }).success,
+    true,
+  );
+
+  assert.equal(
+    v.safeParse(GameResultSchema, {
+      reason: "ALL_PLAYERS_FORFEITED",
+      winnerPlayerIds: [],
+      rankings: penaltyRankings.map((entry) => ({
+        ...entry,
+        forfeited: true,
+      })),
+      finishedAt: 1_750_000_030_000,
+    }).success,
+    true,
+  );
+  assert.equal(
+    v.safeParse(GameResultSchema, {
+      reason: "TIME_LIMIT",
+      winnerPlayerIds: ["player_123", "player_456"],
+      rankings: penaltyRankings.map((entry, index) =>
+        index === 2 ? { ...entry, rank: 2 } : entry,
+      ),
+      finishedAt: 1_750_000_030_000,
+    }).success,
+    false,
+    "dense 1,1,2 ranking must be rejected",
+  );
+});
+
+test("Game result ranking은 reason별 key 순서와 정확한 competition rank를 강제한다", () => {
+  const cases = [
+    {
+      reason: "TIME_LIMIT",
+      winnerPlayerIds: ["player_456"],
+      rankings: [
+        {
+          playerId: "player_456",
+          rank: 1,
+          score: -3,
+          remainingRackCount: 3,
+          penaltyCost: 3,
+          forfeited: false,
+        },
+        {
+          playerId: "player_123",
+          rank: 2,
+          score: -31,
+          remainingRackCount: 2,
+          penaltyCost: 31,
+          forfeited: false,
+        },
+      ],
+    },
+    {
+      reason: "STALEMATE",
+      winnerPlayerIds: ["player_456"],
+      rankings: [
+        {
+          playerId: "player_456",
+          rank: 1,
+          score: -32,
+          remainingRackCount: 3,
+          penaltyCost: 32,
+          forfeited: false,
+        },
+        {
+          playerId: "player_123",
+          rank: 2,
+          score: -3,
+          remainingRackCount: 3,
+          penaltyCost: 3,
+          forfeited: false,
+        },
+      ],
+    },
+    {
+      reason: "ALL_PLAYERS_FORFEITED",
+      winnerPlayerIds: [],
+      rankings: [
+        {
+          playerId: "player_456",
+          rank: 1,
+          score: -32,
+          remainingRackCount: 3,
+          penaltyCost: 32,
+          forfeited: true,
+        },
+        {
+          playerId: "player_123",
+          rank: 2,
+          score: -3,
+          remainingRackCount: 3,
+          penaltyCost: 3,
+          forfeited: true,
+        },
+      ],
+    },
+  ] as const;
+
+  for (const result of cases) {
+    assert.equal(
+      v.safeParse(GameResultSchema, {
+        ...result,
+        finishedAt: 1_750_000_030_000,
+      }).success,
+      false,
+      result.reason,
+    );
+  }
+});
+
+test("negative-score 종료 reason은 score = -penaltyCost를 강제한다", () => {
+  for (const reason of [
+    "TIME_LIMIT",
+    "STALEMATE",
+    "ALL_PLAYERS_FORFEITED",
+  ] as const) {
+    assert.equal(
+      v.safeParse(GameResultSchema, {
+        reason,
+        winnerPlayerIds:
+          reason === "ALL_PLAYERS_FORFEITED" ? [] : ["player_123"],
+        rankings: [
+          {
+            playerId: "player_123",
+            rank: 1,
+            score: 3,
+            remainingRackCount: 3,
+            penaltyCost: 3,
+            forfeited: reason === "ALL_PLAYERS_FORFEITED",
+          },
+          {
+            playerId: "player_456",
+            rank: 2,
+            score: -32,
+            remainingRackCount: 3,
+            penaltyCost: 32,
+            forfeited: reason === "ALL_PLAYERS_FORFEITED",
+          },
+        ],
+        finishedAt: 1_750_000_030_000,
+      }).success,
+      false,
+      reason,
+    );
+  }
+});
+
+test("single-winner 종료는 loser penalty 합의 transfer score를 강제한다", () => {
+  for (const reason of ["RACK_EMPTY", "LAST_PLAYER_STANDING"] as const) {
+    assert.equal(
+      v.safeParse(GameResultSchema, {
+        reason,
+        winnerPlayerIds: ["player_123"],
+        rankings: [
+          {
+            playerId: "player_123",
+            rank: 1,
+            score: 31,
+            remainingRackCount: reason === "RACK_EMPTY" ? 0 : 2,
+            penaltyCost: reason === "RACK_EMPTY" ? 0 : 2,
+            forfeited: false,
+          },
+          {
+            playerId: "player_456",
+            rank: 2,
+            score: -32,
+            remainingRackCount: 3,
+            penaltyCost: 32,
+            forfeited: reason === "LAST_PLAYER_STANDING",
+          },
+        ],
+        finishedAt: 1_750_000_030_000,
+      }).success,
+      false,
+      reason,
+    );
+  }
+});
+
+test("rack-empty와 forfeit 종료는 winner/rack/forfeited 관계를 강제한다", () => {
+  const rackEmpty = {
+    reason: "RACK_EMPTY" as const,
+    winnerPlayerIds: ["player_123"],
+    rankings: [
+      {
+        playerId: "player_123",
+        rank: 1,
+        score: 2,
+        remainingRackCount: 0,
+        penaltyCost: 0,
+        forfeited: false,
+      },
+      {
+        playerId: "player_456",
+        rank: 2,
+        score: -2,
+        remainingRackCount: 2,
+        penaltyCost: 2,
+        forfeited: false,
+      },
+    ],
+    finishedAt: 1_750_000_030_000,
+  };
+  for (const invalidWinner of [
+    { remainingRackCount: 1 },
+    { penaltyCost: 1 },
+    { forfeited: true },
+  ]) {
+    assert.equal(
+      v.safeParse(GameResultSchema, {
+        ...rackEmpty,
+        rankings: [
+          { ...rackEmpty.rankings[0], ...invalidWinner },
+          rackEmpty.rankings[1],
+        ],
+      }).success,
+      false,
+    );
+  }
+
+  assert.equal(
+    v.safeParse(GameResultSchema, {
+      reason: "LAST_PLAYER_STANDING",
+      winnerPlayerIds: ["player_123"],
+      rankings: [
+        {
+          playerId: "player_123",
+          rank: 1,
+          score: 2,
+          remainingRackCount: 4,
+          penaltyCost: 4,
+          forfeited: false,
+        },
+        {
+          playerId: "player_456",
+          rank: 2,
+          score: -2,
+          remainingRackCount: 2,
+          penaltyCost: 2,
+          forfeited: false,
+        },
+      ],
+      finishedAt: 1_750_000_030_000,
+    }).success,
+    false,
+  );
+
+  assert.equal(
+    v.safeParse(GameResultSchema, {
+      reason: "LAST_PLAYER_STANDING",
+      winnerPlayerIds: ["player_123"],
+      rankings: [
+        {
+          playerId: "player_123",
+          rank: 1,
+          score: 2,
+          remainingRackCount: 4,
+          penaltyCost: 4,
+          forfeited: true,
+        },
+        {
+          playerId: "player_456",
+          rank: 2,
+          score: -2,
+          remainingRackCount: 2,
+          penaltyCost: 2,
+          forfeited: true,
+        },
+      ],
+      finishedAt: 1_750_000_030_000,
+    }).success,
+    false,
+  );
+
+  assert.equal(
+    v.safeParse(GameResultSchema, {
+      reason: "ALL_PLAYERS_FORFEITED",
+      winnerPlayerIds: [],
+      rankings: [
+        {
+          playerId: "player_123",
+          rank: 1,
+          score: -2,
+          remainingRackCount: 2,
+          penaltyCost: 2,
+          forfeited: false,
+        },
+        {
+          playerId: "player_456",
+          rank: 2,
+          score: -3,
+          remainingRackCount: 3,
+          penaltyCost: 3,
+          forfeited: true,
+        },
+      ],
+      finishedAt: 1_750_000_030_000,
+    }).success,
+    false,
+  );
+});
+
+test("공동 winner 순서는 rank-one ranking의 deterministic 순서와 같아야 한다", () => {
+  assert.equal(
+    v.safeParse(GameResultSchema, {
+      reason: "TIME_LIMIT",
+      winnerPlayerIds: ["player_456", "player_123"],
+      rankings: [
+        {
+          playerId: "player_123",
+          rank: 1,
+          score: -3,
+          remainingRackCount: 3,
+          penaltyCost: 3,
+          forfeited: false,
+        },
+        {
+          playerId: "player_456",
+          rank: 1,
+          score: -3,
+          remainingRackCount: 3,
+          penaltyCost: 3,
+          forfeited: false,
+        },
+      ],
+      finishedAt: 1_750_000_030_000,
+    }).success,
+    false,
+  );
 });
 
 test("turn:submit ack와 game:finished advisory는 typed, strict, secret-free다", () => {
@@ -2236,16 +2654,40 @@ test("turn:submit ack와 game:finished advisory는 typed, strict, secret-free다
     payload: {
       gameId: snapshot.game.gameId,
       reason: "RACK_EMPTY",
-      winnerPlayerId: snapshot.game.result.winnerPlayerId,
-      gameRevision: snapshot.versions.gameRevision,
+      winnerPlayerIds: snapshot.game.result.winnerPlayerIds,
+      finalGameRevision: snapshot.versions.gameRevision,
+      finishedAt: snapshot.game.result.finishedAt,
     },
   };
   const parsedEvent = validateGameFinishedEvent(finishedEvent);
   assert.equal(parsedEvent.ok, true);
+  for (const reason of [
+    "RACK_EMPTY",
+    "TIME_LIMIT",
+    "STALEMATE",
+    "LAST_PLAYER_STANDING",
+    "ALL_PLAYERS_FORFEITED",
+  ] as const) {
+    assert.equal(
+      validateGameFinishedEvent({
+        ...finishedEvent,
+        payload: {
+          ...finishedEvent.payload,
+          reason,
+          winnerPlayerIds:
+            reason === "ALL_PLAYERS_FORFEITED"
+              ? []
+              : finishedEvent.payload.winnerPlayerIds,
+        },
+      }).ok,
+      true,
+      reason,
+    );
+  }
   assert.equal(
     validateGameFinishedEvent({
       ...finishedEvent,
-      payload: { ...finishedEvent.payload, gameRevision: 2 },
+      payload: { ...finishedEvent.payload, finalGameRevision: 2 },
     }).ok,
     false,
   );
@@ -2348,7 +2790,7 @@ test("Phase 14 draw/pass error code는 safe ErrorDto로 직렬화된다", () => 
   }
 });
 
-test("turn:draw/pass ack와 Socket.IO event map은 PLAYING snapshot만 전달한다", () => {
+test("turn:draw는 PLAYING, stalemate turn:pass는 PLAYING/FINISHED snapshot을 전달한다", () => {
   const snapshot = createPlayingSnapshot();
   const createAck = (requestId: string) => ({
     scope: "ROOM" as const,
@@ -2364,14 +2806,22 @@ test("turn:draw/pass ack와 Socket.IO event map은 PLAYING snapshot만 전달한
   assert.equal(drawAckResult.ok, true);
   assert.equal(passAckResult.ok, true);
 
+  assert.equal(
+    validateTurnDrawAck({
+      ...createAck("request_invalid_draw_phase_ack"),
+      data: { snapshot: createFinishedSnapshot() },
+    }).ok,
+    false,
+  );
+  assert.equal(
+    validateTurnPassAck({
+      ...createAck("request_stalemate_ack"),
+      data: { snapshot: createFinishedSnapshot() },
+    }).ok,
+    true,
+  );
+
   for (const validate of [validateTurnDrawAck, validateTurnPassAck]) {
-    assert.equal(
-      validate({
-        ...createAck("request_invalid_phase_ack"),
-        data: { snapshot: createFinishedSnapshot() },
-      }).ok,
-      false,
-    );
     assert.equal(
       validate({
         ...createAck("request_secret_ack"),

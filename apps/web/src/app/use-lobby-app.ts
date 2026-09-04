@@ -1259,7 +1259,8 @@ export function useLobbyApp(): LobbyAppState {
         currentSnapshot.room.phase !== "FINISHED" ||
         "turn" in currentSnapshot.game ||
         currentSnapshot.game.gameId !== event.payload.gameId ||
-        currentSnapshot.versions.gameRevision < event.payload.gameRevision
+        currentSnapshot.versions.gameRevision <
+          event.payload.finalGameRevision
       ) {
         void requestLatestSnapshot();
       }

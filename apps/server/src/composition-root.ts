@@ -1,6 +1,11 @@
 import type { PlayerId, RoomId } from "@hangul-rummikub/shared";
 
 import { GameStartService } from "./application/game-start-service.js";
+import { GameDeadlineService } from "./application/game-deadline-service.js";
+import {
+  scheduleFinishedRetentionBestEffort,
+  type GameFinishedPostCommit,
+} from "./application/game-finish-transition.js";
 import { LobbyDisconnectGraceService } from "./application/lobby-disconnect-grace-service.js";
 import { LobbyStateSnapshotProjector } from "./application/lobby-state-snapshot-projector.js";
 import { RoomCleanupService } from "./application/room-cleanup-service.js";
@@ -16,10 +21,12 @@ import { TurnTimeoutService } from "./application/turn-timeout-service.js";
 import { ConnectionRegistry } from "./infrastructure/connection-registry.js";
 import { ConnectionRegistryPresenceReader } from "./infrastructure/connection-registry-presence-reader.js";
 import { InMemoryPersistence } from "./infrastructure/in-memory-persistence.js";
+import { InProcessGameDeadlineScheduler } from "./infrastructure/in-process-game-deadline-scheduler.js";
 import { InProcessRoomPolicyScheduler } from "./infrastructure/in-process-room-policy-scheduler.js";
 import { InProcessTurnScheduler } from "./infrastructure/in-process-turn-scheduler.js";
 import { KeyedSerialExecutor } from "./infrastructure/keyed-serial-executor.js";
 import { OverdueTurnSweeper } from "./infrastructure/overdue-turn-sweeper.js";
+import { OverdueGameDeadlineSweeper } from "./infrastructure/overdue-game-deadline-sweeper.js";
 import {
   RoomLifecycleResources,
   type RoomClosedAdvisoryListener,
@@ -37,6 +44,9 @@ export type ApplicationRuntime = Readonly<{
   clock: SystemClock;
   connectionRegistry: ConnectionRegistry;
   gameStartService: GameStartService;
+  gameDeadlineService: GameDeadlineService;
+  gameDeadlineScheduler: InProcessGameDeadlineScheduler;
+  overdueGameDeadlineSweeper: OverdueGameDeadlineSweeper;
   persistence: InMemoryPersistence;
   roomLeaveService: RoomLeaveService;
   roomPolicyScheduler: InProcessRoomPolicyScheduler;
@@ -74,6 +84,24 @@ function reportTurnTimeoutFailure(): void {
   );
 }
 
+function reportGameDeadlineFailure(): void {
+  console.error(
+    "A Game deadline could not be processed; the overdue sweeper will retry it.",
+  );
+}
+
+function reportGameDeadlineSchedulingFailure(): void {
+  console.error(
+    "A committed Game deadline could not be scheduled; the overdue sweeper remains the recovery path.",
+  );
+}
+
+function reportFinishedRetentionSchedulingFailure(): void {
+  console.error(
+    "A committed FINISHED Room retention deadline could not be scheduled after bounded retries.",
+  );
+}
+
 function reportRoomPolicyFailure(): void {
   console.error(
     "A Room lifecycle policy could not be processed; a later connection or policy callback may retry it.",
@@ -98,8 +126,10 @@ export function createApplicationRuntime(): ApplicationRuntime {
     (roomId: RoomId, playerId: PlayerId) => void | Promise<void>
   >();
   let acceptsTimeoutWork = false;
+  let acceptsGameDeadlineWork = false;
   let acceptsRoomPolicyWork = false;
   let turnTimeoutService: TurnTimeoutService | undefined;
+  let gameDeadlineService: GameDeadlineService | undefined;
   let roomPresencePolicyService: RoomPresencePolicyService | undefined;
   const enqueueTimeout = async (
     deadline: Parameters<TurnTimeoutService["timeout"]>[0],
@@ -122,6 +152,28 @@ export function createApplicationRuntime(): ApplicationRuntime {
     clock,
     enqueueTimeout,
     onFailure: reportTurnTimeoutFailure,
+  });
+  const enqueueGameDeadline = async (
+    deadline: Parameters<GameDeadlineService["expire"]>[0],
+  ): Promise<void> => {
+    if (!acceptsGameDeadlineWork || gameDeadlineService === undefined) {
+      return;
+    }
+    const result = await gameDeadlineService.expire(deadline);
+    if (result.status === "FAILED") {
+      reportGameDeadlineFailure();
+    }
+  };
+  const gameDeadlineScheduler = new InProcessGameDeadlineScheduler({
+    clock,
+    onDeadline: enqueueGameDeadline,
+    onCallbackFailure: reportGameDeadlineFailure,
+  });
+  const overdueGameDeadlineSweeper = new OverdueGameDeadlineSweeper({
+    activeGameReader: persistence,
+    clock,
+    enqueueDeadline: enqueueGameDeadline,
+    onFailure: reportGameDeadlineFailure,
   });
   const roomPolicyScheduler = new InProcessRoomPolicyScheduler({
     clock,
@@ -169,6 +221,7 @@ export function createApplicationRuntime(): ApplicationRuntime {
     connectionRegistry,
     policyScheduler: roomPolicyScheduler,
     turnTimerCleanup: turnScheduler,
+    gameDeadlineTimerCleanup: gameDeadlineScheduler,
     onRoomClosed: notifyRoomClosed,
     onPlayerRemoved: notifyRoomPlayerRemoved,
   });
@@ -204,6 +257,34 @@ export function createApplicationRuntime(): ApplicationRuntime {
     lobbyGraceService: lobbyDisconnectGraceService,
     retentionService: roomRetentionService,
   });
+  const onGameFinished: GameFinishedPostCommit = async ({
+    roomId,
+    gameId,
+  }) => {
+    await Promise.allSettled([
+      turnScheduler.cancelRoom(roomId),
+      gameDeadlineScheduler.cancelDeadline(gameId),
+      scheduleFinishedRetentionBestEffort(
+        persistence,
+        roomPolicyScheduler,
+        { roomId, gameId },
+        reportFinishedRetentionSchedulingFailure,
+      ),
+    ]);
+  };
+
+  gameDeadlineService = new GameDeadlineService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    clock,
+    gameDeadlineScheduler,
+    onGameDeadlineSchedulingFailure: reportGameDeadlineSchedulingFailure,
+  });
+  gameDeadlineService.subscribeApplied(async (data) => {
+    await onGameFinished({ roomId: data.roomId, gameId: data.gameId });
+  });
 
   const roomSessionService = new RoomSessionApplicationService({
     roomRepository: persistence,
@@ -232,6 +313,8 @@ export function createApplicationRuntime(): ApplicationRuntime {
     randomSource,
     turnScheduler,
     onTurnSchedulingFailure: reportTurnSchedulingFailure,
+    gameDeadlineScheduler,
+    onGameDeadlineSchedulingFailure: reportGameDeadlineSchedulingFailure,
   });
   const turnSubmitService = new TurnSubmitService({
     roomRepository: persistence,
@@ -243,6 +326,7 @@ export function createApplicationRuntime(): ApplicationRuntime {
     dictionaryProvider: new TestDictionaryProvider(),
     turnScheduler,
     onTurnSchedulingFailure: reportTurnSchedulingFailure,
+    onGameFinished,
   });
   const turnDrawService = new TurnDrawService({
     roomRepository: persistence,
@@ -263,6 +347,7 @@ export function createApplicationRuntime(): ApplicationRuntime {
     idGenerator,
     turnScheduler,
     onTurnSchedulingFailure: reportTurnSchedulingFailure,
+    onGameFinished,
   });
   turnTimeoutService = new TurnTimeoutService({
     roomRepository: persistence,
@@ -275,6 +360,7 @@ export function createApplicationRuntime(): ApplicationRuntime {
     presenceLeaseReader: presenceReader,
     turnScheduler,
     onTurnSchedulingFailure: reportTurnSchedulingFailure,
+    onGameFinished,
   });
   const snapshotProjector = new LobbyStateSnapshotProjector({
     clock,
@@ -292,6 +378,7 @@ export function createApplicationRuntime(): ApplicationRuntime {
     resources: roomLifecycleResources,
     turnScheduler,
     onTurnSchedulingFailure: reportTurnSchedulingFailure,
+    onGameFinished,
   });
 
   let running = false;
@@ -299,6 +386,9 @@ export function createApplicationRuntime(): ApplicationRuntime {
     clock,
     connectionRegistry,
     gameStartService,
+    gameDeadlineService,
+    gameDeadlineScheduler,
+    overdueGameDeadlineSweeper,
     persistence,
     roomLeaveService,
     roomPolicyScheduler,
@@ -333,10 +423,13 @@ export function createApplicationRuntime(): ApplicationRuntime {
       }
       running = true;
       acceptsTimeoutWork = true;
+      acceptsGameDeadlineWork = true;
       acceptsRoomPolicyWork = true;
       roomPolicyScheduler.start();
       turnScheduler.start();
+      gameDeadlineScheduler.start();
       overdueTurnSweeper.start();
+      overdueGameDeadlineSweeper.start();
     },
     stop() {
       if (!running) {
@@ -344,10 +437,13 @@ export function createApplicationRuntime(): ApplicationRuntime {
       }
       running = false;
       acceptsTimeoutWork = false;
+      acceptsGameDeadlineWork = false;
       acceptsRoomPolicyWork = false;
       roomPolicyScheduler.stop();
       overdueTurnSweeper.stop();
+      overdueGameDeadlineSweeper.stop();
       turnScheduler.stop();
+      gameDeadlineScheduler.stop();
     },
   });
 }

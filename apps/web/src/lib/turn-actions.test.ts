@@ -243,6 +243,7 @@ test("bag/pass rejection은 draft를 보존하고 turn authority 오류는 reset
   ];
   const resetting: ProtocolErrorCode[] = [
     "TURN_EXPIRED",
+    "GAME_EXPIRED",
     "STALE_GAME_REVISION",
     "NOT_YOUR_TURN",
     "INVALID_PHASE",

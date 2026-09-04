@@ -27,6 +27,7 @@ export type RoomLifecycleResourcesOptions = Readonly<{
   connectionRegistry: ConnectionRegistry;
   policyScheduler: RoomPolicyScheduler;
   turnTimerCleanup?: RoomTurnTimerCleanup;
+  gameDeadlineTimerCleanup?: RoomTurnTimerCleanup;
   onRoomClosed?: RoomClosedAdvisoryListener;
   onPlayerRemoved?: RoomPlayerRemovedListener;
 }>;
@@ -73,6 +74,11 @@ export class RoomLifecycleResources
     }
     try {
       await this.#options.turnTimerCleanup?.cancelRoom(roomId);
+    } catch {
+      // Canonical cleanup is already committed and remains authoritative.
+    }
+    try {
+      await this.#options.gameDeadlineTimerCleanup?.cancelRoom(roomId);
     } catch {
       // Canonical cleanup is already committed and remains authoritative.
     }

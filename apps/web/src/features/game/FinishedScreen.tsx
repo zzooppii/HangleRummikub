@@ -1,5 +1,10 @@
 import type { FinishedStateSnapshot } from "@hangul-rummikub/shared";
 
+import {
+  formatGameScore,
+  getFinishReasonMessage,
+} from "../../lib/finished-result.js";
+
 export type FinishedScreenProps = Readonly<{
   snapshot: FinishedStateSnapshot;
   connectionLabel: string;
@@ -13,9 +18,7 @@ export type FinishedScreenProps = Readonly<{
 
 export function FinishedScreen(props: FinishedScreenProps) {
   const { game, room, self } = props.snapshot;
-  const winner = room.players.find(
-    (player) => player.playerId === game.result.winnerPlayerId,
-  );
+  const winnerPlayerIds = new Set(game.result.winnerPlayerIds);
 
   return (
     <main className="app-shell playing-shell">
@@ -51,25 +54,29 @@ export function FinishedScreen(props: FinishedScreenProps) {
       <section className="finish-panel" aria-labelledby="game-result-heading">
         <p className="step-label">GAME RESULT</p>
         <h2 id="game-result-heading">
-          {winner?.nickname ?? "승자"}님이 랙을 모두 비웠습니다.
+          {getFinishReasonMessage(game.result.reason)}
         </h2>
-        <ol className="score-list" aria-label="최종 점수">
-          {game.result.scores.map((entry) => {
+        <ol className="score-list" aria-label="최종 순위와 점수">
+          {game.result.rankings.map((entry) => {
             const player = room.players.find(
               (candidate) => candidate.playerId === entry.playerId,
             );
             return (
               <li key={entry.playerId}>
-                <span>
-                  {player?.nickname ?? "참가자"}
-                  {entry.playerId === self.playerId ? " (나)" : ""}
-                  {entry.playerId === game.result.winnerPlayerId
-                    ? " · 승자"
-                    : ""}
-                  {player?.forfeited ? " · 기권" : ""}
+                <span className="result-rank" aria-label={`${entry.rank}위`}>
+                  {entry.rank}위
                 </span>
-                <strong>
-                  {entry.score > 0 ? `+${entry.score}` : entry.score}점
+                <span className="result-player">
+                  <strong>{player?.nickname ?? "참가자"}</strong>
+                  {entry.playerId === self.playerId ? " (나)" : ""}
+                  {winnerPlayerIds.has(entry.playerId) ? " · 승자" : ""}
+                  {entry.forfeited ? " · 기권" : ""}
+                  <small>
+                    남은 타일 {entry.remainingRackCount}개 · 벌점 {entry.penaltyCost}
+                  </small>
+                </span>
+                <strong className="result-score">
+                  {formatGameScore(entry.score)}
                 </strong>
               </li>
             );

@@ -2,9 +2,9 @@
 
 ## 1. 문서 상태
 
-- 문서 버전: `0.11-phase-15-room-lifecycle`
+- 문서 버전: `0.13-phase-16-results`
 - 대상: 첫 번째 playable MVP
-- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름과 Phase 7 gameplay 규칙 gate, Phase 8 Hangul composition, Phase 9 `TestDictionaryProvider`, Phase 10 Board RuleEngine, Phase 11 canonical Game start/state projection, Phase 12 browser-only TurnDraft, Phase 13 원자적 `turn:submit`/rack-empty 종료, Phase 14 Draw/Pass/server timer에 이어 Phase 15의 disconnect grace, Host 승계, offline-timeout forfeit, explicit leave와 Room cleanup까지 구현되었다. 25분·stalemate·active non-forfeit Player 한 명에 따른 종료는 아직 없다.
+- 구현 상태: Roadmap Phase 6의 browser Room/Lobby 흐름과 Phase 7 gameplay 규칙 gate, Phase 8 Hangul composition, Phase 9 `TestDictionaryProvider`, Phase 10 Board RuleEngine, Phase 11 canonical Game start/state projection, Phase 12 browser-only TurnDraft, Phase 13 원자적 `turn:submit`/rack-empty 종료, Phase 14 Draw/Pass/server timer, Phase 15 disconnect grace·Host 승계·offline-timeout forfeit·explicit leave·Room cleanup, Phase 16 generalized result·25분·stalemate·forfeit 종료와 deadline recovery까지 구현되었다.
 - 규칙 기준: 확정된 내용과 미확정 내용은 [GAME_RULES.md](./GAME_RULES.md)를 따른다.
 - 기술 구조 기준: [ARCHITECTURE.md](./ARCHITECTURE.md)를 따른다.
 
@@ -105,7 +105,7 @@
 2. 서버는 current-primary socket binding에서 actor를 도출하고, 해당 Player가 Host인지, Room이 `LOBBY`인지, 플레이어 수가 2~4명인지, 모든 등록 Player가 `CONNECTED`인지와 `expectedRoomRevision`을 다시 검증한다. Ready 상태는 사용하지 않는다.
 3. 서버는 Player 목록을 한 번 shuffle해 immutable turnOrder를 만들고 첫 Player의 `turnNumber = 1`인 Turn을 정한다.
 4. `hangul-tile-inventory-v1`의 physical instance를 source bag별로 shuffle하고 consonant bag에서 7회, vowel bag에서 7회씩 배분한다. bag 소속 Joker는 해당 7회 중 하나로 센다.
-5. 서버는 immutable `RulesConfig`, 60초 turn deadline과 시작 시각부터 25분인 Game deadline을 snapshot하고 Room/Game/idempotency 결과를 하나의 UnitOfWork로 commit해 `PLAYING`으로 원자적으로 전이한다.
+5. 서버는 immutable `RulesConfig`, 60초 turn deadline과 시작 시각부터 25분인 Game deadline을 snapshot하고 Room/Game/idempotency 결과를 하나의 UnitOfWork로 commit해 `PLAYING`으로 원자적으로 전이한다. commit 후 Turn/Game deadline을 각 scheduler에 등록하며 후처리 실패는 Game start를 rollback하지 않는다.
 
 ### 6.4 턴 실행
 
@@ -113,13 +113,21 @@
 2. 현재 턴 Player만 자신의 브라우저에서 `TurnDraft`를 편집한다.
 3. 편집은 서버 상태나 다른 클라이언트에 즉시 영향을 주지 않는다.
 4. Player는 기준 `gameRevision`, `turnId`, `requestId`와 proposed board 전체를 Submit한다.
-5. Socket transport는 command 도착 즉시 server `receivedAt`을 기록하고, 서버는 인증, 상태, 턴, `receivedAt < deadlineAt`, `gameRevision`, 타일 보존·소유권 및 확정된 게임 규칙을 검증한다.
-6. 성공 시 candidate Board/rack/meld와 다음 Turn 또는 rack-empty result를 accepted idempotency record와 한 번에 commit하고 Player별 새 projection을 전송한다. 다음 Turn의 시작 시각은 async validation 완료 뒤의 fresh server Clock을 사용한다.
+5. Socket transport는 command 도착 즉시 server `receivedAt`을 기록하고, 서버는 인증, 상태, 턴, `receivedAt < turn.deadlineAt`, `receivedAt < gameDeadlineAt`, `gameRevision`, 타일 보존·소유권 및 확정된 게임 규칙을 검증한다.
+6. 성공 시 candidate Board/rack/meld/stalemate tracker와 다음 Turn 또는 generalized result를 accepted idempotency record와 한 번에 commit하고 Player별 새 projection을 전송한다. 다음 Turn의 시작 시각은 async validation 완료 뒤의 fresh server Clock을 사용한다.
 7. 실패 시 canonical state를 변경하거나 turn을 종료하지 않고 구조화된 거절 사유와 동기화에 필요한 정보를 반환한다. deadline 전에는 draft를 수정해 다시 Submit할 수 있다.
 8. active Player는 Submit 대신 CONSONANT/VOWEL bag에서 서버가 고른 Tile 하나를 draw해 즉시 Turn을 끝낼 수 있다. 두 bag이 모두 empty일 때만 no-draw `turn:pass`를 사용할 수 있다.
-9. server scheduler가 canonical deadline에 internal timeout command를 실행한다. 최신 Turn identity와 Clock을 다시 검증한 timeout만 Board를 유지한 채 최대 3 Tile penalty와 다음 Turn을 원자적으로 commit한다.
+9. server scheduler가 canonical deadline에 internal timeout command를 실행한다. 최신 Turn identity와 Clock을 다시 검증한 timeout만 Board를 유지한 채 최대 3 Tile penalty와 다음 Turn 또는 terminal result를 원자적으로 commit한다. Game deadline이 이미 도달했으면 turn penalty를 추가하지 않고 `TIME_LIMIT` 처리를 우선한다.
 
-### 6.5 재접속
+### 6.5 게임 종료와 결과
+
+1. 서버는 `RACK_EMPTY`, `TIME_LIMIT`, `STALEMATE`, `LAST_PLAYER_STANDING`, `ALL_PLAYERS_FORFEITED` 조건을 authoritative state에서만 판정한다.
+2. pure Result Engine이 GAME_RULES C-17에 따라 penaltyCost, score, competition rank와 zero-or-more winner collection을 계산한다.
+3. 최종 Board/rack/forfeit state, `turn = null`, result, Room `FINISHED`와 Room/Game/storage revision은 하나의 UnitOfWork에서 commit한다.
+4. `game:start`에서 고정한 25분 deadline은 internal scheduler와 detached active-Game sweeper가 감시한다. callback은 최신 game identity, canonical deadline과 server Clock을 다시 검증한다.
+5. FINISHED commit 뒤 Turn/Game timer를 stale 처리하고 모든 reason에 같은 `finishedAt + 30분` retention을 등록한다. Player별 snapshot은 공개 result를 공유하되 상대 rack 상세를 노출하지 않는다.
+
+### 6.6 재접속
 
 1. 일시 단절은 Player 탈퇴와 구분한다. 연결이 사라져도 Player, rack, turn state를 즉시 삭제하지 않는다.
 2. 브라우저는 같은 tab의 `sessionStorage`에 보관한 room-scoped `sessionToken`으로 기존 Player에 대한 resume을 요청한다.
@@ -157,14 +165,17 @@
 | `FR-GAME-005` | Player가 보내는 gameplay mutation은 현재 턴 Player만 요청할 수 있다. 검증된 server timeout command는 별도 actor로 처리한다. |
 | `FR-GAME-006` | 턴은 server Clock 기준 60초다. `receivedAt < deadlineAt`만 시간 조건을 통과하며 클라이언트 카운트다운은 표시용이다. |
 | `FR-GAME-007` | 낱말 판정은 Game에 고정된 `dictionaryVersion`의 `DictionaryProvider`가 NFC 완성형 Hangul word를 검증한다. MVP provider는 GAME_RULES C-16의 승인된 30단어 `test-dictionary-v1` fixture이며 장애 시 state 불변의 recoverable failure로 처리하고 deadline을 연장하지 않는다. |
-| `FR-GAME-008` | 서버만 rack-empty, 25분 cap, stalemate 또는 active non-forfeit Player 1명 종료를 판정하고 `FINISHED`, score와 ranking을 계산한다. |
+| `FR-GAME-008` | 서버만 `RACK_EMPTY`, `TIME_LIMIT`, `STALEMATE`, `LAST_PLAYER_STANDING`, `ALL_PLAYERS_FORFEITED`를 판정하고 generalized result의 reason, finishedAt, zero-or-more winner collection, Player별 score·penalty·competition rank·forfeit metadata를 계산한다. |
 | `FR-GAME-009` | initial meld는 자신의 rack Tile만 최소 6개 사용하고 각 WordGroup이 최소 2음절이어야 한다. 완료 뒤 normal turn에서는 기존 Board를 재조합할 수 있지만 자신의 rack Tile을 최소 1개 사용하고 모든 기존 Tile을 보존해야 한다. |
 | `FR-GAME-010` | 일반 draw는 Player가 bag 종류만 선택하고 서버가 Tile 1개를 선택해 Turn을 즉시 끝낸다. 선택 bag만 empty이면 `BAG_EMPTY`, 두 bag 모두 empty일 때만 `turn:pass`를 허용하고 그 외에는 `PASS_NOT_ALLOWED`로 state 불변 거절한다. |
 | `FR-GAME-011` | OFFLINE 상태에서 자기 turn timeout이 연속 2회인 Player와 PLAYING explicit leave Player는 forfeit하며 immutable turnOrder에서는 유지하되 active rotation에서 제외하고 rack/result metadata를 보존한다. resume은 offline streak만 reset하며 presence-only 변화로 game/room revision이나 turn identity를 바꾸지 않는다. |
 | `FR-GAME-012` | dedicated 쌍자음은 physical Tile 하나, 허용된 복합모음과 겹받침은 서로 다른 physical Tile 두 개를 소비한다. Joker 하나는 ordinary physical Tile 한 자리만 대체하고 two-position composition 전체를 대체하지 않는다. |
 | `FR-GAME-013` | 새 Game은 `gameRevision = 0`, empty Board, Player별 14 Tile rack과 `initialMeldCompleted = false`, server-random immutable turnOrder와 `turnNumber = 1`인 첫 Turn으로 시작한다. 성공은 `roomRevision + 1`, `storageRevision + 1`과 accepted idempotency result를 같은 atomic commit에 포함한다. |
-| `FR-GAME-014` | timeout은 socket presence와 무관한 internal command이며 canonical `gameId`/`turnId`/`gameRevision`/deadline과 server Clock을 다시 확인한다. 성공하면 Board와 meld를 유지하고 남은 bag에서 최대 3 Tile penalty를 지급해 다음 Turn으로 진행한다. |
+| `FR-GAME-014` | timeout은 socket presence와 무관한 internal command이며 canonical `gameId`/`turnId`/`gameRevision`/deadline과 server Clock을 다시 확인한다. Board/meld를 유지하고 남은 bag에서 최대 3 Tile penalty를 먼저 반영한 뒤 forfeit/stalemate 종료 또는 다음 Turn을 같은 candidate에서 판정한다. Game deadline이 도달했으면 penalty보다 `TIME_LIMIT`가 우선한다. |
 | `FR-GAME-015` | 모든 새 active Turn은 post-commit in-process timer에 등록하고 등록 실패는 commit을 rollback하지 않는다. 1초 overdue sweeper가 read-only active-turn view로 유실된 작업을 재생성하며 stale/duplicate callback은 no-op이어야 한다. |
+| `FR-GAME-016` | Game start의 고정 `gameDeadlineAt`은 post-commit in-process Game deadline scheduler에 한 번 등록하고 1초 overdue Game sweeper가 유실을 복구한다. callback은 최신 phase/game/deadline/Clock을 다시 검증하며 stale·duplicate는 no-op이다. |
+| `FR-GAME-017` | accepted Submit/Draw/penalty 1개 이상 timeout은 stalemate tracker를 reset하고, both-empty Pass와 penalty 0개 timeout은 actor를 current no-move cycle에 한 번만 기록한다. forfeit Player를 prune한 current non-forfeit 전원이 기록되면 `STALEMATE`로 종료한다. |
+| `FR-GAME-018` | 모든 terminal path는 final state, null Turn, generalized result, Room/Game/storage revision을 한 atomic commit에 포함하고, commit 후만 player-specific FINISHED snapshot과 `game:finished`를 보내며 fixed 30분 retention을 예약한다. |
 
 ### 7.3 Draft와 Submit
 
@@ -180,7 +191,7 @@
 | `FR-SUBMIT-008` | stale `gameRevision`, 잘못된 turn, timeout, 위조 tile, invalid word 등은 안정적인 error code로 거절해야 한다. |
 | `FR-SUBMIT-009` | 서로 다른 physical Tile을 사용하는 독립적인 유효 WordGroup은 같은 NFC 완성 낱말을 가질 수 있다. composed word uniqueness는 강제하지 않지만 groupId와 tileId uniqueness는 각각 유지해야 한다. |
 | `FR-SUBMIT-010` | 기존 Board Joker의 logical placement 또는 assignment가 바뀌면 recovered Joker로 판정한다. 각 recovered Joker에는 canonical old symbol과 같은 final assignedSymbol을 가진 서로 다른 newly-used actor-rack ordinary Tile 하나가 필요하고, recovered Joker tileId도 final Board에 정확히 한 번 남아야 한다. |
-| `FR-SUBMIT-011` | non-terminal accepted Submit은 `gameRevision`과 `storageRevision`을 1씩 증가시키고 `roomRevision`은 유지하며, validation 완료 뒤 fresh server time의 새 Turn을 만든다. actor rack이 비면 다음 Turn 없이 rack-empty result를 만들고 Room/Game/storage revisions를 각각 1씩 증가시켜 `FINISHED`로 전이한다. |
+| `FR-SUBMIT-011` | non-terminal accepted Submit은 `gameRevision`과 `storageRevision`을 1씩 증가시키고 `roomRevision`은 유지하며, stalemate tracker를 reset하고 validation 완료 뒤 fresh server time의 새 Turn을 만든다. actor rack이 비면 다음 Turn 없이 generalized `RACK_EMPTY` result를 만들고 Room/Game/storage revisions를 각각 1씩 증가시켜 `FINISHED`로 전이한다. |
 | `FR-SUBMIT-012` | browser는 in-flight 또는 acknowledgement-loss retry command를 page memory에만 보관해 같은 requestId/payload를 재사용한다. full refresh 뒤 pending Submit을 저장하거나 자동 재전송하지 않는다. |
 
 ### 7.4 Connection과 동기화
@@ -210,11 +221,11 @@
 - Board 전체, activePlayerId, immutable turnOrder와 서버 turn deadline
 - 각 Player의 remaining rack Tile 개수와 initial meld 완료 여부
 - consonant/vowel bag별 remaining count
-- Game phase와 `FINISHED` result/ranking
+- Game phase와 `FINISHED` reason, finishedAt, winner collection, Player별 rank/score/remaining rack count/penaltyCost/forfeited result
 
 ### 본인 projection에 추가로 포함할 정보
 
-- 자신의 rack Tile 상세. forfeit 상태는 해당 canonical field가 구현되는 Phase부터 추가한다.
+- 자신의 rack Tile 상세. gameplay Player의 forfeit 상태는 public projection으로 표시한다.
 - 자신의 session 상태처럼 비밀이 아닌 metadata. raw `sessionToken`은 snapshot이 아니라 최초 발급 또는 명시적 rotation의 직접 응답에서만 전달한다.
 - 자신의 command에 대한 상세 거절 정보 중 공개할 필요가 없는 내용
 
@@ -307,5 +318,6 @@ Exact physical definition과 `assignedSymbol` 정보는 기존 player-specific �
 - 동일 프로세스 안의 메모리 상태만 사용하므로 서버 restart 복구는 지원하지 않는다.
 - single replica만 지원한다. 공유 저장소 없이 replica를 늘리면 Room state와 connection routing이 갈라질 수 있다.
 - 테스트용 `DictionaryProvider`는 게임 메커니즘 검증용이며 실제 한국어 사전 완전성을 보장하지 않는다.
-- Phase 8 composer는 assigned jamo의 현대 한글 조합, Phase 9 provider는 NFC fixture membership, Phase 10 RuleEngine은 readonly proposed Board validation만 맡는다. Phase 11~13은 Game start, browser TurnDraft와 Submit/rack-empty finish를 연결했고 Phase 14는 draw/pass, 60초 timeout penalty와 다음 Turn scheduling을 원자적으로 실행한다. Phase 15는 disconnect grace, offline-timeout forfeit, explicit leave, Host succession과 Room cleanup을 연결한다. 25분 cap, stalemate 및 active non-forfeit Player 한 명 종료 mutation은 아직 없다.
+- Phase 8 composer는 assigned jamo의 현대 한글 조합, Phase 9 provider는 NFC fixture membership, Phase 10 RuleEngine은 readonly proposed Board validation만 맡는다. Phase 11~13은 Game start, browser TurnDraft와 Submit/rack-empty finish를 연결했고 Phase 14는 draw/pass, 60초 timeout penalty와 다음 Turn scheduling을 원자적으로 실행한다. Phase 15는 disconnect grace, offline-timeout forfeit, explicit leave, Host succession과 Room cleanup을 연결한다. Phase 16은 25분, stalemate와 forfeit 종료를 공통 Result Engine으로 통합한다.
+- Game deadline, Turn timer와 Room retention은 single-process in-memory scheduler이므로 process restart 후 job 복구는 지원하지 않는다. 현재 Room/Game 자체가 restart에서 유실되는 MVP 제약과 동일하다.
 - production dictionary dataset/license, 운영 한도와 rate limit은 아직 미확정이다.

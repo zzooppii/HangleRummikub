@@ -16,6 +16,7 @@ const USER_ERROR_MESSAGES = {
     "모든 참가자가 접속 중일 때 게임을 시작할 수 있습니다.",
   NOT_YOUR_TURN: "현재 내 차례가 아닙니다. 최신 게임 상태를 불러옵니다.",
   TURN_EXPIRED: "이 턴의 제한 시간이 지났습니다. 최신 상태를 불러옵니다.",
+  GAME_EXPIRED: "게임 제한 시간이 끝났습니다. 종료 상태를 불러옵니다.",
   BAG_EMPTY: "선택한 타일 주머니가 비어 있습니다.",
   PASS_NOT_ALLOWED: "타일이 남아 있어 아직 턴을 넘길 수 없습니다.",
   INVALID_PHASE: "현재 방 상태에서는 실행할 수 없습니다.",

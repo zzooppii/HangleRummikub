@@ -78,3 +78,16 @@ export interface TurnScheduler {
   scheduleTimeout(deadline: ScheduledTurnDeadline): Promise<void>;
   cancelTimeout(turnId: TurnId): Promise<void>;
 }
+
+export type ScheduledGameDeadline = Readonly<{
+  roomId: RoomId;
+  gameId: GameId;
+  /** Unix epoch time in milliseconds. */
+  deadlineAt: ServerTime;
+}>;
+
+/** Game-wide deadline scheduling is separate from per-turn timeout policy. */
+export interface GameDeadlineScheduler {
+  scheduleDeadline(deadline: ScheduledGameDeadline): Promise<void>;
+  cancelDeadline(gameId: GameId): Promise<void>;
+}

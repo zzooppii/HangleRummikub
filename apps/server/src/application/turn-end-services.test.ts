@@ -56,6 +56,7 @@ import type {
 
 const PLAYER_A = parse(PlayerIdSchema, "player-a");
 const PLAYER_B = parse(PlayerIdSchema, "player-b");
+const PLAYER_C = parse(PlayerIdSchema, "player-c");
 
 function tileId(value: string): TileId {
   return parse(TileIdSchema, value);
@@ -196,6 +197,7 @@ type HarnessOptions = Readonly<{
   playerAOfflineTimeoutStreak?: number;
   playerBForfeited?: boolean;
   playerAPresence?: "CONNECTED" | "OFFLINE";
+  playerCount?: 2 | 3;
 }>;
 
 async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
@@ -209,7 +211,29 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   );
   const rackA = tile("rack-a", "CONSONANT");
   const rackB = tile("rack-b", "VOWEL");
-  const allTiles = [...consonants, ...vowels, rackA, rackB];
+  const rackC = tile("rack-c", "CONSONANT");
+  const playerIds =
+    options.playerCount === 3
+      ? ([PLAYER_A, PLAYER_B, PLAYER_C] as const)
+      : ([PLAYER_A, PLAYER_B] as const);
+  const rackEntries: readonly (readonly [PlayerId, readonly TileId[]])[] =
+    options.playerCount === 3
+      ? [
+          [PLAYER_A, Object.freeze([rackA.tileId])],
+          [PLAYER_B, Object.freeze([rackB.tileId])],
+          [PLAYER_C, Object.freeze([rackC.tileId])],
+        ]
+      : [
+          [PLAYER_A, Object.freeze([rackA.tileId])],
+          [PLAYER_B, Object.freeze([rackB.tileId])],
+        ];
+  const allTiles = [
+    ...consonants,
+    ...vowels,
+    rackA,
+    rackB,
+    ...(options.playerCount === 3 ? [rackC] : []),
+  ];
   const board: Board = Object.freeze({ wordGroups: Object.freeze([]) });
   const game: PlayingGameState = Object.freeze({
     gameId: parse(GameIdSchema, "game-turn-end"),
@@ -218,23 +242,22 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
     tilesById: new Map(allTiles.map((entry) => [entry.tileId, entry])),
     consonantBag: Object.freeze(consonants.map((entry) => entry.tileId)),
     vowelBag: Object.freeze(vowels.map((entry) => entry.tileId)),
-    racks: new Map<PlayerId, readonly TileId[]>([
-      [PLAYER_A, Object.freeze([rackA.tileId])],
-      [PLAYER_B, Object.freeze([rackB.tileId])],
-    ]),
+    racks: new Map<PlayerId, readonly TileId[]>(rackEntries),
     board,
-    initialMeldCompleted: new Map<PlayerId, boolean>([
-      [PLAYER_A, false],
-      [PLAYER_B, true],
-    ]),
-    offlineTimeoutStreakByPlayerId: new Map<PlayerId, number>([
-      [PLAYER_A, options.playerAOfflineTimeoutStreak ?? 0],
-      [PLAYER_B, 0],
-    ]),
+    initialMeldCompleted: new Map<PlayerId, boolean>(
+      playerIds.map((playerId) => [playerId, playerId !== PLAYER_A]),
+    ),
+    offlineTimeoutStreakByPlayerId: new Map<PlayerId, number>(
+      playerIds.map((playerId) => [
+        playerId,
+        playerId === PLAYER_A ? options.playerAOfflineTimeoutStreak ?? 0 : 0,
+      ]),
+    ),
     forfeitedPlayerIds: new Set<PlayerId>(
       options.playerBForfeited ? [PLAYER_B] : [],
     ),
-    turnOrder: Object.freeze([PLAYER_A, PLAYER_B]),
+    noMoveTurnEndPlayerIds: new Set<PlayerId>(),
+    turnOrder: Object.freeze([...playerIds]),
     turn: Object.freeze({
       turnId: parse(TurnIdSchema, "turn-current"),
       turnNumber: 8,
@@ -252,18 +275,11 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
     roomCode: parse(RoomCodeSchema, "ABCDEF"),
     phase: "PLAYING",
     hostPlayerId: PLAYER_A,
-    players: [
-      {
-        playerId: PLAYER_A,
-        nickname: parse(NicknameSchema, "PlayerA"),
-        joinOrder: 0,
-      },
-      {
-        playerId: PLAYER_B,
-        nickname: parse(NicknameSchema, "PlayerB"),
-        joinOrder: 1,
-      },
-    ],
+    players: playerIds.map((playerId, index) => ({
+      playerId,
+      nickname: parse(NicknameSchema, `Player${String.fromCharCode(65 + index)}`),
+      joinOrder: index,
+    })),
     game,
     roomRevision: parse(RoomRevisionSchema, 3),
     createdAt: serverTime(500),
@@ -711,7 +727,9 @@ test("OFFLINE timeout streak increments once, then second timeout forfeits after
         playerAOfflineTimeoutStreak: 1,
       });
       const before = await harness.persistence.findById(harness.room.roomId);
-      assert.ok(before?.game?.turn);
+      if (before === null || before.game === null || before.game.turn === null) {
+        throw new Error("Expected a playing timeout fixture.");
+      }
       const result = await harness.timeoutService.timeout(deadline(harness.room));
       assert.equal(result.status, "APPLIED");
       if (result.status !== "APPLIED") {
@@ -719,9 +737,15 @@ test("OFFLINE timeout streak increments once, then second timeout forfeits after
       }
       assert.equal(result.data.offlineTimeoutStreak, 2);
       assert.equal(result.data.timedOutPlayerForfeited, true);
+      assert.equal(result.data.outcome, "FINISHED");
+      if (result.data.outcome !== "FINISHED") return;
+      assert.equal(result.data.finishReason, "LAST_PLAYER_STANDING");
+      assert.deepEqual(result.data.winnerPlayerIds, [PLAYER_B]);
 
       const after = await harness.persistence.findById(harness.room.roomId);
-      assert.ok(after?.game?.turn);
+      if (after?.phase !== "FINISHED" || after.game?.result === null || after.game === null) {
+        throw new Error("Expected LAST_PLAYER_STANDING terminal state.");
+      }
       assert.equal(after.game.gameRevision, before.game.gameRevision + 1);
       assert.equal(after.storageRevision, before.storageRevision + 1);
       assert.equal(after.game.racks.get(PLAYER_A)?.length, 4);
@@ -730,7 +754,8 @@ test("OFFLINE timeout streak increments once, then second timeout forfeits after
         2,
       );
       assert.equal(after.game.forfeitedPlayerIds.has(PLAYER_A), true);
-      assert.equal(after.game.turn.activePlayerId, PLAYER_B);
+      assert.equal(after.game.turn, null);
+      assert.equal(after.game.result.reason, "LAST_PLAYER_STANDING");
     },
   );
 });
@@ -757,36 +782,48 @@ test("next Turn skips forfeited Players while immutable turnOrder stays complete
   const harness = await createHarness({
     clockNow: 61_000,
     playerBForfeited: true,
+    playerCount: 3,
   });
   const result = await harness.timeoutService.timeout(deadline(harness.room));
   assert.equal(result.status, "APPLIED");
   const after = await harness.persistence.findById(harness.room.roomId);
   assert.ok(after?.game?.turn);
-  assert.deepEqual(after.game.turnOrder, [PLAYER_A, PLAYER_B]);
+  assert.deepEqual(after.game.turnOrder, [PLAYER_A, PLAYER_B, PLAYER_C]);
   assert.equal(after.game.forfeitedPlayerIds.has(PLAYER_B), true);
-  assert.equal(after.game.turn.activePlayerId, PLAYER_A);
+  assert.equal(after.game.turn.activePlayerId, PLAYER_C);
   assert.equal(after.game.turn.turnNumber, 9);
 });
 
-test("timeout that would leave no eligible Player fails without a partial penalty or forfeit", async () => {
+test("두 번째 offline timeout은 penalty 후 ALL_PLAYERS_FORFEITED로 원자 종료한다", async () => {
   const harness = await createHarness({
     clockNow: 61_000,
     playerAPresence: "OFFLINE",
     playerAOfflineTimeoutStreak: 1,
     playerBForfeited: true,
-    randomSequence: [],
+    randomSequence: [0, 1, 0],
   });
   const before = await harness.persistence.findById(harness.room.roomId);
+  if (before === null || before.game === null) {
+    throw new Error("Expected a playing timeout fixture.");
+  }
 
-  assert.deepEqual(await harness.timeoutService.timeout(deadline(harness.room)), {
-    status: "FAILED",
-    reason: "INTERNAL_ERROR",
-  });
-  assert.deepEqual(
-    await harness.persistence.findById(harness.room.roomId),
-    before,
-  );
-  assert.deepEqual(harness.randomSource.calls, []);
+  const result = await harness.timeoutService.timeout(deadline(harness.room));
+  assert.equal(result.status, "APPLIED");
+  if (result.status !== "APPLIED") return;
+  assert.equal(result.data.outcome, "FINISHED");
+  if (result.data.outcome !== "FINISHED") return;
+  assert.equal(result.data.finishReason, "ALL_PLAYERS_FORFEITED");
+  assert.deepEqual(result.data.winnerPlayerIds, []);
+  assert.equal(result.data.penaltyTileIds.length, 3);
+  const after = await harness.persistence.findById(harness.room.roomId);
+  if (after?.phase !== "FINISHED" || after.game?.result === null || after.game === null) {
+    throw new Error("Expected ALL_PLAYERS_FORFEITED terminal state.");
+  }
+  assert.equal(after.game.gameRevision, before.game.gameRevision + 1);
+  assert.equal(after.game.turn, null);
+  assert.equal(after.game.result.reason, "ALL_PLAYERS_FORFEITED");
+  assert.equal(after.game.racks.get(PLAYER_A)?.length, 4);
+  assert.deepEqual(harness.randomSource.calls, [2, 2, 2]);
 });
 
 test("presence lease changing before commit makes timeout a no-op without partial penalty or forfeit", async () => {

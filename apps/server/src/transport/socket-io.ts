@@ -191,7 +191,7 @@ function turnSubmitSuccessAck(
 
 function turnActionSuccessAck(
   requestId: RequestId,
-  snapshot: PlayingStateSnapshot,
+  snapshot: PlayingStateSnapshot | FinishedStateSnapshot,
 ): TurnDrawAck | TurnPassAck {
   return {
     scope: "ROOM",
@@ -345,8 +345,9 @@ function gameFinishedEvent(
     payload: {
       gameId: snapshot.game.gameId,
       reason: snapshot.game.result.reason,
-      winnerPlayerId: snapshot.game.result.winnerPlayerId,
-      gameRevision: snapshot.versions.gameRevision,
+      winnerPlayerIds: snapshot.game.result.winnerPlayerIds,
+      finalGameRevision: snapshot.versions.gameRevision,
+      finishedAt: snapshot.game.result.finishedAt,
     },
   };
 }
@@ -412,7 +413,7 @@ async function fanOutRoomSnapshots(
   }
 }
 
-async function emitCurrentTurnStarted(
+async function emitCurrentGameAdvisory(
   io: RealtimeServer,
   runtime: ApplicationRuntime,
   roomId: RoomId,
@@ -421,7 +422,6 @@ async function emitCurrentTurnStarted(
   if (room === null) {
     return;
   }
-
   for (const binding of runtime.connectionRegistry.listActiveBindings(roomId)) {
     if (!room.players.some((player) => player.playerId === binding.playerId)) {
       continue;
@@ -430,13 +430,20 @@ async function emitCurrentTurnStarted(
       room,
       selfPlayerId: binding.playerId,
     });
-    if (!isCurrentBinding(runtime, binding) || !isPlayingSnapshot(snapshot)) {
+    if (!isCurrentBinding(runtime, binding)) {
       continue;
     }
-    io.to(internalRoomChannel(roomId)).emit(
-      "turn:started",
-      turnStartedEvent(snapshot),
-    );
+    if (isPlayingSnapshot(snapshot)) {
+      io.to(internalRoomChannel(roomId)).emit(
+        "turn:started",
+        turnStartedEvent(snapshot),
+      );
+    } else if (isFinishedSnapshot(snapshot)) {
+      io.to(internalRoomChannel(roomId)).emit(
+        "game:finished",
+        gameFinishedEvent(snapshot),
+      );
+    }
     return;
   }
 }
@@ -1239,20 +1246,6 @@ function registerTurnSubmitHandler(
       }
       committed = true;
 
-      if (result.data.outcome === "FINISHED") {
-        try {
-          await runtime.roomPresencePolicyService.scheduleFinishedRetention(
-            binding.roomId,
-          );
-        } catch {
-          // The Game result is already committed. Retention scheduling is
-          // operational cleanup and cannot roll the command back. It must run
-          // before any transport delivery guard because the actor may vanish
-          // immediately after the canonical FINISHED commit.
-          reportRoomPolicyOrchestrationFailure();
-        }
-      }
-
       const snapshot = await loadSnapshot(
         runtime,
         binding.roomId,
@@ -1372,7 +1365,7 @@ function registerTurnDrawHandler(
       }
 
       await fanOutRoomSnapshots(io, runtime, binding.roomId);
-      await emitCurrentTurnStarted(io, runtime, binding.roomId);
+      await emitCurrentGameAdvisory(io, runtime, binding.roomId);
       acknowledgeIfPresent(
         acknowledge,
         turnActionSuccessAck(command.value.requestId, snapshot),
@@ -1453,7 +1446,10 @@ function registerTurnPassHandler(
         binding.roomId,
         binding.playerId,
       );
-      if (snapshot === null || !isPlayingSnapshot(snapshot)) {
+      if (
+        snapshot === null ||
+        (!isPlayingSnapshot(snapshot) && !isFinishedSnapshot(snapshot))
+      ) {
         reportPostCommitDeliveryFailure();
         return;
       }
@@ -1462,7 +1458,7 @@ function registerTurnPassHandler(
       }
 
       await fanOutRoomSnapshots(io, runtime, binding.roomId);
-      await emitCurrentTurnStarted(io, runtime, binding.roomId);
+      await emitCurrentGameAdvisory(io, runtime, binding.roomId);
       acknowledgeIfPresent(
         acknowledge,
         turnActionSuccessAck(command.value.requestId, snapshot),
@@ -1649,8 +1645,11 @@ function registerRoomLeaveHandler(
       }
       acknowledgeIfPresent(acknowledge, acknowledgement);
 
-      if (actorWasCurrent && !result.data.roomClosed) {
-        await emitCurrentTurnStarted(io, runtime, binding.roomId);
+      if (
+        !result.data.roomClosed &&
+        (actorWasCurrent || result.data.phase === "FINISHED")
+      ) {
+        await emitCurrentGameAdvisory(io, runtime, binding.roomId);
       }
     }).catch(() => {
       acknowledgeIfPresent(
@@ -1706,12 +1705,21 @@ export function registerSocketIoHandlers(
     async (data) => {
       try {
         await fanOutRoomSnapshots(io, runtime, data.roomId);
-        await emitCurrentTurnStarted(io, runtime, data.roomId);
+        await emitCurrentGameAdvisory(io, runtime, data.roomId);
       } catch {
         reportSnapshotFanOutFailure();
       }
     },
   );
+  const unsubscribeGameDeadlineApplied =
+    runtime.gameDeadlineService.subscribeApplied(async (data) => {
+      try {
+        await fanOutRoomSnapshots(io, runtime, data.roomId);
+        await emitCurrentGameAdvisory(io, runtime, data.roomId);
+      } catch {
+        reportSnapshotFanOutFailure();
+      }
+    });
   const unsubscribeRoomPlayerRemoved = runtime.subscribeRoomPlayerRemoved(
     async (roomId) => {
       try {
@@ -1757,5 +1765,6 @@ export function registerSocketIoHandlers(
     unsubscribeRoomClosed();
     unsubscribeRoomPlayerRemoved();
     unsubscribeTimeoutApplied();
+    unsubscribeGameDeadlineApplied();
   };
 }

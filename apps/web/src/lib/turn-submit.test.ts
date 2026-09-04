@@ -253,6 +253,7 @@ test("rule rejection은 draft를 보존하고 stale/turn/auth/tile 오류는 res
     "STALE_GAME_REVISION",
     "NOT_YOUR_TURN",
     "TURN_EXPIRED",
+    "GAME_EXPIRED",
     "INVALID_PHASE",
     "UNAUTHENTICATED",
     "INVALID_TILE_ACCESS",

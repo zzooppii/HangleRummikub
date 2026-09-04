@@ -244,6 +244,7 @@ test("새 Game은 gameRevision 0, empty Board, 모든 initial meld false로 시�
     [playerId("player-3"), 0],
   ]);
   assert.deepEqual([...game.forfeitedPlayerIds], []);
+  assert.deepEqual([...game.noMoveTurnEndPlayerIds], []);
 });
 
 test("creation은 caller의 ordered Player/RulesConfig 참조를 보관하지 않는다", () => {
@@ -285,6 +286,7 @@ test("creation은 caller의 ordered Player/RulesConfig 참조를 보관하지 �
   assert.ok(Object.isFrozen(game.initialMeldCompleted));
   assert.ok(Object.isFrozen(game.offlineTimeoutStreakByPlayerId));
   assert.ok(Object.isFrozen(game.forfeitedPlayerIds));
+  assert.ok(Object.isFrozen(game.noMoveTurnEndPlayerIds));
   assert.ok([...game.racks.values()].every(Object.isFrozen));
 });
 
@@ -306,6 +308,10 @@ test("cloneGameState는 nested canonical collections를 detached copy로 만든�
     original.offlineTimeoutStreakByPlayerId,
   );
   assert.notEqual(clone.forfeitedPlayerIds, original.forfeitedPlayerIds);
+  assert.notEqual(
+    clone.noMoveTurnEndPlayerIds,
+    original.noMoveTurnEndPlayerIds,
+  );
   assert.notEqual(clone.turnOrder, original.turnOrder);
   assert.notEqual(clone.turn, original.turn);
   assert.notEqual(clone.board, original.board);

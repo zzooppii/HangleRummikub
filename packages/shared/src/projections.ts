@@ -430,44 +430,242 @@ export const GameScoreSchema = v.pipe(
 );
 export type GameScore = v.InferOutput<typeof GameScoreSchema>;
 
-export const PublicGameScoreEntrySchema = v.strictObject({
-  playerId: PlayerIdSchema,
-  score: GameScoreSchema,
-});
-export type PublicGameScoreEntry = v.InferOutput<
-  typeof PublicGameScoreEntrySchema
+export const GameFinishReasonSchema = v.picklist([
+  "RACK_EMPTY",
+  "TIME_LIMIT",
+  "STALEMATE",
+  "LAST_PLAYER_STANDING",
+  "ALL_PLAYERS_FORFEITED",
+]);
+export type GameFinishReason = v.InferOutput<
+  typeof GameFinishReasonSchema
 >;
 
-const RackEmptyGameResultObjectSchema = v.strictObject({
-  reason: v.literal("RACK_EMPTY"),
-  winnerPlayerId: PlayerIdSchema,
-  scores: v.pipe(
-    v.array(PublicGameScoreEntrySchema),
+export const GameRankSchema = v.pipe(
+  v.number(),
+  v.integer("A Game rank must be an integer."),
+  v.safeInteger("A Game rank must be a safe integer."),
+  v.minValue(1, "A Game rank must be at least one."),
+);
+export type GameRank = v.InferOutput<typeof GameRankSchema>;
+
+export const PublicGameRankingEntrySchema = v.strictObject({
+  playerId: PlayerIdSchema,
+  rank: GameRankSchema,
+  score: GameScoreSchema,
+  remainingRackCount: TileCountSchema,
+  penaltyCost: TileCountSchema,
+  forfeited: v.boolean(),
+});
+export type PublicGameRankingEntry = v.InferOutput<
+  typeof PublicGameRankingEntrySchema
+>;
+
+const GameResultObjectSchema = v.strictObject({
+  reason: GameFinishReasonSchema,
+  winnerPlayerIds: v.pipe(
+    v.array(PlayerIdSchema),
+    v.maxLength(4),
+  ),
+  rankings: v.pipe(
+    v.array(PublicGameRankingEntrySchema),
     v.minLength(2),
     v.maxLength(4),
   ),
   finishedAt: ServerTimeSchema,
 });
 
-export const RackEmptyGameResultSchema = v.pipe(
-  RackEmptyGameResultObjectSchema,
-  v.check(
-    (result) =>
-      new Set(result.scores.map((entry) => entry.playerId)).size ===
-      result.scores.length,
-    "Game result scores must not contain duplicate players.",
-  ),
-  v.check(
-    (result) =>
-      result.scores.some((entry) => entry.playerId === result.winnerPlayerId),
-    "The rack-empty winner must have a score entry.",
-  ),
-);
-export type RackEmptyGameResult = v.InferOutput<
-  typeof RackEmptyGameResultSchema
->;
+type GameResultForValidation = v.InferOutput<typeof GameResultObjectSchema>;
+type GameRankingEntryForValidation =
+  GameResultForValidation["rankings"][number];
 
-export const GameResultSchema = RackEmptyGameResultSchema;
+function compareRankingKeys(
+  left: readonly number[],
+  right: readonly number[],
+): number {
+  for (let index = 0; index < left.length; index += 1) {
+    const leftValue = left[index];
+    const rightValue = right[index];
+    if (leftValue === undefined || rightValue === undefined) {
+      return left.length - right.length;
+    }
+    if (leftValue < rightValue) {
+      return -1;
+    }
+    if (leftValue > rightValue) {
+      return 1;
+    }
+  }
+  return left.length - right.length;
+}
+
+function rankingKey(
+  result: GameResultForValidation,
+  entry: GameRankingEntryForValidation,
+): readonly number[] {
+  switch (result.reason) {
+    case "TIME_LIMIT":
+      return [entry.remainingRackCount, entry.penaltyCost];
+    case "STALEMATE":
+    case "ALL_PLAYERS_FORFEITED":
+      return [entry.penaltyCost];
+    case "RACK_EMPTY":
+    case "LAST_PLAYER_STANDING":
+      return [
+        result.winnerPlayerIds.includes(entry.playerId) ? 0 : 1,
+        entry.penaltyCost,
+      ];
+  }
+}
+
+function hasReasonSpecificCompetitionRanking(
+  result: GameResultForValidation,
+): boolean {
+  let previousKey: readonly number[] | undefined;
+  let expectedRank = 0;
+
+  return result.rankings.every((entry, index) => {
+    const currentKey = rankingKey(result, entry);
+    if (previousKey === undefined) {
+      expectedRank = 1;
+    } else {
+      const comparison = compareRankingKeys(previousKey, currentKey);
+      if (comparison > 0) {
+        return false;
+      }
+      if (comparison < 0) {
+        expectedRank = index + 1;
+      }
+    }
+    previousKey = currentKey;
+    return entry.rank === expectedRank;
+  });
+}
+
+function hasCanonicalPenaltyScore(
+  entry: GameRankingEntryForValidation,
+): boolean {
+  const expectedScore = entry.penaltyCost === 0 ? 0 : -entry.penaltyCost;
+  return Object.is(entry.score, expectedScore);
+}
+
+function hasSingleWinnerTransferScores(
+  result: GameResultForValidation,
+): boolean {
+  const winnerPlayerId = result.winnerPlayerIds[0];
+  if (winnerPlayerId === undefined || result.winnerPlayerIds.length !== 1) {
+    return false;
+  }
+
+  const winner = result.rankings.find(
+    (entry) => entry.playerId === winnerPlayerId,
+  );
+  if (winner === undefined) {
+    return false;
+  }
+
+  let losingPenaltyTotal = 0;
+  for (const entry of result.rankings) {
+    if (entry.playerId === winnerPlayerId) {
+      continue;
+    }
+    if (!hasCanonicalPenaltyScore(entry)) {
+      return false;
+    }
+    losingPenaltyTotal += entry.penaltyCost;
+  }
+
+  return (
+    Number.isSafeInteger(losingPenaltyTotal) &&
+    winner.score === losingPenaltyTotal
+  );
+}
+
+export const GameResultSchema = v.pipe(
+  GameResultObjectSchema,
+  v.check(
+    (result) =>
+      new Set(result.rankings.map((entry) => entry.playerId)).size ===
+      result.rankings.length,
+    "Game result rankings must not contain duplicate players.",
+  ),
+  v.check(
+    hasReasonSpecificCompetitionRanking,
+    "Game result rankings must follow the finish reason and competition ranking order.",
+  ),
+  v.check((result) => {
+    if (
+      new Set(result.winnerPlayerIds).size !== result.winnerPlayerIds.length
+    ) {
+      return false;
+    }
+    if (result.reason === "ALL_PLAYERS_FORFEITED") {
+      return result.winnerPlayerIds.length === 0;
+    }
+
+    const rankOnePlayerIds = result.rankings
+      .filter((entry) => entry.rank === 1)
+      .map((entry) => entry.playerId);
+    return (
+      rankOnePlayerIds.length === result.winnerPlayerIds.length &&
+      rankOnePlayerIds.every(
+        (playerId, index) => result.winnerPlayerIds[index] === playerId,
+      )
+    );
+  }, "Winners must be exactly the ordered rank-one players."),
+  v.check(
+    (result) =>
+      result.reason === "RACK_EMPTY" ||
+      result.reason === "LAST_PLAYER_STANDING"
+        ? hasSingleWinnerTransferScores(result)
+        : result.rankings.every(hasCanonicalPenaltyScore),
+    "Game result scores must follow the finish reason's penalty policy.",
+  ),
+  v.check(
+    (result) =>
+      result.reason !== "ALL_PLAYERS_FORFEITED" ||
+      result.rankings.every((entry) => entry.forfeited),
+    "Every player must be forfeited in an all-players-forfeited result.",
+  ),
+  v.check(
+    (result) =>
+      result.reason === "ALL_PLAYERS_FORFEITED"
+        ? result.winnerPlayerIds.length === 0
+        : result.winnerPlayerIds.length > 0,
+    "Only an all-players-forfeited result may omit winners.",
+  ),
+  v.check(
+    (result) =>
+      result.reason === "RACK_EMPTY" ||
+      result.reason === "LAST_PLAYER_STANDING"
+        ? result.winnerPlayerIds.length === 1
+        : true,
+    "Rack-empty and last-player-standing results require one winner.",
+  ),
+  v.check((result) => {
+    if (result.reason !== "RACK_EMPTY") {
+      return true;
+    }
+    const winner = result.rankings.find(
+      (entry) => entry.playerId === result.winnerPlayerIds[0],
+    );
+    return (
+      winner !== undefined &&
+      winner.remainingRackCount === 0 &&
+      winner.penaltyCost === 0 &&
+      !winner.forfeited
+    );
+  }, "A rack-empty winner must be non-forfeited with an empty zero-penalty rack."),
+  v.check((result) => {
+    if (result.reason !== "LAST_PLAYER_STANDING") {
+      return true;
+    }
+    const winnerPlayerId = result.winnerPlayerIds[0];
+    return result.rankings.every((entry) =>
+      entry.playerId === winnerPlayerId ? !entry.forfeited : entry.forfeited,
+    );
+  }, "A last-player-standing winner must be the only non-forfeited player."),
+);
 export type GameResult = v.InferOutput<typeof GameResultSchema>;
 
 const FinishedPublicGameViewObjectSchema = v.strictObject({
@@ -490,11 +688,11 @@ export const FinishedPublicGameViewSchema = v.pipe(
   ),
   v.check(
     (game) =>
-      game.result.scores.length === game.turnOrder.length &&
-      game.result.scores.every(
-        (entry, index) => entry.playerId === game.turnOrder[index],
+      game.result.rankings.length === game.turnOrder.length &&
+      game.turnOrder.every((playerId) =>
+        game.result.rankings.some((entry) => entry.playerId === playerId),
       ),
-    "Game result scores must follow the complete turn order.",
+    "Game result rankings must contain the complete turn order.",
   ),
 );
 export type FinishedPublicGameView = v.InferOutput<
@@ -683,6 +881,20 @@ export const FinishedStateSnapshotSchema = v.pipe(
       (tile) => !publicBoardTileIds.has(tile.tileId),
     );
   }, "A physical Tile cannot appear on both the Board and the private rack."),
+  v.check(
+    (snapshot) =>
+      snapshot.game.result.rankings.every((entry) => {
+        const player = snapshot.room.players.find(
+          (candidate) => candidate.playerId === entry.playerId,
+        );
+        return (
+          player !== undefined &&
+          player.rackCount === entry.remainingRackCount &&
+          player.forfeited === entry.forfeited
+        );
+      }),
+    "Finished result metadata must match the public Player summary.",
+  ),
 );
 export type FinishedStateSnapshot = v.InferOutput<
   typeof FinishedStateSnapshotSchema

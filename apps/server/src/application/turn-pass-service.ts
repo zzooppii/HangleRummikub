@@ -1,6 +1,8 @@
 import {
   GameIdSchema,
+  GameFinishReasonSchema,
   GameRevisionSchema,
+  PlayerIdSchema,
   RoomIdSchema,
   RoomRevisionSchema,
   TurnIdSchema,
@@ -16,6 +18,14 @@ import {
 import * as v from "valibot";
 
 import type { PlayingGameState } from "../domain/game/game-state.js";
+import {
+  createForfeitResult,
+  createStalemateResult,
+} from "../domain/game/result-engine.js";
+import {
+  advanceNoMoveTurnEnds,
+  isStalemateCycleComplete,
+} from "../domain/game/stalemate.js";
 import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
 import type { IdempotencyRepository } from "../ports/idempotency-repository.js";
 import type { RoomRepository } from "../ports/room-repository.js";
@@ -25,6 +35,11 @@ import type {
 } from "../ports/room-unit-of-work.js";
 import type { Clock, IdGenerator, TurnScheduler } from "../ports/system.js";
 import type { CurrentActorAuthorization } from "./game-start-service.js";
+import {
+  createFinishedRoomTransition,
+  notifyGameFinishedBestEffort,
+  type GameFinishedPostCommit,
+} from "./game-finish-transition.js";
 import type { RoomMutationSerialExecutor } from "./room-session-service.js";
 import {
   createNextTurn,
@@ -33,14 +48,30 @@ import {
   type TurnSchedulingFailureReporter,
 } from "./turn-transition.js";
 
-export const TurnPassSuccessDataSchema = v.strictObject({
+const TurnPassAdvancedDataSchema = v.strictObject({
   roomId: RoomIdSchema,
   gameId: GameIdSchema,
   roomRevision: RoomRevisionSchema,
   gameRevision: GameRevisionSchema,
+  outcome: v.literal("ADVANCED"),
   nextTurnId: TurnIdSchema,
   nextTurnNumber: TurnNumberSchema,
 });
+
+const TurnPassFinishedDataSchema = v.strictObject({
+  roomId: RoomIdSchema,
+  gameId: GameIdSchema,
+  roomRevision: RoomRevisionSchema,
+  gameRevision: GameRevisionSchema,
+  outcome: v.literal("FINISHED"),
+  finishReason: GameFinishReasonSchema,
+  winnerPlayerIds: v.array(PlayerIdSchema),
+});
+
+export const TurnPassSuccessDataSchema = v.variant("outcome", [
+  TurnPassAdvancedDataSchema,
+  TurnPassFinishedDataSchema,
+]);
 
 export type TurnPassSuccessData = v.InferOutput<
   typeof TurnPassSuccessDataSchema
@@ -69,6 +100,7 @@ export type TurnPassServiceDependencies = Readonly<{
   idGenerator: IdGenerator;
   turnScheduler?: TurnScheduler;
   onTurnSchedulingFailure?: TurnSchedulingFailureReporter;
+  onGameFinished?: GameFinishedPostCommit;
 }>;
 
 const ERRORS = Object.freeze({
@@ -95,6 +127,11 @@ const ERRORS = Object.freeze({
   TURN_EXPIRED: Object.freeze({
     code: "TURN_EXPIRED",
     message: "The Turn deadline has passed.",
+    recoverable: true,
+  }),
+  GAME_EXPIRED: Object.freeze({
+    code: "GAME_EXPIRED",
+    message: "The Game deadline has passed.",
     recoverable: true,
   }),
   STALE_GAME_REVISION: Object.freeze({
@@ -171,6 +208,56 @@ function createCandidate(
   terminalResult: TurnPassSuccessData;
 }> {
   const gameRevision = incrementGameRevision(game.gameRevision);
+  const noMoveTurnEndPlayerIds = advanceNoMoveTurnEnds(
+    game.turnOrder,
+    game.forfeitedPlayerIds,
+    game.noMoveTurnEndPlayerIds,
+    game.turn.activePlayerId,
+  );
+  const resultInput = {
+    playerIds: game.turnOrder,
+    racks: game.racks,
+    tilesById: game.tilesById,
+    forfeitedPlayerIds: game.forfeitedPlayerIds,
+    finishedAt: committedAt,
+  } as const;
+  const forfeitResult = createForfeitResult(resultInput);
+  const result =
+    forfeitResult ??
+    (isStalemateCycleComplete(
+      game.turnOrder,
+      game.forfeitedPlayerIds,
+      noMoveTurnEndPlayerIds,
+    )
+      ? createStalemateResult(resultInput)
+      : null);
+  if (result !== null) {
+    const gameBase: PlayingGameState = Object.freeze({
+      ...game,
+      gameRevision,
+      noMoveTurnEndPlayerIds,
+    });
+    const transition = createFinishedRoomTransition(
+      room,
+      game,
+      result,
+      committedAt,
+      gameBase,
+    );
+    return Object.freeze({
+      roomCandidate: transition.roomCandidate,
+      terminalResult: Object.freeze({
+        roomId: room.roomId,
+        gameId: game.gameId,
+        roomRevision: transition.roomCandidate.roomRevision,
+        gameRevision: transition.finishedGame.gameRevision,
+        outcome: "FINISHED",
+        finishReason: result.reason,
+        winnerPlayerIds: [...result.winnerPlayerIds],
+      }),
+    });
+  }
+
   const turn = createNextTurn(game, committedAt, idGenerator);
   const nextGame: PlayingGameState = Object.freeze({
     gameId: game.gameId,
@@ -184,6 +271,7 @@ function createCandidate(
     initialMeldCompleted: game.initialMeldCompleted,
     offlineTimeoutStreakByPlayerId: game.offlineTimeoutStreakByPlayerId,
     forfeitedPlayerIds: game.forfeitedPlayerIds,
+    noMoveTurnEndPlayerIds,
     turnOrder: game.turnOrder,
     turn,
     result: null,
@@ -195,6 +283,7 @@ function createCandidate(
     gameId: game.gameId,
     roomRevision: room.roomRevision,
     gameRevision,
+    outcome: "ADVANCED",
     nextTurnId: turn.turnId,
     nextTurnNumber: turn.turnNumber,
   });
@@ -224,6 +313,7 @@ export class TurnPassService {
   readonly #idGenerator: IdGenerator;
   readonly #turnScheduler: TurnScheduler | undefined;
   readonly #onTurnSchedulingFailure: TurnSchedulingFailureReporter | undefined;
+  readonly #onGameFinished: GameFinishedPostCommit | undefined;
 
   constructor(dependencies: TurnPassServiceDependencies) {
     this.#roomRepository = dependencies.roomRepository;
@@ -234,6 +324,7 @@ export class TurnPassService {
     this.#idGenerator = dependencies.idGenerator;
     this.#turnScheduler = dependencies.turnScheduler;
     this.#onTurnSchedulingFailure = dependencies.onTurnSchedulingFailure;
+    this.#onGameFinished = dependencies.onGameFinished;
   }
 
   async pass(input: TurnPassInput): Promise<TurnPassResult> {
@@ -246,7 +337,7 @@ export class TurnPassService {
       return failed(ERRORS.INTERNAL_ERROR);
     }
 
-    if (result.ok) {
+    if (result.ok && result.data.outcome === "ADVANCED") {
       await scheduleCurrentTurnBestEffort(
         this.#roomRepository,
         this.#turnScheduler,
@@ -258,6 +349,11 @@ export class TurnPassService {
         },
         this.#onTurnSchedulingFailure,
       );
+    } else if (result.ok && result.data.outcome === "FINISHED") {
+      await notifyGameFinishedBestEffort(this.#onGameFinished, {
+        roomId: result.data.roomId,
+        gameId: result.data.gameId,
+      });
     }
     return result;
   }
@@ -303,6 +399,9 @@ export class TurnPassService {
       game.turn.turnId !== input.turnId
     ) {
       return failed(ERRORS.NOT_YOUR_TURN);
+    }
+    if (input.receivedAt >= game.gameDeadlineAt) {
+      return failed(ERRORS.GAME_EXPIRED);
     }
     if (input.receivedAt >= game.turn.deadlineAt) {
       return failed(ERRORS.TURN_EXPIRED);

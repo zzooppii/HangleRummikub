@@ -20,7 +20,7 @@
 
 ### 2.1 계획된 monorepo
 
-아래는 단계적으로 구현할 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. Phase 9에서는 versioned deterministic test dictionary adapter를 infrastructure 경계에 추가했고 Phase 10에서는 server-only Board·Tile validation model과 async pure RuleEngine을 domain 경계에 추가했다. Phase 11은 canonical inventory/GameState, `GameStartService`, player별 PLAYING projection과 `game:start` transport를 연결했다. Phase 12는 `apps/web`에 browser-only TurnDraft editor를, Phase 13은 원자적 `turn:submit`과 rack-empty terminal state를 연결했다. Phase 14는 `TurnDrawService`, `TurnPassService`, internal `TurnTimeoutService`, in-process scheduler/overdue sweeper와 client countdown을 연결했다. Phase 15는 phase-aware disconnect/resume, explicit leave, Host 승계, offline-timeout forfeit와 Room policy scheduler/cleanup lifecycle을 연결했다. 나머지 구조는 해당 Roadmap 단계에서 필요할 때 생성한다.
+아래는 단계적으로 구현할 논리적 구조다. Phase 6까지 최상위 workspace, browser-safe shared contract/runtime validation, server persistence/application/Socket.IO transport와 React Lobby web flow를 생성했고, Phase 8에서 framework-independent Hangul composition domain module을 추가했다. Phase 9에서는 versioned deterministic test dictionary adapter를 infrastructure 경계에 추가했고 Phase 10에서는 server-only Board·Tile validation model과 async pure RuleEngine을 domain 경계에 추가했다. Phase 11은 canonical inventory/GameState, `GameStartService`, player별 PLAYING projection과 `game:start` transport를 연결했다. Phase 12는 `apps/web`에 browser-only TurnDraft editor를, Phase 13은 원자적 `turn:submit`과 rack-empty terminal state를 연결했다. Phase 14는 `TurnDrawService`, `TurnPassService`, internal `TurnTimeoutService`, in-process scheduler/overdue sweeper와 client countdown을 연결했다. Phase 15는 phase-aware disconnect/resume, explicit leave, Host 승계, offline-timeout forfeit와 Room policy scheduler/cleanup lifecycle을 연결했다. Phase 16은 generalized Result Engine, stalemate tracker와 server-authoritative Game deadline scheduler/service를 이 경계에 통합했다. 나머지 구조는 해당 Roadmap 단계에서 필요할 때 생성한다.
 
 ```text
 /
@@ -149,6 +149,8 @@ Domain API는 가능한 한 plain serializable data를 받고 새 state 또는 �
 | `SessionTokenIssuer` | opaque token 발급·hash | process adapter | managed secret/KMS 고려 가능 |
 | `PlayerPresenceReader` | Room의 현재 presence version과 Player별 CONNECTED/OFFLINE read model | `ConnectionRegistryPresenceReader` | shared presence store/read model |
 | `TurnScheduler` | active deadline마다 timeout command를 at-least-once enqueue | in-process timer + overdue sweeper | Redis-backed job/lease |
+| `GameDeadlineScheduler` | Game의 고정 25분 deadline에 internal finish command를 at-least-once enqueue | in-process timer + overdue Game sweeper | Redis-backed job/lease |
+| `ActiveGameReader` | mutable repository state를 노출하지 않고 PLAYING Game identity/deadline의 detached view 제공 | in-memory projection | persisted active-game scan |
 | `RealtimePublisher` | player별 projection 전달 | Socket.IO | multi-node Socket.IO adapter |
 
 Port를 만든다는 이유만으로 Redis/PostgreSQL package를 MVP에 설치하지 않는다.
@@ -222,12 +224,22 @@ GameState
       explicit one-position Joker assignments
   initialMeldCompleted: playerId -> boolean
   turnOrder: immutable shuffled playerId collection
-  turn:
-    turnId
-    turnNumber
-    activePlayerId
-    startedAt
-    deadlineAt
+  forfeitedPlayerIds
+  offlineTimeoutStreakByPlayerId        # server-only
+  noMoveTurnEndPlayerIds                # server-only stalemate tracker
+  PLAYING:
+    turn:
+      turnId
+      turnNumber
+      activePlayerId
+      startedAt
+      deadlineAt
+    result: null
+  FINISHED:
+    turn: null
+    result:
+      reason / finishedAt / winnerPlayerIds
+      rankings: playerId / rank / score / remainingRackCount / penaltyCost / forfeited
   gameStartedAt
   gameDeadlineAt
 ```
@@ -239,7 +251,8 @@ GameState
 - 하나의 `tileId`는 최종 Board 전체에 최대 한 번만 나타나며 모든 Tile은 정확히 하나의 WordGroup, rack 또는 bag 같은 허용 위치에 속해야 한다.
 - WordGroup collection의 표시 순서는 UI 안정성을 위한 것이고 낱말 유효성에는 영향을 주지 않는다.
 - Phase 11의 `RulesConfig`는 위 version과 수치를 frozen snapshot으로 생성하며 repository clone 뒤에도 동일 값과 nested isolation을 유지한다.
-- Phase 13의 `GameState`는 `PlayingGameState { turn, result: null }`와 `FinishedGameState { turn: null, result }`를 구분한다. Phase 15는 immutable `turnOrder`와 별도로 `forfeitedPlayerIds`, server-only `offlineTimeoutStreakByPlayerId`를 보존한다. public projection은 forfeit만 노출하고 streak는 노출하지 않는다. 현재 terminal result는 rack-empty reason, winner, turnOrder 순서의 Player별 score와 finishedAt만 표현하며 Phase 16 종료 계산은 아직 없다.
+- `GameState`는 `PlayingGameState { turn, result: null }`와 `FinishedGameState { turn: null, result }`를 구분한다. immutable `turnOrder`와 별도로 `forfeitedPlayerIds`, server-only `offlineTimeoutStreakByPlayerId` 및 current no-move cycle의 Player identity를 담는 stalemate tracker를 보존한다. public projection은 forfeit만 노출하고 offline streak와 stalemate tracker는 노출하지 않는다.
+- generalized `GameResult`는 `RACK_EMPTY | TIME_LIMIT | STALEMATE | LAST_PLAYER_STANDING | ALL_PLAYERS_FORFEITED` reason, `finishedAt`, zero-or-more `winnerPlayerIds`와 Player별 `{ playerId, rank, score, remainingRackCount, penaltyCost, forfeited }` ranking을 갖는다. competition rank와 score는 GAME_RULES C-17의 pure Result Engine에서 계산한다.
 - 구현된 Phase 8 composition은 명시된 syllable role별 `tileId + assignedSymbol`에서 word 내부 중복 physical reference를 거절하고, two-position component를 먼저 하나의 logical V/T로 collapse한다. Compatibility Jamo를 명시적 Unicode modern Hangul L/V/T index table에 mapping해 precomposed NFC word를 계산하며 문자열을 단순 concatenate/normalize하지 않는다.
 - Phase 10의 `Board`는 ordered `WordGroup` collection이고 각 group은 unique `groupId`와 Phase 8 syllable/component 구조를 사용한다. `OrdinaryTileDescriptor`와 `JokerTileDescriptor`는 full Game Tile entity가 아니라 RuleEngine 입력의 physical assignment 검증용 server-only descriptor다.
 - async `validateProposedBoard(ValidateBoardInput)`은 canonical/proposed Board, readonly `tilesById`, actor rack tileId 집합, initial meld 상태, `RuleValidationPolicy`와 `DictionaryProvider`를 받아 `BoardValidationResult`를 반환한다. 성공 값은 group별 `composedWords`, `newlyUsedRackTileIds`, `recoveredJokerTileIds`, `completesInitialMeld`만 포함한다.
@@ -314,9 +327,9 @@ StateSnapshot
 - Lobby에서 Game이 아직 없으면 `StateVersions.gameRevision`은 `null`이며 `0` sentinel로 부재를 나타내지 않는다.
 - `PublicPlayerView.connectionStatus`는 `CONNECTED | OFFLINE`이고 `PublicRoomView.players` 배열 순서가 공개 표시 순서다.
 - `PlayingPublicPlayerView`는 각 Player의 rack 개수와 initial meld 완료 여부를 공개하고, `PlayingPrivatePlayerView`만 현재 Player의 ordered rack Tile 상세를 포함한다. ordinary rack Tile은 tileId, kind, physicalType, sourceBag과 allowedSymbols를, Joker는 같은 identifier/meta 중 applicable field만 가진다.
-- `PublicGameView`는 PLAYING에서 Board 전체, active Player를 포함한 current turn과 deadline, immutable turnOrder와 consonant/vowel bag 잔여 개수를 공개한다. `FinishedPublicGameView`는 active turn을 제거하고 rack-empty result의 winner, Player별 score와 finishedAt을 공개한다.
+- `PublicGameView`는 PLAYING에서 Board 전체, active Player를 포함한 current turn과 deadline, immutable turnOrder와 consonant/vowel bag 잔여 개수를 공개한다. `FinishedPublicGameView`는 active turn을 제거하고 generalized result의 reason, `finishedAt`, `winnerPlayerIds`, Player별 competition rank, score, remaining rack count, penaltyCost와 forfeited 여부를 공개한다.
 - Phase 12의 public Board placement는 편집 가능한 공개 Tile에 한해 `tileId`, `kind`, `physicalType`, 현재 `assignedSymbol`과 선택 가능한 `allowedSymbols`를 제공한다. 이는 Board 위 Tile만을 위한 projection이며 rack origin/owner, bag 순서나 전체 `tilesById`를 공개하지 않는다.
-- 상대 rack 상세, bag 순서, future draw Tile과 server random state는 public DTO에 넣지 않는다. `sessionToken`, token hash, `socketId`, `connectionGeneration`, bootstrap credential, server-only `storageRevision`, repository 내부 정보는 public/private 어느 snapshot에도 넣지 않는다.
+- 상대 rack 상세, bag 순서, future draw Tile과 server random state는 public DTO에 넣지 않는다. result에 remaining count와 penaltyCost가 있어도 상대 rack의 tileId/physicalType/symbol은 노출하지 않는다. `sessionToken`, token hash, `socketId`, `connectionGeneration`, bootstrap credential, server-only `storageRevision`, offline-timeout streak, stalemate tracker와 scheduler identity는 public/private 어느 snapshot에도 넣지 않는다.
 - Socket.IO room 전체로 동일 snapshot을 broadcast하지 않는다. 공개 변화 알림 뒤 각 Player에게 projection을 보내거나, 처음부터 socket별 snapshot을 emit한다.
 
 `LobbyStateSnapshotProjector`는 기존 이름을 유지하면서 LOBBY, PLAYING과 FINISHED projection을 모두 생성한다. PLAYING/FINISHED에서는 canonical `tilesById`와 rack을 self view로만 변환하며 다른 Player와 bag에는 count만 남긴다. resume과 `state:sync`도 이 projector를 사용하므로 GameState를 재생성하거나 turnOrder/rack을 다시 배분하지 않는다.
@@ -405,13 +418,15 @@ exact inventory와 Joker 시작 배분은 GAME_RULES C-02/C-22, 연결 조건과
 - timeout은 canonical Board를 바꾸지 않고 server-random bag 선택으로 최대 penalty Tile 3개를 지급한 뒤 turn을 넘긴다.
 - 유효한 결과를 commit한 뒤 다음 turn/deadline, offline-timeout streak, stalemate progress 또는 result를 함께 계산하고 하나의 commit에 포함한다.
 - timeout scheduler callback 자체는 state를 직접 바꾸지 않고 application command를 enqueue한다.
+- stalemate tracker는 current consecutive no-move cycle에서 이미 종료한 Player identity만 담는 server-only canonical metadata다. start/Submit/Draw/penalty 1개 이상 timeout에서 reset하고, both-empty Pass와 penalty 0개 timeout에서 actor를 추가하며, forfeit 후에는 current non-forfeit 집합으로 prune한다. 한 Player를 한 cycle에서 두 번 count하지 않는다.
 
 ### 7.3 Finished
 
-- server-side application/domain pipeline이 rack-empty, 25분 Game deadline, stalemate 또는 active non-forfeit Player 1명이라는 확정 종료 조건을 만족했다고 판정할 때만 `FINISHED`로 전이한다. Phase 13은 그중 accepted Submit 뒤 rack-empty만 구현한다.
-- 결과, 종료 사유, 마지막 `gameRevision`과 `FINISHED` phase 전이는 하나의 unit-of-work에 포함한다.
+- server-side application/domain pipeline이 rack-empty, 25분 Game deadline, stalemate, non-forfeit Player 1명 또는 0명이라는 확정 종료 조건을 만족했다고 판정할 때만 `FINISHED`로 전이한다.
+- pure Result Engine이 rack Tile descriptor와 forfeited 집합에서 penaltyCost, score, competition rank, winner collection을 reason별로 계산한다. `RACK_EMPTY`/`LAST_PLAYER_STANDING`은 단독 winner positive transfer, `TIME_LIMIT`/`STALEMATE`/`ALL_PLAYERS_FORFEITED`는 negative penalty score를 사용한다.
+- 최종 Board/rack/forfeit state, generalized result, `turn = null`, `gameRevision + 1`, Room `FINISHED`, `roomRevision + 1`, `storageRevision + 1`과 client mutation의 accepted idempotency result는 하나의 unit-of-work에 포함한다.
 - `FINISHED`에서는 gameplay mutation을 거절한다. snapshot/resume과 별도의 leave/retention command 허용 여부는 Room policy가 결정한다.
-- rematch, Room 재사용, 결과 보존 기간은 현재 scope에서 미확정이며 임의 구현하지 않는다.
+- 모든 finish reason은 Phase 15의 fixed `finishedAt + 30분` retention을 사용하며 resume은 deadline을 연장하지 않는다. rematch와 Room 내 새 Game 생성은 범위 밖이다.
 
 ## 8. Connection과 reconnection
 
@@ -588,7 +603,7 @@ Phase 15 `room:leave`는 `requestId`, `expectedRoomRevision`, nullable `expected
 | `state:changed` | 새 scoped version이 있음을 알리고 필요 시 snapshot 동기화 유도 |
 | `player:connection-changed` | policy가 공개를 허용한 presence 상태 갱신 |
 | `turn:started` | 새 turnId와 server deadline 알림 |
-| `game:finished` | server-computed result와 종료 사유 알림 |
+| `game:finished` | `gameId`, generalized reason, `winnerPlayerIds`, final `gameRevision`, `finishedAt` 알림; 전체 ranking은 authoritative snapshot에 둠 |
 | `session:replaced` | duplicate connection policy로 기존 socket 권한이 끝났음을 알림 |
 | `room:closed` | retention/운영 policy에 따른 Room 종료 알림 |
 | `server:error` | 특정 command ack에 묶이지 않은 복구 가능한 transport/server 오류 |
@@ -737,9 +752,9 @@ Socket listener는 command 도착 즉시 runtime validation보다 먼저 server 
 - 모든 validation, 결과 계산, projection 직렬화 가능성 검사가 성공한 뒤 repository가 `gameRevision`을 조건으로 state와 accepted idempotency record를 한 번에 교체한다.
 - repository commit은 application이 read한 server-only `storageRevision`도 함께 CAS해 unrelated Room write를 덮어쓰지 않는다.
 - storage CAS가 경쟁으로 실패하면 최신 aggregate를 다시 읽는다. `gameRevision` 또는 적용되는 authorization/phase가 바뀌었으면 안전하게 거절하고, game state가 그대로인 unrelated metadata change뿐이면 candidate를 다시 만들고 전체 검증 후 bounded retry할 수 있다.
-- Submit/timeout이 종료 조건을 만들면 `gameRevision`, `roomRevision`, `storageRevision`과 `FINISHED` result를 같은 commit에서 갱신한다.
-- Phase 13 non-terminal Submit은 proposed Board, actor rack에서 `newlyUsedRackTileIds` 제거, 필요 시 initial meld flag, 새 Turn과 `gameRevision + 1`, `storageRevision + 1`을 commit하고 `roomRevision`은 유지한다. rack-empty Submit은 다음 Turn 없이 `turn = null`, rack-empty result, Room `FINISHED`와 세 revision 중 Room/Game/storage를 모두 1씩 증가시킨다.
-- Phase 14 accepted Draw/Pass/Timeout도 격리된 candidate와 accepted idempotency result를 같은 UoW로 commit한다. Draw는 선택 bag과 actor rack, Timeout은 최대 3 Tile penalty rack을 함께 바꾸고 Pass는 rack/Board/bag을 유지한다. 세 경로 모두 새 Turn과 `gameRevision + 1`, `storageRevision + 1`을 만들고 `roomRevision`은 유지한다.
+- accepted non-terminal Submit은 proposed Board, actor rack에서 `newlyUsedRackTileIds` 제거, 필요 시 initial meld flag, reset된 stalemate tracker, 새 Turn과 `gameRevision + 1`, `storageRevision + 1`을 commit하고 `roomRevision`은 유지한다. rack-empty Submit은 다음 Turn 없이 `turn = null`, generalized result, Room `FINISHED`와 Room/Game/storage revision을 모두 1씩 증가시킨다.
+- accepted Draw는 stalemate tracker를 reset하고, both-empty Pass는 actor를 tracker에 추가한다. Timeout은 penalty Tile이 1개 이상이면 reset, 0개이면 actor를 추가한다. 종료 조건을 만족하지 않은 경우에만 새 Turn과 `gameRevision + 1`, `storageRevision + 1`을 만들고 `roomRevision`은 유지한다.
+- Pass/Timeout/leave가 stalemate 또는 forfeit 종료 조건을 만들거나 Game deadline command가 승리하면 그 action의 state change와 `FINISHED` result, null Turn, Room/Game/storage revision을 같은 commit에 넣는다. terminal transition 후는 새 Turn을 만들지 않는다.
 - CAS가 실패하면 candidate를 버리고 `STALE_GAME_REVISION`으로 처리한다.
 - 실패 시 candidate 폐기가 곧 rollback이며 별도의 역연산을 수행하지 않는다.
 - commit 후에만 realtime event를 발행한다.
@@ -762,7 +777,7 @@ DB 도입 후 accepted idempotency record와 outbox는 state와 같은 transacti
 
 cache 크기와 TTL은 운영 정책으로 정하지만, active Room의 정상적인 retry window보다 짧아 correctness를 깨지 않게 한다.
 
-### 10.6 Submit과 timeout 경합
+### 10.6 Turn mutation과 timer 경합
 
 `TurnScheduler`는 `roomId`, `gameId`, `turnId`, 예상 `gameRevision`, `deadlineAt`을 포함한 timeout command를 enqueue한다.
 
@@ -772,13 +787,24 @@ cache 크기와 TTL은 운영 정책으로 정하지만, active Room의 정상�
 - scheduler는 at-least-once delivery를 제공하고 timeout command의 stale 검증과 idempotency가 중복 실행을 무해하게 만든다.
 - callback은 실행 시 current game/turn/`gameRevision`/canonical deadline과 server `Clock`을 다시 검사한다. 이르게 실행된 callback은 mutate하지 않고 current deadline을 다시 등록한다.
 - 이미 다음 turn으로 넘어간 오래된 timer는 no-op다.
-- client Submit/Draw/Pass와 timeout은 같은 Room mutation lane에서 순서화된다.
-- Socket listener는 server 수신 시각을 기록한다. `receivedAt >= deadlineAt`이면 expired이며 모든 code path에 같은 경계를 적용한다.
+- client Submit/Draw/Pass, turn timeout, Game deadline, leave는 같은 Room mutation lane에서 순서화된다.
+- Socket listener는 server 수신 시각을 기록한다. `receivedAt >= turn.deadlineAt`이면 `TURN_EXPIRED`, `receivedAt >= gameDeadlineAt`이면 `GAME_EXPIRED`이며 client timestamp는 판정에 사용하지 않는다.
 - local `TestDictionaryProvider`는 immutable `test-dictionary-v1` fixture로 deterministic하게 동작하며 NFC-equivalent lookup만 같은 key로 취급한다.
 - 향후 async external dictionary를 쓰면 live state를 수정한 채 await하지 않는다. validation 후 commit 직전에 `gameRevision`/turn을 재검사하거나 command serialization 전략을 유지한다.
 - dictionary unavailable/error는 recoverable `TEMPORARILY_UNAVAILABLE` 성격으로 실패시키고 canonical state를 바꾸지 않는다. lookup 때문에 turn deadline을 연장하지 않는다.
 - persistent repository를 도입한 뒤에는 process 시작과 scheduler lease takeover 시 active `deadlineAt`을 scan해 누락된 timeout job을 복원한다. 메모리 MVP는 process restart 후 Room 자체가 없으므로 복원 대상도 없다.
 - scheduler와 sweeper는 module import 시 자동 시작하지 않는다. composition root가 server lifecycle에 맞춰 명시적으로 start/stop하며, shutdown은 timer/interval을 지우고 새 timeout enqueue를 차단한다.
+
+### 10.7 Game deadline과 finish lifecycle
+
+`GameDeadlineScheduler`는 `roomId`, `gameId`, canonical `gameDeadlineAt`을 포함한 internal command를 at-least-once enqueue한다.
+
+- `game:start` commit 뒤 25분 deadline을 한 번 등록하며 Turn마다 새로 계산하지 않는다. primary registration 실패는 Game start를 rollback하지 않는다.
+- detached `ActiveGameReader`를 사용하는 1,000ms overdue Game sweeper가 유실된 callback을 복구한다. repository의 mutable Map은 노출하지 않는다.
+- internal deadline service는 latest Room phase, gameId, canonical deadline과 `Clock.now() >= gameDeadlineAt`을 다시 확인한다. early/stale/duplicate callback은 state를 바꾸지 않는다.
+- Game deadline이 도달한 상태에서는 `TIME_LIMIT` finish가 turn timeout penalty와 next Turn보다 우선한다. turn timeout service는 이 경계를 넘은 candidate를 commit하지 않는다.
+- FINISHED transition은 Turn/Game deadline timer를 취소·stale 처리하고 `finishedAt + 30분` retention을 등록한다. 최초 retention 등록은 동일 absolute deadline으로 bounded retry하며, timer 취소, retention 등록 또는 realtime delivery 실패는 canonical finish를 rollback하지 않는다.
+- composition root가 deadline scheduler/sweeper의 start/stop을 명시적으로 관리하고 Room cleanup은 Room의 Turn/Game/policy timer를 모두 취소한다.
 
 ## 11. Host와 Player disconnect 설계
 
@@ -789,15 +815,15 @@ Phase 15는 gameplay/Host policy와 Room retention을 별도 application command
 | Lobby non-Host disconnect | presence OFFLINE, 60초 grace; 계속 OFFLINE이면 Player/session 제거 | 없음 |
 | Lobby Host disconnect | 60초 grace; 계속 OFFLINE이면 Host 제거 후 CONNECTED 중 최저 `joinOrder` 승계 | 없음 |
 | Current Player disconnect | rack/turn ownership과 timer 유지, normal timeout penalty 적용 | 없음 |
-| PLAYING Player 장기 offline | OFFLINE인 자기 turn timeout 2회 연속 뒤 forfeit | 없음 |
+| PLAYING Player 장기 offline | OFFLINE인 자기 turn timeout 2회 연속 뒤 penalty→forfeit→finish/next Turn 순서로 평가 | 없음 |
 | PLAYING 모든 Player disconnect | state 유지, all-offline 시점부터 30분 뒤 cleanup | 없음 |
 | FINISHED | `finishedAt`부터 30분 보존 뒤 cleanup; resume은 연장하지 않음 | 없음 |
 | duplicate session connect | 새 resume 성공 시 새 `connectionGeneration`만 primary, 이전 권한 회수와 stale disconnect 무시 | 없음 |
-| explicit leave during PLAYING | 즉시 forfeit, rack/result metadata 유지 | 없음 |
+| explicit leave during PLAYING | 즉시 forfeit, rack/result metadata 유지; non-forfeit 1/0명이면 즉시 finish | 없음 |
 
 `InProcessRoomPolicyScheduler`는 Lobby grace, PLAYING all-offline retention과 FINISHED retention deadline만 보관한다. callback은 Room을 직접 바꾸지 않고 phase/identity/deadline/presence lease를 다시 검증하는 application service를 enqueue한다. composition root가 scheduler를 명시적으로 start/stop하며 cleanup은 Room 관련 policy/Turn timer와 connection state를 취소한다.
 
-`room:leave`는 current-primary binding에서 actor를 얻고 nullable game revision을 포함한 optimistic concurrency와 request fingerprint를 검증한다. LOBBY removal/Host succession, PLAYING forfeit, FINISHED session termination은 phase별 candidate를 만들며 partial cleanup을 허용하지 않는다. Room cleanup UoW는 Room, roomCode index, bound sessions와 Room idempotency records를 copy-on-write state 교체 한 번으로 삭제한다.
+`room:leave`는 current-primary binding에서 actor를 얻고 nullable game revision을 포함한 optimistic concurrency와 request fingerprint를 검증한다. LOBBY removal/Host succession, PLAYING forfeit, FINISHED session termination은 phase별 candidate를 만들며 partial cleanup을 허용하지 않는다. PLAYING forfeit 후 non-forfeit Player가 1명이면 `LAST_PLAYER_STANDING`, 0명이면 `ALL_PLAYERS_FORFEITED`를 같은 candidate에 만들고, Game이 계속될 때만 현재 Turn 유지 또는 next Turn 생성을 적용한다. Room cleanup UoW는 Room, roomCode index, bound sessions와 Room idempotency records를 copy-on-write state 교체 한 번으로 삭제한다.
 
 ## 12. In-memory MVP
 
@@ -921,10 +947,12 @@ https://game.example/
 
 - Domain unit test: fixed `Clock`, seeded/fake `RandomSource`, test `DictionaryProvider`로 state transition과 invariant를 검증하며, Phase 10 RuleEngine은 deterministic provider와 readonly Board 입력으로 validation-only 동작을 검증하고 Phase 11은 exact inventory, 2/3/4인 deal, Tile conservation, turnOrder와 첫 deadline을 검증
 - Repository contract test: code 충돌, capacity race, scoped-version CAS, session lookup
-- Application test: authorization, receivedAt deadline boundary, RuleEngine mapping, candidate discard, CAS/current-primary recheck, idempotency, next Turn과 rack-empty result
-- Socket integration test: bootstrap/create/join/start/submit/resume, 잘못된 token, stale scoped version, duplicate request와 post-commit delivery failure
-- Projection test: PLAYING/FINISHED visibility policy상 private인 다른 rack/bag 정보와 token이 허용되지 않은 payload에 포함되지 않는지 검증
-- Client test: snapshot version vector 처리, immutable TurnDraft 편집·Tile uniqueness·undo/reset, page-memory Submit retry, rejection별 draft 보존/reset과 reconnect/refresh/replaced 수명주기
+- Result domain test: 다섯 reason의 penalty/score/winner, rack-count·penalty tie-break, competition rank, forfeited metadata와 input determinism을 검증
+- Application test: authorization, Turn/Game receivedAt deadline 경계, RuleEngine mapping, candidate discard, CAS/current-primary recheck, idempotency, next Turn과 rack-empty/time-limit/stalemate/forfeit terminal result를 검증
+- Scheduler/concurrency test: Game deadline timer 등록 실패 recovery, early/stale/duplicate callback, Game deadline vs Turn timeout/Submit/Draw 및 stalemate/forfeit vs stale timer가 한 번만 commit됨을 검증
+- Socket integration test: bootstrap/create/join/start/submit/draw/pass/timeout/leave/resume, 다섯 finish reason의 player-specific snapshot/`game:finished`, 잘못된 token, stale scoped version, duplicate request와 post-commit delivery failure를 검증
+- Projection test: generalized FINISHED result를 모두가 보되 visibility policy상 private인 다른 rack/bag 정보, tracker/scheduler identity와 token이 payload에 포함되지 않는지 검증
+- Client test: snapshot version vector 처리, immutable TurnDraft 편집·Tile uniqueness·undo/reset, page-memory gameplay retry, deadline rejection의 sync, generalized reason/ranking FinishedScreen와 reconnect/refresh/replaced 수명주기를 검증
 - End-to-end test: 2~4 browser, refresh, disconnect, valid/invalid Submit, Railway smoke flow
 
 테스트가 가능하도록 system time, random, dictionary, repository, publisher를 전역 singleton에 숨기지 않는다.

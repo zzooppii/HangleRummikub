@@ -73,6 +73,7 @@ import {
 import { parse } from "valibot";
 
 import { GameStartService } from "../application/game-start-service.js";
+import { GameDeadlineService } from "../application/game-deadline-service.js";
 import { LobbyDisconnectGraceService } from "../application/lobby-disconnect-grace-service.js";
 import { LobbyStateSnapshotProjector } from "../application/lobby-state-snapshot-projector.js";
 import { RoomCleanupService } from "../application/room-cleanup-service.js";
@@ -90,6 +91,7 @@ import type {
   FinishedGameState,
   PlayingGameState,
 } from "../domain/game/game-state.js";
+import { createRackEmptyResult } from "../domain/game/result-engine.js";
 import {
   JOKER_ALLOWED_SYMBOLS,
   type OrdinaryTileInstance,
@@ -97,10 +99,12 @@ import {
 import { ConnectionRegistry } from "../infrastructure/connection-registry.js";
 import { ConnectionRegistryPresenceReader } from "../infrastructure/connection-registry-presence-reader.js";
 import { InMemoryPersistence } from "../infrastructure/in-memory-persistence.js";
+import { InProcessGameDeadlineScheduler } from "../infrastructure/in-process-game-deadline-scheduler.js";
 import { InProcessRoomPolicyScheduler } from "../infrastructure/in-process-room-policy-scheduler.js";
 import { InProcessTurnScheduler } from "../infrastructure/in-process-turn-scheduler.js";
 import { KeyedSerialExecutor } from "../infrastructure/keyed-serial-executor.js";
 import { OverdueTurnSweeper } from "../infrastructure/overdue-turn-sweeper.js";
+import { OverdueGameDeadlineSweeper } from "../infrastructure/overdue-game-deadline-sweeper.js";
 import {
   RoomLifecycleResources,
   type RoomClosedAdvisoryListener,
@@ -119,6 +123,7 @@ import type {
 import type {
   RandomSource,
   RoomCodeGenerator,
+  ScheduledGameDeadline,
   ScheduledTurnDeadline,
 } from "../ports/system.js";
 import { createHttpServer } from "../server.js";
@@ -321,7 +326,9 @@ function createDeterministicRuntime(): DeterministicRuntime {
     registryPresenceReader,
   );
   let acceptsTimeoutWork = false;
+  let acceptsGameDeadlineWork = false;
   let turnTimeoutService: TurnTimeoutService | undefined;
+  let gameDeadlineService: GameDeadlineService | undefined;
   const enqueueTimeout = async (
     deadline: ScheduledTurnDeadline,
   ): Promise<void> => {
@@ -338,6 +345,23 @@ function createDeterministicRuntime(): DeterministicRuntime {
     activeTurnReader: persistence,
     clock,
     enqueueTimeout,
+  });
+  const enqueueGameDeadline = async (
+    deadline: ScheduledGameDeadline,
+  ): Promise<void> => {
+    if (!acceptsGameDeadlineWork || gameDeadlineService === undefined) {
+      return;
+    }
+    await gameDeadlineService.expire(deadline);
+  };
+  const gameDeadlineScheduler = new InProcessGameDeadlineScheduler({
+    clock,
+    onDeadline: enqueueGameDeadline,
+  });
+  const overdueGameDeadlineSweeper = new OverdueGameDeadlineSweeper({
+    activeGameReader: persistence,
+    clock,
+    enqueueDeadline: enqueueGameDeadline,
   });
   const roomClosedListeners = new Set<RoomClosedAdvisoryListener>();
   const roomPlayerRemovedListeners = new Set<
@@ -358,6 +382,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
     connectionRegistry,
     policyScheduler: roomPolicyScheduler,
     turnTimerCleanup: turnScheduler,
+    gameDeadlineTimerCleanup: gameDeadlineScheduler,
     onRoomClosed: async (closedRoomId, closedRoomCode, bindings) => {
       for (const listener of roomClosedListeners) {
         await listener(closedRoomId, closedRoomCode, bindings);
@@ -405,6 +430,25 @@ function createDeterministicRuntime(): DeterministicRuntime {
     lobbyGraceService: lobbyDisconnectGraceService,
     retentionService: roomRetentionService,
   });
+  const onGameFinished = async (input: {
+    roomId: RoomId;
+    gameId: import("@hangul-rummikub/shared").GameId;
+  }): Promise<void> => {
+    await Promise.allSettled([
+      turnScheduler.cancelRoom(input.roomId),
+      gameDeadlineScheduler.cancelDeadline(input.gameId),
+      roomPresencePolicyService?.scheduleFinishedRetention(input.roomId),
+    ]);
+  };
+  gameDeadlineService = new GameDeadlineService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    clock,
+    gameDeadlineScheduler,
+  });
+  gameDeadlineService.subscribeApplied(onGameFinished);
   const roomSessionService = new RoomSessionApplicationService({
     roomRepository: persistence,
     sessionRepository: persistence,
@@ -431,6 +475,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
     idGenerator,
     randomSource: new ZeroRandomSource(),
     turnScheduler,
+    gameDeadlineScheduler,
   });
   const turnSubmitService = new TurnSubmitService({
     roomRepository: persistence,
@@ -441,6 +486,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
     idGenerator,
     dictionaryProvider: new TestDictionaryProvider(),
     turnScheduler,
+    onGameFinished,
   });
   const turnDrawService = new TurnDrawService({
     roomRepository: persistence,
@@ -459,6 +505,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
     clock,
     idGenerator,
     turnScheduler,
+    onGameFinished,
   });
   turnTimeoutService = new TurnTimeoutService({
     roomRepository: persistence,
@@ -470,6 +517,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
     randomSource: new ZeroRandomSource(),
     presenceLeaseReader: registryPresenceReader,
     turnScheduler,
+    onGameFinished,
   });
   const snapshotProjector = new LobbyStateSnapshotProjector({
     clock,
@@ -486,6 +534,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
     idGenerator,
     resources: lifecycleResources,
     turnScheduler,
+    onGameFinished,
   });
 
   return {
@@ -493,6 +542,9 @@ function createDeterministicRuntime(): DeterministicRuntime {
       clock,
       connectionRegistry,
       gameStartService,
+      gameDeadlineService,
+      gameDeadlineScheduler,
+      overdueGameDeadlineSweeper,
       persistence,
       roomLeaveService,
       roomPolicyScheduler,
@@ -523,17 +575,23 @@ function createDeterministicRuntime(): DeterministicRuntime {
       },
       start() {
         acceptsTimeoutWork = true;
+        acceptsGameDeadlineWork = true;
         acceptsRoomPolicyWork = true;
         roomPolicyScheduler.start();
         turnScheduler.start();
+        gameDeadlineScheduler.start();
         overdueTurnSweeper.start();
+        overdueGameDeadlineSweeper.start();
       },
       stop() {
         acceptsTimeoutWork = false;
+        acceptsGameDeadlineWork = false;
         acceptsRoomPolicyWork = false;
         roomPolicyScheduler.stop();
         overdueTurnSweeper.stop();
+        overdueGameDeadlineSweeper.stop();
         turnScheduler.stop();
+        gameDeadlineScheduler.stop();
       },
     },
     tokenIssuer,
@@ -1213,6 +1271,52 @@ async function seedOverdueCurrentTurn(
     result.room.game.result !== null
   ) {
     throw new Error("Failed to persist deterministic overdue Turn fixture.");
+  }
+  return result.room as RoomRecord & Readonly<{ game: PlayingGameState }>;
+}
+
+async function seedOverdueGameDeadline(
+  persistence: InMemoryPersistence,
+  roomIdValue: RoomId,
+): Promise<RoomRecord & Readonly<{ game: PlayingGameState }>> {
+  const room = await persistence.findById(roomIdValue);
+  if (
+    room === null ||
+    room.phase !== "PLAYING" ||
+    room.game === null ||
+    room.game.turn === null ||
+    room.game.result !== null
+  ) {
+    throw new Error(
+      "A canonical PLAYING Room is required for Game deadline setup.",
+    );
+  }
+  const game: PlayingGameState = Object.freeze({
+    ...room.game,
+    gameDeadlineAt: room.game.gameStartedAt,
+  });
+  const result = await persistence.replace({
+    candidate: {
+      roomId: room.roomId,
+      roomCode: room.roomCode,
+      phase: "PLAYING",
+      hostPlayerId: room.hostPlayerId,
+      players: room.players,
+      game,
+      roomRevision: room.roomRevision,
+      createdAt: room.createdAt,
+      updatedAt: room.updatedAt,
+    },
+    expectedRoomRevision: room.roomRevision,
+    expectedStorageRevision: room.storageRevision,
+  });
+  if (
+    result.status !== "REPLACED" ||
+    result.room.game === null ||
+    result.room.game.turn === null ||
+    result.room.game.result !== null
+  ) {
+    throw new Error("Failed to persist an overdue Game deadline fixture.");
   }
   return result.room as RoomRecord & Readonly<{ game: PlayingGameState }>;
 }
@@ -2990,26 +3094,6 @@ test(
             playerIdValue === winnerPlayerId ? Object.freeze([]) : rack,
           ] as const),
         );
-        const penaltyByPlayer = new Map<PlayerId, number>();
-        let winnerScore = 0;
-        for (const playerIdValue of game.turnOrder) {
-          if (playerIdValue === winnerPlayerId) {
-            continue;
-          }
-          const rack = racks.get(playerIdValue);
-          if (rack === undefined) {
-            throw new Error("Expected every turn-order Player rack.");
-          }
-          const penalty = rack.reduce((total, tileIdValue) => {
-            const tile = game.tilesById.get(tileIdValue);
-            if (tile === undefined) {
-              throw new Error("Expected a canonical score Tile.");
-            }
-            return total + (tile.kind === "JOKER" ? 30 : 1);
-          }, 0);
-          penaltyByPlayer.set(playerIdValue, penalty);
-          winnerScore += penalty;
-        }
         const finishedAt = game.turn.startedAt;
         const finishedGame: FinishedGameState = Object.freeze({
           ...game,
@@ -3018,27 +3102,16 @@ test(
           vowelBag: Object.freeze(vowelBag),
           racks,
           turn: null,
-          result: Object.freeze({
-            reason: "RACK_EMPTY",
+          result: createRackEmptyResult(
+            {
+              playerIds: game.turnOrder,
+              racks,
+              tilesById: game.tilesById,
+              forfeitedPlayerIds: game.forfeitedPlayerIds,
+              finishedAt,
+            },
             winnerPlayerId,
-            scores: Object.freeze(
-              game.turnOrder.map((playerIdValue) => {
-                const rack = racks.get(playerIdValue);
-                if (rack === undefined) {
-                  throw new Error("Expected every result Player rack.");
-                }
-                return Object.freeze({
-                  playerId: playerIdValue,
-                  score:
-                    playerIdValue === winnerPlayerId
-                      ? winnerScore
-                      : -(penaltyByPlayer.get(playerIdValue) ?? 0),
-                  remainingRackTileCount: rack.length,
-                });
-              }),
-            ),
-            finishedAt,
-          }),
+          ),
         });
         const replacement = await deterministic.runtime.persistence.replace({
           candidate: {
@@ -3192,7 +3265,7 @@ test(
         assert.equal(finished.self.rack.length, 0);
         assert.equal(finished.game.result.reason, "RACK_EMPTY");
         assert.equal(
-          finished.game.result.winnerPlayerId,
+          finished.game.result.winnerPlayerIds[0],
           actor.snapshot.self.playerId,
         );
         assert.equal("turn" in finished.game, false);
@@ -3209,11 +3282,11 @@ test(
             ),
             waitForGameFinished(
               actor.observer,
-              (event) => event.payload.gameRevision === 1,
+              (event) => event.payload.finalGameRevision === 1,
             ),
             waitForGameFinished(
               other.observer,
-              (event) => event.payload.gameRevision === 1,
+              (event) => event.payload.finalGameRevision === 1,
             ),
           ]);
         assert.equal(validateStateSnapshotEvent(actorEvent).ok, true);
@@ -3245,6 +3318,78 @@ test(
           host.sessionToken,
           guest.sessionToken,
         ]);
+      } finally {
+        await stopServer(harness);
+      }
+    });
+
+    await context.test("Game deadline service는 TIME_LIMIT snapshot과 generalized game:finished를 fan-out한다", async () => {
+      const deterministic = createDeterministicRuntime();
+      const harness = await startServer(deterministic.runtime);
+      try {
+        const { host, guest, snapshot } = await startTwoPlayerRoom(
+          harness,
+          "DeadHost",
+          "DeadGuest",
+        );
+        const overdue = await seedOverdueGameDeadline(
+          deterministic.runtime.persistence,
+          snapshot.room.roomId,
+        );
+        host.observer.gameFinishes.splice(0);
+        guest.observer.gameFinishes.splice(0);
+
+        const result = await deterministic.runtime.gameDeadlineService.expire({
+          roomId: overdue.roomId,
+          gameId: overdue.game.gameId,
+          deadlineAt: overdue.game.gameDeadlineAt,
+        });
+        assert.equal(result.status, "APPLIED");
+        if (result.status !== "APPLIED") {
+          throw new Error("Expected overdue Game deadline to finish.");
+        }
+
+        const [hostSnapshotEvent, guestSnapshotEvent, hostFinish, guestFinish] =
+          await Promise.all([
+            waitForSnapshot(
+              host.observer,
+              (event) =>
+                event.payload.snapshot.room.phase === "FINISHED" &&
+                event.versions.gameRevision === result.data.gameRevision,
+            ),
+            waitForSnapshot(
+              guest.observer,
+              (event) =>
+                event.payload.snapshot.room.phase === "FINISHED" &&
+                event.versions.gameRevision === result.data.gameRevision,
+            ),
+            waitForGameFinished(
+              host.observer,
+              (event) =>
+                event.payload.reason === "TIME_LIMIT" &&
+                event.payload.finalGameRevision === result.data.gameRevision,
+            ),
+            waitForGameFinished(
+              guest.observer,
+              (event) =>
+                event.payload.reason === "TIME_LIMIT" &&
+                event.payload.finalGameRevision === result.data.gameRevision,
+            ),
+          ]);
+        const hostFinished = requireFinishedSnapshot(
+          hostSnapshotEvent.payload.snapshot,
+        );
+        const guestFinished = requireFinishedSnapshot(
+          guestSnapshotEvent.payload.snapshot,
+        );
+        assert.equal(hostFinished.game.result.reason, "TIME_LIMIT");
+        assert.deepEqual(guestFinished.game, hostFinished.game);
+        assert.equal(validateGameFinishedEvent(hostFinish).ok, true);
+        assert.equal(validateGameFinishedEvent(guestFinish).ok, true);
+        assert.equal(
+          deterministic.runtime.roomPolicyScheduler.scheduledCount,
+          1,
+        );
       } finally {
         await stopServer(harness);
       }
@@ -3557,6 +3702,62 @@ test(
           persisted.game.racks.get(actor.snapshot.self.playerId),
           actorRackBefore,
         );
+
+        const stalemateAck = await emitTurnPass(other.socket, {
+          kind: "turn:pass",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId("stalemate-ending-turn-pass"),
+          expectedGameRevision: passed.versions.gameRevision,
+          turnId: passed.game.turn.turnId,
+          payload: {},
+        });
+        assert.equal(validateTurnPassAck(stalemateAck).ok, true);
+        const stalemate = requireFinishedSnapshot(
+          requireSnapshotSuccess(stalemateAck),
+        );
+        assert.equal(stalemate.versions.gameRevision, 2);
+        assert.equal(stalemate.game.result.reason, "STALEMATE");
+        assert.equal("turn" in stalemate.game, false);
+
+        const [actorFinishedEvent, otherFinishedEvent, actorFinish, otherFinish] =
+          await Promise.all([
+            waitForSnapshot(
+              actor.observer,
+              (event) =>
+                event.payload.snapshot.room.phase === "FINISHED" &&
+                event.versions.gameRevision === 2,
+            ),
+            waitForSnapshot(
+              other.observer,
+              (event) =>
+                event.payload.snapshot.room.phase === "FINISHED" &&
+                event.versions.gameRevision === 2,
+            ),
+            waitForGameFinished(
+              actor.observer,
+              (event) =>
+                event.payload.reason === "STALEMATE" &&
+                event.payload.finalGameRevision === 2,
+            ),
+            waitForGameFinished(
+              other.observer,
+              (event) =>
+                event.payload.reason === "STALEMATE" &&
+                event.payload.finalGameRevision === 2,
+            ),
+          ]);
+        assert.equal(
+          requireFinishedSnapshot(actorFinishedEvent.payload.snapshot).game
+            .result.reason,
+          "STALEMATE",
+        );
+        assert.equal(
+          requireFinishedSnapshot(otherFinishedEvent.payload.snapshot).game
+            .result.reason,
+          "STALEMATE",
+        );
+        assert.equal(validateGameFinishedEvent(actorFinish).ok, true);
+        assert.equal(validateGameFinishedEvent(otherFinish).ok, true);
       } finally {
         await stopServer(harness);
       }
@@ -3975,7 +4176,7 @@ test(
     );
 
     await context.test(
-      "current Player leave는 forfeit snapshot과 다음 Turn을 전달하고 떠난 socket에는 broadcast하지 않는다",
+      "2인 Game의 current Player leave는 LAST_PLAYER_STANDING을 전달하고 떠난 socket에는 broadcast하지 않는다",
       async () => {
         const deterministic = createDeterministicRuntime();
         const harness = await startServer(deterministic.runtime);
@@ -3992,6 +4193,8 @@ test(
               : started.guest;
           const other = actor === started.host ? started.guest : started.host;
           actor.observer.turnStarts.splice(0);
+          actor.observer.gameFinishes.splice(0);
+          other.observer.gameFinishes.splice(0);
 
           const acknowledgement = await emitRoomLeave(actor.socket, {
             kind: "room:leave",
@@ -4007,30 +4210,35 @@ test(
           const afterLeave = await waitForSnapshot(
             other.observer,
             (event) =>
-              event.payload.snapshot.room.phase === "PLAYING" &&
+              event.payload.snapshot.room.phase === "FINISHED" &&
               event.payload.snapshot.versions.gameRevision === 1,
           );
-          const playing = requireAnyPlayingSnapshot(
+          const finished = requireFinishedSnapshot(
             afterLeave.payload.snapshot,
           );
           assert.equal(
-            playing.room.players.find(
+            finished.room.players.find(
               (player) => player.playerId === actor.snapshot.self.playerId,
             )?.forfeited,
             true,
           );
-          assert.notEqual(
-            playing.game.turn.activePlayerId,
-            actor.snapshot.self.playerId,
+          assert.equal(finished.game.result.reason, "LAST_PLAYER_STANDING");
+          assert.deepEqual(
+            finished.game.result.winnerPlayerIds,
+            [other.snapshot.self.playerId],
           );
-          await waitForTurnStarted(
+          const advisory = await waitForGameFinished(
             other.observer,
-            (event) => event.payload.turnId === playing.game.turn.turnId,
+            (event) =>
+              event.payload.reason === "LAST_PLAYER_STANDING" &&
+              event.payload.finalGameRevision === 1,
           );
+          assert.equal(validateGameFinishedEvent(advisory).ok, true);
           await new Promise<void>((resolve) => {
             setTimeout(resolve, 25);
           });
           assert.equal(actor.observer.turnStarts.length, 0);
+          assert.equal(actor.observer.gameFinishes.length, 0);
         } finally {
           await stopServer(harness);
         }
@@ -4100,7 +4308,7 @@ test(
     );
 
     await context.test(
-      "offline Player의 두 번째 own timeout은 forfeit를 fan-out하고 이후 turn에서 건너뛴다",
+      "2인 Game의 두 번째 offline timeout은 LAST_PLAYER_STANDING으로 종료한다",
       async () => {
         const deterministic = createDeterministicRuntime();
         const harness = await startServer(deterministic.runtime);
@@ -4117,6 +4325,7 @@ test(
               : started.guest;
           const connectedActor =
             offlineActor === started.host ? started.guest : started.host;
+          connectedActor.observer.gameFinishes.splice(0);
           offlineActor.socket.disconnect();
           await waitForSnapshot(
             connectedActor.observer,
@@ -4187,50 +4396,85 @@ test(
           );
           assert.equal(connectedTimeout.result.data.offlineTimeoutStreak, 0);
 
-          const secondOfflineTimeout = await applyCurrentTimeout();
+          const overdue = await seedOverdueCurrentTurn(
+            deterministic.runtime.persistence,
+            started.snapshot.room.roomId,
+          );
+          const secondOfflineTimeout =
+            await deterministic.runtime.turnTimeoutService.timeout({
+              roomId: overdue.roomId,
+              gameId: overdue.game.gameId,
+              turnId: overdue.game.turn.turnId,
+              expectedGameRevision: overdue.game.gameRevision,
+              deadlineAt: overdue.game.turn.deadlineAt,
+            });
+          assert.equal(secondOfflineTimeout.status, "APPLIED");
+          if (secondOfflineTimeout.status !== "APPLIED") {
+            throw new Error("Expected second offline timeout to apply.");
+          }
           assert.equal(
-            secondOfflineTimeout.result.data.timedOutPlayerId,
+            secondOfflineTimeout.data.timedOutPlayerId,
             offlineActor.snapshot.self.playerId,
           );
           assert.equal(
-            secondOfflineTimeout.result.data.offlineTimeoutStreak,
+            secondOfflineTimeout.data.offlineTimeoutStreak,
             2,
           );
           assert.equal(
-            secondOfflineTimeout.result.data.timedOutPlayerForfeited,
+            secondOfflineTimeout.data.timedOutPlayerForfeited,
             true,
           );
+          assert.equal(secondOfflineTimeout.data.outcome, "FINISHED");
+          if (secondOfflineTimeout.data.outcome !== "FINISHED") {
+            throw new Error("Expected terminal offline timeout outcome.");
+          }
           assert.equal(
-            secondOfflineTimeout.snapshot.room.players.find(
+            secondOfflineTimeout.data.finishReason,
+            "LAST_PLAYER_STANDING",
+          );
+          assert.deepEqual(secondOfflineTimeout.data.winnerPlayerIds, [
+            connectedActor.snapshot.self.playerId,
+          ]);
+
+          const terminalEvent = await waitForSnapshot(
+            connectedActor.observer,
+            (candidate) =>
+              candidate.payload.snapshot.room.phase === "FINISHED" &&
+              candidate.versions.gameRevision ===
+                secondOfflineTimeout.data.gameRevision,
+          );
+          const terminalSnapshot = requireFinishedSnapshot(
+            terminalEvent.payload.snapshot,
+          );
+          assert.equal(
+            terminalSnapshot.room.players.find(
               (player) =>
                 player.playerId === offlineActor.snapshot.self.playerId,
             )?.forfeited,
             true,
           );
-          assert.equal(
-            secondOfflineTimeout.snapshot.game.turn.activePlayerId,
-            connectedActor.snapshot.self.playerId,
+          assert.equal(terminalSnapshot.game.result.reason, "LAST_PLAYER_STANDING");
+          assert.deepEqual(
+            terminalSnapshot.game.result.winnerPlayerIds,
+            [connectedActor.snapshot.self.playerId],
+          );
+          await waitForGameFinished(
+            connectedActor.observer,
+            (event) =>
+              event.payload.reason === "LAST_PLAYER_STANDING" &&
+              event.payload.finalGameRevision ===
+                secondOfflineTimeout.data.gameRevision,
           );
 
           const connectedViewStrings = new Set(
-            collectStringValues(secondOfflineTimeout.snapshot),
+            collectStringValues(terminalSnapshot),
           );
           for (const penaltyTileId of [
             ...firstOfflineTimeout.result.data.penaltyTileIds,
-            ...secondOfflineTimeout.result.data.penaltyTileIds,
+            ...secondOfflineTimeout.data.penaltyTileIds,
           ]) {
             assert.equal(connectedViewStrings.has(penaltyTileId), false);
           }
-
-          const afterSkip = await applyCurrentTimeout();
-          assert.equal(
-            afterSkip.result.data.timedOutPlayerId,
-            connectedActor.snapshot.self.playerId,
-          );
-          assert.equal(
-            afterSkip.snapshot.game.turn.activePlayerId,
-            connectedActor.snapshot.self.playerId,
-          );
         } finally {
           await stopServer(harness);
         }

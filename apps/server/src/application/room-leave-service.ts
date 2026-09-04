@@ -13,6 +13,11 @@ import {
 import * as v from "valibot";
 
 import type { PlayingGameState } from "../domain/game/game-state.js";
+import { createForfeitResult, createStalemateResult } from "../domain/game/result-engine.js";
+import {
+  isStalemateCycleComplete,
+  pruneNoMoveTurnEnds,
+} from "../domain/game/stalemate.js";
 import type { IdempotencyRecord, RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
 import type { IdempotencyRepository } from "../ports/idempotency-repository.js";
 import type { RoomPresencePolicyReader } from "../ports/room-presence-policy.js";
@@ -24,6 +29,11 @@ import type {
 } from "../ports/room-unit-of-work.js";
 import type { Clock, IdGenerator, TurnScheduler } from "../ports/system.js";
 import type { CurrentActorAuthorization } from "./game-start-service.js";
+import {
+  createFinishedRoomTransition,
+  notifyGameFinishedBestEffort,
+  type GameFinishedPostCommit,
+} from "./game-finish-transition.js";
 import type { RoomMutationSerialExecutor } from "./room-session-service.js";
 import {
   createNextTurn,
@@ -72,6 +82,7 @@ export type RoomLeaveServiceDependencies = Readonly<{
   resources?: RoomLeaveResources;
   turnScheduler?: TurnScheduler;
   onTurnSchedulingFailure?: TurnSchedulingFailureReporter;
+  onGameFinished?: GameFinishedPostCommit;
 }>;
 
 const ERRORS = Object.freeze({
@@ -79,11 +90,6 @@ const ERRORS = Object.freeze({
   UNAUTHENTICATED: Object.freeze({ code: "UNAUTHENTICATED", message: "The command actor is no longer authorized.", recoverable: false }),
   STALE_ROOM_REVISION: Object.freeze({ code: "STALE_ROOM_REVISION", message: "The Room state is stale.", recoverable: true }),
   STALE_GAME_REVISION: Object.freeze({ code: "STALE_GAME_REVISION", message: "The Game state is stale.", recoverable: true }),
-  INVALID_PHASE: Object.freeze({
-    code: "INVALID_PHASE",
-    message: "The last active Player cannot leave before Game finalization is available.",
-    recoverable: false,
-  }),
   REQUEST_ID_REUSED: Object.freeze({ code: "REQUEST_ID_REUSED", message: "Request ID was already used for a different command payload.", recoverable: false }),
   INTERNAL_ERROR: Object.freeze({ code: "INTERNAL_ERROR", message: "An internal error occurred.", recoverable: false }),
 } satisfies Readonly<Record<string, ErrorDto>>);
@@ -144,22 +150,63 @@ function createPlayingCandidate(
   actorPlayerId: PlayerId,
   now: ReturnType<Clock["now"]>,
   idGenerator: IdGenerator,
-): Readonly<{ candidate: RoomWriteCandidate; nextTurnIdentity: CurrentTurnIdentity | null }> {
+): Readonly<{
+  candidate: RoomWriteCandidate;
+  nextTurnIdentity: CurrentTurnIdentity | null;
+  finished: boolean;
+}> {
   const forfeitedPlayerIds = new Set(game.forfeitedPlayerIds);
   forfeitedPlayerIds.add(actorPlayerId);
   const actorWasCurrent = game.turn.activePlayerId === actorPlayerId;
-  const survivorCount = game.turnOrder.filter(
-    (playerId) => !forfeitedPlayerIds.has(playerId),
-  ).length;
-  const nextTurn =
-    actorWasCurrent && survivorCount > 0
-      ? createNextTurn(game, now, idGenerator, forfeitedPlayerIds)
-      : game.turn;
   const gameRevision = incrementGameRevision(game.gameRevision);
-  const nextGame: PlayingGameState = Object.freeze({
+  const noMoveTurnEndPlayerIds = pruneNoMoveTurnEnds(
+    game.turnOrder,
+    forfeitedPlayerIds,
+    game.noMoveTurnEndPlayerIds,
+  );
+  const gameBase: PlayingGameState = Object.freeze({
     ...game,
     gameRevision,
+    forfeitedPlayerIds: Object.freeze(forfeitedPlayerIds),
+    noMoveTurnEndPlayerIds,
+  });
+  const resultInput = {
+    playerIds: game.turnOrder,
+    racks: game.racks,
+    tilesById: game.tilesById,
     forfeitedPlayerIds,
+    finishedAt: now,
+  } as const;
+  const forfeitResult = createForfeitResult(resultInput);
+  const result =
+    forfeitResult ??
+    (isStalemateCycleComplete(
+      game.turnOrder,
+      forfeitedPlayerIds,
+      noMoveTurnEndPlayerIds,
+    )
+      ? createStalemateResult(resultInput)
+      : null);
+  if (result !== null) {
+    const transition = createFinishedRoomTransition(
+      room,
+      game,
+      result,
+      now,
+      gameBase,
+    );
+    return Object.freeze({
+      candidate: transition.roomCandidate,
+      nextTurnIdentity: null,
+      finished: true,
+    });
+  }
+
+  const nextTurn = actorWasCurrent
+    ? createNextTurn(game, now, idGenerator, forfeitedPlayerIds)
+    : game.turn;
+  const nextGame: PlayingGameState = Object.freeze({
+    ...gameBase,
     turn: nextTurn,
   });
   return Object.freeze({
@@ -169,7 +216,7 @@ function createPlayingCandidate(
       updatedAt: now,
     },
     nextTurnIdentity:
-      survivorCount > 0
+      nextTurn !== null
         ? {
             roomId: room.roomId,
             gameId: game.gameId,
@@ -177,6 +224,7 @@ function createPlayingCandidate(
             turnId: nextTurn.turnId,
           }
         : null,
+    finished: false,
   });
 }
 
@@ -193,6 +241,7 @@ export class RoomLeaveService {
           roomClosed: boolean;
           roomCode: RoomCode;
           nextTurnIdentity: CurrentTurnIdentity | null;
+          finishedGameId: import("@hangul-rummikub/shared").GameId | null;
         }>
       | undefined;
     try {
@@ -257,6 +306,7 @@ export class RoomLeaveService {
                 roomClosed: true,
                 roomCode: room.roomCode,
                 nextTurnIdentity: null,
+                finishedGameId: null,
               };
               return success({
                 roomId: room.roomId,
@@ -327,6 +377,7 @@ export class RoomLeaveService {
                 roomClosed: false,
                 roomCode: room.roomCode,
                 nextTurnIdentity: null,
+                finishedGameId: null,
               };
             }
             return mapped;
@@ -342,17 +393,6 @@ export class RoomLeaveService {
               // session; it must not apply the forfeit or revision twice.
               candidate = { ...room, updatedAt: now };
             } else {
-              const survivorCount = room.game.turnOrder.filter(
-                (playerId) =>
-                  playerId !== input.actorPlayerId &&
-                  !room.game?.forfeitedPlayerIds.has(playerId),
-              ).length;
-              if (survivorCount === 0) {
-                // Phase 16 owns the zero-active-Player terminal transition.
-                // Reject safely instead of persisting an invalid active Turn
-                // whose owner is forfeited.
-                return failure(ERRORS.INVALID_PHASE);
-              }
               const playing = createPlayingCandidate(
                 room,
                 room.game,
@@ -365,9 +405,9 @@ export class RoomLeaveService {
             }
             terminalResult = {
               roomId: room.roomId,
-              phase: room.phase,
+              phase: candidate.phase,
               roomClosed: false,
-              roomRevision: room.roomRevision,
+              roomRevision: candidate.roomRevision,
               gameRevision: candidate.game?.gameRevision ?? null,
             };
           } else if (
@@ -416,6 +456,8 @@ export class RoomLeaveService {
               roomClosed: false,
               roomCode: room.roomCode,
               nextTurnIdentity,
+              finishedGameId:
+                candidate.phase === "FINISHED" ? room.game.gameId : null,
             };
           }
           return mapped;
@@ -444,6 +486,15 @@ export class RoomLeaveService {
             this.#dependencies.turnScheduler,
             postCommit.nextTurnIdentity,
             this.#dependencies.onTurnSchedulingFailure,
+          );
+        }
+        if (postCommit.finishedGameId !== null) {
+          await notifyGameFinishedBestEffort(
+            this.#dependencies.onGameFinished,
+            {
+              roomId: input.roomId,
+              gameId: postCommit.finishedGameId,
+            },
           );
         }
       }

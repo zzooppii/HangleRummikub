@@ -26,8 +26,10 @@ import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
 import type { PlayerPresenceReader } from "../ports/player-presence-reader.js";
 import type { RoomUnitOfWork } from "../ports/room-unit-of-work.js";
 import type {
+  GameDeadlineScheduler,
   IdGenerator,
   RandomSource,
+  ScheduledGameDeadline,
   ScheduledTurnDeadline,
   TurnScheduler,
 } from "../ports/system.js";
@@ -80,6 +82,23 @@ class RecordingTurnScheduler implements TurnScheduler {
   }
 }
 
+class RecordingGameDeadlineScheduler implements GameDeadlineScheduler {
+  readonly deadlines: ScheduledGameDeadline[] = [];
+  failuresRemaining = 0;
+
+  async scheduleDeadline(deadline: ScheduledGameDeadline): Promise<void> {
+    if (this.failuresRemaining > 0) {
+      this.failuresRemaining -= 1;
+      throw new Error("injected Game deadline scheduling failure");
+    }
+    this.deadlines.push(Object.freeze({ ...deadline }));
+  }
+
+  async cancelDeadline(): Promise<void> {
+    return;
+  }
+}
+
 type Harness = Readonly<{
   persistence: InMemoryPersistence;
   service: GameStartService;
@@ -95,6 +114,8 @@ type HarnessOptions = Readonly<{
   idGenerator?: IdGenerator;
   randomSource?: RandomSource;
   turnScheduler?: TurnScheduler;
+  gameDeadlineScheduler?: GameDeadlineScheduler;
+  onGameDeadlineSchedulingFailure?: () => void;
 }>;
 
 async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
@@ -143,6 +164,15 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
     ...(options.turnScheduler === undefined
       ? {}
       : { turnScheduler: options.turnScheduler }),
+    ...(options.gameDeadlineScheduler === undefined
+      ? {}
+      : { gameDeadlineScheduler: options.gameDeadlineScheduler }),
+    ...(options.onGameDeadlineSchedulingFailure === undefined
+      ? {}
+      : {
+          onGameDeadlineSchedulingFailure:
+            options.onGameDeadlineSchedulingFailure,
+        }),
   });
 
   return { persistence, service, presence, clock, room: created.room };
@@ -204,13 +234,18 @@ test("Host와 연결된 2명은 Game을 원자적으로 시작한다", async () 
   assert.equal(persisted.game.gameDeadlineAt, harness.clock.now() + 1_500_000);
 });
 
-test("game:start commit 후 first Turn을 scheduler에 등록한다", async () => {
-  const scheduler = new RecordingTurnScheduler();
-  const harness = await createHarness({ turnScheduler: scheduler });
+test("accepted game:start는 first Turn과 고정 Game deadline을 모두 등록한다", async () => {
+  const turnScheduler = new RecordingTurnScheduler();
+  const gameDeadlineScheduler = new RecordingGameDeadlineScheduler();
+  const harness = await createHarness({
+    turnScheduler,
+    gameDeadlineScheduler,
+  });
   const result = await harness.service.start(startInput(harness.room));
   assert.equal(result.ok, true);
-  assert.equal(scheduler.deadlines.length, 1);
-  const scheduled = scheduler.deadlines[0];
+  assert.equal(turnScheduler.deadlines.length, 1);
+  assert.equal(gameDeadlineScheduler.deadlines.length, 1);
+  const scheduled = turnScheduler.deadlines[0];
   const room = await harness.persistence.findById(harness.room.roomId);
   assert.ok(scheduled && room?.game?.turn);
   assert.deepEqual(scheduled, {
@@ -220,6 +255,37 @@ test("game:start commit 후 first Turn을 scheduler에 등록한다", async () =
     expectedGameRevision: room.game.gameRevision,
     deadlineAt: room.game.turn.deadlineAt,
   });
+  assert.deepEqual(gameDeadlineScheduler.deadlines[0], {
+    roomId: room.roomId,
+    gameId: room.game.gameId,
+    deadlineAt: room.game.gameDeadlineAt,
+  });
+});
+
+test("Game deadline 등록 실패는 accepted game:start를 rollback하지 않는다", async () => {
+  const turnScheduler = new RecordingTurnScheduler();
+  const gameDeadlineScheduler = new RecordingGameDeadlineScheduler();
+  gameDeadlineScheduler.failuresRemaining = 2;
+  let schedulingFailures = 0;
+  const harness = await createHarness({
+    turnScheduler,
+    gameDeadlineScheduler,
+    onGameDeadlineSchedulingFailure: () => {
+      schedulingFailures += 1;
+    },
+  });
+
+  const result = await harness.service.start(startInput(harness.room));
+
+  assert.equal(result.ok, true);
+  assert.equal(gameDeadlineScheduler.deadlines.length, 0);
+  assert.equal(schedulingFailures, 1);
+  assert.equal(turnScheduler.deadlines.length, 1);
+  const persisted = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(persisted?.phase, "PLAYING");
+  assert.ok(persisted?.game?.turn);
+  assert.equal(persisted?.roomRevision, harness.room.roomRevision + 1);
+  assert.equal(persisted?.storageRevision, harness.room.storageRevision + 1);
 });
 
 test("Game start authorization과 phase precondition을 안정적으로 거절한다", async (context) => {

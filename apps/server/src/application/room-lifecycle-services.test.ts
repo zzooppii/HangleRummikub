@@ -15,6 +15,7 @@ import {
 import { parse } from "valibot";
 
 import { createInitialGameState } from "../domain/game/game-state.js";
+import { createRackEmptyResult } from "../domain/game/result-engine.js";
 import {
   createUnboundSessionRecord,
   type RoomRecord,
@@ -513,7 +514,7 @@ test("Lobby leave 중 successor presence lease 경합은 UNAUTHENTICATED가 아�
 });
 
 test("current Player explicit leave는 penalty 없이 forfeit하고 next eligible Turn을 schedule한다", async () => {
-  const harness = await createHarness(2);
+  const harness = await createHarness(3);
   const initial = await harness.persistence.findById(harness.room.roomId);
   assert.ok(initial);
   const game = createInitialGameState({
@@ -663,7 +664,7 @@ test("이미 forfeited인 Playing Player leave는 session만 정리하고 gamepl
   );
 });
 
-test("마지막 non-forfeit Playing Player leave는 Phase 16 전까지 structured rejection으로 state를 보존한다", async () => {
+test("마지막 non-forfeit Playing Player leave는 ALL_PLAYERS_FORFEITED로 원자 종료한다", async () => {
   const harness = await createHarness(2);
   const initial = await harness.persistence.findById(harness.room.roomId);
   assert.ok(initial);
@@ -705,10 +706,19 @@ test("마지막 non-forfeit Playing Player leave는 Phase 16 전까지 structure
     expectedGameRevision: beforeGame.gameRevision,
     authorization: { isCurrent: () => true },
   });
-  assert.equal(result.ok, false);
-  if (result.ok) return;
-  assert.equal(result.error.code, "INVALID_PHASE");
-  assert.deepEqual(await harness.persistence.findById(before.roomId), before);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.phase, "FINISHED");
+  assert.equal(result.data.roomRevision, before.roomRevision + 1);
+  assert.equal(result.data.gameRevision, beforeGame.gameRevision + 1);
+  const after = await harness.persistence.findById(before.roomId);
+  if (after?.phase !== "FINISHED" || after.game?.result === null || after.game === null) {
+    throw new Error("Expected ALL_PLAYERS_FORFEITED terminal state.");
+  }
+  assert.equal(after.game.turn, null);
+  assert.equal(after.game.result.reason, "ALL_PLAYERS_FORFEITED");
+  assert.deepEqual(after.game.result.winnerPlayerIds, []);
+  assert.equal(after.game.forfeitedPlayerIds.size, 2);
 });
 
 test("last connected Playing leave 후 onPlayerRemoved는 새 30분 all-offline retention window를 등록한다", async () => {
@@ -1025,18 +1035,6 @@ test("FINISHED retention은 connected resume에도 finishedAt 기준 deadline을
   const finishedAt = parse(ServerTimeSchema, 9_000);
   const finishedRacks = new Map(playingGame.racks);
   finishedRacks.set(winner, Object.freeze([]));
-  const penaltyByPlayerId = new Map<PlayerId, number>();
-  for (const playerId of playingGame.turnOrder) {
-    const penalty = (finishedRacks.get(playerId) ?? []).reduce(
-      (sum, tileId) =>
-        sum + (playingGame.tilesById.get(tileId)?.kind === "JOKER" ? 30 : 1),
-      0,
-    );
-    penaltyByPlayerId.set(playerId, penalty);
-  }
-  const winnerScore = [...penaltyByPlayerId]
-    .filter(([playerId]) => playerId !== winner)
-    .reduce((sum, [, penalty]) => sum + penalty, 0);
   const finished = await harness.persistence.replace({
     candidate: {
       ...initial,
@@ -1045,20 +1043,16 @@ test("FINISHED retention은 connected resume에도 finishedAt 기준 deadline을
         ...playingGame,
         racks: finishedRacks,
         turn: null,
-        result: {
-          reason: "RACK_EMPTY",
-          winnerPlayerId: winner,
-          scores: playingGame.turnOrder.map((playerId) => ({
-            playerId,
-            score:
-              playerId === winner
-                ? winnerScore
-                : -(penaltyByPlayerId.get(playerId) ?? 0),
-            remainingRackTileCount:
-              finishedRacks.get(playerId)?.length ?? 0,
-          })),
-          finishedAt,
-        },
+        result: createRackEmptyResult(
+          {
+            playerIds: playingGame.turnOrder,
+            racks: finishedRacks,
+            tilesById: playingGame.tilesById,
+            forfeitedPlayerIds: playingGame.forfeitedPlayerIds,
+            finishedAt,
+          },
+          winner,
+        ),
       },
       roomRevision: parse(RoomRevisionSchema, initial.roomRevision + 1),
     },

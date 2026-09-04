@@ -22,6 +22,7 @@ test("주요 protocol error를 안정적인 한국어 UX message로 변환한다
     "PLAYERS_NOT_CONNECTED",
     "NOT_YOUR_TURN",
     "TURN_EXPIRED",
+    "GAME_EXPIRED",
     "BAG_EMPTY",
     "PASS_NOT_ALLOWED",
     "INVALID_TILE_ACCESS",

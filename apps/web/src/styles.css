@@ -796,6 +796,26 @@ h3 {
   background: #f4f1e9;
 }
 
+.result-rank {
+  flex: 0 0 2.6rem;
+  color: #69727b;
+  font-weight: 700;
+}
+
+.result-player {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+}
+
+.result-player small {
+  color: #69727b;
+}
+
+.result-score {
+  white-space: nowrap;
+}
+
 .compact-button,
 .icon-button {
   border: 1px solid #c9ced2;

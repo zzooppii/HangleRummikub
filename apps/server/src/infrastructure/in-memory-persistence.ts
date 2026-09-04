@@ -25,6 +25,7 @@ import type {
   IdempotencyRepository,
 } from "../ports/idempotency-repository.js";
 import type { ActiveTurnReader } from "../ports/active-turn-reader.js";
+import type { ActiveGameReader } from "../ports/active-game-reader.js";
 import type {
   CreateRoomResult,
   DeleteRoomInput,
@@ -50,7 +51,10 @@ import type {
   SessionRepository,
 } from "../ports/session-repository.js";
 import type { SessionVerificationData } from "../ports/system.js";
-import type { ScheduledTurnDeadline } from "../ports/system.js";
+import type {
+  ScheduledGameDeadline,
+  ScheduledTurnDeadline,
+} from "../ports/system.js";
 
 type InMemoryState = {
   roomsById: Map<RoomId, RoomRecord>;
@@ -657,6 +661,7 @@ export class InMemoryPersistence
     IdempotencyRepository,
     RoomUnitOfWork,
     RoomCleanupUnitOfWork,
+    ActiveGameReader,
     ActiveTurnReader
 {
   #state = emptyState();
@@ -703,6 +708,31 @@ export class InMemoryPersistence
           turnId: game.turn.turnId,
           expectedGameRevision: game.gameRevision,
           deadlineAt: game.turn.deadlineAt,
+        }),
+      );
+    }
+    return Object.freeze(deadlines);
+  }
+
+  async listActiveGameDeadlines(): Promise<
+    readonly ScheduledGameDeadline[]
+  > {
+    const deadlines: ScheduledGameDeadline[] = [];
+    for (const room of this.#state.roomsById.values()) {
+      const game = room.game;
+      if (
+        room.phase !== "PLAYING" ||
+        game === null ||
+        game.turn === null ||
+        game.result !== null
+      ) {
+        continue;
+      }
+      deadlines.push(
+        Object.freeze({
+          roomId: room.roomId,
+          gameId: game.gameId,
+          deadlineAt: game.gameDeadlineAt,
         }),
       );
     }

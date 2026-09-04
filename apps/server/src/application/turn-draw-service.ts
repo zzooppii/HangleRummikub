@@ -104,6 +104,11 @@ const ERRORS = Object.freeze({
     message: "The Turn deadline has passed.",
     recoverable: true,
   }),
+  GAME_EXPIRED: Object.freeze({
+    code: "GAME_EXPIRED",
+    message: "The Game deadline has passed.",
+    recoverable: true,
+  }),
   STALE_GAME_REVISION: Object.freeze({
     code: "STALE_GAME_REVISION",
     message: "The Game state is stale.",
@@ -220,6 +225,7 @@ function createCandidate(
     initialMeldCompleted: game.initialMeldCompleted,
     offlineTimeoutStreakByPlayerId: game.offlineTimeoutStreakByPlayerId,
     forfeitedPlayerIds: game.forfeitedPlayerIds,
+    noMoveTurnEndPlayerIds: Object.freeze(new Set<PlayerId>()),
     turnOrder: game.turnOrder,
     turn,
     result: null,
@@ -342,6 +348,9 @@ export class TurnDrawService {
       game.turn.turnId !== input.turnId
     ) {
       return failed(ERRORS.NOT_YOUR_TURN);
+    }
+    if (input.receivedAt >= game.gameDeadlineAt) {
+      return failed(ERRORS.GAME_EXPIRED);
     }
     if (input.receivedAt >= game.turn.deadlineAt) {
       return failed(ERRORS.TURN_EXPIRED);

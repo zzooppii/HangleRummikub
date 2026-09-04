@@ -12,7 +12,6 @@ import {
   type ProposedBoard,
   type RequestId,
   type RoomId,
-  type RoomRevision,
   type ServerTime,
   type TileId,
   type TurnId,
@@ -20,12 +19,8 @@ import {
 import * as v from "valibot";
 
 import type { Board } from "../domain/game/board.js";
-import type {
-  FinishedGameState,
-  GameResult,
-  GameScoreEntry,
-  PlayingGameState,
-} from "../domain/game/game-state.js";
+import type { PlayingGameState } from "../domain/game/game-state.js";
+import { createRackEmptyResult } from "../domain/game/result-engine.js";
 import {
   validateProposedBoard,
   type BoardValidationError,
@@ -47,6 +42,11 @@ import type {
 } from "../ports/system.js";
 import type { CurrentActorAuthorization } from "./game-start-service.js";
 import type { RoomMutationSerialExecutor } from "./room-session-service.js";
+import {
+  createFinishedRoomTransition,
+  notifyGameFinishedBestEffort,
+  type GameFinishedPostCommit,
+} from "./game-finish-transition.js";
 import {
   createNextTurn,
   incrementGameRevision,
@@ -71,7 +71,7 @@ const TurnSubmitFinishedDataSchema = v.strictObject({
   gameRevision: GameRevisionSchema,
   outcome: v.literal("FINISHED"),
   finishReason: v.literal("RACK_EMPTY"),
-  winnerPlayerId: PlayerIdSchema,
+  winnerPlayerIds: v.array(PlayerIdSchema),
 });
 
 export const TurnSubmitSuccessDataSchema = v.variant("outcome", [
@@ -117,6 +117,7 @@ export type TurnSubmitServiceDependencies = Readonly<{
   onCheckpoint?: (checkpoint: TurnSubmitCheckpoint) => void;
   turnScheduler?: TurnScheduler;
   onTurnSchedulingFailure?: TurnSchedulingFailureReporter;
+  onGameFinished?: GameFinishedPostCommit;
 }>;
 
 const ERRORS = Object.freeze({
@@ -143,6 +144,11 @@ const ERRORS = Object.freeze({
   TURN_EXPIRED: Object.freeze({
     code: "TURN_EXPIRED",
     message: "The Turn deadline has passed.",
+    recoverable: true,
+  }),
+  GAME_EXPIRED: Object.freeze({
+    code: "GAME_EXPIRED",
+    message: "The Game deadline has passed.",
     recoverable: true,
   }),
   STALE_GAME_REVISION: Object.freeze({
@@ -267,10 +273,6 @@ function toDomainBoard(proposedBoard: ProposedBoard): Board {
   });
 }
 
-function incrementRoomRevision(revision: RoomRevision): RoomRevision {
-  return v.parse(RoomRevisionSchema, revision + 1);
-}
-
 function parseAcceptedResult(terminalResult: unknown): TurnSubmitResult {
   const parsed = v.safeParse(TurnSubmitSuccessDataSchema, terminalResult);
   return parsed.success ? succeeded(parsed.output) : failed(ERRORS.INTERNAL_ERROR);
@@ -348,65 +350,6 @@ function removeUsedRackTiles(
   return Object.freeze(rack.filter((tileId) => !used.has(tileId)));
 }
 
-function createGameResult(
-  game: PlayingGameState,
-  racks: ReadonlyMap<PlayerId, readonly TileId[]>,
-  winnerPlayerId: PlayerId,
-  finishedAt: ServerTime,
-): GameResult {
-  let winnerScore = 0;
-  const scores: GameScoreEntry[] = [];
-
-  for (const playerId of game.turnOrder) {
-    const rack = racks.get(playerId);
-    if (rack === undefined) {
-      throw new Error("Canonical Game is missing a Player rack.");
-    }
-    if (playerId === winnerPlayerId) {
-      continue;
-    }
-
-    let penalty = 0;
-    for (const tileId of rack) {
-      const tile = game.tilesById.get(tileId);
-      if (tile === undefined) {
-        throw new Error("Canonical rack references an unknown Tile.");
-      }
-      penalty += tile.kind === "JOKER" ? 30 : 1;
-    }
-    winnerScore += penalty;
-    scores.push(
-      Object.freeze({
-        playerId,
-        score: -penalty,
-        remainingRackTileCount: rack.length,
-      }),
-    );
-  }
-
-  const orderedScores = game.turnOrder.map((playerId) => {
-    if (playerId === winnerPlayerId) {
-      return Object.freeze({
-        playerId,
-        score: winnerScore,
-        remainingRackTileCount: 0,
-      });
-    }
-    const score = scores.find((entry) => entry.playerId === playerId);
-    if (score === undefined) {
-      throw new Error("Game score derivation missed a Player.");
-    }
-    return score;
-  });
-
-  return Object.freeze({
-    reason: "RACK_EMPTY",
-    winnerPlayerId,
-    scores: Object.freeze(orderedScores),
-    finishedAt,
-  });
-}
-
 type CandidateResult = Readonly<{
   roomCandidate: RoomWriteCandidate;
   terminalResult: TurnSubmitSuccessData;
@@ -452,41 +395,40 @@ function createCandidate(
     initialMeldCompleted,
     offlineTimeoutStreakByPlayerId: game.offlineTimeoutStreakByPlayerId,
     forfeitedPlayerIds: game.forfeitedPlayerIds,
+    noMoveTurnEndPlayerIds: Object.freeze(new Set<PlayerId>()),
     turnOrder: Object.freeze([...game.turnOrder]),
     gameStartedAt: game.gameStartedAt,
     gameDeadlineAt: game.gameDeadlineAt,
   };
 
   if (nextActorRack.length === 0) {
-    const roomRevision = incrementRoomRevision(room.roomRevision);
-    const result = createGameResult(game, racks, actorPlayerId, committedAt);
-    const finishedGame: FinishedGameState = Object.freeze({
-      ...baseGame,
-      turn: null,
+    const result = createRackEmptyResult({
+      playerIds: game.turnOrder,
+      racks,
+      tilesById: game.tilesById,
+      forfeitedPlayerIds: game.forfeitedPlayerIds,
+      finishedAt: committedAt,
+    }, actorPlayerId);
+    const transition = createFinishedRoomTransition(
+      room,
+      game,
       result,
-    });
-    return {
-      roomCandidate: Object.freeze({
-        roomId: room.roomId,
-        roomCode: room.roomCode,
-        phase: "FINISHED",
-        hostPlayerId: room.hostPlayerId,
-        players: room.players,
-        game: finishedGame,
-        roomRevision,
-        createdAt: room.createdAt,
-        updatedAt: committedAt,
-      }),
+      committedAt,
+      Object.freeze({ ...baseGame, turn: game.turn, result: null }),
+    );
+    const roomRevision = transition.roomCandidate.roomRevision;
+    return Object.freeze({
+      roomCandidate: transition.roomCandidate,
       terminalResult: Object.freeze({
         roomId: room.roomId,
         gameId: game.gameId,
         roomRevision,
-        gameRevision,
+        gameRevision: transition.finishedGame.gameRevision,
         outcome: "FINISHED",
         finishReason: "RACK_EMPTY",
-        winnerPlayerId: actorPlayerId,
+        winnerPlayerIds: [...result.winnerPlayerIds],
       }),
-    };
+    });
   }
 
   const turn = createNextTurn(game, committedAt, idGenerator);
@@ -551,6 +493,7 @@ export class TurnSubmitService {
   readonly #onCheckpoint: ((checkpoint: TurnSubmitCheckpoint) => void) | undefined;
   readonly #turnScheduler: TurnScheduler | undefined;
   readonly #onTurnSchedulingFailure: TurnSchedulingFailureReporter | undefined;
+  readonly #onGameFinished: GameFinishedPostCommit | undefined;
 
   constructor(dependencies: TurnSubmitServiceDependencies) {
     this.#roomRepository = dependencies.roomRepository;
@@ -564,6 +507,7 @@ export class TurnSubmitService {
     this.#onCheckpoint = dependencies.onCheckpoint;
     this.#turnScheduler = dependencies.turnScheduler;
     this.#onTurnSchedulingFailure = dependencies.onTurnSchedulingFailure;
+    this.#onGameFinished = dependencies.onGameFinished;
   }
 
   async submit(input: TurnSubmitInput): Promise<TurnSubmitResult> {
@@ -588,6 +532,11 @@ export class TurnSubmitService {
         },
         this.#onTurnSchedulingFailure,
       );
+    } else if (result.ok && result.data.outcome === "FINISHED") {
+      await notifyGameFinishedBestEffort(this.#onGameFinished, {
+        roomId: result.data.roomId,
+        gameId: result.data.gameId,
+      });
     }
     return result;
   }
@@ -634,6 +583,9 @@ export class TurnSubmitService {
     }
     if (game.turn.turnId !== input.turnId) {
       return failed(ERRORS.NOT_YOUR_TURN);
+    }
+    if (input.receivedAt >= game.gameDeadlineAt) {
+      return failed(ERRORS.GAME_EXPIRED);
     }
     if (input.receivedAt >= game.turn.deadlineAt) {
       return failed(ERRORS.TURN_EXPIRED);

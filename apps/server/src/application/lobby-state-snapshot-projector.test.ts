@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   NicknameSchema,
+  GameRevisionSchema,
   PlayerIdSchema,
   PresenceVersionSchema,
   PROTOCOL_VERSION,
@@ -22,6 +23,7 @@ import {
   type RoomPresenceReadPort,
 } from "./lobby-state-snapshot-projector.js";
 import { createInitialGameState } from "../domain/game/game-state.js";
+import { createTimeLimitResult } from "../domain/game/result-engine.js";
 import { JOKER_ALLOWED_SYMBOLS } from "../domain/game/tile-inventory.js";
 import {
   createStorageRevision,
@@ -473,5 +475,84 @@ test("PLAYING snapshot은 bag 순서, 다른 rack, canonical private field를 �
 
   for (const key of collectKeys(snapshot)) {
     assert.equal(forbidden.has(key), false, `forbidden key: ${key}`);
+  }
+});
+
+test("FINISHED projection은 일반화된 ranking을 공개하고 상대 rack detail은 숨긴다", async () => {
+  const playingRoom = playingRoomFixture();
+  const game = playingRoom.game;
+  const guest = playingRoom.players[1];
+  if (game === null || game.turn === null || guest === undefined) {
+    throw new Error("FINISHED projection fixture requires an active Game.");
+  }
+  const finishedAt = parse(ServerTimeSchema, game.gameDeadlineAt);
+  const result = createTimeLimitResult({
+    playerIds: game.turnOrder,
+    racks: game.racks,
+    tilesById: game.tilesById,
+    forfeitedPlayerIds: game.forfeitedPlayerIds,
+    finishedAt,
+  });
+  const finishedRoom: RoomRecord = {
+    ...playingRoom,
+    phase: "FINISHED",
+    game: {
+      ...game,
+      gameRevision: parse(GameRevisionSchema, game.gameRevision + 1),
+      turn: null,
+      result,
+    },
+    roomRevision: parse(RoomRevisionSchema, playingRoom.roomRevision + 1),
+  };
+  const projector = new LobbyStateSnapshotProjector({
+    clock: new FakeClock(finishedAt),
+    presenceReader: {
+      readRoomPresence: async () => ({
+        presenceVersion: parse(PresenceVersionSchema, 5),
+        connectionStatusByPlayerId: new Map(
+          finishedRoom.players.map(
+            (player) => [player.playerId, "CONNECTED"] as const,
+          ),
+        ),
+      }),
+    },
+  });
+
+  const hostSnapshot = await projector.project({
+    room: finishedRoom,
+    selfPlayerId: finishedRoom.hostPlayerId ?? finishedRoom.players[0]!.playerId,
+  });
+  const guestSnapshot = await projector.project({
+    room: finishedRoom,
+    selfPlayerId: guest.playerId,
+  });
+  assert.equal(hostSnapshot.room.phase, "FINISHED");
+  assert.equal(guestSnapshot.room.phase, "FINISHED");
+  if (
+    !("game" in hostSnapshot) ||
+    !("game" in guestSnapshot) ||
+    !("result" in hostSnapshot.game) ||
+    !("result" in guestSnapshot.game)
+  ) {
+    throw new Error("Expected FINISHED snapshots.");
+  }
+
+  assert.deepEqual(hostSnapshot.game.result, result);
+  assert.deepEqual(hostSnapshot.game, guestSnapshot.game);
+  assert.equal(validateStateSnapshot(hostSnapshot).ok, true);
+  assert.equal(validateStateSnapshot(guestSnapshot).ok, true);
+  for (const forbidden of [
+    "tileId",
+    "physicalType",
+    "allowedSymbols",
+    "sourceBag",
+    "offlineTimeoutStreak",
+    "storageRevision",
+  ]) {
+    assert.equal(
+      collectKeys(hostSnapshot.game.result).includes(forbidden),
+      false,
+      `forbidden result key: ${forbidden}`,
+    );
   }
 });

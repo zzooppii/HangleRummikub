@@ -235,11 +235,8 @@ export class LobbyStateSnapshotProjector {
           ...commonSnapshot.game,
           result: {
             reason: game.result.reason,
-            winnerPlayerId: game.result.winnerPlayerId,
-            scores: game.result.scores.map(({ playerId, score }) => ({
-              playerId,
-              score,
-            })),
+            winnerPlayerIds: [...game.result.winnerPlayerIds],
+            rankings: game.result.rankings.map((entry) => ({ ...entry })),
             finishedAt: game.result.finishedAt,
           },
         },
