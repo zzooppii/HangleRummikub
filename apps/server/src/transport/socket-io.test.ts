@@ -103,6 +103,7 @@ import { GameRegistry } from "../games/game-registry.js";
 import {
   createLegacyHangulCompatibilityRegistration,
 } from "../games/legacy-hangul-compatibility-registration.js";
+import { projectLegacyHangulV1Game } from "../games/legacy-hangul-v1-game-projector.js";
 import { ConnectionRegistry } from "../infrastructure/connection-registry.js";
 import { ConnectionRegistryPresenceReader } from "../infrastructure/connection-registry-presence-reader.js";
 import { InMemoryPersistence } from "../infrastructure/in-memory-persistence.js";
@@ -534,6 +535,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
   const snapshotProjector = new LobbyStateSnapshotProjector({
     clock,
     presenceReader,
+    legacyHangulV1GameProjector: projectLegacyHangulV1Game,
   });
   const roomLeaveService = new RoomLeaveService({
     roomRepository: persistence,

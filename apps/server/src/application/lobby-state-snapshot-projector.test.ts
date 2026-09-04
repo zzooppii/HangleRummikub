@@ -25,6 +25,7 @@ import {
 import { createInitialGameState } from "../domain/game/game-state.js";
 import { createTimeLimitResult } from "../domain/game/result-engine.js";
 import { JOKER_ALLOWED_SYMBOLS } from "../domain/game/tile-inventory.js";
+import { projectLegacyHangulV1Game } from "../games/legacy-hangul-v1-game-projector.js";
 import {
   createStorageRevision,
   type RoomRecord,
@@ -147,6 +148,7 @@ test("Lobby projector는 ordered player-specific StateSnapshot을 만든다", as
     },
   };
   const projector = new LobbyStateSnapshotProjector({
+    legacyHangulV1GameProjector: projectLegacyHangulV1Game,
     clock: new FakeClock(9_000),
     presenceReader,
   });
@@ -190,6 +192,7 @@ test("Lobby projector는 ordered player-specific StateSnapshot을 만든다", as
 test("Lobby projector는 누락된 presence를 OFFLINE으로 처리한다", async () => {
   const room = roomFixture();
   const projector = new LobbyStateSnapshotProjector({
+    legacyHangulV1GameProjector: projectLegacyHangulV1Game,
     clock: new FakeClock(9_000),
     presenceReader: {
       readRoomPresence: async () => ({
@@ -212,6 +215,7 @@ test("Lobby projector는 누락된 presence를 OFFLINE으로 처리한다", asyn
 test("Lobby snapshot은 canonical server-private 및 credential field를 노출하지 않는다", async () => {
   const room = roomFixture();
   const projector = new LobbyStateSnapshotProjector({
+    legacyHangulV1GameProjector: projectLegacyHangulV1Game,
     clock: new FakeClock(9_000),
     presenceReader: {
       readRoomPresence: async () => ({
@@ -246,6 +250,7 @@ test("Lobby projector는 Room에 없는 self Player projection을 거절한다",
   const room = roomFixture();
   let presenceRead = false;
   const projector = new LobbyStateSnapshotProjector({
+    legacyHangulV1GameProjector: projectLegacyHangulV1Game,
     clock: new FakeClock(9_000),
     presenceReader: {
       readRoomPresence: async () => {
@@ -268,6 +273,49 @@ test("Lobby projector는 Room에 없는 self Player projection을 거절한다",
   assert.equal(presenceRead, false);
 });
 
+test("unsupported canonical gameType은 LOBBY와 PLAYING에서 Legacy Hangul projection으로 fallback하지 않는다", async () => {
+  let presenceReadCount = 0;
+  let gameProjectionCount = 0;
+  const projector = new LobbyStateSnapshotProjector({
+    legacyHangulV1GameProjector: (input) => {
+      gameProjectionCount += 1;
+      return projectLegacyHangulV1Game(input);
+    },
+    clock: new FakeClock(9_000),
+    presenceReader: {
+      readRoomPresence: async () => {
+        presenceReadCount += 1;
+        return {
+          presenceVersion: parse(PresenceVersionSchema, 0),
+          connectionStatusByPlayerId: new Map(),
+        };
+      },
+    },
+  });
+
+  for (const room of [roomFixture(), playingRoomFixture()]) {
+    const corruptRoom = {
+      ...room,
+      gameType: "UNKNOWN_GAME",
+    } as unknown as RoomRecord;
+    const self = corruptRoom.players[0];
+    if (self === undefined) {
+      throw new Error("Corrupt gameType fixture requires a Player.");
+    }
+
+    await assert.rejects(
+      projector.project({
+        room: corruptRoom,
+        selfPlayerId: self.playerId,
+      }),
+      /Unsupported Room gameType/u,
+    );
+  }
+
+  assert.equal(presenceReadCount, 0);
+  assert.equal(gameProjectionCount, 0);
+});
+
 test("PLAYING projection은 public Game과 각 self의 private rack만 분리한다", async () => {
   const room = playingRoomFixture();
   const guest = room.players[1];
@@ -281,6 +329,7 @@ test("PLAYING projection은 public Game과 각 self의 private rack만 분리한
     }),
   };
   const projector = new LobbyStateSnapshotProjector({
+    legacyHangulV1GameProjector: projectLegacyHangulV1Game,
     clock: new FakeClock(9_000),
     presenceReader,
   });
@@ -340,6 +389,7 @@ test("Legacy Hangul v1 PLAYING projection은 exact shape와 A/B rack·bag privac
     throw new Error("PLAYING privacy fixture requires a Game and Guest.");
   }
   const projector = new LobbyStateSnapshotProjector({
+    legacyHangulV1GameProjector: projectLegacyHangulV1Game,
     clock: new FakeClock(9_000),
     presenceReader: {
       readRoomPresence: async () => ({
@@ -530,6 +580,7 @@ test("PLAYING projection은 Board Tile 편집 metadata만 public으로 투영한
     },
   };
   const projector = new LobbyStateSnapshotProjector({
+    legacyHangulV1GameProjector: projectLegacyHangulV1Game,
     clock: new FakeClock(9_000),
     presenceReader: {
       readRoomPresence: async () => ({
@@ -587,6 +638,7 @@ test("PLAYING projection은 Board Tile 편집 metadata만 public으로 투영한
 test("PLAYING snapshot은 bag 순서, 다른 rack, canonical private field를 노출하지 않는다", async () => {
   const room = playingRoomFixture();
   const projector = new LobbyStateSnapshotProjector({
+    legacyHangulV1GameProjector: projectLegacyHangulV1Game,
     clock: new FakeClock(9_000),
     presenceReader: {
       readRoomPresence: async () => ({
@@ -646,6 +698,7 @@ test("FINISHED projection은 일반화된 ranking을 공개하고 상대 rack de
     roomRevision: parse(RoomRevisionSchema, playingRoom.roomRevision + 1),
   };
   const projector = new LobbyStateSnapshotProjector({
+    legacyHangulV1GameProjector: projectLegacyHangulV1Game,
     clock: new FakeClock(finishedAt),
     presenceReader: {
       readRoomPresence: async () => ({

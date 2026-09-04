@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0·P1·P2 COMPLETE, P3A READY
+> 상태: P0·P1·P2 COMPLETE, P3A COMPLETE / P3B READY (P3A 최종 quality gate와 checkpoint push 조건부)
 > 작성일: 2026-09-05
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -24,6 +24,8 @@
 - 범위 밖 발견 사항은 구현하지 않고 해당 문서의 open decision/후속 Phase에 기록한다.
 
 production 기준선 573 tests는 shared 55, web 87, server 431로 구성됐다. 이후 추가된 test를 포함한 수는 이유 없이 감소하면 해당 Phase는 완료가 아니다.
+
+P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A는 이 597개를 삭제·skip하지 않고 새 boundary test와 함께 보존한다.
 
 ## 2. Phase 개요
 
@@ -200,17 +202,20 @@ P3는 한 번에 실행하지 않는다. 아래 P3A~P3D를 각각 독립 작업�
 
 ### 6.1 P3A — Hangul state/projection/persistence seam
 
+> 구현 완료(조건부): 2026-09-05. 별도 Legacy Hangul state adapter와 Legacy Hangul v1 projector를 실제 caller에 주입했고 identity-only registry와 concrete typed `RoomRecord.game`은 유지했다. **P3A COMPLETE / P3B READY** 표기는 root typecheck, 전체 test, build, `git diff --check`, checkpoint commit 및 일반 `origin/master` push가 모두 성공한 경우에만 유효하다.
+
 #### 목표
 
 한글 state의 clone, lifecycle inspection, player projection을 narrow module seam 뒤에 두고 platform persistence/projector가 concrete board·rack·result를 직접 해석하지 않게 한다.
 
 #### Scope
 
-- P2 identity-only Hangul registration에 state codec/clone, narrow lifecycle summary, player projector capability를 처음 연결
-- `RoomRecord.game`의 direct concrete import를 discriminated internal envelope로 감싸는 최소 변경
-- in-memory UoW의 copy/rollback/phase validation을 module seam으로 위임
-- current Lobby/Playing/Finished v1 projection shape를 Hangul projector가 동일하게 생성
-- overdue recovery에 필요한 metadata의 임시 Hangul adapter 경계 명시
+- typed `GameState`의 clone·canonical validation과 phase/recovery에 필요한 좁은 `RUNNING | FINISHED` read model을 별도 Legacy Hangul state adapter가 소유
+- in-memory persistence의 copy/rollback/Room phase 검증을 injected adapter에 위임하되 CAS, gameType immutability와 atomic commit은 그대로 유지
+- outer projector를 Room identity·presence·revision·server-time shell과 Legacy Hangul v1 game projection으로 분리
+- canonical `gameType`이 `HANGUL_TILE`이 아닌 persistence/projector 입력은 silent fallback 없이 fail-closed
+- `RoomRecord.game: GameState | null`과 P2 identity-only `GameRegistry`를 유지하고 state envelope/registry capability는 추가하지 않음
+- active turn/game deadline/finished retention reader는 adapter inspection만 소비하며 기존 port와 scheduler behavior를 유지; 이 turn/deadline-shaped capability의 일반화 여부는 P3C로 보류
 
 #### 금지사항
 
@@ -222,24 +227,34 @@ P3는 한 번에 실행하지 않는다. 아래 P3A~P3D를 각각 독립 작업�
 
 #### Definition of Done
 
-- platform persistence와 outer projector가 Hangul Board/rack/result field를 직접 읽지 않는다.
-- clone, rollback, recovery, player-private projection이 기존과 동일하다.
+- persistence의 clone/phase-validation path와 outer projector가 Hangul Tile/Board/rack/bag/result 구조를 직접 해석하지 않는다.
+- clone, rollback, CAS, gameType immutability, recovery reader behavior와 player-private projection이 기존과 동일하다.
 - v1 strict snapshot validator와 wire schema가 그대로 통과한다.
-- temporary Hangul lifecycle/metadata seam은 P9 재검토 대상으로 표시된다.
+- state adapter의 lifecycle surface는 실제 phase/recovery caller가 사용한 game/revision/turn/deadline/finished identity만 가진다. timeout action과 result 계산은 포함하지 않는다.
+- identity registry에는 state/projector/command/scheduler capability를 추가하지 않는다.
+- P1/P2 regression, 전체 quality gate, checkpoint commit과 일반 push가 성공한다.
 
 #### Required tests
 
-- persistence copy-on-write/UoW rollback/phase invariant
+- active/finished state adapter clone·validation·nested isolation
+- persistence copy-on-write/UoW rollback/phase invariant와 corrupt gameType fail-closed
 - player별 rack privacy와 Board/rack conservation projection
 - Playing/Finished v1 snapshot structural compatibility
-- overdue reader metadata equivalence
-- 기존 전체 tests, typecheck/build/diff-check
+- projector unsupported/corrupt gameType fail-closed
+- 기존 deadline/retention recovery 및 representative Hangul lifecycle regression
+- 기존 597 tests와 신규 boundary tests, typecheck/build/diff-check
 
 #### Codex 실행 명령
 
 ```text
-Multi-game Platform P3A만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙을 지키고 P2의 identity-only HANGUL_TILE registration에 필요한 state clone/validation, narrow lifecycle inspection, player projection capability를 최소 표면으로 추가하며 Room persistence와 outer snapshot projector가 board·rack·turn·result 내부를 직접 읽지 않게 하라. 기존 v1 snapshot wire schema와 observable semantics, UoW rollback, recovery metadata, private rack projection을 그대로 보존하라. command routing, leave/presence/deadline, directory 이동, 공통 lifecycle 확정, 새 게임은 건드리지 말고 전체 typecheck/test/build/diff-check를 통과시켜라.
+Multi-game Platform P3A만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙을 지키고 typed in-memory GameState의 clone/validation과 Room phase용 최소 lifecycle inspection을 별도 Legacy Hangul state adapter로 옮기며 outer snapshot projector를 Room shell과 Legacy Hangul v1 projection으로 분리하라. 실제 caller에 collaborator를 주입하고 unsupported gameType은 fallback 없이 거절하되 P2 identity registry를 capability registry로 확장하거나 RoomRecord.game을 envelope/unknown/JSON으로 바꾸지 마라. 기존 v1 snapshot wire schema, UoW/CAS/rollback, recovery behavior와 private rack projection을 그대로 보존하라. command routing, leave/presence/deadline action, directory 이동, 공통 lifecycle 확정, 새 게임은 건드리지 말고 전체 typecheck/test/build/diff-check와 checkpoint commit/push를 통과시켜라.
 ```
+
+#### 남은 결합과 다음 stop gate
+
+- P3B: `GameStartService`, Submit/Draw/Pass service 및 Socket.IO fixed command/advisory routing
+- P3C: leave/forfeit, presence streak reset, turn/game deadline action과 현재 turn/deadline-shaped recovery port의 optional capability, finished retention/result 처리
+- P3D: Hangul domain/shared source의 물리 directory와 import ownership. concrete `RoomRecord.game`의 장기 envelope/union 결정은 실제 second-game 요구 전에는 확정하지 않는다.
 
 ### 6.2 P3B — Hangul start and command routing seam
 

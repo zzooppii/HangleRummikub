@@ -11,7 +11,11 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
-import { cloneGameState } from "../domain/game/game-state.js";
+import {
+  LegacyHangulGameStateAdapter,
+  type LegacyHangulGameLifecycleInspection,
+  type LegacyHangulGameStateStorage,
+} from "../games/legacy-hangul-game-state-adapter.js";
 import {
   createStorageRevision,
   incrementStorageRevision,
@@ -77,6 +81,7 @@ export type InMemoryCommitCheckpoint =
   | "AFTER_IDEMPOTENCY_WRITE";
 
 export type InMemoryPersistenceOptions = Readonly<{
+  legacyHangulGameStateAdapter?: LegacyHangulGameStateStorage;
   onCommitCheckpoint?: (checkpoint: InMemoryCommitCheckpoint) => void;
 }>;
 
@@ -151,8 +156,14 @@ function clonePlayerRecord(
 
 function cloneRoomWriteCandidate(
   candidate: RoomWriteCandidate,
+  legacyHangulGameStateAdapter: LegacyHangulGameStateStorage,
 ): RoomWriteCandidate {
   const gameType = v.parse(GameTypeSchema, candidate.gameType);
+  if (gameType !== legacyHangulGameStateAdapter.gameType) {
+    throw new TypeError(
+      "Room gameType is not supported by the configured game-state adapter.",
+    );
+  }
   requireNonNegativeSafeInteger(candidate.roomRevision, "roomRevision");
   requireNonNegativeSafeInteger(candidate.createdAt, "createdAt");
   requireNonNegativeSafeInteger(candidate.updatedAt, "updatedAt");
@@ -162,19 +173,25 @@ function cloneRoomWriteCandidate(
       throw new TypeError("A LOBBY Room must not contain a GameState.");
     }
   } else if (candidate.phase === "PLAYING") {
+    if (candidate.game === null) {
+      throw new TypeError("A PLAYING Room must contain an active GameState.");
+    }
     if (
-      candidate.game === null ||
-      candidate.game.turn === null ||
-      candidate.game.result !== null
+      legacyHangulGameStateAdapter.inspectLifecycle(candidate.game)
+        .lifecycle !== "RUNNING"
     ) {
       throw new TypeError("A PLAYING Room must contain an active GameState.");
     }
-  } else if (
-    candidate.game === null ||
-    candidate.game.turn !== null ||
-    candidate.game.result === null
-  ) {
-    throw new TypeError("A FINISHED Room must contain a terminal GameState.");
+  } else {
+    if (candidate.game === null) {
+      throw new TypeError("A FINISHED Room must contain a terminal GameState.");
+    }
+    if (
+      legacyHangulGameStateAdapter.inspectLifecycle(candidate.game)
+        .lifecycle !== "FINISHED"
+    ) {
+      throw new TypeError("A FINISHED Room must contain a terminal GameState.");
+    }
   }
   if (
     candidate.hostPlayerId !== null &&
@@ -195,7 +212,10 @@ function cloneRoomWriteCandidate(
     phase: candidate.phase,
     hostPlayerId: candidate.hostPlayerId,
     players: Object.freeze(candidate.players.map(clonePlayerRecord)),
-    game: candidate.game === null ? null : cloneGameState(candidate.game),
+    game:
+      candidate.game === null
+        ? null
+        : legacyHangulGameStateAdapter.cloneAndValidate(candidate.game),
     roomRevision: candidate.roomRevision,
     createdAt: candidate.createdAt,
     updatedAt: candidate.updatedAt,
@@ -205,8 +225,12 @@ function cloneRoomWriteCandidate(
 function persistRoom(
   candidate: RoomWriteCandidate,
   storageRevision: StorageRevision,
+  legacyHangulGameStateAdapter: LegacyHangulGameStateStorage,
 ): RoomRecord {
-  const detached = cloneRoomWriteCandidate(candidate);
+  const detached = cloneRoomWriteCandidate(
+    candidate,
+    legacyHangulGameStateAdapter,
+  );
   return Object.freeze({
     roomId: detached.roomId,
     roomCode: detached.roomCode,
@@ -222,8 +246,30 @@ function persistRoom(
   });
 }
 
-function cloneRoomRecord(room: RoomRecord): RoomRecord {
-  return persistRoom(room, room.storageRevision);
+function cloneRoomRecord(
+  room: RoomRecord,
+  legacyHangulGameStateAdapter: LegacyHangulGameStateStorage,
+): RoomRecord {
+  return persistRoom(
+    room,
+    room.storageRevision,
+    legacyHangulGameStateAdapter,
+  );
+}
+
+function inspectRoomGame(
+  room: RoomRecord,
+  legacyHangulGameStateAdapter: LegacyHangulGameStateStorage,
+): LegacyHangulGameLifecycleInspection | null {
+  if (room.game === null) {
+    return null;
+  }
+  if (room.gameType !== legacyHangulGameStateAdapter.gameType) {
+    throw new TypeError(
+      "Room gameType is not supported by the configured game-state adapter.",
+    );
+  }
+  return legacyHangulGameStateAdapter.inspectLifecycle(room.game);
 }
 
 function cloneVerificationData(
@@ -388,6 +434,7 @@ function deleteIdempotencyScopes(
 function createRoomInState(
   state: InMemoryState,
   candidate: RoomWriteCandidate,
+  legacyHangulGameStateAdapter: LegacyHangulGameStateStorage,
 ): CreateRoomResult {
   if (state.roomsById.has(candidate.roomId)) {
     return { status: "ROOM_ID_CONFLICT" };
@@ -396,15 +443,23 @@ function createRoomInState(
     return { status: "ROOM_CODE_CONFLICT" };
   }
 
-  const room = persistRoom(candidate, createStorageRevision(0));
+  const room = persistRoom(
+    candidate,
+    createStorageRevision(0),
+    legacyHangulGameStateAdapter,
+  );
   state.roomsById.set(room.roomId, room);
   state.roomIdByCode.set(room.roomCode, room.roomId);
-  return { status: "CREATED", room: cloneRoomRecord(room) };
+  return {
+    status: "CREATED",
+    room: cloneRoomRecord(room, legacyHangulGameStateAdapter),
+  };
 }
 
 function replaceRoomInState(
   state: InMemoryState,
   input: ReplaceRoomInput,
+  legacyHangulGameStateAdapter: LegacyHangulGameStateStorage,
 ): ReplaceRoomResult {
   const current = state.roomsById.get(input.candidate.roomId);
   if (current === undefined) {
@@ -431,13 +486,17 @@ function replaceRoomInState(
   const room = persistRoom(
     input.candidate,
     incrementStorageRevision(current.storageRevision),
+    legacyHangulGameStateAdapter,
   );
   if (current.roomCode !== room.roomCode) {
     state.roomIdByCode.delete(current.roomCode);
   }
   state.roomsById.set(room.roomId, room);
   state.roomIdByCode.set(room.roomCode, room.roomId);
-  return { status: "REPLACED", room: cloneRoomRecord(room) };
+  return {
+    status: "REPLACED",
+    room: cloneRoomRecord(room, legacyHangulGameStateAdapter),
+  };
 }
 
 function deleteRoomInState(
@@ -585,24 +644,30 @@ function roomFailure(
 function applyRoomMutation(
   state: InMemoryState,
   changeSet: RoomUnitOfWorkChangeSet,
+  legacyHangulGameStateAdapter: LegacyHangulGameStateStorage,
 ): AppliedRoomResult {
   switch (changeSet.roomMutation.kind) {
     case "CREATE": {
       const result = createRoomInState(
         state,
         changeSet.roomMutation.candidate,
+        legacyHangulGameStateAdapter,
       );
       return result.status === "CREATED"
         ? { status: "APPLIED", room: result.room }
         : { status: "FAILED", reason: roomFailure(result) };
     }
     case "REPLACE": {
-      const result = replaceRoomInState(state, {
-        candidate: changeSet.roomMutation.candidate,
-        expectedRoomRevision: changeSet.roomMutation.expectedRoomRevision,
-        expectedStorageRevision:
-          changeSet.roomMutation.expectedStorageRevision,
-      });
+      const result = replaceRoomInState(
+        state,
+        {
+          candidate: changeSet.roomMutation.candidate,
+          expectedRoomRevision: changeSet.roomMutation.expectedRoomRevision,
+          expectedStorageRevision:
+            changeSet.roomMutation.expectedStorageRevision,
+        },
+        legacyHangulGameStateAdapter,
+      );
       return result.status === "REPLACED"
         ? { status: "APPLIED", room: result.room }
         : { status: "FAILED", reason: roomFailure(result) };
@@ -683,14 +748,20 @@ export class InMemoryPersistence
   readonly #onCommitCheckpoint:
     | ((checkpoint: InMemoryCommitCheckpoint) => void)
     | undefined;
+  readonly #legacyHangulGameStateAdapter: LegacyHangulGameStateStorage;
 
   constructor(options: InMemoryPersistenceOptions = {}) {
+    this.#legacyHangulGameStateAdapter =
+      options.legacyHangulGameStateAdapter ??
+      new LegacyHangulGameStateAdapter();
     this.#onCommitCheckpoint = options.onCommitCheckpoint;
   }
 
   async findById(roomId: RoomId): Promise<RoomRecord | null> {
     const room = this.#state.roomsById.get(roomId);
-    return room === undefined ? null : cloneRoomRecord(room);
+    return room === undefined
+      ? null
+      : cloneRoomRecord(room, this.#legacyHangulGameStateAdapter);
   }
 
   async findByCode(roomCode: RoomCode): Promise<RoomRecord | null> {
@@ -699,7 +770,9 @@ export class InMemoryPersistence
       return null;
     }
     const room = this.#state.roomsById.get(roomId);
-    return room === undefined ? null : cloneRoomRecord(room);
+    return room === undefined
+      ? null
+      : cloneRoomRecord(room, this.#legacyHangulGameStateAdapter);
   }
 
   async listActiveTurnDeadlines(): Promise<
@@ -707,22 +780,23 @@ export class InMemoryPersistence
   > {
     const deadlines: ScheduledTurnDeadline[] = [];
     for (const room of this.#state.roomsById.values()) {
-      const game = room.game;
-      if (
-        room.phase !== "PLAYING" ||
-        game === null ||
-        game.turn === null ||
-        game.result !== null
-      ) {
+      if (room.phase !== "PLAYING" || room.game === null) {
+        continue;
+      }
+      const inspection = inspectRoomGame(
+        room,
+        this.#legacyHangulGameStateAdapter,
+      );
+      if (inspection === null || inspection.lifecycle !== "RUNNING") {
         continue;
       }
       deadlines.push(
         Object.freeze({
           roomId: room.roomId,
-          gameId: game.gameId,
-          turnId: game.turn.turnId,
-          expectedGameRevision: game.gameRevision,
-          deadlineAt: game.turn.deadlineAt,
+          gameId: inspection.gameId,
+          turnId: inspection.activeTurn.turnId,
+          expectedGameRevision: inspection.gameRevision,
+          deadlineAt: inspection.activeTurn.deadlineAt,
         }),
       );
     }
@@ -734,20 +808,21 @@ export class InMemoryPersistence
   > {
     const deadlines: ScheduledGameDeadline[] = [];
     for (const room of this.#state.roomsById.values()) {
-      const game = room.game;
-      if (
-        room.phase !== "PLAYING" ||
-        game === null ||
-        game.turn === null ||
-        game.result !== null
-      ) {
+      if (room.phase !== "PLAYING" || room.game === null) {
+        continue;
+      }
+      const inspection = inspectRoomGame(
+        room,
+        this.#legacyHangulGameStateAdapter,
+      );
+      if (inspection === null || inspection.lifecycle !== "RUNNING") {
         continue;
       }
       deadlines.push(
         Object.freeze({
           roomId: room.roomId,
-          gameId: game.gameId,
-          deadlineAt: game.gameDeadlineAt,
+          gameId: inspection.gameId,
+          deadlineAt: inspection.gameDeadlineAt,
         }),
       );
     }
@@ -759,20 +834,21 @@ export class InMemoryPersistence
   > {
     const identities: FinishedRoomRetentionIdentity[] = [];
     for (const room of this.#state.roomsById.values()) {
-      const game = room.game;
-      if (
-        room.phase !== "FINISHED" ||
-        game === null ||
-        game.result === null ||
-        game.turn !== null
-      ) {
+      if (room.phase !== "FINISHED" || room.game === null) {
+        continue;
+      }
+      const inspection = inspectRoomGame(
+        room,
+        this.#legacyHangulGameStateAdapter,
+      );
+      if (inspection === null || inspection.lifecycle !== "FINISHED") {
         continue;
       }
       identities.push(
         Object.freeze({
           roomId: room.roomId,
-          gameId: game.gameId,
-          finishedAt: game.result.finishedAt,
+          gameId: inspection.gameId,
+          finishedAt: inspection.finishedAt,
         }),
       );
     }
@@ -783,7 +859,11 @@ export class InMemoryPersistence
     candidate: RoomWriteCandidate,
   ): Promise<CreateRoomResult> {
     const nextState = copyState(this.#state);
-    const result = createRoomInState(nextState, candidate);
+    const result = createRoomInState(
+      nextState,
+      candidate,
+      this.#legacyHangulGameStateAdapter,
+    );
     if (result.status === "CREATED") {
       this.#state = nextState;
     }
@@ -792,7 +872,11 @@ export class InMemoryPersistence
 
   async replace(input: ReplaceRoomInput): Promise<ReplaceRoomResult> {
     const nextState = copyState(this.#state);
-    const result = replaceRoomInState(nextState, input);
+    const result = replaceRoomInState(
+      nextState,
+      input,
+      this.#legacyHangulGameStateAdapter,
+    );
     if (result.status === "REPLACED") {
       this.#state = nextState;
     }
@@ -938,7 +1022,11 @@ export class InMemoryPersistence
     }
 
     const nextState = copyState(this.#state);
-    const roomResult = applyRoomMutation(nextState, changeSet);
+    const roomResult = applyRoomMutation(
+      nextState,
+      changeSet,
+      this.#legacyHangulGameStateAdapter,
+    );
     if (roomResult.status === "FAILED") {
       return {
         status: "PRECONDITION_FAILED",
@@ -979,7 +1067,12 @@ export class InMemoryPersistence
     return {
       status: "COMMITTED",
       room:
-        roomResult.room === null ? null : cloneRoomRecord(roomResult.room),
+        roomResult.room === null
+          ? null
+          : cloneRoomRecord(
+              roomResult.room,
+              this.#legacyHangulGameStateAdapter,
+            ),
       idempotency: cloneIdempotencyRecord(idempotency),
     };
   }

@@ -21,6 +21,7 @@ import { parse } from "valibot";
 
 import { createInitialGameState } from "../domain/game/game-state.js";
 import { createTimeLimitResult } from "../domain/game/result-engine.js";
+import { LegacyHangulGameStateAdapter } from "../games/legacy-hangul-game-state-adapter.js";
 import {
   createStorageRevision,
   createUnboundSessionRecord,
@@ -248,15 +249,57 @@ test("RoomRepository는 입력과 반환값의 외부 mutation에서 내부 stat
 });
 
 test("RoomRepository는 지원하지 않는 gameType을 create 경계에서 거절한다", async () => {
-  const persistence = new InMemoryPersistence();
-  const malformedCandidate = {
+  const legacyAdapter = new LegacyHangulGameStateAdapter();
+  let adapterInvocationCount = 0;
+  const persistence = new InMemoryPersistence({
+    legacyHangulGameStateAdapter: {
+      gameType: legacyAdapter.gameType,
+      cloneAndValidate(state) {
+        adapterInvocationCount += 1;
+        return legacyAdapter.cloneAndValidate(state);
+      },
+      inspectLifecycle(state) {
+        adapterInvocationCount += 1;
+        return legacyAdapter.inspectLifecycle(state);
+      },
+    },
+  });
+  const malformedLobbyCandidate = {
     ...roomFixture(),
     gameType: "UNSUPPORTED_GAME",
   } as unknown as RoomWriteCandidate;
+  const guestPlayerId = playerId("player-unsupported-game-guest");
+  const playingPlayers = [
+    ...malformedLobbyCandidate.players,
+    {
+      playerId: guestPlayerId,
+      nickname: parse(NicknameSchema, "Guest"),
+      joinOrder: 1,
+    },
+  ];
+  const malformedPlayingCandidate = {
+    ...malformedLobbyCandidate,
+    roomId: roomId("room-unsupported-game-playing"),
+    roomCode: roomCode("BCDEFG"),
+    phase: "PLAYING",
+    players: playingPlayers,
+    game: createInitialGameState({
+      playerIds: playingPlayers.map((player) => player.playerId),
+      startedAt: serverTime(10_000),
+      idGenerator: new FakeIdGenerator(),
+      randomSource: { nextInt: () => 0 },
+    }),
+  } as unknown as RoomWriteCandidate;
 
-  await assert.rejects(persistence.createIfAbsent(malformedCandidate));
-  assert.equal(await persistence.findById(malformedCandidate.roomId), null);
-  assert.equal(await persistence.findByCode(malformedCandidate.roomCode), null);
+  for (const malformedCandidate of [
+    malformedLobbyCandidate,
+    malformedPlayingCandidate,
+  ]) {
+    await assert.rejects(persistence.createIfAbsent(malformedCandidate));
+    assert.equal(await persistence.findById(malformedCandidate.roomId), null);
+    assert.equal(await persistence.findByCode(malformedCandidate.roomCode), null);
+  }
+  assert.equal(adapterInvocationCount, 0);
 });
 
 test("Legacy Hangul v1 Room phase는 concrete GameState lifecycle과 정확히 일치해야 한다", async () => {

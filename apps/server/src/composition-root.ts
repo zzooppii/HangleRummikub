@@ -26,6 +26,8 @@ import {
   type GameRegistration,
   type GameRegistrationReader,
 } from "./games/game-registry.js";
+import { LegacyHangulGameStateAdapter } from "./games/legacy-hangul-game-state-adapter.js";
+import { projectLegacyHangulV1Game } from "./games/legacy-hangul-v1-game-projector.js";
 import {
   LEGACY_V1_DEFAULT_GAME_TYPE,
   createLegacyHangulCompatibilityRegistration,
@@ -137,7 +139,10 @@ export function createApplicationRuntime(
   );
   gameRegistry.getRequired(LEGACY_V1_DEFAULT_GAME_TYPE);
 
-  const persistence = new InMemoryPersistence();
+  const legacyHangulGameStateAdapter = new LegacyHangulGameStateAdapter();
+  const persistence = new InMemoryPersistence({
+    legacyHangulGameStateAdapter,
+  });
   const clock = new SystemClock();
   const randomSource = new CryptoRandomSource();
   const idGenerator = new NodeCryptoIdGenerator();
@@ -413,6 +418,7 @@ export function createApplicationRuntime(
   const snapshotProjector = new LobbyStateSnapshotProjector({
     clock,
     presenceReader,
+    legacyHangulV1GameProjector: projectLegacyHangulV1Game,
   });
   const roomLeaveService = new RoomLeaveService({
     roomRepository: persistence,

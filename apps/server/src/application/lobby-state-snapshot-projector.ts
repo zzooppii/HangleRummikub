@@ -6,8 +6,8 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
-import type { BoardTilePlacement } from "../domain/game/board.js";
-import { JOKER_ALLOWED_SYMBOLS } from "../domain/game/tile-inventory.js";
+import type { LegacyHangulV1GameProjector } from "../games/legacy-hangul-v1-game-projector.js";
+import { LEGACY_V1_DEFAULT_GAME_TYPE } from "../games/legacy-hangul-compatibility-registration.js";
 import type { RoomRecord } from "../model/persistence.js";
 import type {
   PlayerPresenceReader,
@@ -21,6 +21,7 @@ export type RoomPresenceReadPort = PlayerPresenceReader;
 export type LobbyStateSnapshotProjectorDependencies = Readonly<{
   clock: Clock;
   presenceReader: PlayerPresenceReader;
+  legacyHangulV1GameProjector: LegacyHangulV1GameProjector;
 }>;
 
 export type ProjectLobbyStateSnapshotInput = Readonly<{
@@ -31,10 +32,13 @@ export type ProjectLobbyStateSnapshotInput = Readonly<{
 export class LobbyStateSnapshotProjector {
   readonly #clock: Clock;
   readonly #presenceReader: PlayerPresenceReader;
+  readonly #legacyHangulV1GameProjector: LegacyHangulV1GameProjector;
 
   constructor(dependencies: LobbyStateSnapshotProjectorDependencies) {
     this.#clock = dependencies.clock;
     this.#presenceReader = dependencies.presenceReader;
+    this.#legacyHangulV1GameProjector =
+      dependencies.legacyHangulV1GameProjector;
   }
 
   async project(
@@ -46,6 +50,11 @@ export class LobbyStateSnapshotProjector {
       )
     ) {
       throw new Error("Snapshot self Player is not present in the Room.");
+    }
+    if (input.room.gameType !== LEGACY_V1_DEFAULT_GAME_TYPE) {
+      throw new Error(
+        "Unsupported Room gameType for Legacy Hangul v1 projection.",
+      );
     }
 
     const presence = await this.#presenceReader.readRoomPresence(
@@ -89,160 +98,62 @@ export class LobbyStateSnapshotProjector {
     if (input.room.game === null) {
       throw new Error("A non-LOBBY Room must contain a GameState.");
     }
-
-    const game = input.room.game;
-    if (
-      (input.room.phase === "PLAYING" &&
-        (game.turn === null || game.result !== null)) ||
-      (input.room.phase === "FINISHED" &&
-        (game.turn !== null || game.result === null))
-    ) {
-      throw new Error("Room phase and canonical GameState are inconsistent.");
-    }
     if (input.room.phase !== "PLAYING" && input.room.phase !== "FINISHED") {
       throw new Error("Unsupported Room phase for Game projection.");
     }
-    const rack = game.racks.get(input.selfPlayerId);
-    if (rack === undefined) {
-      throw new Error("Snapshot self Player has no canonical rack.");
+
+    const gameProjection = this.#legacyHangulV1GameProjector({
+      phase: input.room.phase,
+      playerIds: input.room.players.map((player) => player.playerId),
+      selfPlayerId: input.selfPlayerId,
+      game: input.room.game,
+    });
+    if (gameProjection.phase !== input.room.phase) {
+      throw new Error("Room phase and Game projection are inconsistent.");
     }
 
-    const playingPlayers = input.room.players.map((player, index) => {
-      const publicView = basePlayers[index];
-      const playerRack = game.racks.get(player.playerId);
-      const initialMeldCompleted = game.initialMeldCompleted.get(
-        player.playerId,
-      );
-      if (
-        publicView === undefined ||
-        playerRack === undefined ||
-        initialMeldCompleted === undefined
-      ) {
-        throw new Error("GameState is missing a registered Player state.");
+    const playerProgressByPlayerId = new Map(
+      gameProjection.playerProgress.map(
+        (progress) => [progress.playerId, progress] as const,
+      ),
+    );
+    if (
+      playerProgressByPlayerId.size !== gameProjection.playerProgress.length
+    ) {
+      throw new Error("Game projection contains duplicate Player state.");
+    }
+    const playingPlayers = basePlayers.map((publicView) => {
+      const progress = playerProgressByPlayerId.get(publicView.playerId);
+      if (progress === undefined) {
+        throw new Error("Game projection is missing a registered Player state.");
       }
+
       return {
         ...publicView,
-        rackCount: playerRack.length,
-        initialMeldCompleted,
-        forfeited: game.forfeitedPlayerIds.has(player.playerId),
+        rackCount: progress.rackCount,
+        initialMeldCompleted: progress.initialMeldCompleted,
+        forfeited: progress.forfeited,
       };
     });
 
-    const privateRack = rack.map((tileId) => {
-      const tile = game.tilesById.get(tileId);
-      if (tile === undefined) {
-        throw new Error("Rack contains an unknown Tile.");
-      }
-      return tile.kind === "JOKER"
-        ? {
-            tileId: tile.tileId,
-            kind: tile.kind,
-            physicalType: tile.physicalType,
-            sourceBag: tile.sourceBag,
-            allowedSymbols: [...JOKER_ALLOWED_SYMBOLS],
-          }
-        : {
-            tileId: tile.tileId,
-            kind: tile.kind,
-            physicalType: tile.physicalType,
-            sourceBag: tile.sourceBag,
-            allowedSymbols: [...tile.allowedSymbols],
-          };
-    });
-
-    const projectBoardPlacement = (placement: BoardTilePlacement) => {
-      const tile = game.tilesById.get(placement.tileId);
-      if (tile === undefined) {
-        throw new Error("Board contains an unknown Tile.");
-      }
-
-      return tile.kind === "JOKER"
-        ? {
-            tileId: tile.tileId,
-            kind: tile.kind,
-            physicalType: tile.physicalType,
-            assignedSymbol: placement.assignedSymbol,
-            allowedSymbols: [...JOKER_ALLOWED_SYMBOLS],
-          }
-        : {
-            tileId: tile.tileId,
-            kind: tile.kind,
-            physicalType: tile.physicalType,
-            assignedSymbol: placement.assignedSymbol,
-            allowedSymbols: [...tile.allowedSymbols],
-          };
-    };
-    const publicBoard = {
-      wordGroups: game.board.wordGroups.map((wordGroup) => ({
-        groupId: wordGroup.groupId,
-        syllables: wordGroup.syllables.map((syllable) => ({
-          choseong: syllable.choseong.map(projectBoardPlacement),
-          jungseong: syllable.jungseong.map(projectBoardPlacement),
-          jongseong: syllable.jongseong.map(projectBoardPlacement),
-        })),
-      })),
-    };
-
-    const commonSnapshot = {
+    return v.parse(StateSnapshotSchema, {
       ...baseSnapshot,
       versions: {
         roomRevision: input.room.roomRevision,
-        gameRevision: game.gameRevision,
+        gameRevision: gameProjection.gameRevision,
         presenceVersion: presence.presenceVersion,
       },
       room: {
         roomId: input.room.roomId,
         roomCode: input.room.roomCode,
+        phase: gameProjection.phase,
         players: playingPlayers,
       },
-      game: {
-        gameId: game.gameId,
-        board: publicBoard,
-        turnOrder: game.turnOrder,
-        bagCounts: {
-          consonant: game.consonantBag.length,
-          vowel: game.vowelBag.length,
-        },
-      },
+      game: gameProjection.game,
       self: {
         playerId: input.selfPlayerId,
-        rack: privateRack,
+        rack: gameProjection.privateRack,
       },
-    };
-
-    if (input.room.phase === "PLAYING" && game.turn !== null) {
-      return v.parse(StateSnapshotSchema, {
-        ...commonSnapshot,
-        room: {
-          ...commonSnapshot.room,
-          phase: "PLAYING",
-        },
-        game: {
-          ...commonSnapshot.game,
-          turn: game.turn,
-        },
-      });
-    }
-
-    if (input.room.phase === "FINISHED" && game.result !== null) {
-      return v.parse(StateSnapshotSchema, {
-        ...commonSnapshot,
-        room: {
-          ...commonSnapshot.room,
-          phase: "FINISHED",
-        },
-        game: {
-          ...commonSnapshot.game,
-          result: {
-            reason: game.result.reason,
-            winnerPlayerIds: [...game.result.winnerPlayerIds],
-            rankings: game.result.rankings.map((entry) => ({ ...entry })),
-            finishedAt: game.result.finishedAt,
-          },
-        },
-      });
-    }
-
-    throw new Error("Room phase and canonical GameState are inconsistent.");
+    });
   }
 }
