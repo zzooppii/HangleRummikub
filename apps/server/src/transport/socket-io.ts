@@ -1574,10 +1574,6 @@ function registerRoomLeaveHandler(
         );
         return;
       }
-      const actorWasCurrent =
-        roomBefore.phase === "PLAYING" &&
-        roomBefore.game?.turn?.activePlayerId === binding.playerId;
-
       const result = await runtime.roomLeaveService.leave({
         roomId: binding.roomId,
         actorPlayerId: binding.playerId,
@@ -1645,10 +1641,7 @@ function registerRoomLeaveHandler(
       }
       acknowledgeIfPresent(acknowledge, acknowledgement);
 
-      if (
-        !result.data.roomClosed &&
-        (actorWasCurrent || result.data.phase === "FINISHED")
-      ) {
+      if (!result.data.roomClosed && result.gameAdvisory !== "NONE") {
         await emitCurrentGameAdvisory(io, runtime, binding.roomId);
       }
     }).catch(() => {
@@ -1701,7 +1694,7 @@ export function registerSocketIoHandlers(
   runtime: ApplicationRuntime,
 ): () => void {
   const authenticationExecutor = new KeyedSerialExecutor<SocketId>();
-  const unsubscribeTimeoutApplied = runtime.turnTimeoutService.subscribeApplied(
+  const unsubscribeTimeoutApplied = runtime.subscribeTurnTimeoutApplied(
     async (data) => {
       try {
         await fanOutRoomSnapshots(io, runtime, data.roomId);
@@ -1712,7 +1705,7 @@ export function registerSocketIoHandlers(
     },
   );
   const unsubscribeGameDeadlineApplied =
-    runtime.gameDeadlineService.subscribeApplied(async (data) => {
+    runtime.subscribeGameDeadlineApplied(async (data) => {
       try {
         await fanOutRoomSnapshots(io, runtime, data.roomId);
         await emitCurrentGameAdvisory(io, runtime, data.roomId);

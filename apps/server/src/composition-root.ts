@@ -27,6 +27,7 @@ import {
   type GameRegistrationReader,
 } from "./games/game-registry.js";
 import { LegacyHangulGameStateAdapter } from "./games/legacy-hangul-game-state-adapter.js";
+import { createLegacyHangulPlayerLifecycleActions } from "./games/legacy-hangul-player-lifecycle-actions.js";
 import {
   LegacyHangulV1CommandRouter,
   type LegacyHangulV1CommandCapability,
@@ -37,6 +38,11 @@ import {
   LEGACY_V1_DEFAULT_GAME_TYPE,
   createLegacyHangulCompatibilityRegistration,
 } from "./games/legacy-hangul-compatibility-registration.js";
+import {
+  LegacyHangulServerActionRouter,
+  type LegacyHangulServerActionCapability,
+  type LegacyHangulServerActionRouting,
+} from "./games/legacy-hangul-server-action-router.js";
 import { ConnectionRegistry } from "./infrastructure/connection-registry.js";
 import { ConnectionRegistryPresenceReader } from "./infrastructure/connection-registry-presence-reader.js";
 import { InMemoryPersistence } from "./infrastructure/in-memory-persistence.js";
@@ -64,8 +70,8 @@ export type ApplicationRuntime = Readonly<{
   clock: SystemClock;
   connectionRegistry: ConnectionRegistry;
   gameRegistry: GameRegistrationReader;
-  gameDeadlineService: GameDeadlineService;
   gameDeadlineScheduler: InProcessGameDeadlineScheduler;
+  legacyHangulServerActionRouter: LegacyHangulServerActionRouting;
   legacyHangulV1CommandRouter: LegacyHangulV1CommandRouting;
   overdueGameDeadlineSweeper: OverdueGameDeadlineSweeper;
   persistence: InMemoryPersistence;
@@ -76,8 +82,13 @@ export type ApplicationRuntime = Readonly<{
   sessionResumeService: SessionResumeService;
   snapshotProjector: LobbyStateSnapshotProjector;
   turnScheduler: InProcessTurnScheduler;
-  turnTimeoutService: TurnTimeoutService;
   overdueTurnSweeper: OverdueTurnSweeper;
+  subscribeGameDeadlineApplied(
+    listener: Parameters<GameDeadlineService["subscribeApplied"]>[0],
+  ): () => void;
+  subscribeTurnTimeoutApplied(
+    listener: Parameters<TurnTimeoutService["subscribeApplied"]>[0],
+  ): () => void;
   subscribeRoomClosed(listener: RoomClosedAdvisoryListener): () => void;
   subscribeRoomPlayerRemoved(
     listener: (roomId: RoomId, playerId: PlayerId) => void | Promise<void>,
@@ -148,6 +159,8 @@ export function createApplicationRuntime(
   const clock = new SystemClock();
   const randomSource = new CryptoRandomSource();
   const idGenerator = new NodeCryptoIdGenerator();
+  const playerLifecycleActions =
+    createLegacyHangulPlayerLifecycleActions(idGenerator);
   const roomCodeGenerator = new RandomRoomCodeGenerator(randomSource);
   const sessionTokenIssuer = new NodeCryptoSessionTokenIssuer();
   const roomMutationExecutor = new KeyedSerialExecutor<RoomId>();
@@ -162,16 +175,21 @@ export function createApplicationRuntime(
   let acceptsTimeoutWork = false;
   let acceptsGameDeadlineWork = false;
   let acceptsRoomPolicyWork = false;
-  let turnTimeoutService: TurnTimeoutService | undefined;
-  let gameDeadlineService: GameDeadlineService | undefined;
+  let legacyHangulServerActionRouter:
+    | LegacyHangulServerActionRouting
+    | undefined;
   let roomPresencePolicyService: RoomPresencePolicyService | undefined;
   const enqueueTimeout = async (
     deadline: Parameters<TurnTimeoutService["timeout"]>[0],
   ): Promise<void> => {
-    if (!acceptsTimeoutWork || turnTimeoutService === undefined) {
+    if (
+      !acceptsTimeoutWork ||
+      legacyHangulServerActionRouter === undefined
+    ) {
       return;
     }
-    const result = await turnTimeoutService.timeout(deadline);
+    const result =
+      await legacyHangulServerActionRouter.handleTurnTimeout(deadline);
     if (result.status === "FAILED") {
       reportTurnTimeoutFailure();
     }
@@ -190,10 +208,14 @@ export function createApplicationRuntime(
   const enqueueGameDeadline = async (
     deadline: Parameters<GameDeadlineService["expire"]>[0],
   ): Promise<void> => {
-    if (!acceptsGameDeadlineWork || gameDeadlineService === undefined) {
+    if (
+      !acceptsGameDeadlineWork ||
+      legacyHangulServerActionRouter === undefined
+    ) {
       return;
     }
-    const result = await gameDeadlineService.expire(deadline);
+    const result =
+      await legacyHangulServerActionRouter.handleGameDeadline(deadline);
     if (result.status === "FAILED") {
       reportGameDeadlineFailure();
     }
@@ -306,6 +328,7 @@ export function createApplicationRuntime(
     scheduler: roomPolicyScheduler,
     roomPresenceReader: presenceReader,
     playerPresenceLeaseReader: presenceReader,
+    playerLifecycleActions,
     clock,
     lobbyGraceService: lobbyDisconnectGraceService,
     retentionService: roomRetentionService,
@@ -326,7 +349,7 @@ export function createApplicationRuntime(
     ]);
   };
 
-  gameDeadlineService = new GameDeadlineService({
+  const gameDeadlineService = new GameDeadlineService({
     roomRepository: persistence,
     idempotencyRepository: persistence,
     roomUnitOfWork: persistence,
@@ -416,7 +439,7 @@ export function createApplicationRuntime(
     roomRepository: persistence,
     capability: legacyHangulV1CommandCapability,
   });
-  turnTimeoutService = new TurnTimeoutService({
+  const turnTimeoutService = new TurnTimeoutService({
     roomRepository: persistence,
     idempotencyRepository: persistence,
     roomUnitOfWork: persistence,
@@ -428,6 +451,16 @@ export function createApplicationRuntime(
     turnScheduler,
     onTurnSchedulingFailure: reportTurnSchedulingFailure,
     onGameFinished,
+  });
+  const legacyHangulServerActionCapability: LegacyHangulServerActionCapability =
+    Object.freeze({
+      gameType: LEGACY_V1_DEFAULT_GAME_TYPE,
+      handleTurnTimeout: (input) => turnTimeoutService.timeout(input),
+      handleGameDeadline: (input) => gameDeadlineService.expire(input),
+    });
+  legacyHangulServerActionRouter = new LegacyHangulServerActionRouter({
+    roomRepository: persistence,
+    capability: legacyHangulServerActionCapability,
   });
   const snapshotProjector = new LobbyStateSnapshotProjector({
     clock,
@@ -441,8 +474,8 @@ export function createApplicationRuntime(
     roomCleanupUnitOfWork: persistence,
     roomMutationExecutor,
     presenceReader,
+    playerLifecycleActions,
     clock,
-    idGenerator,
     resources: roomLifecycleResources,
     turnScheduler,
     onTurnSchedulingFailure: reportTurnSchedulingFailure,
@@ -454,8 +487,8 @@ export function createApplicationRuntime(
     clock,
     connectionRegistry,
     gameRegistry,
-    gameDeadlineService,
     gameDeadlineScheduler,
+    legacyHangulServerActionRouter,
     legacyHangulV1CommandRouter,
     overdueGameDeadlineSweeper,
     persistence,
@@ -466,8 +499,13 @@ export function createApplicationRuntime(
     sessionResumeService,
     snapshotProjector,
     turnScheduler,
-    turnTimeoutService,
     overdueTurnSweeper,
+    subscribeGameDeadlineApplied(listener) {
+      return gameDeadlineService.subscribeApplied(listener);
+    },
+    subscribeTurnTimeoutApplied(listener) {
+      return turnTimeoutService.subscribeApplied(listener);
+    },
     subscribeRoomClosed(listener) {
       roomClosedListeners.add(listener);
       return () => {

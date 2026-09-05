@@ -104,6 +104,12 @@ import {
   createLegacyHangulCompatibilityRegistration,
   LEGACY_V1_DEFAULT_GAME_TYPE,
 } from "../games/legacy-hangul-compatibility-registration.js";
+import { createLegacyHangulPlayerLifecycleActions } from "../games/legacy-hangul-player-lifecycle-actions.js";
+import {
+  LegacyHangulServerActionRouter,
+  type LegacyHangulServerActionCapability,
+  type LegacyHangulServerActionRouting,
+} from "../games/legacy-hangul-server-action-router.js";
 import {
   LegacyHangulV1CommandRouter,
   type LegacyHangulV1CommandCapability,
@@ -334,6 +340,8 @@ function createDeterministicRuntime(): DeterministicRuntime {
     roomCode("BCDEFG"),
   ]);
   const idGenerator = new FakeIdGenerator();
+  const playerLifecycleActions =
+    createLegacyHangulPlayerLifecycleActions(idGenerator);
   const roomMutationExecutor = new KeyedSerialExecutor<RoomId>();
   const registryPresenceReader = new ConnectionRegistryPresenceReader(
     connectionRegistry,
@@ -343,15 +351,19 @@ function createDeterministicRuntime(): DeterministicRuntime {
   );
   let acceptsTimeoutWork = false;
   let acceptsGameDeadlineWork = false;
-  let turnTimeoutService: TurnTimeoutService | undefined;
-  let gameDeadlineService: GameDeadlineService | undefined;
+  let legacyHangulServerActionRouter:
+    | LegacyHangulServerActionRouting
+    | undefined;
   const enqueueTimeout = async (
     deadline: ScheduledTurnDeadline,
   ): Promise<void> => {
-    if (!acceptsTimeoutWork || turnTimeoutService === undefined) {
+    if (
+      !acceptsTimeoutWork ||
+      legacyHangulServerActionRouter === undefined
+    ) {
       return;
     }
-    await turnTimeoutService.timeout(deadline);
+    await legacyHangulServerActionRouter.handleTurnTimeout(deadline);
   };
   const turnScheduler = new InProcessTurnScheduler({
     clock,
@@ -365,10 +377,13 @@ function createDeterministicRuntime(): DeterministicRuntime {
   const enqueueGameDeadline = async (
     deadline: ScheduledGameDeadline,
   ): Promise<void> => {
-    if (!acceptsGameDeadlineWork || gameDeadlineService === undefined) {
+    if (
+      !acceptsGameDeadlineWork ||
+      legacyHangulServerActionRouter === undefined
+    ) {
       return;
     }
-    await gameDeadlineService.expire(deadline);
+    await legacyHangulServerActionRouter.handleGameDeadline(deadline);
   };
   const gameDeadlineScheduler = new InProcessGameDeadlineScheduler({
     clock,
@@ -442,6 +457,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
     scheduler: roomPolicyScheduler,
     roomPresenceReader: registryPresenceReader,
     playerPresenceLeaseReader: registryPresenceReader,
+    playerLifecycleActions,
     clock,
     lobbyGraceService: lobbyDisconnectGraceService,
     retentionService: roomRetentionService,
@@ -456,7 +472,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
       roomPresencePolicyService?.scheduleFinishedRetention(input.roomId),
     ]);
   };
-  gameDeadlineService = new GameDeadlineService({
+  const gameDeadlineService = new GameDeadlineService({
     roomRepository: persistence,
     idempotencyRepository: persistence,
     roomUnitOfWork: persistence,
@@ -537,7 +553,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
     roomRepository: persistence,
     capability: legacyHangulV1CommandCapability,
   });
-  turnTimeoutService = new TurnTimeoutService({
+  const turnTimeoutService = new TurnTimeoutService({
     roomRepository: persistence,
     idempotencyRepository: persistence,
     roomUnitOfWork: persistence,
@@ -548,6 +564,16 @@ function createDeterministicRuntime(): DeterministicRuntime {
     presenceLeaseReader: registryPresenceReader,
     turnScheduler,
     onGameFinished,
+  });
+  const legacyHangulServerActionCapability: LegacyHangulServerActionCapability =
+    Object.freeze({
+      gameType: LEGACY_V1_DEFAULT_GAME_TYPE,
+      handleTurnTimeout: (input) => turnTimeoutService.timeout(input),
+      handleGameDeadline: (input) => gameDeadlineService.expire(input),
+    });
+  legacyHangulServerActionRouter = new LegacyHangulServerActionRouter({
+    roomRepository: persistence,
+    capability: legacyHangulServerActionCapability,
   });
   const snapshotProjector = new LobbyStateSnapshotProjector({
     clock,
@@ -561,8 +587,8 @@ function createDeterministicRuntime(): DeterministicRuntime {
     roomCleanupUnitOfWork: persistence,
     roomMutationExecutor,
     presenceReader: registryPresenceReader,
+    playerLifecycleActions,
     clock,
-    idGenerator,
     resources: lifecycleResources,
     turnScheduler,
     onGameFinished,
@@ -573,8 +599,8 @@ function createDeterministicRuntime(): DeterministicRuntime {
       clock,
       connectionRegistry,
       gameRegistry,
-      gameDeadlineService,
       gameDeadlineScheduler,
+      legacyHangulServerActionRouter,
       legacyHangulV1CommandRouter,
       overdueGameDeadlineSweeper,
       persistence,
@@ -585,8 +611,13 @@ function createDeterministicRuntime(): DeterministicRuntime {
       sessionResumeService,
       snapshotProjector,
       turnScheduler,
-      turnTimeoutService,
       overdueTurnSweeper,
+      subscribeGameDeadlineApplied(listener) {
+        return gameDeadlineService.subscribeApplied(listener);
+      },
+      subscribeTurnTimeoutApplied(listener) {
+        return turnTimeoutService.subscribeApplied(listener);
+      },
       subscribeRoomClosed(listener) {
         roomClosedListeners.add(listener);
         return () => {
@@ -3373,11 +3404,12 @@ test(
         host.observer.gameFinishes.splice(0);
         guest.observer.gameFinishes.splice(0);
 
-        const result = await deterministic.runtime.gameDeadlineService.expire({
-          roomId: overdue.roomId,
-          gameId: overdue.game.gameId,
-          deadlineAt: overdue.game.gameDeadlineAt,
-        });
+        const result =
+          await deterministic.runtime.legacyHangulServerActionRouter.handleGameDeadline({
+            roomId: overdue.roomId,
+            gameId: overdue.game.gameId,
+            deadlineAt: overdue.game.gameDeadlineAt,
+          });
         assert.equal(result.status, "APPLIED");
         if (result.status !== "APPLIED") {
           throw new Error("Expected overdue Game deadline to finish.");
@@ -3851,13 +3883,14 @@ test(
             ) === "OFFLINE",
         );
 
-        const timeoutResult = await deterministic.runtime.turnTimeoutService.timeout({
-          roomId: overdue.roomId,
-          gameId: overdue.game.gameId,
-          turnId: overdue.game.turn.turnId,
-          expectedGameRevision: overdue.game.gameRevision,
-          deadlineAt: overdue.game.turn.deadlineAt,
-        });
+        const timeoutResult =
+          await deterministic.runtime.legacyHangulServerActionRouter.handleTurnTimeout({
+            roomId: overdue.roomId,
+            gameId: overdue.game.gameId,
+            turnId: overdue.game.turn.turnId,
+            expectedGameRevision: overdue.game.gameRevision,
+            deadlineAt: overdue.game.turn.deadlineAt,
+          });
         assert.equal(timeoutResult.status, "APPLIED");
 
         const [otherEvent, otherTurn] = await Promise.all([
@@ -3886,13 +3919,14 @@ test(
         assert.ok(persistedAfter?.game);
         assert.equal(persistedAfter.storageRevision, overdue.storageRevision + 1);
         assert.equal(persistedAfter.roomRevision, overdue.roomRevision);
-        const duplicateTimeout = await deterministic.runtime.turnTimeoutService.timeout({
-          roomId: overdue.roomId,
-          gameId: overdue.game.gameId,
-          turnId: overdue.game.turn.turnId,
-          expectedGameRevision: overdue.game.gameRevision,
-          deadlineAt: overdue.game.turn.deadlineAt,
-        });
+        const duplicateTimeout =
+          await deterministic.runtime.legacyHangulServerActionRouter.handleTurnTimeout({
+            roomId: overdue.roomId,
+            gameId: overdue.game.gameId,
+            turnId: overdue.game.turn.turnId,
+            expectedGameRevision: overdue.game.gameRevision,
+            deadlineAt: overdue.game.turn.deadlineAt,
+          });
         assert.equal(duplicateTimeout.status, "NO_OP");
         assert.deepEqual(
           await deterministic.runtime.persistence.findById(
@@ -4375,7 +4409,7 @@ test(
             result: Extract<
               Awaited<
                 ReturnType<
-                  ApplicationRuntime["turnTimeoutService"]["timeout"]
+                  ApplicationRuntime["legacyHangulServerActionRouter"]["handleTurnTimeout"]
                 >
               >,
               { status: "APPLIED" }
@@ -4387,7 +4421,7 @@ test(
               started.snapshot.room.roomId,
             );
             const result =
-              await deterministic.runtime.turnTimeoutService.timeout({
+              await deterministic.runtime.legacyHangulServerActionRouter.handleTurnTimeout({
                 roomId: overdue.roomId,
                 gameId: overdue.game.gameId,
                 turnId: overdue.game.turn.turnId,
@@ -4435,7 +4469,7 @@ test(
             started.snapshot.room.roomId,
           );
           const secondOfflineTimeout =
-            await deterministic.runtime.turnTimeoutService.timeout({
+            await deterministic.runtime.legacyHangulServerActionRouter.handleTurnTimeout({
               roomId: overdue.roomId,
               gameId: overdue.game.gameId,
               turnId: overdue.game.turn.turnId,
@@ -4920,13 +4954,14 @@ test(
             deterministic.runtime.persistence,
             originalRoomId,
           );
-          const timeout = await deterministic.runtime.turnTimeoutService.timeout({
-            roomId: originalRoomId,
-            gameId: originalGameId,
-            turnId: overdue.game.turn.turnId,
-            expectedGameRevision: overdue.game.gameRevision,
-            deadlineAt: overdue.game.turn.deadlineAt,
-          });
+          const timeout =
+            await deterministic.runtime.legacyHangulServerActionRouter.handleTurnTimeout({
+              roomId: originalRoomId,
+              gameId: originalGameId,
+              turnId: overdue.game.turn.turnId,
+              expectedGameRevision: overdue.game.gameRevision,
+              deadlineAt: overdue.game.turn.deadlineAt,
+            });
           assert.equal(timeout.status, "APPLIED");
           if (timeout.status !== "APPLIED") {
             throw new Error("Expected integrated timeout to apply.");

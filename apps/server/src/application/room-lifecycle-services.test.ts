@@ -9,6 +9,7 @@ import {
   RoomIdSchema,
   RoomRevisionSchema,
   ServerTimeSchema,
+  type GameType,
   type PlayerId,
   type RoomId,
 } from "@hangul-rummikub/shared";
@@ -26,6 +27,7 @@ import type {
 } from "../ports/room-policy-scheduler.js";
 import type { RoomPresencePolicyReader } from "../ports/room-presence-policy.js";
 import type { RoomRepository } from "../ports/room-repository.js";
+import type { RoomUnitOfWork } from "../ports/room-unit-of-work.js";
 import type { ScheduledTurnDeadline, TurnScheduler } from "../ports/system.js";
 import { ConnectionRegistryPresenceReader } from "../infrastructure/connection-registry-presence-reader.js";
 import {
@@ -37,6 +39,11 @@ import { InMemoryPersistence } from "../infrastructure/in-memory-persistence.js"
 import { KeyedSerialExecutor } from "../infrastructure/keyed-serial-executor.js";
 import { RoomLifecycleResources } from "../infrastructure/room-lifecycle-resources.js";
 import { FakeClock, FakeIdGenerator } from "../infrastructure/system.js";
+import {
+  createLegacyHangulPlayerLifecycleActions,
+  type LegacyHangulPlayerLifecycleActionRouting,
+} from "../games/legacy-hangul-player-lifecycle-actions.js";
+import { LegacyHangulServerActionRouter } from "../games/legacy-hangul-server-action-router.js";
 import { LobbyDisconnectGraceService } from "./lobby-disconnect-grace-service.js";
 import { RoomCleanupService } from "./room-cleanup-service.js";
 import { RoomLeaveService } from "./room-leave-service.js";
@@ -45,6 +52,7 @@ import {
   ROOM_RETENTION_MS,
 } from "./room-presence-policy-service.js";
 import { RoomRetentionService } from "./room-retention-service.js";
+import { TurnTimeoutService } from "./turn-timeout-service.js";
 
 class RecordingPolicyScheduler implements RoomPolicyScheduler {
   readonly scheduled: RoomPolicyDeadline[] = [];
@@ -111,6 +119,8 @@ async function createHarness(playerCount = 2): Promise<LifecycleHarness> {
   const clock = new FakeClock(1_000);
   const scheduler = new RecordingPolicyScheduler();
   const executor = new KeyedSerialExecutor<RoomId>();
+  const playerLifecycleActions =
+    createLegacyHangulPlayerLifecycleActions(new FakeIdGenerator());
   const players = Array.from({ length: playerCount }, (_, index) => ({
     playerId: playerId(`lifecycle-player-${index}`),
     nickname: parse(NicknameSchema, `Player${index}`),
@@ -189,6 +199,7 @@ async function createHarness(playerCount = 2): Promise<LifecycleHarness> {
     scheduler,
     roomPresenceReader: presenceReader,
     playerPresenceLeaseReader: presenceReader,
+    playerLifecycleActions,
     clock,
     lobbyGraceService: graceService,
     retentionService,
@@ -200,8 +211,8 @@ async function createHarness(playerCount = 2): Promise<LifecycleHarness> {
     roomCleanupUnitOfWork: persistence,
     roomMutationExecutor: executor,
     presenceReader,
+    playerLifecycleActions,
     clock,
-    idGenerator: new FakeIdGenerator(),
     resources,
     turnScheduler,
   });
@@ -332,6 +343,9 @@ test("Room 조회 중 resume된 stale Lobby disconnect callback은 grace를 뒤�
     scheduler: harness.scheduler,
     roomPresenceReader: presenceReader,
     playerPresenceLeaseReader: presenceReader,
+    playerLifecycleActions: createLegacyHangulPlayerLifecycleActions(
+      new FakeIdGenerator(),
+    ),
     clock: harness.clock,
     lobbyGraceService: harness.graceService,
     retentionService: harness.retentionService,
@@ -483,8 +497,10 @@ test("Lobby leave 중 successor presence lease 경합은 UNAUTHENTICATED가 아�
     roomCleanupUnitOfWork: harness.persistence,
     roomMutationExecutor: new KeyedSerialExecutor<RoomId>(),
     presenceReader: racingPresenceReader,
+    playerLifecycleActions: createLegacyHangulPlayerLifecycleActions(
+      new FakeIdGenerator(),
+    ),
     clock: harness.clock,
-    idGenerator: new FakeIdGenerator(),
   });
   const input = {
     roomId: harness.room.roomId,
@@ -549,6 +565,7 @@ test("current Player explicit leave는 penalty 없이 forfeit하고 next eligibl
     authorization: { isCurrent: () => true },
   });
   assert.equal(result.ok, true);
+  assert.equal(result.ok && result.gameAdvisory, "TURN_STARTED");
   const room = await harness.persistence.findById(playing.room.roomId);
   assert.ok(room?.game?.turn);
   assert.equal(room.game.forfeitedPlayerIds.has(activePlayerId), true);
@@ -593,6 +610,7 @@ test("non-current Playing leave는 current Turn/deadline을 보존하고 새 gam
     authorization: { isCurrent: () => true },
   });
   assert.equal(result.ok, true);
+  assert.equal(result.ok && result.gameAdvisory, "NONE");
   const room = await harness.persistence.findById(started.room.roomId);
   assert.ok(room?.game?.turn);
   assert.equal(room.game.turn.turnId, oldTurn.turnId);
@@ -651,6 +669,7 @@ test("이미 forfeited인 Playing Player leave는 session만 정리하고 gamepl
     authorization: { isCurrent: () => true },
   });
   assert.equal(result.ok, true);
+  assert.equal(result.ok && result.gameAdvisory, "NONE");
   const after = await harness.persistence.findById(before.roomId);
   assert.ok(after?.game?.turn && beforeGame.turn);
   assert.equal(after.roomRevision, before.roomRevision);
@@ -710,6 +729,7 @@ test("마지막 non-forfeit Playing Player leave는 ALL_PLAYERS_FORFEITED로 원
   });
   assert.equal(result.ok, true);
   if (!result.ok) return;
+  assert.equal(result.gameAdvisory, "GAME_FINISHED");
   assert.equal(result.data.phase, "FINISHED");
   assert.equal(result.data.roomRevision, before.roomRevision + 1);
   assert.equal(result.data.gameRevision, beforeGame.gameRevision + 1);
@@ -821,6 +841,257 @@ test("resume은 PLAYING offline timeout streak만 storage-only reset하고 publi
   assert.equal(after.roomRevision, before.roomRevision);
   assert.equal(after.game.turn.turnId, beforeGame.turn.turnId);
   assert.equal(after.storageRevision, before.storageRevision + 1);
+});
+
+test("corrupt PLAYING gameType은 leave와 presence-restored Hangul action을 UoW 전에 차단한다", async () => {
+  const harness = await createHarness(2);
+  const initial = await harness.persistence.findById(harness.room.roomId);
+  assert.ok(initial);
+  const game = createInitialGameState({
+    playerIds: initial.players.map((player) => player.playerId),
+    startedAt: harness.clock.now(),
+    idGenerator: new FakeIdGenerator(),
+    randomSource: { nextInt: () => 0 },
+  });
+  const actorPlayerId = game.turn.activePlayerId;
+  const streaks = new Map(game.offlineTimeoutStreakByPlayerId);
+  streaks.set(actorPlayerId, 1);
+  const started = await harness.persistence.replace({
+    candidate: {
+      ...initial,
+      phase: "PLAYING",
+      game: { ...game, offlineTimeoutStreakByPlayerId: streaks },
+      roomRevision: parse(RoomRevisionSchema, initial.roomRevision + 1),
+    },
+    expectedRoomRevision: initial.roomRevision,
+    expectedStorageRevision: initial.storageRevision,
+  });
+  assert.equal(started.status, "REPLACED");
+  if (started.status !== "REPLACED" || started.room.game === null) return;
+
+  const before = started.room;
+  const beforeGame = started.room.game;
+  const corruptRoom = Object.freeze({
+    ...before,
+    // This repository wrapper models corrupt persisted metadata without
+    // weakening the production GameType or persistence validation paths.
+    gameType: "UNKNOWN_GAME" as GameType,
+  });
+  const corruptRoomRepository: RoomRepository = {
+    findById: async (roomId) =>
+      roomId === before.roomId ? corruptRoom : null,
+    findByCode: async (roomCode) =>
+      roomCode === before.roomCode ? corruptRoom : null,
+    createIfAbsent: (candidate) =>
+      harness.persistence.createIfAbsent(candidate),
+    replace: (input) => harness.persistence.replace(input),
+    delete: (input) => harness.persistence.delete(input),
+  };
+  let commitCalls = 0;
+  const roomUnitOfWork: RoomUnitOfWork = {
+    commit: (changeSet, precondition) => {
+      commitCalls += 1;
+      return harness.persistence.commit(changeSet, precondition);
+    },
+  };
+  const actionCalls = { leave: 0, presenceRestored: 0 };
+  const playerLifecycleActions: LegacyHangulPlayerLifecycleActionRouting =
+    Object.freeze({
+      gameType: "HANGUL_TILE",
+      applyPlayingLeave: () => {
+        actionCalls.leave += 1;
+        throw new Error("Unsupported gameType must not reach Hangul leave.");
+      },
+      planPresenceRestored: () => {
+        actionCalls.presenceRestored += 1;
+        throw new Error(
+          "Unsupported gameType must not reach Hangul presence restore.",
+        );
+      },
+    });
+  const presenceReader = new ConnectionRegistryPresenceReader(
+    harness.registry,
+  );
+  const roomMutationExecutor = new KeyedSerialExecutor<RoomId>();
+  const leaveService = new RoomLeaveService({
+    roomRepository: corruptRoomRepository,
+    idempotencyRepository: harness.persistence,
+    roomUnitOfWork,
+    roomCleanupUnitOfWork: harness.persistence,
+    roomMutationExecutor,
+    presenceReader,
+    playerLifecycleActions,
+    clock: harness.clock,
+  });
+  const policyService = new RoomPresencePolicyService({
+    roomRepository: corruptRoomRepository,
+    roomUnitOfWork,
+    roomMutationExecutor,
+    scheduler: harness.scheduler,
+    roomPresenceReader: presenceReader,
+    playerPresenceLeaseReader: presenceReader,
+    playerLifecycleActions,
+    clock: harness.clock,
+    lobbyGraceService: harness.graceService,
+    retentionService: harness.retentionService,
+  });
+  const playerIndex = before.players.findIndex(
+    (player) => player.playerId === actorPlayerId,
+  );
+  assert.notEqual(playerIndex, -1);
+  const verificationData = harness.sessionVerifications[playerIndex];
+  assert.ok(verificationData);
+  const sessionBefore = await harness.persistence.findByVerificationData(
+    verificationData,
+  );
+  assert.ok(sessionBefore);
+
+  const leave = await leaveService.leave({
+    roomId: before.roomId,
+    actorPlayerId,
+    requestId: parse(RequestIdSchema, "corrupt-game-type-leave"),
+    expectedRoomRevision: before.roomRevision,
+    expectedGameRevision: beforeGame.gameRevision,
+    authorization: { isCurrent: () => true },
+  });
+  assert.equal(leave.ok, false);
+  if (!leave.ok) {
+    assert.equal(leave.error.code, "INTERNAL_ERROR");
+  }
+  assert.equal(
+    await policyService.resetOfflineTimeoutStreak(
+      before.roomId,
+      actorPlayerId,
+    ),
+    false,
+  );
+
+  assert.deepEqual(actionCalls, { leave: 0, presenceRestored: 0 });
+  assert.equal(commitCalls, 0);
+  assert.deepEqual(await harness.persistence.findById(before.roomId), before);
+  assert.deepEqual(
+    await harness.persistence.findByVerificationData(verificationData),
+    sessionBefore,
+  );
+});
+
+test("resume streak reset 뒤 다음 offline timeout은 다시 첫 streak로 처리된다", async () => {
+  const harness = await createHarness(2);
+  const initial = await harness.persistence.findById(harness.room.roomId);
+  assert.ok(initial);
+  const game = createInitialGameState({
+    playerIds: initial.players.map((player) => player.playerId),
+    startedAt: harness.clock.now(),
+    idGenerator: new FakeIdGenerator(),
+    randomSource: { nextInt: () => 0 },
+  });
+  const resumedPlayerId = game.turn.activePlayerId;
+  const streaks = new Map(game.offlineTimeoutStreakByPlayerId);
+  streaks.set(resumedPlayerId, 1);
+  const started = await harness.persistence.replace({
+    candidate: {
+      ...initial,
+      phase: "PLAYING",
+      game: { ...game, offlineTimeoutStreakByPlayerId: streaks },
+      roomRevision: parse(RoomRevisionSchema, initial.roomRevision + 1),
+    },
+    expectedRoomRevision: initial.roomRevision,
+    expectedStorageRevision: initial.storageRevision,
+  });
+  assert.equal(started.status, "REPLACED");
+  if (started.status !== "REPLACED" || started.room.game === null) return;
+  const beforeReset = started.room;
+  const beforeResetGame = started.room.game;
+  const presenceVersionBeforeReset = harness.registry.getPresenceVersion(
+    beforeReset.roomId,
+  );
+
+  await harness.policyService.onResume(beforeReset.roomId, resumedPlayerId);
+  const afterReset = await harness.persistence.findById(beforeReset.roomId);
+  assert.ok(afterReset?.game?.turn && beforeResetGame.turn);
+  assert.equal(
+    afterReset.game.offlineTimeoutStreakByPlayerId.get(resumedPlayerId),
+    0,
+  );
+  assert.equal(afterReset.roomRevision, beforeReset.roomRevision);
+  assert.equal(afterReset.game.gameRevision, beforeResetGame.gameRevision);
+  assert.deepEqual(afterReset.game.turn, beforeResetGame.turn);
+  assert.deepEqual(afterReset.game.board, beforeResetGame.board);
+  assert.deepEqual(afterReset.game.racks, beforeResetGame.racks);
+  assert.equal(afterReset.storageRevision, beforeReset.storageRevision + 1);
+  assert.equal(
+    harness.registry.getPresenceVersion(beforeReset.roomId),
+    presenceVersionBeforeReset,
+  );
+
+  const resumedBinding = harness.bindings.find(
+    (binding) => binding.playerId === resumedPlayerId,
+  );
+  assert.ok(resumedBinding);
+  const disconnected = harness.registry.disconnect(
+    resumedBinding.socketId,
+    resumedBinding.connectionGeneration,
+  );
+  assert.equal(disconnected.status, "DISCONNECTED");
+  if (disconnected.status !== "DISCONNECTED") return;
+  await harness.policyService.onCurrentDisconnect({
+    roomId: afterReset.roomId,
+    playerId: resumedPlayerId,
+    connectionGeneration: resumedBinding.connectionGeneration,
+    presenceVersion: disconnected.presenceVersion,
+    disconnectedAt: harness.clock.now(),
+  });
+
+  const timeoutService = new TurnTimeoutService({
+    roomRepository: harness.persistence,
+    idempotencyRepository: harness.persistence,
+    roomUnitOfWork: harness.persistence,
+    roomMutationExecutor: new KeyedSerialExecutor<RoomId>(),
+    clock: harness.clock,
+    idGenerator: new FakeIdGenerator(),
+    randomSource: {
+      nextInt: (maxExclusive) => {
+        assert.ok(maxExclusive > 0);
+        return 0;
+      },
+    },
+    presenceLeaseReader: new ConnectionRegistryPresenceReader(
+      harness.registry,
+    ),
+    turnScheduler: harness.turnScheduler,
+  });
+  const serverActionRouter = new LegacyHangulServerActionRouter({
+    roomRepository: harness.persistence,
+    capability: Object.freeze({
+      gameType: "HANGUL_TILE",
+      handleTurnTimeout: (input) => timeoutService.timeout(input),
+      handleGameDeadline: async () => ({
+        status: "NO_OP" as const,
+        reason: "ROOM_NOT_FOUND" as const,
+      }),
+    }),
+  });
+  harness.clock.set(afterReset.game.turn.deadlineAt);
+  const timeout = await serverActionRouter.handleTurnTimeout({
+    roomId: afterReset.roomId,
+    gameId: afterReset.game.gameId,
+    turnId: afterReset.game.turn.turnId,
+    expectedGameRevision: afterReset.game.gameRevision,
+    deadlineAt: afterReset.game.turn.deadlineAt,
+  });
+
+  assert.equal(timeout.status, "APPLIED");
+  if (timeout.status !== "APPLIED") return;
+  assert.equal(timeout.data.timedOutPlayerId, resumedPlayerId);
+  assert.equal(timeout.data.offlineTimeoutStreak, 1);
+  assert.equal(timeout.data.timedOutPlayerForfeited, false);
+  const afterTimeout = await harness.persistence.findById(afterReset.roomId);
+  assert.ok(afterTimeout?.game);
+  assert.equal(
+    afterTimeout.game.offlineTimeoutStreakByPlayerId.get(resumedPlayerId),
+    1,
+  );
+  assert.equal(afterTimeout.game.forfeitedPlayerIds.has(resumedPlayerId), false);
 });
 
 test("PLAYING all-offline retention은 exact 30분에 Room을 cleanup하고 resume은 window를 cancel한다", async () => {
@@ -1145,6 +1416,9 @@ test("stale resume은 concurrent leave가 새로 등록한 PLAYING all-offline r
     scheduler: harness.scheduler,
     roomPresenceReader: presenceReader,
     playerPresenceLeaseReader: presenceReader,
+    playerLifecycleActions: createLegacyHangulPlayerLifecycleActions(
+      new FakeIdGenerator(),
+    ),
     clock: harness.clock,
     lobbyGraceService: harness.graceService,
     retentionService: harness.retentionService,

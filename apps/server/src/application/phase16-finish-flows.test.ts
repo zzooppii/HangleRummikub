@@ -31,6 +31,9 @@ import { InMemoryPersistence } from "../infrastructure/in-memory-persistence.js"
 import { KeyedSerialExecutor } from "../infrastructure/keyed-serial-executor.js";
 import { FakeClock, FakeIdGenerator } from "../infrastructure/system.js";
 import { TestDictionaryProvider } from "../infrastructure/test-dictionary-provider.js";
+import { createLegacyHangulPlayerLifecycleActions } from "../games/legacy-hangul-player-lifecycle-actions.js";
+import { LegacyHangulServerActionRouter } from "../games/legacy-hangul-server-action-router.js";
+import { LEGACY_V1_DEFAULT_GAME_TYPE } from "../games/legacy-hangul-compatibility-registration.js";
 import {
   createUnboundSessionRecord,
   type RoomRecord,
@@ -515,8 +518,10 @@ function leaveService(harness: Harness, finished: string[] = []) {
     roomCleanupUnitOfWork: harness.persistence,
     roomMutationExecutor: harness.executor,
     presenceReader: new StaticRoomPresenceReader(),
+    playerLifecycleActions: createLegacyHangulPlayerLifecycleActions(
+      harness.idGenerator,
+    ),
     clock: harness.clock,
-    idGenerator: harness.idGenerator,
     onGameFinished: ({ gameId }) => {
       finished.push(gameId);
     },
@@ -691,13 +696,23 @@ test("Game deadline and overdue Turn timeout share one lane and TIME_LIMIT wins 
     clock: harness.clock,
   });
   const timeout = timeoutService(harness);
+  const serverActions = new LegacyHangulServerActionRouter({
+    roomRepository: harness.persistence,
+    capability: Object.freeze({
+      gameType: LEGACY_V1_DEFAULT_GAME_TYPE,
+      handleTurnTimeout: (input) => timeout.timeout(input),
+      handleGameDeadline: (input) => deadlineService.expire(input),
+    }),
+  });
   const rackBefore = game.racks.get(game.turn.activePlayerId);
-  const gameDeadlinePromise = deadlineService.expire({
+  const gameDeadlinePromise = serverActions.handleGameDeadline({
     roomId: harness.room.roomId,
     gameId: game.gameId,
     deadlineAt: game.gameDeadlineAt,
   });
-  const timeoutPromise = timeout.timeout(turnDeadline(harness.room));
+  const timeoutPromise = serverActions.handleTurnTimeout(
+    turnDeadline(harness.room),
+  );
 
   const [gameDeadlineResult, timeoutResult] = await Promise.all([
     gameDeadlinePromise,

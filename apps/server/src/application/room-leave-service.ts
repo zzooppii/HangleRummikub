@@ -3,6 +3,7 @@ import {
   RoomIdSchema,
   RoomRevisionSchema,
   type ErrorDto,
+  type GameId,
   type GameRevision,
   type PlayerId,
   type RequestId,
@@ -12,13 +13,14 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
-import type { PlayingGameState } from "../domain/game/game-state.js";
-import { createForfeitResult, createStalemateResult } from "../domain/game/result-engine.js";
-import {
-  isStalemateCycleComplete,
-  pruneNoMoveTurnEnds,
-} from "../domain/game/stalemate.js";
-import type { IdempotencyRecord, RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
+import type {
+  LegacyHangulPlayerLifecycleActionRouting,
+  LegacyHangulPlayingLeaveAdvisory,
+} from "../games/legacy-hangul-player-lifecycle-actions.js";
+import type {
+  IdempotencyRecord,
+  RoomWriteCandidate,
+} from "../model/persistence.js";
 import type { IdempotencyRepository } from "../ports/idempotency-repository.js";
 import type { RoomPresencePolicyReader } from "../ports/room-presence-policy.js";
 import type { RoomRepository } from "../ports/room-repository.js";
@@ -27,17 +29,14 @@ import type {
   RoomUnitOfWork,
   RoomUnitOfWorkResult,
 } from "../ports/room-unit-of-work.js";
-import type { Clock, IdGenerator, TurnScheduler } from "../ports/system.js";
+import type { Clock, TurnScheduler } from "../ports/system.js";
 import type { CurrentActorAuthorization } from "./game-start-service.js";
 import {
-  createFinishedRoomTransition,
   notifyGameFinishedBestEffort,
   type GameFinishedPostCommit,
 } from "./game-finish-transition.js";
 import type { RoomMutationSerialExecutor } from "./room-session-service.js";
 import {
-  createNextTurn,
-  incrementGameRevision,
   scheduleCurrentTurnBestEffort,
   type CurrentTurnIdentity,
   type TurnSchedulingFailureReporter,
@@ -53,7 +52,11 @@ export const RoomLeaveSuccessDataSchema = v.strictObject({
 export type RoomLeaveSuccessData = v.InferOutput<typeof RoomLeaveSuccessDataSchema>;
 
 export type RoomLeaveResult =
-  | Readonly<{ ok: true; data: RoomLeaveSuccessData }>
+  | Readonly<{
+      ok: true;
+      data: RoomLeaveSuccessData;
+      gameAdvisory: LegacyHangulPlayingLeaveAdvisory;
+    }>
   | Readonly<{ ok: false; error: ErrorDto }>;
 
 export type RoomLeaveInput = Readonly<{
@@ -77,8 +80,8 @@ export type RoomLeaveServiceDependencies = Readonly<{
   roomCleanupUnitOfWork: RoomCleanupUnitOfWork;
   roomMutationExecutor: RoomMutationSerialExecutor;
   presenceReader: RoomPresencePolicyReader;
+  playerLifecycleActions: LegacyHangulPlayerLifecycleActionRouting;
   clock: Clock;
-  idGenerator: IdGenerator;
   resources?: RoomLeaveResources;
   turnScheduler?: TurnScheduler;
   onTurnSchedulingFailure?: TurnSchedulingFailureReporter;
@@ -106,8 +109,11 @@ function fingerprint(input: RoomLeaveInput): string {
   ]);
 }
 
-function success(data: RoomLeaveSuccessData): RoomLeaveResult {
-  return { ok: true, data };
+function success(
+  data: RoomLeaveSuccessData,
+  gameAdvisory: LegacyHangulPlayingLeaveAdvisory = "NONE",
+): RoomLeaveResult {
+  return { ok: true, data, gameAdvisory };
 }
 
 function failure(error: ErrorDto): RoomLeaveResult {
@@ -126,11 +132,14 @@ function incrementRoomRevision(revision: RoomRevision): RoomRevision {
 function mapCommit(
   result: RoomUnitOfWorkResult,
   preconditionFailureError: ErrorDto = ERRORS.UNAUTHENTICATED,
+  gameAdvisory: LegacyHangulPlayingLeaveAdvisory = "NONE",
 ): RoomLeaveResult {
   switch (result.status) {
     case "COMMITTED":
-    case "REPLAY":
-      return parseReplay(result.idempotency);
+    case "REPLAY": {
+      const replay = parseReplay(result.idempotency);
+      return replay.ok ? success(replay.data, gameAdvisory) : replay;
+    }
     case "IDEMPOTENCY_CONFLICT":
       return failure(ERRORS.REQUEST_ID_REUSED);
     case "PRECONDITION_FAILED":
@@ -142,90 +151,6 @@ function mapCommit(
       }
       return failure(ERRORS.INTERNAL_ERROR);
   }
-}
-
-function createPlayingCandidate(
-  room: RoomRecord,
-  game: PlayingGameState,
-  actorPlayerId: PlayerId,
-  now: ReturnType<Clock["now"]>,
-  idGenerator: IdGenerator,
-): Readonly<{
-  candidate: RoomWriteCandidate;
-  nextTurnIdentity: CurrentTurnIdentity | null;
-  finished: boolean;
-}> {
-  const forfeitedPlayerIds = new Set(game.forfeitedPlayerIds);
-  forfeitedPlayerIds.add(actorPlayerId);
-  const actorWasCurrent = game.turn.activePlayerId === actorPlayerId;
-  const gameRevision = incrementGameRevision(game.gameRevision);
-  const noMoveTurnEndPlayerIds = pruneNoMoveTurnEnds(
-    game.turnOrder,
-    forfeitedPlayerIds,
-    game.noMoveTurnEndPlayerIds,
-  );
-  const gameBase: PlayingGameState = Object.freeze({
-    ...game,
-    gameRevision,
-    forfeitedPlayerIds: Object.freeze(forfeitedPlayerIds),
-    noMoveTurnEndPlayerIds,
-  });
-  const resultInput = {
-    playerIds: game.turnOrder,
-    racks: game.racks,
-    tilesById: game.tilesById,
-    forfeitedPlayerIds,
-    finishedAt: now,
-  } as const;
-  const forfeitResult = createForfeitResult(resultInput);
-  const result =
-    forfeitResult ??
-    (isStalemateCycleComplete(
-      game.turnOrder,
-      forfeitedPlayerIds,
-      noMoveTurnEndPlayerIds,
-    )
-      ? createStalemateResult(resultInput)
-      : null);
-  if (result !== null) {
-    const transition = createFinishedRoomTransition(
-      room,
-      game,
-      result,
-      now,
-      gameBase,
-    );
-    return Object.freeze({
-      candidate: transition.roomCandidate,
-      nextTurnIdentity: null,
-      finished: true,
-    });
-  }
-
-  const nextTurn = actorWasCurrent
-    ? createNextTurn(game, now, idGenerator, forfeitedPlayerIds)
-    : game.turn;
-  const nextGame: PlayingGameState = Object.freeze({
-    ...gameBase,
-    turn: nextTurn,
-  });
-  return Object.freeze({
-    candidate: {
-      ...room,
-      game: nextGame,
-      updatedAt: now,
-    },
-    nextTurnIdentity:
-      nextTurn !== null
-        ? {
-            roomId: room.roomId,
-            gameId: game.gameId,
-            gameRevision,
-            turnId: nextTurn.turnId,
-          }
-        : null,
-    finished: false,
-  });
 }
 
 export class RoomLeaveService {
@@ -386,23 +311,25 @@ export class RoomLeaveService {
           let candidate: RoomWriteCandidate;
           let terminalResult: RoomLeaveSuccessData;
           let nextTurnIdentity: CurrentTurnIdentity | null = null;
-          if (room.phase === "PLAYING" && room.game?.turn !== null && room.game?.result === null) {
-            if (room.game.forfeitedPlayerIds.has(input.actorPlayerId)) {
-              // A previously forfeited Player remains part of the canonical
-              // result state. Explicit leave only terminates that Player's
-              // session; it must not apply the forfeit or revision twice.
-              candidate = { ...room, updatedAt: now };
-            } else {
-              const playing = createPlayingCandidate(
-                room,
-                room.game,
-                input.actorPlayerId,
-                now,
-                this.#dependencies.idGenerator,
-              );
-              candidate = playing.candidate;
-              nextTurnIdentity = playing.nextTurnIdentity;
+          let finishedGameId: GameId | null = null;
+          let gameAdvisory: LegacyHangulPlayingLeaveAdvisory = "NONE";
+          if (room.phase === "PLAYING" && room.game !== null) {
+            if (
+              room.gameType !==
+              this.#dependencies.playerLifecycleActions.gameType
+            ) {
+              return failure(ERRORS.INTERNAL_ERROR);
             }
+            const playing =
+              this.#dependencies.playerLifecycleActions.applyPlayingLeave({
+                room,
+                actorPlayerId: input.actorPlayerId,
+                occurredAt: now,
+              });
+            candidate = playing.candidate;
+            nextTurnIdentity = playing.nextTurnIdentity;
+            finishedGameId = playing.finishedGameId;
+            gameAdvisory = playing.advisory;
             terminalResult = {
               roomId: room.roomId,
               phase: candidate.phase,
@@ -416,6 +343,8 @@ export class RoomLeaveService {
             room.game.result !== null
           ) {
             candidate = { ...room, updatedAt: now };
+            finishedGameId = room.game.gameId;
+            gameAdvisory = "GAME_FINISHED";
             terminalResult = {
               roomId: room.roomId,
               phase: room.phase,
@@ -450,14 +379,17 @@ export class RoomLeaveService {
             },
             { isSatisfied: () => input.authorization.isCurrent() },
           );
-          const mapped = mapCommit(committed);
+          const mapped = mapCommit(
+            committed,
+            ERRORS.UNAUTHENTICATED,
+            gameAdvisory,
+          );
           if (mapped.ok) {
             postCommit = {
               roomClosed: false,
               roomCode: room.roomCode,
               nextTurnIdentity,
-              finishedGameId:
-                candidate.phase === "FINISHED" ? room.game.gameId : null,
+              finishedGameId,
             };
           }
           return mapped;

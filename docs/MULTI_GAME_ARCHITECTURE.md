@@ -1,6 +1,6 @@
 # Multi-game Platform Architecture
 
-> 상태: P0 target boundary 후보 + P1 characterization + P2 internal identity checkpoint + P3A state/projection boundary checkpoint + P3B command routing checkpoint (P3B 최종 quality gate와 checkpoint push 조건부)
+> 상태: P0 target boundary 후보 + P1 characterization + P2 internal identity checkpoint + P3A state/projection boundary checkpoint + P3B command routing checkpoint + P3C server-action boundary 구현 완료(최종 quality gate와 checkpoint/push 조건부)
 > 작성일: 2026-09-05
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
@@ -48,6 +48,8 @@ concrete GameState
 P3A는 이 aggregate type을 범용 envelope로 바꾸지 않았다. 대신 typed in-memory `GameState`의 clone·validation·최소 lifecycle 판정을 Legacy Hangul 소유 adapter 뒤로 옮기고, snapshot 조립을 Room shell과 Legacy Hangul v1 projection으로 나눴다. 이는 저장 형식이나 public wire의 일반화가 아니라 현재 구현의 소유권을 명시한 첫 내부 seam이다.
 
 P3B는 기존 네 command service를 재작성하거나 공통 command bus를 만들지 않았다. 별도 immutable `LegacyHangulV1CommandRouter`가 canonical `RoomRecord.gameType`을 읽고 exact `HANGUL_TILE` capability만 선택한 뒤 기존 `GameStartService`, `TurnSubmitService`, `TurnDrawService`, `TurnPassService`에 입력과 결과를 그대로 전달한다. Socket.IO transport의 public v1 validator, actor binding, `receivedAt`, acknowledgement와 delivery 책임은 유지하면서 runtime surface에서 네 concrete service field를 제거했다.
+
+P3C 구현은 client command router를 확장하지 않고 두 종류의 좁은 경계를 별도로 뒀다. frozen `LegacyHangulPlayerLifecycleActionRouting`은 PLAYING explicit leave의 forfeit/next-turn/result candidate와 presence 복구 시 offline timeout streak reset plan만 만든다. 별도 immutable `LegacyHangulServerActionRouter`는 scheduler와 overdue sweeper가 전달한 Turn timeout/Game deadline identity를 canonical `RoomRecord.gameType`으로 확인한 뒤 기존 `TurnTimeoutService`/`GameDeadlineService`에 그대로 위임한다. Room/session/presence lease, Room lane, UoW/CAS, timer·sweeper mechanism, retention/cleanup과 snapshot/advisory delivery는 platform/application 경로에 남는다.
 
 ## 3. 현재 코드 분류
 
@@ -117,17 +119,17 @@ P3B는 기존 네 command service를 재작성하거나 공통 command bus를 �
 | 파일/모듈 | 발견된 결합 |
 | --- | --- |
 | `apps/server/src/model/persistence.ts` | `RoomRecord.game`이 `GameState | null`을 직접 import하여 platform aggregate가 한글 state 구조를 안다. |
-| `apps/server/src/infrastructure/in-memory-persistence.ts` | P3A에서 state clone·structural validation, Room phase 판정과 active turn/game deadline/finished retention metadata 추출을 Legacy Hangul state adapter에 위임했다. persistence는 더 이상 Tile/Board/rack/bag/result/turn 내부를 직접 읽지 않지만, 기존 recovery port 자체는 turn/deadline-shaped이므로 optional capability 판단은 P3C 대상이다. |
+| `apps/server/src/infrastructure/in-memory-persistence.ts` | P3A에서 state clone·structural validation, Room phase 판정과 active turn/game deadline/finished retention metadata 추출을 Legacy Hangul state adapter에 위임했다. persistence는 더 이상 Tile/Board/rack/bag/result/turn 내부를 직접 읽지 않는다. P3C는 callback dispatch만 분리했으므로 recovery reader port와 metadata는 여전히 Turn/Game deadline-shaped이며 이번 Phase에서 일반화하지 않았다. |
 | 같은 persistence의 idempotency cleanup | `room-player:`/`room-timeout:` scope prefix나 terminal result의 `roomId`를 해석한다. 향후 module이 임의 scope를 만들면 cleanup 누락 위험이 있다. |
 | `apps/server/src/application/lobby-state-snapshot-projector.ts` | P3A에서 Room identity·presence·revision·server time shell만 조립하고, Board, Joker, rack, bag, initial meld, result 및 player별 privacy는 별도 Legacy Hangul v1 projector에 위임한다. class 이름과 최종 v1 DTO는 compatibility를 위해 유지한다. |
 | `apps/server/src/application/game-start-service.ts` | P3B router 뒤의 Legacy Hangul compatibility implementation으로 그대로 유지됐다. Host/phase/presence/idempotency/serialization과 `createInitialGameState`, turn/game scheduling을 한 service가 수행하며 그 내부 분리는 이번 Phase에서 시도하지 않았다. |
-| `apps/server/src/application/room-leave-service.ts` | 공통 Room leave/session 삭제와 실행 중 한글 forfeit, stalemate, next turn/result 처리를 함께 수행한다. |
-| `apps/server/src/application/room-presence-policy-service.ts` | 공통 presence/grace/retention이 `PlayingGameState`, offline timeout streak, concrete result를 직접 읽고 변경한다. |
+| `apps/server/src/application/room-leave-service.ts` | P3C에서 Lobby leave와 공통 authorization/idempotency/UoW/session/resource 처리에 남고, PLAYING의 forfeit·stalemate·next turn/result candidate는 injected Legacy Hangul player-lifecycle action에 위임한다. FINISHED compatibility branch와 post-commit scheduling/advisory orchestration은 아직 concrete Hangul `GameState`를 안다. |
+| `apps/server/src/application/room-presence-policy-service.ts` | connection/presence lease, Lobby grace, Host election, all-offline/FINISHED retention과 storage commit을 계속 소유한다. P3C에서 reconnect의 offline timeout streak 판정·reset candidate는 Legacy Hangul lifecycle action에 위임했지만 retention metadata 조회는 concrete `RoomRecord.game`에 남는다. |
 | `apps/server/src/ports/system.ts` | `Clock`/random 같은 공통 port와 `DictionaryProvider`, turn/tile ID, Hangul-shaped scheduler contract가 한 파일에 있다. |
-| `game-deadline-service.ts`, `game-deadline-transition.ts`, `game-finish-transition.ts` | Room lane/UoW/deadline·finish orchestration과 현재 Hangul timeout/result/turn 규칙이 함께 있다. |
-| `active-turn-reader.ts`, `active-game-reader.ts`, `finished-room-retention-reader.ts` 및 overdue sweepers | recovery mechanism이 concrete `turn`, `gameDeadlineAt`, `result.finishedAt` query shape를 전제한다. |
-| `apps/server/src/transport/socket-io.ts` | P3B에서 `game:start`와 `turn:submit/draw/pass`가 한 command router surface만 호출하게 되어 네 concrete service runtime field 결합은 제거됐다. transport에는 v1 command validator/input mapping, PLAYING/FINISHED Hangul snapshot type guard와 `turn:started`/`game:finished` advisory 조립·broadcast가 남아 있다. |
-| `apps/server/src/composition-root.ts` | 하나의 `TestDictionaryProvider`와 한글 service/scheduler를 직접 조립하고 P3A state/projector 및 P3B command router를 명시적으로 연결한다. P2 `GameRegistry`는 identity/availability lookup만 유지하며, leave/presence/timeout/deadline server-action routing은 아직 위임받지 않는다. |
+| `game-deadline-service.ts`, `turn-timeout-service.ts`, deadline/finish transition | P3C scheduled router 뒤의 Legacy Hangul compatibility implementation으로 유지됐다. service가 Room lane/UoW, stale identity/deadline, idempotency, penalty/forfeit/TIME_LIMIT/result와 post-commit effect를 계속 소유하며 router는 이 규칙을 해석하지 않는다. |
+| `active-turn-reader.ts`, `active-game-reader.ts`, `finished-room-retention-reader.ts` 및 overdue sweepers | recovery mechanism은 그대로이며 concrete `turn`, `gameDeadlineAt`, `result.finishedAt` query shape를 전제한다. P3C는 기존 scheduled identity를 router에 그대로 전달했을 뿐 recovery descriptor나 registration algorithm은 바꾸지 않았다. |
+| `apps/server/src/transport/socket-io.ts` | P3B command router 경계를 유지한다. P3C에서는 PLAYING leave 전 active-player peek를 제거하고 `RoomLeaveService`의 committed `gameAdvisory`를 사용하며, timeout/deadline applied delivery는 runtime subscription facade를 통해 받는다. v1 validator/input mapping, PLAYING/FINISHED snapshot guard와 snapshot/advisory 조립·broadcast는 여전히 남아 있다. |
+| `apps/server/src/composition-root.ts` | P3A state/projector, P3B command router, P3C player-lifecycle action과 scheduled server-action router를 명시적으로 조립한다. scheduler/sweeper callback은 scheduled router를 호출하고 runtime은 concrete timeout/deadline service 대신 router와 applied-event subscription facade를 노출한다. `GameRegistry`는 계속 identity/availability lookup뿐이며 dictionary, concrete Hangul services와 recovery readers의 조립은 남아 있다. |
 | `packages/shared/src/protocol.ts` | platform command와 ProposedBoard/WordGroup/`turn:*` command, generic·Hangul error code가 한 union에 있다. |
 | `packages/shared/src/projections.ts` | generic 이름의 `StateSnapshot`이 한글 symbol, Board/rack/bag, 2~4명, initial meld, 한글 ranking 수식까지 직접 조립한다. |
 | `packages/shared/src/realtime.ts` | socket lifecycle event와 현재 한글 start/turn/finish ack·advisory가 한 event map에 있다. |
@@ -191,11 +193,11 @@ cleanup/closed                 no further module mutation
 다음 사건은 platform에서 시작하지만 module 판단이 필요할 수 있다.
 
 - `game:start`: platform이 Host, Room phase, actor, idempotency, serialization을 검증하고 module이 player set으로 초기화한다.
-- `room:leave`: platform이 membership/session 처리를 소유하고, 실행 중이면 module에 player-left server action을 전달해 하나의 candidate를 만든다. platform record와 module state는 동일 Room UoW/CAS에서 함께 commit하거나 함께 rollback하며, module capability 부재·거절 때 player/session만 먼저 삭제하지 않는다.
+- `room:leave`: P3C에서 platform service가 authorization, idempotency, session mutation, UoW와 post-commit resource/scheduling을 계속 소유하고, PLAYING의 forfeit/next-turn/result candidate만 Legacy Hangul lifecycle action에 위임한다. candidate, session delete와 idempotency record는 동일 Room UoW/CAS에서 함께 commit하거나 함께 rollback하며 unsupported type에서는 action/UoW 전에 fail-closed한다.
 - Lobby disconnect grace 만료: platform이 current policy대로 player 제거와 Host 승계를 처리한다.
-- Playing reconnect: platform이 presence를 복구하고, 현재 Hangul에만 필요한 offline timeout streak reset을 module action으로 전달할 수 있다.
+- Playing reconnect: platform이 session/presence와 current lease를 복구하고, 현재 Hangul에만 필요한 offline timeout streak reset plan을 P3C lifecycle action에 위임한다. reset commit은 `gameRevision`/`roomRevision`/`presenceVersion`을 바꾸지 않고 기존대로 `storageRevision`만 증가시킨다.
 - Playing all-offline retention: platform Room policy로 유지하며 game state mutation으로 일반화하지 않는다.
-- deadline: platform scheduler가 Room lane 안에서 module server action을 재호출한다.
+- deadline: P3C에서 platform scheduler/sweeper callback이 저장 Room의 canonical gameType을 확인하는 scheduled server-action router를 거쳐 기존 Hangul timeout/deadline service를 호출한다. Room lane과 stale identity/deadline 재검증은 기존 service가 계속 소유한다.
 - module finish: module outcome을 근거로 platform이 Room phase와 retention을 갱신한다.
 
 이 사건을 generic turn method로 모델링하지 않는다.
@@ -204,7 +206,7 @@ cleanup/closed                 no further module mutation
 
 다음은 platform application이 보는 개념적 facade 역할을 설명하기 위한 P0 후보이며 TypeScript 구현안이 아니다. 실제 registry entry는 아래의 좁은 capability collaborator를 조합해 이 facade를 제공한다. 같은 command나 projection을 facade와 collaborator가 두 번 실행하는 병렬 경로를 만들지 않는다.
 
-P2는 이 `GameModule` 또는 capability surface를 구현하지 않았다. P3A도 registry entry를 확장하거나 이 conceptual facade를 구현하지 않았다. 실제 runtime registry entry는 계속 `gameType` identity만 가지며, P3A는 persistence와 projection의 실제 caller에 각각 별도 Legacy Hangul collaborator를 직접 주입했다. P3B도 registry를 확장하지 않고 별도 Legacy Hangul v1 command router를 검증했으며, server-action capability는 P3C의 실제 필요가 생길 때 판단한다.
+P2는 이 `GameModule` 또는 capability surface를 구현하지 않았다. P3A도 registry entry를 확장하거나 이 conceptual facade를 구현하지 않았다. 실제 runtime registry entry는 계속 `gameType` identity만 가지며, P3A는 persistence와 projection의 실제 caller에 각각 별도 Legacy Hangul collaborator를 직접 주입했다. P3B도 registry를 확장하지 않고 별도 Legacy Hangul v1 command router를 검증했다. P3C 역시 registry에 optional method를 붙이지 않고 player-lifecycle action과 scheduled server-action router를 composition root에서 별도 immutable collaborator로 조립했다.
 
 ```ts
 interface GameModule {
@@ -265,9 +267,9 @@ interface GameModule {
 
 module은 이 책임의 context를 신뢰 가능한 서버 입력으로 받되 repository를 임의 호출하지 않는다.
 
-### 6.3 별도 capability 후보와 P3A/P3B 선택
+### 6.3 별도 capability 후보와 P3A/P3B/P3C 선택
 
-모든 역할을 하나의 concrete class에 넣지 않는다. 위 `GameModule`은 platform-facing conceptual facade다. P3A는 아래 후보 중 실제로 필요한 state/projector collaborator를 registry와 분리해 조립했고, P3B는 같은 원칙으로 별도 command router를 composition boundary에 연결했다. P3C에서 server-action dispatch가 필요해질 때도 실제 사용처가 요구하는 좁은 collaborator만 검증한다.
+모든 역할을 하나의 concrete class에 넣지 않는다. 위 `GameModule`은 platform-facing conceptual facade다. P3A는 아래 후보 중 실제로 필요한 state/projector collaborator를 registry와 분리해 조립했고, P3B는 같은 원칙으로 별도 command router를 composition boundary에 연결했다. P3C도 하나의 범용 facade 대신 실제 caller가 요구한 player-lifecycle decision과 scheduled timeout/deadline routing만 각각 분리했다.
 
 - 미래 `GameCommandAdapter` 후보: game별 닫힌 command union의 runtime validation, idempotency fingerprint 및 handler. P3B Legacy v1 router에는 이 책임을 옮기지 않았다.
 - `GameInitializer`: confirmed player policy와 server context로 초기 state candidate 생성
@@ -285,6 +287,13 @@ module은 이 책임의 context를 신뢰 가능한 서버 입력으로 받되 r
 두 collaborator는 P2 identity registry에 빈 future method로 붙이지 않고 composition에서 실제 caller에 주입한다. state adapter의 lifecycle surface는 `RUNNING`의 game/revision/active-turn/game-deadline identity와 `FINISHED`의 game/finished identity뿐이며 timeout action이나 result 계산을 넣지 않았다. projector도 새 game projection이나 public envelope를 만들지 않았다.
 
 P3B가 실제로 추가한 세 번째 boundary는 `LegacyHangulV1CommandRouter`다. router capability의 surface는 현재 wire가 요구하는 `start`, `submit`, `draw`, `pass`와 exact `gameType`뿐이다. constructor가 missing/incomplete capability를 fail-fast하고 method를 bound copy한 frozen capability와 frozen router를 사용하므로 caller가 runtime 중 handler를 교체할 수 없다. router는 wire validation, authentication, idempotency fingerprint, Room lane/UoW, rule, scheduling, projection 또는 delivery를 소유하지 않는다. canonical Room이 없으면 기존 `ROOM_NOT_FOUND`, exact `HANGUL_TILE`이 아니면 `INTERNAL_ERROR`를 반환하고 어떤 delegate도 호출하지 않는다.
+
+P3C가 추가한 boundary는 성격에 따라 둘로 나뉜다.
+
+- `LegacyHangulPlayerLifecycleActionRouting`: `applyPlayingLeave`와 `planPresenceRestored`만 가진 frozen capability다. leave action은 Hangul forfeit/stalemate/result와 next-turn candidate/advisory를 계산하고, presence action은 offline timeout streak reset candidate만 계획한다. repository, presence lease, session/idempotency mutation, UoW, scheduling과 delivery는 호출 service가 소유한다.
+- `LegacyHangulServerActionRouter`: `handleTurnTimeout`과 `handleGameDeadline`만 가진 immutable router다. constructor가 missing/incomplete capability를 fail-fast하고 bound copy로 handler replacement를 차단한다. callback마다 canonical Room을 조회해 exact `HANGUL_TILE`만 delegate하며 missing Room은 기존 action별 `ROOM_NOT_FOUND` no-op, unsupported/corrupt type이나 lookup failure는 `INTERNAL_ERROR` failure로 닫힌다.
+
+scheduled router는 전달받은 deadline identity나 Clock을 재생성하지 않고 기존 service result를 그대로 반환한다. `TurnTimeoutService`와 `GameDeadlineService`가 Room serialization, instance/revision/deadline 검증, at-least-once idempotency, penalty/forfeit/TIME_LIMIT/result와 post-commit scheduling을 계속 소유한다. player-lifecycle action도 current presence lease나 commit을 자체 수행하지 않아 platform mechanism과 Hangul decision을 중복하지 않는다.
 
 현재 각 Hangul application service가 가진 terminal-result replay validation도 idempotency mechanism 자체와 분리한다. platform은 record 저장·Room association·재전송을 소유하고, game adapter는 game-specific terminal payload를 validator/codec으로 해석한다.
 
@@ -312,7 +321,7 @@ P2의 registry에는 `HANGUL_TILE` identity 하나만 등록되어 있다. `Game
 
 composition root는 legacy Hangul registration 하나를 기본 등록하고 필수 default가 없으면 startup에서 fail-fast한다. `RoomSessionApplicationService.createRoom`은 canonical state를 만들기 전에 legacy default registration을 확인하고, `GameStartService`는 초기 한글 state를 만들기 전에 저장된 `RoomRecord.gameType` registration을 확인한다. P3A에서도 이 registry는 service callback, state adapter/projector, command adapter 또는 server action을 소유하지 않는다. storage와 projection collaborator는 exact `HANGUL_TILE`을 독립적으로 fail-closed하고 composition root에서 주입된다. `NUMBER_TILE`/`GEM_CARD` placeholder와 final `GameModule`도 없다.
 
-P3B에서도 `GameRegistration`은 `{ gameType }` identity-only surface 그대로다. v1의 `turn:*`는 다른 game에 적용할 공통 capability가 아니라 Legacy Hangul compatibility surface이므로 registry에 optional method를 붙이지 않았다. 별도 `LegacyHangulV1CommandRouter`가 Room repository에서 canonical `gameType`을 읽고 frozen Legacy Hangul capability를 선택한다. 이 선택은 identity registry와 catalog를 중복하는 두 번째 mutable registry가 아니라, 현재 네 v1 command를 위한 single-game compatibility boundary다.
+P3B와 P3C에서도 `GameRegistration`은 `{ gameType }` identity-only surface 그대로다. v1의 `turn:*`와 current timeout/deadline/player-lifecycle action은 아직 여러 game에서 공통성이 입증된 registration capability가 아니므로 registry에 optional method를 붙이지 않았다. 별도 frozen command capability, player-lifecycle action과 immutable scheduled server-action router가 각 사용처에서 canonical `gameType`을 확인한다. 이들은 identity registry와 catalog를 중복하는 mutable global registry가 아니라 composition root가 한 번 구성하는 single-game compatibility boundary다.
 
 ## 8. Command architecture
 
@@ -570,7 +579,7 @@ RoomRecord
 
 `stateSchemaVersion`은 durable payload decoder/migration이 실제 필요할 때만 도입할 후보다. 현재 `storageRevision`은 in-memory UoW/CAS, `roomRevision`은 Room command scope, `presenceVersion`은 transient presence ordering, `gameRevision`은 현재 game command/advisory scope를 담당한다. 특히 reconnect의 offline timeout streak reset처럼 state/storage를 바꾸지만 `gameRevision`을 올리지 않는 경로가 있으므로 이를 모든 mutation의 번호로 재정의하지 않는다.
 
-P3A lifecycle inspector는 기존 Room phase 및 recovery caller가 실제 사용한 정보만 산출한다. `RUNNING`은 `gameId`, `gameRevision`, active `turnId`/deadline과 game deadline을, `FINISHED`는 `gameId`와 `finishedAt`을 가진다. 이 read model은 기존 scheduler port를 보존하기 위한 Legacy Hangul seam이며 모든 game의 필수 lifecycle contract가 아니다. P3C에서 optional recovery/server-action capability와 함께 다시 최소화하고, P9에서 cross-game 공통성을 재검토한다. operational summary를 별도 저장하거나 cache하지 않으므로 module state와 독립적으로 수정 가능한 두 source도 만들지 않았다.
+P3A lifecycle inspector는 기존 Room phase 및 recovery caller가 실제 사용한 정보만 산출한다. `RUNNING`은 `gameId`, `gameRevision`, active `turnId`/deadline과 game deadline을, `FINISHED`는 `gameId`와 `finishedAt`을 가진다. 이 read model은 기존 scheduler port를 보존하기 위한 Legacy Hangul seam이며 모든 game의 필수 lifecycle contract가 아니다. P3C는 recovery reader나 metadata shape를 바꾸지 않고, 그 reader가 enqueue한 exact timeout/deadline identity를 scheduled server-action router로 보내는 callback 경계만 추가했다. operational summary를 별도 저장하거나 cache하지 않으므로 module state와 독립적으로 수정 가능한 두 source도 만들지 않았다. recovery shape의 공통화는 실제 두 game을 비교하는 P9까지 보류한다.
 
 외부 database를 도입할 때만 serialize/deserialize와 version별 decoder/migrator를 설계한다. `JsonValue`라는 이유만으로 validation 없는 arbitrary state를 허용하지 않으며, future envelope 또는 union은 `NUMBER_TILE`의 실제 shape를 본 뒤 결정한다.
 
@@ -609,9 +618,29 @@ ScheduledGameAction
 
 timer가 없는 module은 scheduled action을 반환하지 않는다. deadline은 client 시간이 아니라 module state와 서버 Clock을 기준으로 판정한다.
 
-이 generic mechanism은 당장 구현하지 않는다. P3C에서는 기존 TurnScheduler와 GameDeadlineScheduler를 Hangul adapter 뒤에서 그대로 사용하고, NUMBER_TILE 요구가 나온 뒤 descriptor surface를 검증한다.
+이 generic mechanism은 당장 구현하지 않는다. P3C 구현은 기존 `TurnScheduler`, `GameDeadlineScheduler`, timer registration/cancellation과 overdue sweeper를 그대로 두고, 양쪽 callback만 `LegacyHangulServerActionRouter`의 `handleTurnTimeout`/`handleGameDeadline`으로 연결했다. router는 exact scheduled identity를 보존해 기존 service에 전달하며 timer가 없는 future module을 위한 필수 hook이나 generic descriptor를 만들지 않았다. `NUMBER_TILE` 요구가 나온 뒤 descriptor surface를 검증한다.
 
 operation이 반환한 일회성 effect만으로는 scheduler registration 실패나 scheduler 재생성 뒤 overdue action을 복구할 수 없다. 현 process-memory 단계의 recovery는 같은 process/repository가 살아 있는 범위에 한정된다. 실제 process restart recovery는 durable persistence가 도입된 뒤에만 가능하다. 후속 decision gate에서는 (a) scheduled descriptor를 Room state/UoW와 함께 atomic하게 저장하는 방식과 (b) module-owned recovery adapter가 persisted state에서 pending action을 결정론적으로 재산출하는 방식을 비교한다. 어느 쪽이든 schedule 등록과 state commit 사이의 crash window, 중복 실행, stale instance/revision을 test해야 하며, P0/P3에서 하나의 generic contract로 확정하지 않는다.
+
+### 13.3 P3C callback·retention 경계
+
+```text
+TurnScheduler / OverdueTurnSweeper       GameDeadlineScheduler / overdue sweeper
+                 |                                      |
+                 +------------ callback ----------------+
+                                      |
+                         LegacyHangulServerActionRouter
+                         canonical Room.gameType check
+                                      |
+                      existing timeout/deadline services
+```
+
+- scheduler와 sweeper는 Clock, registration/cancellation, overdue enqueue와 shutdown을 계속 소유한다.
+- router는 Room lookup과 exact gameType dispatch만 소유하고 deadline identity, game revision 또는 result를 계산하지 않는다.
+- 기존 services가 Room lane/UoW/CAS와 stale/duplicate protection을 계속 소유하므로 at-least-once callback safety와 timeout/deadline race policy는 바뀌지 않는다.
+- applied-event snapshot/advisory fan-out은 transport가 runtime의 subscription facade를 통해 계속 수행한다. router는 projection이나 Socket.IO를 모른다.
+- `RoomPolicyScheduler`, Lobby grace, PLAYING all-offline retention, fixed `finishedAt + 30m` FINISHED retention과 cleanup은 scheduled game action이 아니라 platform Room lifecycle이므로 router에 넣지 않았다.
+- recovery reader/sweeper의 Turn/Game deadline-shaped port는 바뀌지 않았다. P3C는 process restart recovery를 추가하지 않았고, 현 recovery 범위는 여전히 살아 있는 process-memory repository 안의 overdue work다.
 
 ## 14. Server target structure
 
@@ -758,6 +787,9 @@ production 기준선은 shared 55, web 87, server 431로 총 573 tests였다. �
 - game별 private projection의 비밀 정보 격리
 - scheduled action이 stale instance/revision에서 no-op 또는 구조화된 reject
 - Room leave/presence event가 정확한 module server action으로 한 번 전달됨
+- corrupt canonical gameType에서 leave/presence action 및 timeout/deadline delegate가 UoW 전에 차단됨
+- resume streak reset이 public revisions·presenceVersion·board/rack/turn을 보존하고 다음 offline timeout을 다시 첫 streak로 처리함
+- timeout/deadline router가 scheduler identity를 그대로 전달하고 missing/incomplete capability는 construction에서 fail-fast함
 - 서로 다른 game Room 사이의 idempotency, scheduler, broadcast 격리
 
 state envelope의 gameType/stateSchemaVersion runtime validation은 envelope를 실제 도입하는 후속 Phase의 test다. P3A는 존재하지 않는 wire/storage contract를 미리 test하지 않는다.
@@ -769,7 +801,7 @@ state envelope의 gameType/stateSchemaVersion runtime validation은 envelope를 
 | 위험 | 완화 gate |
 | --- | --- |
 | 이름만 generic인 한글 type을 core로 승격 | P1 classification/characterization과 import rule |
-| persistence가 concrete state 내부를 계속 검사 | P3A의 별도 module-owned clone/lifecycle adapter로 storage 책임을 먼저 분리하고, recovery metadata와 저장 형식 변경은 각각 P3C와 실제 second-game/durable persistence gate로 미룸 |
+| persistence가 concrete state 내부를 계속 검사 | P3A의 별도 module-owned clone/lifecycle adapter로 storage 책임을 분리하고 P3C는 scheduled callback dispatch만 떼어냈다. 남은 Turn/Game deadline-shaped recovery port와 저장 형식 변경은 각각 실제 second-game abstraction review와 durable persistence gate까지 미룬다. |
 | gameType을 client URL/selection에서 신뢰 | Room stored value와 snapshot만 authoritative하게 사용 |
 | 새 game command가 giant unchecked union이 됨 | module-owned discriminated runtime validator 필수 |
 | scheduler가 모든 game에 turn을 강제 | optional server action이며 두 번째 game 전 generic화 금지 |
@@ -837,9 +869,27 @@ P3B는 public v1 wire나 기존 Hangul service behavior를 변경하지 않고 �
 - P2 `GameRegistry`는 `{ gameType }` identity-only lookup으로 유지한다. Legacy v1 command surface를 미래 모든 game의 registration에 강요하거나 두 번째 mutable registry를 만들지 않았다.
 - P3A state adapter/projector와 player별 privacy, protocolVersion 1, strict payload, `StateSnapshot` v1, Socket.IO event/ack, URL과 web source는 변경하지 않았다.
 
-남은 결합은 다음 stop gate로 보낸다.
+P3B 시점의 남은 결합은 다음 stop gate로 보냈다.
 
-- P3C: `RoomLeaveService`, `RoomPresencePolicyService`, `TurnTimeoutService`, `GameDeadlineService`의 leave/forfeit, reconnect offline streak, turn/game deadline action, result/retention과 현재 turn/deadline-shaped recovery port
+- P3C: `RoomLeaveService`, `RoomPresencePolicyService`의 leave/forfeit와 reconnect streak decision, scheduler callback의 timeout/deadline dispatch를 좁은 Hangul boundary로 분리한다. P3C 구현 결과와 의도적으로 남긴 recovery/retention 결합은 다음 절에 기록한다.
 - P3D: `domain/game`, `domain/hangul`과 shared protocol/projection/validation의 물리 경로 및 import ownership. concrete `RoomRecord.game` type을 범용화하는 일은 실제 second-game state가 이를 요구할 때 별도 결정한다.
 
-**P3B COMPLETE / P3C READY** 판정은 기존 603 tests와 신규 9 tests를 포함한 root typecheck, 전체 test, build, `git diff --check`, P3B checkpoint commit과 일반 `origin/master` push가 모두 성공한 경우에만 유효하다.
+P3B는 기존 603 tests와 신규 9 tests를 포함한 root typecheck, 총 612 tests, build, `git diff --check`, production-serving regression, checkpoint `bc4a62a` commit과 일반 `origin/master` push를 모두 통과했다.
+
+## 24. P3C lifecycle/server-action boundary implementation
+
+P3C 구현은 platform-originated 사건을 하나의 giant `GameModule`에 합치지 않고 실제 책임에 맞춰 두 seam으로 분리했다.
+
+- `LegacyHangulPlayerLifecycleActionRouting`은 PLAYING explicit leave의 forfeit/stalemate/next-turn/finish candidate와 advisory, presence 복구의 offline timeout streak reset plan을 소유한다.
+- `RoomLeaveService`는 authorization, request ID/idempotency, Room serialization, session deletion, candidate/UoW commit, resource cleanup과 post-commit scheduling을 유지한다. unsupported/corrupt canonical gameType에서는 lifecycle delegate와 UoW 전에 실패하므로 session/game partial mutation이 없다.
+- `RoomPresencePolicyService`는 connection/presence lease, Lobby grace/Host election, all-offline 및 FINISHED retention을 유지한다. Hangul action이 반환한 reset plan만 commit하며 reset은 기존대로 `storageRevision`만 증가시키고 Room/game revision, presenceVersion, turn/board/rack을 보존한다.
+- immutable `LegacyHangulServerActionRouter`는 `handleTurnTimeout`과 `handleGameDeadline`만 제공한다. scheduler와 overdue sweeper callback이 전달한 exact identity로 canonical Room을 조회하고 exact `HANGUL_TILE` capability에 기존 `TurnTimeoutService`/`GameDeadlineService`를 한 번 위임한다.
+- missing/incomplete scheduled capability는 construction에서 fail-fast한다. missing Room은 기존 no-op, unsupported/corrupt type과 lookup failure는 internal failure이며 Hangul delegate를 호출하지 않는다.
+- timeout penalty, offline streak/두 번째 timeout forfeit, next turn, TIME_LIMIT, ranking/result, stale/duplicate identity와 Room-lane/idempotency 판정은 기존 Hangul services에 남는다.
+- composition runtime은 concrete timeout/deadline service를 transport에 노출하지 않고 scheduled router와 applied-event subscription facade를 제공한다. transport는 leave 결과의 committed `gameAdvisory`를 사용하므로 pre-command active-turn Hangul peek가 제거됐지만 snapshot/advisory fan-out 순서는 유지된다.
+- `GameRegistry`는 P2의 `{ gameType }` identity/availability lookup 그대로다. command, lifecycle, state/projector 또는 scheduled action capability를 registry entry에 추가하지 않았다.
+- scheduler timer algorithm, P3A recovery reader/overdue metadata, Room policy retention/cleanup과 process-memory recovery 범위는 변경하지 않았다.
+
+남은 concrete 결합은 P3D의 검증된 Hangul source 물리 이동/import ownership, 그리고 실제 second-game 또는 P9 review 전까지 유지하는 typed `RoomRecord.game`, Turn/Game deadline-shaped recovery port와 v1 shared/web contract다. P4는 물리 이동 뒤 기존 Hangul vertical slice를 기능 추가 없이 다시 검증한다.
+
+P3C source와 targeted regression 구현은 완료됐지만, **P3C COMPLETE / P3D READY** 판정은 P3B checkpoint `bc4a62a`의 612-test 기준선을 모두 보존한 root typecheck, 전체 test, build, production-serving regression, `git diff --check`, P3C checkpoint commit과 일반 `origin/master` push가 모두 성공한 경우에만 유효하다.

@@ -9,7 +9,9 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
-import type { PlayingGameState } from "../domain/game/game-state.js";
+import type {
+  LegacyHangulPlayerLifecycleActionRouting,
+} from "../games/legacy-hangul-player-lifecycle-actions.js";
 import type { PlayerPresenceLeaseReader } from "../ports/player-presence-lease.js";
 import type { RoomPresencePolicyReader } from "../ports/room-presence-policy.js";
 import type { RoomRepository } from "../ports/room-repository.js";
@@ -43,6 +45,7 @@ export type RoomPresencePolicyServiceDependencies = Readonly<{
   scheduler: RoomPolicyScheduler;
   roomPresenceReader: RoomPresencePolicyReader;
   playerPresenceLeaseReader: PlayerPresenceLeaseReader;
+  playerLifecycleActions: LegacyHangulPlayerLifecycleActionRouting;
   clock: Clock;
   lobbyGraceService: LobbyDisconnectGraceService;
   retentionService: RoomRetentionService;
@@ -296,17 +299,21 @@ export class RoomPresencePolicyService {
   ): Promise<boolean> {
     return this.#dependencies.roomMutationExecutor.run(roomId, async () => {
       const room = await this.#dependencies.roomRepository.findById(roomId);
+      if (room === null || room.phase !== "PLAYING" || room.game === null) {
+        return false;
+      }
       if (
-        room === null ||
-        room.phase !== "PLAYING" ||
-        room.game === null ||
-        room.game.turn === null ||
-        room.game.result !== null
+        room.gameType !==
+        this.#dependencies.playerLifecycleActions.gameType
       ) {
         return false;
       }
-      const currentStreak = room.game.offlineTimeoutStreakByPlayerId.get(playerId);
-      if (currentStreak === undefined || currentStreak === 0) {
+      const plan =
+        this.#dependencies.playerLifecycleActions.planPresenceRestored(
+          room,
+          playerId,
+        );
+      if (plan.status === "NO_CHANGE") {
         return false;
       }
       const presence =
@@ -318,20 +325,12 @@ export class RoomPresencePolicyService {
         return false;
       }
 
-      const offlineTimeoutStreakByPlayerId = new Map(
-        room.game.offlineTimeoutStreakByPlayerId,
-      );
-      offlineTimeoutStreakByPlayerId.set(playerId, 0);
-      const game: PlayingGameState = Object.freeze({
-        ...room.game,
-        offlineTimeoutStreakByPlayerId,
-      });
       const now = this.#dependencies.clock.now();
       const committed = await this.#dependencies.roomUnitOfWork.commit(
         {
           roomMutation: {
             kind: "REPLACE",
-            candidate: { ...room, game, updatedAt: now },
+            candidate: { ...room, game: plan.game, updatedAt: now },
             expectedRoomRevision: room.roomRevision,
             expectedStorageRevision: room.storageRevision,
           },
@@ -339,12 +338,12 @@ export class RoomPresencePolicyService {
           idempotency: {
             scopeKey: `room-policy:${room.roomId}:${playerId}`,
             requestId: requestId(
-              `resume-streak-reset:${room.game.gameId}:${room.storageRevision}`,
+              `resume-streak-reset:${plan.gameId}:${room.storageRevision}`,
             ),
             payloadFingerprint: JSON.stringify([
               "resume-offline-timeout-streak-reset",
-              room.game.gameRevision,
-              currentStreak,
+              plan.gameRevision,
+              plan.previousOfflineTimeoutStreak,
             ]),
             terminalResult: {
               roomId: room.roomId,

@@ -14,6 +14,17 @@ const sourceFile = ts.createSourceFile(
   true,
   ts.ScriptKind.TS,
 );
+const compositionRootSource = readFileSync(
+  new URL("../../src/composition-root.ts", import.meta.url),
+  "utf8",
+);
+const compositionRootSourceFile = ts.createSourceFile(
+  "composition-root.ts",
+  compositionRootSource,
+  ts.ScriptTarget.Latest,
+  true,
+  ts.ScriptKind.TS,
+);
 
 function handlerFor(
   eventName: string,
@@ -65,6 +76,29 @@ function callsInside(eventName: string): ReadonlySet<string> {
 
   visit(handlerFor(eventName));
   return calls;
+}
+
+function variableInitializerText(
+  name: string,
+  file: ts.SourceFile,
+): string {
+  let result: string | null = null;
+
+  function visit(node: ts.Node): void {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === name &&
+      node.initializer !== undefined
+    ) {
+      result = node.initializer.getText(file).replaceAll(/\s/gu, "");
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(file);
+  assert.notEqual(result, null, `expected variable initializer: ${name}`);
+  return result ?? "";
 }
 
 function initializesReceivedAtFromRuntimeClock(eventName: string): boolean {
@@ -200,4 +234,50 @@ test("turn command receivedAt은 transport entry의 runtime clock 값과 동일�
     assert.equal(initializesReceivedAtFromRuntimeClock(eventName), true);
     assert.equal(passesReceivedAtToRouter(eventName, routerCall), true);
   }
+});
+
+test("P3C server action은 platform callback에서 canonical router로 전달되고 transport는 leave game state를 peek하지 않는다", () => {
+  const timeoutCallback = variableInitializerText(
+    "enqueueTimeout",
+    compositionRootSourceFile,
+  );
+  assert.equal(
+    timeoutCallback.includes(
+      "legacyHangulServerActionRouter.handleTurnTimeout(deadline)",
+    ),
+    true,
+  );
+  assert.equal(timeoutCallback.includes("turnTimeoutService.timeout"), false);
+
+  const gameDeadlineCallback = variableInitializerText(
+    "enqueueGameDeadline",
+    compositionRootSourceFile,
+  );
+  assert.equal(
+    gameDeadlineCallback.includes(
+      "legacyHangulServerActionRouter.handleGameDeadline(deadline)",
+    ),
+    true,
+  );
+  assert.equal(
+    gameDeadlineCallback.includes("gameDeadlineService.expire"),
+    false,
+  );
+
+  const leaveHandler = handlerFor("room:leave")
+    .getText(sourceFile)
+    .replaceAll(/\s/gu, "");
+  assert.equal(leaveHandler.includes("roomBefore.game"), false);
+  assert.equal(leaveHandler.includes('result.gameAdvisory!=="NONE"'), true);
+
+  assert.equal(socketIoSource.includes("runtime.turnTimeoutService"), false);
+  assert.equal(socketIoSource.includes("runtime.gameDeadlineService"), false);
+  assert.equal(
+    socketIoSource.includes("runtime.subscribeTurnTimeoutApplied"),
+    true,
+  );
+  assert.equal(
+    socketIoSource.includes("runtime.subscribeGameDeadlineApplied"),
+    true,
+  );
 });
