@@ -27,6 +27,11 @@ import {
   type GameRegistrationReader,
 } from "./games/game-registry.js";
 import { LegacyHangulGameStateAdapter } from "./games/legacy-hangul-game-state-adapter.js";
+import {
+  LegacyHangulV1CommandRouter,
+  type LegacyHangulV1CommandCapability,
+  type LegacyHangulV1CommandRouting,
+} from "./games/legacy-hangul-v1-command-router.js";
 import { projectLegacyHangulV1Game } from "./games/legacy-hangul-v1-game-projector.js";
 import {
   LEGACY_V1_DEFAULT_GAME_TYPE,
@@ -59,9 +64,9 @@ export type ApplicationRuntime = Readonly<{
   clock: SystemClock;
   connectionRegistry: ConnectionRegistry;
   gameRegistry: GameRegistrationReader;
-  gameStartService: GameStartService;
   gameDeadlineService: GameDeadlineService;
   gameDeadlineScheduler: InProcessGameDeadlineScheduler;
+  legacyHangulV1CommandRouter: LegacyHangulV1CommandRouting;
   overdueGameDeadlineSweeper: OverdueGameDeadlineSweeper;
   persistence: InMemoryPersistence;
   roomLeaveService: RoomLeaveService;
@@ -70,10 +75,7 @@ export type ApplicationRuntime = Readonly<{
   roomSessionService: RoomSessionApplicationService;
   sessionResumeService: SessionResumeService;
   snapshotProjector: LobbyStateSnapshotProjector;
-  turnDrawService: TurnDrawService;
-  turnPassService: TurnPassService;
   turnScheduler: InProcessTurnScheduler;
-  turnSubmitService: TurnSubmitService;
   turnTimeoutService: TurnTimeoutService;
   overdueTurnSweeper: OverdueTurnSweeper;
   subscribeRoomClosed(listener: RoomClosedAdvisoryListener): () => void;
@@ -402,6 +404,18 @@ export function createApplicationRuntime(
     onTurnSchedulingFailure: reportTurnSchedulingFailure,
     onGameFinished,
   });
+  const legacyHangulV1CommandCapability: LegacyHangulV1CommandCapability =
+    Object.freeze({
+      gameType: LEGACY_V1_DEFAULT_GAME_TYPE,
+      start: (input) => gameStartService.start(input),
+      submit: (input) => turnSubmitService.submit(input),
+      draw: (input) => turnDrawService.draw(input),
+      pass: (input) => turnPassService.pass(input),
+    });
+  const legacyHangulV1CommandRouter = new LegacyHangulV1CommandRouter({
+    roomRepository: persistence,
+    capability: legacyHangulV1CommandCapability,
+  });
   turnTimeoutService = new TurnTimeoutService({
     roomRepository: persistence,
     idempotencyRepository: persistence,
@@ -440,9 +454,9 @@ export function createApplicationRuntime(
     clock,
     connectionRegistry,
     gameRegistry,
-    gameStartService,
     gameDeadlineService,
     gameDeadlineScheduler,
+    legacyHangulV1CommandRouter,
     overdueGameDeadlineSweeper,
     persistence,
     roomLeaveService,
@@ -451,10 +465,7 @@ export function createApplicationRuntime(
     roomSessionService,
     sessionResumeService,
     snapshotProjector,
-    turnDrawService,
-    turnPassService,
     turnScheduler,
-    turnSubmitService,
     turnTimeoutService,
     overdueTurnSweeper,
     subscribeRoomClosed(listener) {

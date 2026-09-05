@@ -102,7 +102,12 @@ import {
 import { GameRegistry } from "../games/game-registry.js";
 import {
   createLegacyHangulCompatibilityRegistration,
+  LEGACY_V1_DEFAULT_GAME_TYPE,
 } from "../games/legacy-hangul-compatibility-registration.js";
+import {
+  LegacyHangulV1CommandRouter,
+  type LegacyHangulV1CommandCapability,
+} from "../games/legacy-hangul-v1-command-router.js";
 import { projectLegacyHangulV1Game } from "../games/legacy-hangul-v1-game-projector.js";
 import { ConnectionRegistry } from "../infrastructure/connection-registry.js";
 import { ConnectionRegistryPresenceReader } from "../infrastructure/connection-registry-presence-reader.js";
@@ -520,6 +525,18 @@ function createDeterministicRuntime(): DeterministicRuntime {
     turnScheduler,
     onGameFinished,
   });
+  const legacyHangulV1CommandCapability: LegacyHangulV1CommandCapability =
+    Object.freeze({
+      gameType: LEGACY_V1_DEFAULT_GAME_TYPE,
+      start: (input) => gameStartService.start(input),
+      submit: (input) => turnSubmitService.submit(input),
+      draw: (input) => turnDrawService.draw(input),
+      pass: (input) => turnPassService.pass(input),
+    });
+  const legacyHangulV1CommandRouter = new LegacyHangulV1CommandRouter({
+    roomRepository: persistence,
+    capability: legacyHangulV1CommandCapability,
+  });
   turnTimeoutService = new TurnTimeoutService({
     roomRepository: persistence,
     idempotencyRepository: persistence,
@@ -556,9 +573,9 @@ function createDeterministicRuntime(): DeterministicRuntime {
       clock,
       connectionRegistry,
       gameRegistry,
-      gameStartService,
       gameDeadlineService,
       gameDeadlineScheduler,
+      legacyHangulV1CommandRouter,
       overdueGameDeadlineSweeper,
       persistence,
       roomLeaveService,
@@ -567,10 +584,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
       roomSessionService,
       sessionResumeService,
       snapshotProjector,
-      turnDrawService,
-      turnPassService,
       turnScheduler,
-      turnSubmitService,
       turnTimeoutService,
       overdueTurnSweeper,
       subscribeRoomClosed(listener) {

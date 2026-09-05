@@ -1131,7 +1131,7 @@ function registerGameStartHandler(
         return;
       }
 
-      const result = await runtime.gameStartService.start({
+      const result = await runtime.legacyHangulV1CommandRouter.start({
         roomId: binding.roomId,
         actorPlayerId: binding.playerId,
         requestId: command.value.requestId,
@@ -1218,7 +1218,7 @@ function registerTurnSubmitHandler(
         return;
       }
 
-      const result = await runtime.turnSubmitService.submit({
+      const result = await runtime.legacyHangulV1CommandRouter.submit({
         roomId: binding.roomId,
         actorPlayerId: binding.playerId,
         requestId: command.value.requestId,
@@ -1323,7 +1323,7 @@ function registerTurnDrawHandler(
         return;
       }
 
-      const result = await runtime.turnDrawService.draw({
+      const result = await runtime.legacyHangulV1CommandRouter.draw({
         roomId: binding.roomId,
         actorPlayerId: binding.playerId,
         requestId: command.value.requestId,
@@ -1414,7 +1414,7 @@ function registerTurnPassHandler(
         return;
       }
 
-      const result = await runtime.turnPassService.pass({
+      const result = await runtime.legacyHangulV1CommandRouter.pass({
         roomId: binding.roomId,
         actorPlayerId: binding.playerId,
         requestId: command.value.requestId,

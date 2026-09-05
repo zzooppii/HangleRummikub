@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0·P1·P2 COMPLETE, P3A COMPLETE / P3B READY (P3A 최종 quality gate와 checkpoint push 조건부)
+> 상태: P0·P1·P2·P3A COMPLETE, P3B 구현 완료 / P3C READY (P3B 최종 quality gate와 checkpoint push 조건부)
 > 작성일: 2026-09-05
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -25,7 +25,7 @@
 
 production 기준선 573 tests는 shared 55, web 87, server 431로 구성됐다. 이후 추가된 test를 포함한 수는 이유 없이 감소하면 해당 Phase는 완료가 아니다.
 
-P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A는 이 597개를 삭제·skip하지 않고 새 boundary test와 함께 보존한다.
+P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A checkpoint `a215eaa`는 이 tests를 삭제·skip하지 않고 신규 boundary 6개를 더해 shared 59, web 91, server 453으로 총 603 tests를 통과했다. P3B는 기존 603개를 모두 보존한다.
 
 ## 2. Phase 개요
 
@@ -202,7 +202,7 @@ P3는 한 번에 실행하지 않는다. 아래 P3A~P3D를 각각 독립 작업�
 
 ### 6.1 P3A — Hangul state/projection/persistence seam
 
-> 구현 완료(조건부): 2026-09-05. 별도 Legacy Hangul state adapter와 Legacy Hangul v1 projector를 실제 caller에 주입했고 identity-only registry와 concrete typed `RoomRecord.game`은 유지했다. **P3A COMPLETE / P3B READY** 표기는 root typecheck, 전체 test, build, `git diff --check`, checkpoint commit 및 일반 `origin/master` push가 모두 성공한 경우에만 유효하다.
+> 완료: 2026-09-05, checkpoint `a215eaa`. 별도 Legacy Hangul state adapter와 Legacy Hangul v1 projector를 실제 caller에 주입했고 identity-only registry와 concrete typed `RoomRecord.game`은 유지했다. Root typecheck, 603 tests, build, `git diff --check`, checkpoint commit과 일반 `origin/master` push를 통과했다.
 
 #### 목표
 
@@ -242,7 +242,7 @@ P3는 한 번에 실행하지 않는다. 아래 P3A~P3D를 각각 독립 작업�
 - Playing/Finished v1 snapshot structural compatibility
 - projector unsupported/corrupt gameType fail-closed
 - 기존 deadline/retention recovery 및 representative Hangul lifecycle regression
-- 기존 597 tests와 신규 boundary tests, typecheck/build/diff-check
+- 기존 597 tests와 신규 boundary 6개를 포함한 총 603 tests, typecheck/build/diff-check
 
 #### Codex 실행 명령
 
@@ -252,51 +252,71 @@ Multi-game Platform P3A만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의
 
 #### 남은 결합과 다음 stop gate
 
-- P3B: `GameStartService`, Submit/Draw/Pass service 및 Socket.IO fixed command/advisory routing
 - P3C: leave/forfeit, presence streak reset, turn/game deadline action과 현재 turn/deadline-shaped recovery port의 optional capability, finished retention/result 처리
 - P3D: Hangul domain/shared source의 물리 directory와 import ownership. concrete `RoomRecord.game`의 장기 envelope/union 결정은 실제 second-game 요구 전에는 확정하지 않는다.
 
 ### 6.2 P3B — Hangul start and command routing seam
 
+> 구현 완료(조건부): 2026-09-05. 별도 immutable `LegacyHangulV1CommandRouter`가 canonical Room의 exact `HANGUL_TILE` capability로 기존 start/Submit/Draw/Pass service를 연결한다. **P3B COMPLETE / P3C READY** 표기는 기존 603 tests와 신규 9 tests, root typecheck, build, `git diff --check`, checkpoint commit 및 일반 `origin/master` push가 모두 성공한 경우에만 유효하다.
+
 #### 목표
 
-기존 game start와 `turn:submit/draw/pass`를 public wire 변경 없이 registry의 `HANGUL_TILE` command 경계로 위임한다.
+기존 game start와 `turn:submit/draw/pass`를 public wire 변경 없이 canonical `RoomRecord.gameType` 기반 Legacy Hangul command 경계로 위임한다.
 
 #### Scope
 
-- initial-state factory와 start eligibility의 game-owned 부분 분리
-- platform transport의 auth, canonical gameType, phase, revision, idempotency, Room lane 처리 유지
-- 기존 `turn:*` validators/handlers를 닫힌 Hangul command union adapter에 연결
-- async Dictionary/RuleEngine 결과와 candidate atomic commit 보존
-- command 성공 뒤 projection/broadcast orchestration 유지
+- `start`, `submit`, `draw`, `pass` 네 method와 exact `gameType`만 가진 frozen Legacy Hangul v1 capability를 별도 command router에 주입
+- router가 `RoomRepository.findById`로 canonical Room을 읽고 stored `gameType === HANGUL_TILE`인 경우에만 exact 기존 service를 한 번 호출
+- missing/incomplete capability는 constructor에서 fail-fast하고, bound method copy와 frozen router로 caller의 handler replacement를 차단
+- missing Room은 기존 `ROOM_NOT_FOUND`, unsupported/corrupt gameType은 새 public code 없이 `INTERNAL_ERROR`로 fail-closed하며 delegate/mutation을 시작하지 않음
+- Socket.IO transport는 기존 strict v1 validation, current binding과 authorization lease 조립, handler-entry `receivedAt` capture, ack/error mapping, snapshot fan-out과 advisory ordering을 유지
+- 기존 `GameStartService`, `TurnSubmitService`, `TurnDrawService`, `TurnPassService`가 phase/revision, request ID/idempotency, Room lane/UoW/CAS, Hangul rule과 post-commit scheduling을 계속 소유
+- P2 `GameRegistry`는 `{ gameType }` identity/availability lookup으로 유지하고 command capability를 추가하지 않음
+- 기존 service input/result와 async Dictionary/RuleEngine, candidate atomic commit, P3A projector/privacy를 변경 없이 보존
 
 #### 금지사항
 
 - event rename 또는 generic unchecked `game:command`
 - Room leave, reconnect policy, timeout scheduler 변경
 - 한글 rule/inventory/score/UI 변경
+- GameStartService의 initialization/readiness/idempotency/UoW 분해 또는 재작성
+- transport나 router에서 phase/revision/idempotency/game rule 중복 검증
+- GameRegistry를 giant capability registry로 확장
 - file tree 대이동과 NUMBER_TILE 구현
 
 #### Definition of Done
 
-- platform transport는 game command payload 내부를 해석하지 않고 Hangul adapter에 위임한다.
-- registry는 canonical Room gameType으로 exact facade를 선택한다.
+- platform transport runtime은 네 concrete command service field 대신 하나의 Legacy Hangul v1 command router를 호출한다.
+- transport는 기존 v1 payload를 validate/map하되 Hangul Board/bag/pass/result rule은 판단하지 않는다.
+- router는 canonical Room gameType으로 exact frozen capability를 선택하며 client/event/URL에서 game type을 추론하지 않는다.
+- missing capability는 startup/construction에서 실패하고 unsupported/corrupt type은 service 호출과 canonical mutation 전에 실패한다.
+- Submit/Draw/Pass의 `receivedAt`은 transport에서 한 번 capture한 exact 값으로 router와 service까지 전달된다.
 - 기존 start와 Submit/Draw/Pass ack, error, revision, idempotency 동작이 같다.
-- 실패 command는 state와 gameRevision을 그대로 유지한다.
+- 실패 command는 Room/game/storage revision과 idempotency state를 그대로 유지하고 advisory를 만들지 않는다.
+- snapshot fan-out 및 `turn:started`/`game:finished` ordering은 기존 transport/P3A projection 경로에 남는다.
+- P2 identity registry와 P3A state/projector seam은 변경 없이 유지된다.
 
 #### Required tests
 
-- start authorization/readiness/idempotency
-- submit/draw/pass success·failure·replay·stale revision
-- async dictionary rejection과 atomic rollback
-- wrong canonical gameType fail-closed
-- existing Socket.IO v1 compatibility, 전체 tests/typecheck/build/diff-check
+- router의 start/submit/draw/pass exact single delegation, input/result identity와 `receivedAt` 보존
+- wrong canonical gameType과 missing Room의 zero-delegate fail-closed 및 canonical state 불변
+- missing/incomplete capability fail-fast와 copied/frozen capability isolation
+- Socket.IO AST routing characterization을 direct service path에서 router path로 갱신하고 기존 platform mapping과 receivedAt capture를 계속 고정
+- 기존 start authorization/readiness/idempotency 및 submit/draw/pass success·failure·replay·stale revision
+- async dictionary rejection, atomic rollback, revision과 player-private snapshot
+- existing Socket.IO v1 integration, production serving, P1 wire, P2 registry, P3A state/projector 회귀
+- 기존 603 tests와 신규 9 tests, 전체 typecheck/build/diff-check
 
 #### Codex 실행 명령
 
 ```text
-Multi-game Platform P3B만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙을 지키고 기존 game:start의 module-owned initialization과 turn:submit/draw/pass를 P2 registry의 exact HANGUL_TILE command adapter로 위임하되 Socket.IO event, payload, ack/error, UI, rule semantics는 바꾸지 마라. transport는 actor/Room/gameType/phase/revision/idempotency/serialization을 연결하고 candidate state 검증은 Hangul module, 동일 Room UoW의 atomic commit은 platform application이 소유하게 하라. leave/presence/deadline, directory 이동, generic game:command와 새 게임은 제외하고 전체 typecheck/test/build/diff-check를 통과시켜라.
+Multi-game Platform P3B만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙을 지키고 별도 immutable LegacyHangulV1CommandRouter가 canonical Room.gameType의 exact HANGUL_TILE capability로 기존 GameStartService와 TurnSubmit/Draw/PassService를 한 번씩 호출하게 하라. P2 GameRegistry는 identity-only로 유지하고 missing/incomplete capability는 construction에서 fail-fast하며 unknown type은 delegate와 mutation 전에 fail-closed하라. transport의 strict v1 validation, current binding/auth lease, handler-entry receivedAt, ack/error, snapshot fan-out과 advisory ordering을 보존하고 기존 services의 phase/revision/idempotency/Room lane/UoW/rule/scheduling 책임을 재작성하거나 중복하지 마라. leave/presence/timeout/deadline, directory 이동, generic game:command와 새 게임은 제외하고 전체 typecheck/test/build/diff-check 및 checkpoint commit/push를 통과시켜라.
 ```
+
+#### 남은 결합과 다음 stop gate
+
+- P3C: `RoomLeaveService`, `RoomPresencePolicyService`, `TurnTimeoutService`, `GameDeadlineService`의 leave/forfeit, reconnect offline streak, deadline/result/retention decision과 transport의 leave active-turn advisory peek
+- P3D: Hangul domain/shared source의 물리 directory 및 import ownership
 
 ### 6.3 P3C — Hangul lifecycle server-action seam
 
