@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0~P6 COMPLETE / P7A READY
+> 상태: P0~P7A COMPLETE / P7B READY
 > 작성일: 2026-09-06
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -705,7 +705,7 @@ P6 consistency audit에 blocker가 없으므로 P6는 `COMPLETE`, P7A는 `READY`
 
 P7은 domain, server/shared integration, web 구현을 각각 독립 stop gate로 나눈다. P7A~P7C 중 하나라도 미완료면 production catalog에서 `NUMBER_TILE`을 enable하지 않는다.
 
-### 10.1 P7A — Number Tile domain implementation (`READY`)
+### 10.1 P7A — Number Tile domain implementation (`COMPLETE`)
 
 #### 목표
 
@@ -741,13 +741,25 @@ P6에서 confirmed된 규칙만으로 framework-independent NUMBER_TILE state와
 - deterministic ID/random/Clock 및 90초 deadline boundary
 - 기존 Hangul 전체 tests, typecheck/build/diff-check
 
+#### 완료 기록 (2026-09-06)
+
+- `apps/server/src/games/number-tile/domain/`에 physical Tile/inventory, Table/Meld, Submit RuleEngine, draw, no-play/forfeit/finish, Number result와 initial GameState를 독립 구현했다.
+- Injected ID/random/Clock으로 exact 106 inventory, 2~4명 rack 14장, revision 0, immutable shuffled turn order와 90초 Turn을 만들며 overall game deadline capability는 만들지 않았다.
+- Initial meld 30, unchanged existing Table, normal split/merge/rearrangement, physical conservation, rack contribution과 stable meld ID 없는 exact Joker recovery를 pure validation으로 고정했다.
+- Number result reason은 `RACK_EMPTY`, `STALEMATE`, `LAST_PLAYER_STANDING`만 존재하며 single-winner result와 STALEMATE competition ranking을 별도 shape로 유지했다.
+- Number-targeted 99 tests가 inventory/setup와 deterministic shuffle/exact 90초 deadline boundary, GROUP/RUN/Joker, initial/normal Submit, draw/pass/no-play/forfeit, timeout-action ordering, finish/result, runtime mutation safety와 static/dynamic import purity/inertness를 검증한다. 기존 685 tests와 함께 총 784 tests를 삭제·skip 없이 유지한다.
+- Shared wire, `GameType`, Registry, catalog, PlatformSnapshot, Socket.IO, Web와 composition root는 변경하지 않았으므로 production은 계속 `HANGUL_TILE` only다.
+- 상세 domain model과 P7B integration seam은 [NUMBER_TILE_DOMAIN_DESIGN.md](./NUMBER_TILE_DOMAIN_DESIGN.md)에 기록했다.
+
+P7A는 `COMPLETE`, P7B는 `READY`다. P7B 완료 전에는 `NUMBER_TILE`을 runtime registration, Room create, projection 또는 public catalog에 연결하지 않는다.
+
 #### Codex 실행 명령
 
 ```text
 Multi-game Platform P7A만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 docs/NUMBER_TILE_GAME_RULES.md의 `number-tile-rules-v1`만 사용해 framework-independent NUMBER_TILE state, inventory, RuleEngine, result를 구현하라. Hangul Board/RuleEngine을 import하거나 GenericTile을 만들지 말고 ID/random/Clock을 주입해 90초 turn deadline을 구현하되 overall game deadline capability는 만들지 마라. shared wire, persistence, transport, web, catalog는 건드리지 말고 table-driven domain tests와 전체 typecheck/test/build/diff-check를 통과시켜라.
 ```
 
-### 10.2 P7B — Number Tile server/shared integration
+### 10.2 P7B — Number Tile server/shared integration (`READY`)
 
 #### 목표
 

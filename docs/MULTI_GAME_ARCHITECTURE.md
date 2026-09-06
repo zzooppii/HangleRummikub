@@ -1,6 +1,6 @@
 # Multi-game Platform Architecture
 
-> 상태: P0~P6 COMPLETE / P7A READY
+> 상태: P0~P7A COMPLETE / P7B READY
 > 작성일: 2026-09-06
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
@@ -1086,4 +1086,29 @@ Snapshot V2 outer shell을 사용하되 Number에는 독립 PLAYING/FINISHED pro
 
 `supportedSnapshotVersions`만으로는 P5B-era Hangul-only V2 client와 Number renderer를 가진 client를 구분할 수 없다. Number admission은 negotiated `selectedSnapshotVersion === 2`와 connection-scoped exact `supportedGameTypes`의 `NUMBER_TILE` 포함을 모두 요구하며 create/join/resume를 Room/Player/session/idempotency/binding/presence mutation 전에 fail-closed한다. Payload와 URL의 game type은 dispatch authority가 아니며 canonical Room만 신뢰한다.
 
-P6 consistency audit은 `LAST_PLAYER_STANDING` 즉시 종료와 `ALL_PLAYERS_FORFEITED` 제거, stable meld identity 없는 exact Joker replacement/same-Submit reuse, forfeited STALEMATE ranking을 포함해 blocker 없이 완료됐다. P6는 `COMPLETE`, P7A는 `READY`다. P7B는 P7A 완료 뒤, P7C는 P7B 완료 뒤 시작하며 production catalog와 registry는 계속 `HANGUL_TILE` 하나다.
+P6 consistency audit은 `LAST_PLAYER_STANDING` 즉시 종료와 `ALL_PLAYERS_FORFEITED` 제거, stable meld identity 없는 exact Joker replacement/same-Submit reuse, forfeited STALEMATE ranking을 포함해 blocker 없이 완료됐다. 이 gate를 입력으로 P7A pure domain을 구현했으며 production catalog와 registry는 계속 `HANGUL_TILE` 하나다.
+
+## 31. P7A Number Tile pure domain
+
+P7A는 `number-tile-rules-v1`만 구현하는 독립 domain을 `apps/server/src/games/number-tile/domain/`에 추가했다.
+
+```text
+existing neutral ID/time ports
+  -> Number Tile initial state / inventory
+  -> Number Tile Table/Meld RuleEngine
+  -> Number Tile lifecycle/result decisions
+
+production Room/Registry/Socket/Web
+  -X-> Number Tile domain (P7A에서는 연결 없음)
+```
+
+- Physical model은 1~13 × `RED/BLUE/BLACK/ORANGE` × 2 ordinary 104장과 face 없는 Joker 2장, 총 106장 및 opaque unique `tileId`를 소유한다.
+- Initial state는 narrow ID generator, `RandomSource`, `Clock`을 주입받아 2~4명 rack 14장, single pool, revision 0, immutable shuffled order와 정확히 90초 Turn을 만든다. Overall game deadline은 없다.
+- Number 전용 `Table`, `ProposedTable`, `Meld`, `GROUP`, `RUN`과 Joker placement를 사용한다. Hangul Board/WordGroup/RuleEngine을 import하거나 generic Tile/Meld/GameState를 만들지 않았다.
+- Submit RuleEngine은 canonical Table, actor rack, physical lookup과 proposed final Table만 받는다. Initial meld의 unchanged pre-table 관계, threshold 30, normal whole-table rearrangement, physical conservation과 rack contribution을 structured Number failure로 검증한다.
+- Stable meld ID 없는 Joker recovery는 같은 physical Joker의 pre/final assignment 변화, old-face multiset demand와 final Table에 새로 사용된 actor-rack ordinary exact-face supply를 비교한다. Final duplicate/conservation/meld validity가 same-Submit reuse를 보장하며 ambiguous counterexample은 발견되지 않았다.
+- Draw는 이미 server가 선택한 한 장의 pure pool→rack transition만 제공한다. Pass/no-play, presence-independent eligibility, forfeit pruning, offline timeout streak와 `RACK_EMPTY > LAST_PLAYER_STANDING > STALEMATE` decision은 scheduler/Room 없이 pure function이다.
+- Result는 Number 전용 discriminated union이다. Single-winner reasons에는 rank를 만들지 않고, STALEMATE에만 non-forfeited 우선 및 forfeited subgroup competition ranking을 둔다. `TIME_LIMIT`과 `ALL_PLAYERS_FORFEITED`는 타입에 없다.
+- Import-boundary test는 Hangul/platform runtime 역의존, direct clock/random/timer, stable `meldId`를 거절한다. Production source가 Number domain을 import하지 않는 inertness도 고정했다.
+
+P7A는 shared protocol, `GameType`, GameRegistry, catalog, PlatformSnapshot, Socket.IO, Web와 production composition을 변경하지 않는다. 따라서 runtime 지원 game은 계속 `HANGUL_TILE` 하나다. Concrete model과 P7B handoff는 [NUMBER_TILE_DOMAIN_DESIGN.md](./NUMBER_TILE_DOMAIN_DESIGN.md)에 기록한다.
