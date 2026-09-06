@@ -16,12 +16,12 @@ import * as v from "valibot";
 import {
   createInitialGameState,
   type PlayingGameState,
-} from "./domain/game/game-state.js";
+} from "./games/hangul-tile/domain/game-state.js";
 import {
   applyLegacyHangulPlayingLeave,
   planLegacyHangulPresenceRestored,
-} from "./games/legacy-hangul-player-lifecycle-actions.js";
-import { LEGACY_V1_DEFAULT_GAME_TYPE } from "./games/legacy-hangul-compatibility-registration.js";
+} from "./games/hangul-tile/compatibility/legacy-hangul-player-lifecycle-actions.js";
+import { LEGACY_V1_DEFAULT_GAME_TYPE } from "./games/hangul-tile/compatibility/legacy-hangul-compatibility-registration.js";
 import { FakeIdGenerator } from "./infrastructure/system.js";
 import {
   createStorageRevision,

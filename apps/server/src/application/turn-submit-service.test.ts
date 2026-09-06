@@ -30,33 +30,33 @@ import {
   type TurnSubmitResult,
   type TurnSubmitServiceDependencies,
 } from "./turn-submit-service.js";
-import type { Board } from "../domain/game/board.js";
+import type { Board } from "../games/hangul-tile/domain/board.js";
 import {
   createDefaultRulesConfig,
   type PlayingGameState,
-} from "../domain/game/game-state.js";
+} from "../games/hangul-tile/domain/game-state.js";
 import type {
   BoardValidationError,
   BoardValidationResult,
-} from "../domain/game/rule-engine.js";
+} from "../games/hangul-tile/domain/rule-engine.js";
 import type {
   OrdinaryPhysicalTileType,
   OrdinaryTileInstance,
   OrdinaryTileSymbol,
   TileInstance,
   TileSourceBag,
-} from "../domain/game/tile-inventory.js";
+} from "../games/hangul-tile/domain/tile-inventory.js";
+import type { DictionaryProvider } from "../games/hangul-tile/domain/dictionary-provider.js";
 import {
   InMemoryPersistence,
   type InMemoryPersistenceOptions,
 } from "../infrastructure/in-memory-persistence.js";
 import { KeyedSerialExecutor } from "../infrastructure/keyed-serial-executor.js";
 import { FakeClock, FakeIdGenerator } from "../infrastructure/system.js";
-import { TestDictionaryProvider } from "../infrastructure/test-dictionary-provider.js";
+import { TestDictionaryProvider } from "../games/hangul-tile/infrastructure/test-dictionary-provider.js";
 import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
 import type { RoomUnitOfWork } from "../ports/room-unit-of-work.js";
 import type {
-  DictionaryProvider,
   ScheduledTurnDeadline,
   TurnScheduler,
 } from "../ports/system.js";
@@ -906,7 +906,7 @@ test("async validation 중 primary가 교체되면 pre-commit recheck가 Submit�
   const harness = await createHarness({
     validateBoard: async (input): Promise<BoardValidationResult> => {
       validateCalls += 1;
-      const result = await import("../domain/game/rule-engine.js").then(
+      const result = await import("../games/hangul-tile/domain/rule-engine.js").then(
         ({ validateProposedBoard }) => validateProposedBoard(input),
       );
       authorization.current = false;

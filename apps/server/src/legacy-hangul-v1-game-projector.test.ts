@@ -12,9 +12,9 @@ import { parse } from "valibot";
 import {
   createInitialGameState,
   type GameState,
-} from "./domain/game/game-state.js";
-import { createTimeLimitResult } from "./domain/game/result-engine.js";
-import { projectLegacyHangulV1Game } from "./games/legacy-hangul-v1-game-projector.js";
+} from "./games/hangul-tile/domain/game-state.js";
+import { createTimeLimitResult } from "./games/hangul-tile/domain/result-engine.js";
+import { projectLegacyHangulV1Game } from "./games/hangul-tile/compatibility/legacy-hangul-v1-game-projector.js";
 import { FakeIdGenerator } from "./infrastructure/system.js";
 
 const PLAYER_A = parse(PlayerIdSchema, "player-projector-a");

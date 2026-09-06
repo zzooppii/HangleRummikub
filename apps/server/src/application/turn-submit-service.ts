@@ -18,15 +18,16 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
-import type { Board } from "../domain/game/board.js";
-import type { PlayingGameState } from "../domain/game/game-state.js";
-import { createRackEmptyResult } from "../domain/game/result-engine.js";
+import type { Board } from "../games/hangul-tile/domain/board.js";
+import type { PlayingGameState } from "../games/hangul-tile/domain/game-state.js";
+import { createRackEmptyResult } from "../games/hangul-tile/domain/result-engine.js";
 import {
   validateProposedBoard,
   type BoardValidationError,
   type BoardValidationResult,
   type ValidateBoardInput,
-} from "../domain/game/rule-engine.js";
+} from "../games/hangul-tile/domain/rule-engine.js";
+import type { DictionaryProvider } from "../games/hangul-tile/domain/dictionary-provider.js";
 import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
 import type { IdempotencyRepository } from "../ports/idempotency-repository.js";
 import type { RoomRepository } from "../ports/room-repository.js";
@@ -36,7 +37,6 @@ import type {
 } from "../ports/room-unit-of-work.js";
 import type {
   Clock,
-  DictionaryProvider,
   IdGenerator,
   TurnScheduler,
 } from "../ports/system.js";

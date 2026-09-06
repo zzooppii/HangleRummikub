@@ -29,20 +29,20 @@ import {
 import { TurnPassService, type TurnPassInput } from "./turn-pass-service.js";
 import { TurnSubmitService } from "./turn-submit-service.js";
 import { TurnTimeoutService } from "./turn-timeout-service.js";
-import type { Board } from "../domain/game/board.js";
+import type { Board } from "../games/hangul-tile/domain/board.js";
 import {
   createDefaultRulesConfig,
   type PlayingGameState,
-} from "../domain/game/game-state.js";
+} from "../games/hangul-tile/domain/game-state.js";
 import type {
   OrdinaryTileInstance,
   TileSourceBag,
-} from "../domain/game/tile-inventory.js";
+} from "../games/hangul-tile/domain/tile-inventory.js";
 import { InMemoryPersistence } from "../infrastructure/in-memory-persistence.js";
 import { KeyedSerialExecutor } from "../infrastructure/keyed-serial-executor.js";
 import { OverdueTurnSweeper } from "../infrastructure/overdue-turn-sweeper.js";
 import { FakeClock, FakeIdGenerator } from "../infrastructure/system.js";
-import { TestDictionaryProvider } from "../infrastructure/test-dictionary-provider.js";
+import { TestDictionaryProvider } from "../games/hangul-tile/infrastructure/test-dictionary-provider.js";
 import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
 import type {
   RandomSource,

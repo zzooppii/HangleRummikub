@@ -9,8 +9,8 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
-import type { FinishedGameState } from "../domain/game/game-state.js";
-import { createTimeLimitResult } from "../domain/game/result-engine.js";
+import type { FinishedGameState } from "../games/hangul-tile/domain/game-state.js";
+import { createTimeLimitResult } from "../games/hangul-tile/domain/result-engine.js";
 import type { RoomWriteCandidate } from "../model/persistence.js";
 import type { IdempotencyRepository } from "../ports/idempotency-repository.js";
 import type { RoomRepository } from "../ports/room-repository.js";

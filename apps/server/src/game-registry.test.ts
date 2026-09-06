@@ -11,7 +11,7 @@ import {
 import {
   LEGACY_V1_DEFAULT_GAME_TYPE,
   createLegacyHangulCompatibilityRegistration,
-} from "./games/legacy-hangul-compatibility-registration.js";
+} from "./games/hangul-tile/compatibility/legacy-hangul-compatibility-registration.js";
 
 test("legacy Hangul compatibility registration is the single exact frozen entry", () => {
   const registration = createLegacyHangulCompatibilityRegistration();

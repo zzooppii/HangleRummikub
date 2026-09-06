@@ -14,9 +14,9 @@ import {
   type FinishedGameState,
   type GameState,
   type PlayingGameState,
-} from "./domain/game/game-state.js";
-import { createTimeLimitResult } from "./domain/game/result-engine.js";
-import { LegacyHangulGameStateAdapter } from "./games/legacy-hangul-game-state-adapter.js";
+} from "./games/hangul-tile/domain/game-state.js";
+import { createTimeLimitResult } from "./games/hangul-tile/domain/result-engine.js";
+import { LegacyHangulGameStateAdapter } from "./games/hangul-tile/compatibility/legacy-hangul-game-state-adapter.js";
 import { FakeIdGenerator } from "./infrastructure/system.js";
 
 function createPlayingGame(): PlayingGameState {

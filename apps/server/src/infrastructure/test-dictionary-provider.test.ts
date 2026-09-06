@@ -11,18 +11,18 @@ import {
   composeWord,
   type AssignedJamoComponent,
   type SyllableCompositionInput,
-} from "../domain/hangul/composition.js";
+} from "../games/hangul-tile/domain/composition.js";
 import type {
   DictionaryLookupResult,
   DictionaryProvider,
   DictionaryUnavailableReason,
-} from "../ports/system.js";
+} from "../games/hangul-tile/domain/dictionary-provider.js";
 import {
   TEST_DICTIONARY_FIXTURE,
   TEST_DICTIONARY_VERSION,
   TEST_DICTIONARY_WORDS,
   TestDictionaryProvider,
-} from "./test-dictionary-provider.js";
+} from "../games/hangul-tile/infrastructure/test-dictionary-provider.js";
 
 const EXPECTED_DOCUMENT_WORDS = [
   "가방",

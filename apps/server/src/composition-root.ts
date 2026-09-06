@@ -26,23 +26,23 @@ import {
   type GameRegistration,
   type GameRegistrationReader,
 } from "./games/game-registry.js";
-import { LegacyHangulGameStateAdapter } from "./games/legacy-hangul-game-state-adapter.js";
-import { createLegacyHangulPlayerLifecycleActions } from "./games/legacy-hangul-player-lifecycle-actions.js";
+import { LegacyHangulGameStateAdapter } from "./games/hangul-tile/compatibility/legacy-hangul-game-state-adapter.js";
+import { createLegacyHangulPlayerLifecycleActions } from "./games/hangul-tile/compatibility/legacy-hangul-player-lifecycle-actions.js";
 import {
   LegacyHangulV1CommandRouter,
   type LegacyHangulV1CommandCapability,
   type LegacyHangulV1CommandRouting,
-} from "./games/legacy-hangul-v1-command-router.js";
-import { projectLegacyHangulV1Game } from "./games/legacy-hangul-v1-game-projector.js";
+} from "./games/hangul-tile/compatibility/legacy-hangul-v1-command-router.js";
+import { projectLegacyHangulV1Game } from "./games/hangul-tile/compatibility/legacy-hangul-v1-game-projector.js";
 import {
   LEGACY_V1_DEFAULT_GAME_TYPE,
   createLegacyHangulCompatibilityRegistration,
-} from "./games/legacy-hangul-compatibility-registration.js";
+} from "./games/hangul-tile/compatibility/legacy-hangul-compatibility-registration.js";
 import {
   LegacyHangulServerActionRouter,
   type LegacyHangulServerActionCapability,
   type LegacyHangulServerActionRouting,
-} from "./games/legacy-hangul-server-action-router.js";
+} from "./games/hangul-tile/compatibility/legacy-hangul-server-action-router.js";
 import { ConnectionRegistry } from "./infrastructure/connection-registry.js";
 import { ConnectionRegistryPresenceReader } from "./infrastructure/connection-registry-presence-reader.js";
 import { InMemoryPersistence } from "./infrastructure/in-memory-persistence.js";
@@ -57,7 +57,7 @@ import {
   RoomLifecycleResources,
   type RoomClosedAdvisoryListener,
 } from "./infrastructure/room-lifecycle-resources.js";
-import { TestDictionaryProvider } from "./infrastructure/test-dictionary-provider.js";
+import { TestDictionaryProvider } from "./games/hangul-tile/infrastructure/test-dictionary-provider.js";
 import {
   CryptoRandomSource,
   NodeCryptoIdGenerator,

@@ -25,15 +25,15 @@ import { parse } from "valibot";
 import {
   createDefaultRulesConfig,
   type PlayingGameState,
-} from "../domain/game/game-state.js";
-import type { OrdinaryTileInstance } from "../domain/game/tile-inventory.js";
+} from "../games/hangul-tile/domain/game-state.js";
+import type { OrdinaryTileInstance } from "../games/hangul-tile/domain/tile-inventory.js";
 import { InMemoryPersistence } from "../infrastructure/in-memory-persistence.js";
 import { KeyedSerialExecutor } from "../infrastructure/keyed-serial-executor.js";
 import { FakeClock, FakeIdGenerator } from "../infrastructure/system.js";
-import { TestDictionaryProvider } from "../infrastructure/test-dictionary-provider.js";
-import { createLegacyHangulPlayerLifecycleActions } from "../games/legacy-hangul-player-lifecycle-actions.js";
-import { LegacyHangulServerActionRouter } from "../games/legacy-hangul-server-action-router.js";
-import { LEGACY_V1_DEFAULT_GAME_TYPE } from "../games/legacy-hangul-compatibility-registration.js";
+import { TestDictionaryProvider } from "../games/hangul-tile/infrastructure/test-dictionary-provider.js";
+import { createLegacyHangulPlayerLifecycleActions } from "../games/hangul-tile/compatibility/legacy-hangul-player-lifecycle-actions.js";
+import { LegacyHangulServerActionRouter } from "../games/hangul-tile/compatibility/legacy-hangul-server-action-router.js";
+import { LEGACY_V1_DEFAULT_GAME_TYPE } from "../games/hangul-tile/compatibility/legacy-hangul-compatibility-registration.js";
 import {
   createUnboundSessionRecord,
   type RoomRecord,

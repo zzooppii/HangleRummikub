@@ -1,8 +1,8 @@
 import type { PlayerId } from "@hangul-rummikub/shared";
 
-import type { BoardTilePlacement } from "../domain/game/board.js";
-import type { GameState } from "../domain/game/game-state.js";
-import { JOKER_ALLOWED_SYMBOLS } from "../domain/game/tile-inventory.js";
+import type { BoardTilePlacement } from "../domain/board.js";
+import type { GameState } from "../domain/game-state.js";
+import { JOKER_ALLOWED_SYMBOLS } from "../domain/tile-inventory.js";
 
 export type ProjectLegacyHangulV1GameInput = Readonly<{
   phase: "PLAYING" | "FINISHED";

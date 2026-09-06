@@ -15,8 +15,8 @@ import {
 } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 
-import { createInitialGameState } from "../domain/game/game-state.js";
-import { createRackEmptyResult } from "../domain/game/result-engine.js";
+import { createInitialGameState } from "../games/hangul-tile/domain/game-state.js";
+import { createRackEmptyResult } from "../games/hangul-tile/domain/result-engine.js";
 import {
   createUnboundSessionRecord,
   type RoomRecord,
@@ -42,8 +42,8 @@ import { FakeClock, FakeIdGenerator } from "../infrastructure/system.js";
 import {
   createLegacyHangulPlayerLifecycleActions,
   type LegacyHangulPlayerLifecycleActionRouting,
-} from "../games/legacy-hangul-player-lifecycle-actions.js";
-import { LegacyHangulServerActionRouter } from "../games/legacy-hangul-server-action-router.js";
+} from "../games/hangul-tile/compatibility/legacy-hangul-player-lifecycle-actions.js";
+import { LegacyHangulServerActionRouter } from "../games/hangul-tile/compatibility/legacy-hangul-server-action-router.js";
 import { LobbyDisconnectGraceService } from "./lobby-disconnect-grace-service.js";
 import { RoomCleanupService } from "./room-cleanup-service.js";
 import { RoomLeaveService } from "./room-leave-service.js";

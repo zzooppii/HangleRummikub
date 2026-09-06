@@ -15,7 +15,7 @@ import {
   LegacyHangulGameStateAdapter,
   type LegacyHangulGameLifecycleInspection,
   type LegacyHangulGameStateStorage,
-} from "../games/legacy-hangul-game-state-adapter.js";
+} from "../games/hangul-tile/compatibility/legacy-hangul-game-state-adapter.js";
 import {
   createStorageRevision,
   incrementStorageRevision,

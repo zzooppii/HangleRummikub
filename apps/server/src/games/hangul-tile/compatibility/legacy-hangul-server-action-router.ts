@@ -1,12 +1,12 @@
 import type { RoomId } from "@hangul-rummikub/shared";
 
-import type { GameDeadlineResult } from "../application/game-deadline-service.js";
-import type { TurnTimeoutResult } from "../application/turn-timeout-service.js";
-import type { RoomRepository } from "../ports/room-repository.js";
+import type { GameDeadlineResult } from "../../../application/game-deadline-service.js";
+import type { TurnTimeoutResult } from "../../../application/turn-timeout-service.js";
+import type { RoomRepository } from "../../../ports/room-repository.js";
 import type {
   ScheduledGameDeadline,
   ScheduledTurnDeadline,
-} from "../ports/system.js";
+} from "../../../ports/system.js";
 import { LEGACY_V1_DEFAULT_GAME_TYPE } from "./legacy-hangul-compatibility-registration.js";
 
 export type LegacyHangulServerActionCapability = Readonly<{

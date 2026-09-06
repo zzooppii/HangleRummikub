@@ -12,7 +12,7 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
-import { createInitialGameState } from "../domain/game/game-state.js";
+import { createInitialGameState } from "../games/hangul-tile/domain/game-state.js";
 import type { GameRegistrationReader } from "../games/game-registry.js";
 import type {
   IdempotencyRecord,

@@ -19,7 +19,7 @@ import {
 import * as v from "valibot";
 
 import type { GameRegistrationReader } from "../games/game-registry.js";
-import { LEGACY_V1_DEFAULT_GAME_TYPE } from "../games/legacy-hangul-compatibility-registration.js";
+import { LEGACY_V1_DEFAULT_GAME_TYPE } from "../games/hangul-tile/compatibility/legacy-hangul-compatibility-registration.js";
 import {
   createUnboundSessionRecord,
   type IdempotencyRecord,

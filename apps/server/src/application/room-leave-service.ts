@@ -16,7 +16,7 @@ import * as v from "valibot";
 import type {
   LegacyHangulPlayerLifecycleActionRouting,
   LegacyHangulPlayingLeaveAdvisory,
-} from "../games/legacy-hangul-player-lifecycle-actions.js";
+} from "../games/hangul-tile/compatibility/legacy-hangul-player-lifecycle-actions.js";
 import type {
   IdempotencyRecord,
   RoomWriteCandidate,

@@ -8,7 +8,7 @@ import {
   TILE_INVENTORY_TOTALS,
   TILE_INVENTORY_VERSION,
   createCanonicalTileInstances,
-} from "./tile-inventory.js";
+} from "../../games/hangul-tile/domain/tile-inventory.js";
 
 const EXPECTED_ORDINARY_DEFINITIONS = [
   ["GIYEOK_NIEUN_ROTATION", "CONSONANT", 12, ["ㄱ", "ㄴ"]],

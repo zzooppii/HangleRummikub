@@ -16,8 +16,8 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
-import type { PlayingGameState } from "../domain/game/game-state.js";
-import type { TileSourceBag } from "../domain/game/tile-inventory.js";
+import type { PlayingGameState } from "../games/hangul-tile/domain/game-state.js";
+import type { TileSourceBag } from "../games/hangul-tile/domain/tile-inventory.js";
 import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
 import type { IdempotencyRepository } from "../ports/idempotency-repository.js";
 import type { RoomRepository } from "../ports/room-repository.js";

@@ -15,7 +15,7 @@ import {
   type HangulCompositionResult,
   type SyllableCompositionInput,
   type WordCompositionInput,
-} from "./composition.js";
+} from "../../games/hangul-tile/domain/composition.js";
 
 function tileId(value: string): TileId {
   return parse(TileIdSchema, value);

@@ -1,7 +1,7 @@
 # Multi-game Platform Architecture
 
-> 상태: P0 target boundary 후보 + P1 characterization + P2 internal identity checkpoint + P3A state/projection boundary checkpoint + P3B command routing checkpoint + P3C server-action boundary 구현 완료(최종 quality gate와 checkpoint/push 조건부)
-> 작성일: 2026-09-05
+> 상태: P0~P3C checkpoint 완료 + P3D verified Hangul physical extraction 구현 완료(최종 quality gate와 checkpoint/push 조건부)
+> 작성일: 2026-09-06
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
 제품 범위는 [MULTI_GAME_PLATFORM_SPEC.md](./MULTI_GAME_PLATFORM_SPEC.md), 실행 순서와 Phase별 명령은 [MULTI_GAME_MIGRATION_ROADMAP.md](./MULTI_GAME_MIGRATION_ROADMAP.md)를 따른다. P1에서 확인한 exact wire, persistence/projector/service/scheduler/web ownership은 [MULTI_GAME_P1_CHARACTERIZATION.md](./MULTI_GAME_P1_CHARACTERIZATION.md)에 기록한다.
@@ -51,6 +51,8 @@ P3B는 기존 네 command service를 재작성하거나 공통 command bus를 �
 
 P3C 구현은 client command router를 확장하지 않고 두 종류의 좁은 경계를 별도로 뒀다. frozen `LegacyHangulPlayerLifecycleActionRouting`은 PLAYING explicit leave의 forfeit/next-turn/result candidate와 presence 복구 시 offline timeout streak reset plan만 만든다. 별도 immutable `LegacyHangulServerActionRouter`는 scheduler와 overdue sweeper가 전달한 Turn timeout/Game deadline identity를 canonical `RoomRecord.gameType`으로 확인한 뒤 기존 `TurnTimeoutService`/`GameDeadlineService`에 그대로 위임한다. Room/session/presence lease, Room lane, UoW/CAS, timer·sweeper mechanism, retention/cleanup과 snapshot/advisory delivery는 platform/application 경로에 남는다.
 
+P3D는 위 경계에서 소유권이 검증된 domain, dictionary와 Legacy compatibility seam만 `apps/server/src/games/hangul-tile/` 아래로 이동했다. Shared도 public root API와 flat v1 envelope를 유지하면서 ProposedBoard/Draw bag contract와 Hangul v1 game projection validator를 `packages/shared/src/games/hangul-tile/` 내부로 분리했다. mixed application orchestration, registry, persistence, scheduler, transport와 composition root는 기존 위치를 유지하며, 구체 `RoomRecord.game`과 v1 web contract도 일반화하지 않았다.
+
 ## 3. 현재 코드 분류
 
 ### 3.1 `PLATFORM_CORE`
@@ -78,20 +80,20 @@ P3C 구현은 client command router를 확장하지 않고 두 종류의 좁은 
 
 | 영역 | 현재 파일/모듈 | 한글 전용 근거 |
 | --- | --- | --- |
-| 한글 조합 | `apps/server/src/domain/hangul/composition.ts` | 초성·중성·종성, 복합 모음·받침 조합 |
-| 게임 state | `apps/server/src/domain/game/game-state.ts` | `hangul-rummikub` rules, 156 tiles, 자음/모음 bag, rack, initial meld, turn, 한글 result |
-| inventory | `apps/server/src/domain/game/tile-inventory.ts` | 한글 symbol 수량과 tile cost |
-| board/rules | `apps/server/src/domain/game/board.ts`, `rule-engine.ts` | WordGroup, syllable placement, Joker와 dictionary 판정 |
-| 종료·점수 | `apps/server/src/domain/game/result-engine.ts`, `stalemate.ts` | rack penalty, RACK_EMPTY 등 현재 종료 이유와 ranking |
+| 한글 조합 | `apps/server/src/games/hangul-tile/domain/composition.ts` | 초성·중성·종성, 복합 모음·받침 조합 |
+| 게임 state | `apps/server/src/games/hangul-tile/domain/game-state.ts` | `hangul-rummikub` rules, 156 tiles, 자음/모음 bag, rack, initial meld, turn, 한글 result |
+| inventory | `apps/server/src/games/hangul-tile/domain/tile-inventory.ts` | 한글 symbol 수량과 tile cost |
+| board/rules | `apps/server/src/games/hangul-tile/domain/board.ts`, `rule-engine.ts` | WordGroup, syllable placement, Joker와 dictionary 판정 |
+| 종료·점수 | `apps/server/src/games/hangul-tile/domain/result-engine.ts`, `stalemate.ts` | rack penalty, RACK_EMPTY 등 현재 종료 이유와 ranking |
 | turn application | `turn-submit-service.ts`, `turn-draw-service.ts`, `turn-pass-service.ts`, `turn-timeout-service.ts` | board/rack/bag/initial meld/turn 규칙을 직접 변경 |
 | turn 전이 | `turn-transition.ts` | 현재 turn order, offline streak, stalemate semantics |
-| 사전 | `apps/server/src/ports/system.ts`의 `DictionaryProvider`, `apps/server/src/infrastructure/test-dictionary-provider.ts` | 한글 단어 허용 판정과 `test-dictionary-v1` |
+| 사전 | `apps/server/src/games/hangul-tile/domain/dictionary-provider.ts`, `infrastructure/test-dictionary-provider.ts` | 한글 단어 허용 판정과 `test-dictionary-v1` |
 | shared command | `ProposedBoard`, `WordGroup`, syllable/tile placement, `turn:submit/draw/pass` | 한글 board와 consonant/vowel bag을 wire에 표현 |
 | shared projection | Board, rack tile, bag counts, initial meld, 현재 GameResult | 한글 tile/score/result 규칙을 직접 validation |
 | web game UI | `TurnDraftEditor.tsx`, `use-turn-draft.ts` | 한글 rack/자모 slot/Joker/board 편집. 공통 Room chrome도 가진 `PlayingScreen.tsx` 전체는 coupled로 분류한다. |
 | web game helpers | `turn-draft.ts`, `turn-submit.ts`, `turn-actions.ts`, `playing-status.ts`, `finished-result.ts` | 현재 한글 command와 종료 이유를 전제 |
 
-현재 `domain/game`이라는 일반 이름은 분류 근거가 아니다. 그 내부의 state와 rule은 실제로 `HANGUL_TILE` module이다.
+P3D 전의 일반 이름 `domain/game`은 분류 근거가 아니었다. 해당 production state와 rule은 실제 책임에 따라 `games/hangul-tile/domain`으로 이동했고, old directory에는 test runner discovery를 위한 test만 남는다.
 
 ### 3.3 `CROSS_GAME_CANDIDATE`
 
@@ -125,7 +127,7 @@ P3C 구현은 client command router를 확장하지 않고 두 종류의 좁은 
 | `apps/server/src/application/game-start-service.ts` | P3B router 뒤의 Legacy Hangul compatibility implementation으로 그대로 유지됐다. Host/phase/presence/idempotency/serialization과 `createInitialGameState`, turn/game scheduling을 한 service가 수행하며 그 내부 분리는 이번 Phase에서 시도하지 않았다. |
 | `apps/server/src/application/room-leave-service.ts` | P3C에서 Lobby leave와 공통 authorization/idempotency/UoW/session/resource 처리에 남고, PLAYING의 forfeit·stalemate·next turn/result candidate는 injected Legacy Hangul player-lifecycle action에 위임한다. FINISHED compatibility branch와 post-commit scheduling/advisory orchestration은 아직 concrete Hangul `GameState`를 안다. |
 | `apps/server/src/application/room-presence-policy-service.ts` | connection/presence lease, Lobby grace, Host election, all-offline/FINISHED retention과 storage commit을 계속 소유한다. P3C에서 reconnect의 offline timeout streak 판정·reset candidate는 Legacy Hangul lifecycle action에 위임했지만 retention metadata 조회는 concrete `RoomRecord.game`에 남는다. |
-| `apps/server/src/ports/system.ts` | `Clock`/random 같은 공통 port와 `DictionaryProvider`, turn/tile ID, Hangul-shaped scheduler contract가 한 파일에 있다. |
+| `apps/server/src/ports/system.ts` | P3D에서 `DictionaryProvider`를 Hangul module로 분리했다. `Clock`/random/ID와 Turn/Game-shaped scheduler contract는 여전히 한 파일에 있어 후자는 cross-game 검증 전까지 coupled다. |
 | `game-deadline-service.ts`, `turn-timeout-service.ts`, deadline/finish transition | P3C scheduled router 뒤의 Legacy Hangul compatibility implementation으로 유지됐다. service가 Room lane/UoW, stale identity/deadline, idempotency, penalty/forfeit/TIME_LIMIT/result와 post-commit effect를 계속 소유하며 router는 이 규칙을 해석하지 않는다. |
 | `active-turn-reader.ts`, `active-game-reader.ts`, `finished-room-retention-reader.ts` 및 overdue sweepers | recovery mechanism은 그대로이며 concrete `turn`, `gameDeadlineAt`, `result.finishedAt` query shape를 전제한다. P3C는 기존 scheduled identity를 router에 그대로 전달했을 뿐 recovery descriptor나 registration algorithm은 바꾸지 않았다. |
 | `apps/server/src/transport/socket-io.ts` | P3B command router 경계를 유지한다. P3C에서는 PLAYING leave 전 active-player peek를 제거하고 `RoomLeaveService`의 committed `gameAdvisory`를 사용하며, timeout/deadline applied delivery는 runtime subscription facade를 통해 받는다. v1 validator/input mapping, PLAYING/FINISHED snapshot guard와 snapshot/advisory 조립·broadcast는 여전히 남아 있다. |
@@ -644,7 +646,7 @@ TurnScheduler / OverdueTurnSweeper       GameDeadlineScheduler / overdue sweeper
 
 ## 14. Server target structure
 
-현재 repository를 고려한 장기 후보는 다음과 같다.
+P3D 뒤 실제 namespace와 장기 후보는 다음과 같다. 아직 존재하지 않는 platform/second-game directory는 개념상 표시일 뿐 생성하지 않는다.
 
 ```text
 apps/server/src/
@@ -658,11 +660,10 @@ apps/server/src/
     lifecycle/
     scheduling/
   games/
-    game-module.ts
     game-registry.ts
     hangul-tile/
       domain/
-      application/
+      compatibility/
       infrastructure/
     number-tile/
       domain/
@@ -675,14 +676,14 @@ apps/server/src/
   composition-root.ts
 ```
 
-이 tree를 한 Phase에 만들지 않는다. 권장 순서는 dependency seam과 compatibility adapter를 먼저 만들고, import 방향이 안정된 뒤 파일을 이동하는 것이다. 특히 다음 매핑은 동작 변경 없이 점진적으로 수행한다.
+P3D는 검증된 Hangul 부분만 이 tree로 옮겼다. `game-module.ts`, future game directory와 `platform/` hierarchy는 만들지 않았으며 mixed service는 기존 위치에 남겼다.
 
 | 현재 | 장기 소유자 |
 | --- | --- |
-| `domain/game/*` | `games/hangul-tile/domain/*` |
-| `domain/hangul/*` | `games/hangul-tile/domain/hangul/*` |
-| `turn-*-service.ts` | `games/hangul-tile/application/*` |
-| `DictionaryProvider` / test provider | Hangul module port/infrastructure |
+| `domain/game/*` production source | `games/hangul-tile/domain/*` — P3D 이동 완료 |
+| `domain/hangul/composition.ts` | `games/hangul-tile/domain/composition.ts` — P3D 이동 완료 |
+| `turn-*-service.ts` | mixed application으로 기존 위치 유지; 두 번째 game 뒤 재판정 |
+| `DictionaryProvider` / test provider | `games/hangul-tile/domain` / `infrastructure` — P3D 이동 완료 |
 | Room/session/presence services | `platform/*` |
 | concrete snapshot projector | platform envelope + Hangul projector |
 | Socket.IO giant handler | platform handler + internal game command adapter/router |
@@ -872,7 +873,7 @@ P3B는 public v1 wire나 기존 Hangul service behavior를 변경하지 않고 �
 P3B 시점의 남은 결합은 다음 stop gate로 보냈다.
 
 - P3C: `RoomLeaveService`, `RoomPresencePolicyService`의 leave/forfeit와 reconnect streak decision, scheduler callback의 timeout/deadline dispatch를 좁은 Hangul boundary로 분리한다. P3C 구현 결과와 의도적으로 남긴 recovery/retention 결합은 다음 절에 기록한다.
-- P3D: `domain/game`, `domain/hangul`과 shared protocol/projection/validation의 물리 경로 및 import ownership. concrete `RoomRecord.game` type을 범용화하는 일은 실제 second-game state가 이를 요구할 때 별도 결정한다.
+- P3D: old `domain/game`, `domain/hangul` production source와 shared Hangul command/projection internals의 물리 경로 및 import ownership을 정리했다. concrete `RoomRecord.game` type을 범용화하는 일은 실제 second-game state가 이를 요구할 때 별도 결정한다.
 
 P3B는 기존 603 tests와 신규 9 tests를 포함한 root typecheck, 총 612 tests, build, `git diff --check`, production-serving regression, checkpoint `bc4a62a` commit과 일반 `origin/master` push를 모두 통과했다.
 
@@ -892,4 +893,21 @@ P3C 구현은 platform-originated 사건을 하나의 giant `GameModule`에 합�
 
 남은 concrete 결합은 P3D의 검증된 Hangul source 물리 이동/import ownership, 그리고 실제 second-game 또는 P9 review 전까지 유지하는 typed `RoomRecord.game`, Turn/Game deadline-shaped recovery port와 v1 shared/web contract다. P4는 물리 이동 뒤 기존 Hangul vertical slice를 기능 추가 없이 다시 검증한다.
 
-P3C source와 targeted regression 구현은 완료됐지만, **P3C COMPLETE / P3D READY** 판정은 P3B checkpoint `bc4a62a`의 612-test 기준선을 모두 보존한 root typecheck, 전체 test, build, production-serving regression, `git diff --check`, P3C checkpoint commit과 일반 `origin/master` push가 모두 성공한 경우에만 유효하다.
+P3C는 root 628 tests와 production-serving regression을 통과한 checkpoint `d21eaad`로 완료됐다.
+
+## 25. P3D verified Hangul module physical extraction
+
+P3D는 behavior를 재작성하지 않고 다음 소유권만 물리적으로 반영했다.
+
+- 순수 Hangul domain 7개와 분리한 `DictionaryProvider` contract는 `apps/server/src/games/hangul-tile/domain/`의 canonical implementation이다.
+- `test-dictionary-v1` provider는 같은 module의 `infrastructure/`로 이동했다.
+- P3A state/projector, P3B command router, P3C player-lifecycle/server-action seam과 compatibility registration은 `games/hangul-tile/compatibility/`로 이동했다.
+- `GameRegistry`는 platform mechanism으로 `apps/server/src/games/game-registry.ts`에 남고 composition root가 registration과 모든 concrete capability를 명시적으로 조립한다.
+- server old domain 경로에는 test runner의 기존 glob을 보존하기 위한 test만 남는다. production old-path shim이나 중복 implementation은 없다.
+- shared의 ProposedBoard/Draw bag schema는 `turn-command-contracts.ts`, Board/rack/bag/turn/result projection은 `v1-projection-contracts.ts`로 이동했다. root `protocol.ts`/`projections.ts`가 기존 symbol을 re-export하고 flat v1 command/snapshot을 조립하므로 package root API와 serialized shape는 같다.
+
+새 import-boundary characterization은 old production path와 stale import, Hangul domain의 application/transport/persistence 역참조, 검증된 allowlist 밖 module consumer를 거절한다. 테스트 파일 자체는 `apps/server/package.json`의 기존 discovery glob을 바꾸지 않기 위해 원래 위치에 두고 canonical import만 갱신했다.
+
+의도적으로 남긴 direct coupling은 concrete `RoomRecord.game: GameState | null`, mixed start/turn/deadline/finish application service, Turn/Game-shaped recovery port, flat v1 realtime/validation/Web renderer다. compatibility router가 mixed service type을 알고 player-lifecycle action이 기존 turn/finish transition을 사용하는 transitional edge도 남는다. 이 반대 방향 dependency는 type-only이며 현재 runtime circular dependency는 없다.
+
+세부 이동 inventory와 P4 stop gate는 [MULTI_GAME_P3D_MODULE_EXTRACTION.md](./MULTI_GAME_P3D_MODULE_EXTRACTION.md)에 기록한다. P3D의 COMPLETE 판정은 628-test 기준선을 삭제·skip하지 않은 신규 boundary test 포함 전체 quality gate, clean build output 확인, checkpoint commit과 일반 `origin/master` push가 모두 성공한 경우에만 유효하다.

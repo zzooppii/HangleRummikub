@@ -25,7 +25,7 @@ import {
 } from "../games/game-registry.js";
 import {
   createLegacyHangulCompatibilityRegistration,
-} from "../games/legacy-hangul-compatibility-registration.js";
+} from "../games/hangul-tile/compatibility/legacy-hangul-compatibility-registration.js";
 import { InMemoryPersistence } from "../infrastructure/in-memory-persistence.js";
 import { KeyedSerialExecutor } from "../infrastructure/keyed-serial-executor.js";
 import { FakeClock, FakeIdGenerator } from "../infrastructure/system.js";

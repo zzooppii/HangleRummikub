@@ -10,19 +10,19 @@ import { parse } from "valibot";
 import type {
   DictionaryLookupResult,
   DictionaryProvider,
-} from "../../ports/system.js";
+} from "../../games/hangul-tile/domain/dictionary-provider.js";
 import type {
   Board,
   BoardSyllable,
   BoardTilePlacement,
   TileDescriptor,
   WordGroup,
-} from "./board.js";
+} from "../../games/hangul-tile/domain/board.js";
 import {
   MVP_RULE_VALIDATION_POLICY,
   validateProposedBoard,
   type ValidateBoardInput,
-} from "./rule-engine.js";
+} from "../../games/hangul-tile/domain/rule-engine.js";
 
 class RecordingDictionaryProvider implements DictionaryProvider {
   readonly dictionaryVersion = "rule-engine-ordering-test-v1";

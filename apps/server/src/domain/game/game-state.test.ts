@@ -20,8 +20,8 @@ import {
   createInitialGameState,
   fisherYatesShuffle,
   type RulesConfig,
-} from "./game-state.js";
-import { TILE_INVENTORY_VERSION } from "./tile-inventory.js";
+} from "../../games/hangul-tile/domain/game-state.js";
+import { TILE_INVENTORY_VERSION } from "../../games/hangul-tile/domain/tile-inventory.js";
 
 class LastIndexRandomSource implements RandomSource {
   calls = 0;

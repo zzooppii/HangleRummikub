@@ -11,7 +11,7 @@ import type {
   FinishedGameState,
   GameResult,
   PlayingGameState,
-} from "../domain/game/game-state.js";
+} from "../games/hangul-tile/domain/game-state.js";
 import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
 import type { RoomPolicyScheduler } from "../ports/room-policy-scheduler.js";
 import type { RoomRepository } from "../ports/room-repository.js";

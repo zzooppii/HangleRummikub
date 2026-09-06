@@ -1,7 +1,7 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0·P1·P2·P3A·P3B COMPLETE, P3C 구현 완료 / P3D READY 조건부(P3C 최종 quality gate와 checkpoint/push 대기)
-> 작성일: 2026-09-05
+> 상태: P0~P3C COMPLETE, P3D 구현 완료 / COMPLETE 판정은 최종 quality gate와 checkpoint/push 조건부
+> 작성일: 2026-09-06
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
 
@@ -25,7 +25,7 @@
 
 production 기준선 573 tests는 shared 55, web 87, server 431로 구성됐다. 이후 추가된 test를 포함한 수는 이유 없이 감소하면 해당 Phase는 완료가 아니다.
 
-P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A checkpoint `a215eaa`는 이 tests를 삭제·skip하지 않고 신규 boundary 6개를 더해 shared 59, web 91, server 453으로 총 603 tests를 통과했다. P3B checkpoint `bc4a62a`는 기존 603개와 신규 command-routing 9개를 포함해 총 612 tests를 통과했다. P3C의 완료 gate는 이 612-test 기준선을 하나도 삭제·skip하지 않고 신규 server-action regression을 더한 root 전체 검증이다.
+P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A checkpoint `a215eaa`는 이 tests를 삭제·skip하지 않고 신규 boundary 6개를 더해 shared 59, web 91, server 453으로 총 603 tests를 통과했다. P3B checkpoint `bc4a62a`는 기존 603개와 신규 command-routing 9개를 포함해 총 612 tests를 통과했다. P3C checkpoint `d21eaad`는 신규 server-action regression 16개를 더해 shared 59, web 91, server 478로 총 628 tests를 통과했다. P3D는 이 628-test 기준선을 삭제·skip하지 않고 import-boundary regression을 추가한다.
 
 ## 2. Phase 개요
 
@@ -320,7 +320,7 @@ Multi-game Platform P3B만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의
 
 ### 6.3 P3C — Hangul lifecycle server-action seam
 
-> 구현 완료(조건부): 2026-09-05. P3B checkpoint `bc4a62a`와 612-test 기준선 위에서 frozen player-lifecycle action과 immutable scheduled server-action router를 실제 caller에 연결했다. **P3C COMPLETE / P3D READY** 표기는 신규 regression을 포함한 root typecheck, 전체 test, build, production-serving regression, `git diff --check`, P3C checkpoint commit과 일반 `origin/master` push가 모두 성공한 경우에만 유효하다.
+> 완료: 2026-09-06, checkpoint `d21eaad`. P3B checkpoint `bc4a62a` 위에서 frozen player-lifecycle action과 immutable scheduled server-action router를 연결했고 root typecheck, 628 tests, build, production-serving regression, `git diff --check`, checkpoint commit과 일반 `origin/master` push를 통과했다.
 
 #### 목표
 
@@ -380,9 +380,11 @@ Multi-game Platform P3C만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의
 - retention은 Room lifecycle 정책으로 남는다. FINISHED는 canonical `finishedAt + 30m`, PLAYING all-offline은 presence lease/version 기반 30분 window를 유지하며 Hangul action은 Room delete나 timer 등록을 소유하지 않는다.
 - recovery reader와 overdue sweeper의 Turn/Game deadline-shaped metadata 및 process-memory 범위는 바뀌지 않았다. P3C는 callback dispatch만 분리했고 restart recovery나 generic scheduled descriptor는 추가하지 않았다.
 - P3D: 검증된 Hangul source의 물리 경로와 platform import ownership만 정리한다. typed `RoomRecord.game`, recovery port와 public v1 contract의 범용화는 하지 않는다.
-- P4: P3D 뒤 기능 추가 없이 612-test checkpoint와 P3C/P3D 신규 regression, production-like serving 및 full Hangul lifecycle을 다시 검증한다.
+- P4: P3D 뒤 기능 추가 없이 P3C의 628-test checkpoint와 P3D import-boundary regression, production-like serving 및 full Hangul lifecycle을 다시 검증한다.
 
 ### 6.4 P3D — Hangul physical module move
+
+> 구현 완료(조건부): 2026-09-06. P3C checkpoint `d21eaad`와 628-test 기준선 위에서 verified Hangul server domain/dictionary/P3A~P3C seam과 shared Hangul command/projection internals를 `games/hangul-tile` namespace로 이동했다. **P3D COMPLETE / P4 READY** 표기는 신규 boundary regression을 포함한 root quality gate, clean build-output 검사, checkpoint commit과 일반 `origin/master` push가 모두 성공한 경우에만 유효하다.
 
 #### 목표
 
@@ -390,10 +392,11 @@ P3A~P3C에서 경계가 검증된 한글 파일만 `games/hangul-tile` 소유로
 
 #### Scope
 
-- server의 `domain/game`, `domain/hangul`, Hangul application/Dictionary 파일을 `apps/server/src/games/hangul-tile/` 아래로 단계적 이동
-- shared Hangul command/projection/validation을 `packages/shared/src/games/hangul-tile/` 아래로 단계적 이동
+- server의 verified `domain/game`, `domain/hangul`, Dictionary contract/provider와 P3A~P3C Legacy seam을 `apps/server/src/games/hangul-tile/` 아래로 이동
+- shared ProposedBoard/Draw bag contract와 Hangul v1 game projection validator를 `packages/shared/src/games/hangul-tile/` 아래로 이동
 - shared root barrel과 v1 compatibility export 유지
-- server/web composition root 또는 game registry만 concrete module을 조립
+- mixed application service와 persistence/projector는 현재 검증된 direct consumer로 명시하고 새 consumer를 boundary test로 차단
+- composition root가 concrete module registration/capability를 명시적으로 조립하고 GameRegistry는 platform 위치 유지
 - path-sensitive tests의 import/read path만 수정
 - architecture dependency inventory 갱신
 
@@ -406,8 +409,9 @@ P3A~P3C에서 경계가 검증된 한글 파일만 `games/hangul-tile` 소유로
 
 #### Definition of Done
 
-- platform directory/package가 concrete Hangul module을 import하지 않는다.
-- concrete module을 아는 곳은 registry/composition과 v1 compatibility composition으로 제한된다.
+- Hangul domain이 platform application/transport/persistence/infrastructure를 역참조하지 않는다.
+- module 밖 concrete import는 P3D에서 확인한 mixed application/persistence/projector/composition allowlist를 넘지 않는다.
+- old production implementation path와 duplicate/stale implementation이 남지 않는다.
 - 기존 root consumer가 compatibility export를 통해 계속 compile한다.
 - test 개수와 assertion이 감소하지 않고 observable behavior가 같다.
 
@@ -418,6 +422,16 @@ P3A~P3C에서 경계가 검증된 한글 파일만 `games/hangul-tile` 소유로
 - path-sensitive web release UI test의 동일 assertion
 - 기존 전체 domain/application/transport/web tests
 - typecheck/build/diff-check
+
+#### 구현 결과와 다음 stop gate
+
+- server canonical namespace는 `games/hangul-tile/{domain,compatibility,infrastructure}`다. old `domain/game`과 `domain/hangul`에는 package test glob을 유지하기 위한 test file만 남고 server-internal shim은 없다.
+- `DictionaryProvider` 선언만 mixed `ports/system.ts`에서 module domain으로 분리했다. ID/random과 Turn/Game scheduler port는 이동하지 않았다.
+- mixed start/submit/draw/pass/timeout/deadline/finish/turn service는 Room lane, auth, idempotency, UoW, scheduling과 Hangul decision이 함께 있어 기존 application 위치를 유지한다.
+- shared root `protocol.ts`와 `projections.ts`는 flat v1 composition과 같은 public symbol re-export를 유지한다. `realtime.ts`, `validation.ts`, `index.ts`, package exports와 모든 server/web root import는 바뀌지 않았다.
+- import-boundary test는 old canonical path, domain 역방향 dependency와 allowlist 밖 direct consumer를 거절한다. clean temporary outDir build도 old duplicate JavaScript가 없음을 검증한다.
+- P4는 새 architecture나 game을 추가하지 않고 extracted Hangul vertical slice 전체를 production-like 환경에서 다시 검증한다.
+- exact 이동 inventory와 남은 coupling은 [MULTI_GAME_P3D_MODULE_EXTRACTION.md](./MULTI_GAME_P3D_MODULE_EXTRACTION.md)에 기록한다.
 
 #### Codex 실행 명령
 

@@ -5,26 +5,26 @@ import type {
   ServerTime,
 } from "@hangul-rummikub/shared";
 
-import type { PlayingGameState } from "../domain/game/game-state.js";
+import type { PlayingGameState } from "../domain/game-state.js";
 import {
   createForfeitResult,
   createStalemateResult,
-} from "../domain/game/result-engine.js";
+} from "../domain/result-engine.js";
 import {
   isStalemateCycleComplete,
   pruneNoMoveTurnEnds,
-} from "../domain/game/stalemate.js";
+} from "../domain/stalemate.js";
 import type {
   RoomRecord,
   RoomWriteCandidate,
-} from "../model/persistence.js";
-import type { IdGenerator } from "../ports/system.js";
-import { createFinishedRoomTransition } from "../application/game-finish-transition.js";
+} from "../../../model/persistence.js";
+import type { IdGenerator } from "../../../ports/system.js";
+import { createFinishedRoomTransition } from "../../../application/game-finish-transition.js";
 import {
   createNextTurn,
   incrementGameRevision,
   type CurrentTurnIdentity,
-} from "../application/turn-transition.js";
+} from "../../../application/turn-transition.js";
 import { LEGACY_V1_DEFAULT_GAME_TYPE } from "./legacy-hangul-compatibility-registration.js";
 
 export type LegacyHangulPlayingLeaveAdvisory =

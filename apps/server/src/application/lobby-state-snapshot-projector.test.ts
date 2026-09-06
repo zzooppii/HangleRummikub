@@ -22,10 +22,10 @@ import {
   LobbyStateSnapshotProjector,
   type RoomPresenceReadPort,
 } from "./lobby-state-snapshot-projector.js";
-import { createInitialGameState } from "../domain/game/game-state.js";
-import { createTimeLimitResult } from "../domain/game/result-engine.js";
-import { JOKER_ALLOWED_SYMBOLS } from "../domain/game/tile-inventory.js";
-import { projectLegacyHangulV1Game } from "../games/legacy-hangul-v1-game-projector.js";
+import { createInitialGameState } from "../games/hangul-tile/domain/game-state.js";
+import { createTimeLimitResult } from "../games/hangul-tile/domain/result-engine.js";
+import { JOKER_ALLOWED_SYMBOLS } from "../games/hangul-tile/domain/tile-inventory.js";
+import { projectLegacyHangulV1Game } from "../games/hangul-tile/compatibility/legacy-hangul-v1-game-projector.js";
 import {
   createStorageRevision,
   type RoomRecord,

@@ -1,7 +1,7 @@
 import type {
   AssignedJamoComponent,
   SyllableCompositionInput,
-} from "../hangul/composition.js";
+} from "./composition.js";
 
 export type {
   JokerTileDescriptor,

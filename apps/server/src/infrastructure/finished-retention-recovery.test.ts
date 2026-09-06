@@ -19,8 +19,8 @@ import {
 import { RoomCleanupService } from "../application/room-cleanup-service.js";
 import { ROOM_RETENTION_MS } from "../application/room-presence-policy-service.js";
 import { RoomRetentionService } from "../application/room-retention-service.js";
-import { createInitialGameState } from "../domain/game/game-state.js";
-import { createTimeLimitResult } from "../domain/game/result-engine.js";
+import { createInitialGameState } from "../games/hangul-tile/domain/game-state.js";
+import { createTimeLimitResult } from "../games/hangul-tile/domain/result-engine.js";
 import type { FinishedRoomRetentionReader } from "../ports/finished-room-retention-reader.js";
 import type {
   RoomPolicyDeadline,

@@ -13,7 +13,7 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
-import type { GameState } from "../domain/game/game-state.js";
+import type { GameState } from "../games/hangul-tile/domain/game-state.js";
 import type { SessionVerificationData } from "../ports/system.js";
 
 export const StorageRevisionSchema = v.pipe(

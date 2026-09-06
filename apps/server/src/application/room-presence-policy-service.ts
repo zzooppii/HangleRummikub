@@ -11,7 +11,7 @@ import * as v from "valibot";
 
 import type {
   LegacyHangulPlayerLifecycleActionRouting,
-} from "../games/legacy-hangul-player-lifecycle-actions.js";
+} from "../games/hangul-tile/compatibility/legacy-hangul-player-lifecycle-actions.js";
 import type { PlayerPresenceLeaseReader } from "../ports/player-presence-lease.js";
 import type { RoomPresencePolicyReader } from "../ports/room-presence-policy.js";
 import type { RoomRepository } from "../ports/room-repository.js";

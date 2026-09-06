@@ -19,9 +19,9 @@ import {
 } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 
-import { createInitialGameState } from "../domain/game/game-state.js";
-import { createTimeLimitResult } from "../domain/game/result-engine.js";
-import { LegacyHangulGameStateAdapter } from "../games/legacy-hangul-game-state-adapter.js";
+import { createInitialGameState } from "../games/hangul-tile/domain/game-state.js";
+import { createTimeLimitResult } from "../games/hangul-tile/domain/result-engine.js";
+import { LegacyHangulGameStateAdapter } from "../games/hangul-tile/compatibility/legacy-hangul-game-state-adapter.js";
 import {
   createStorageRevision,
   createUnboundSessionRecord,

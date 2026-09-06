@@ -33,15 +33,15 @@ import {
 import {
   createInitialGameState,
   type GameState,
-} from "../domain/game/game-state.js";
-import { createRackEmptyResult } from "../domain/game/result-engine.js";
+} from "../games/hangul-tile/domain/game-state.js";
+import { createRackEmptyResult } from "../games/hangul-tile/domain/result-engine.js";
 import {
   GameRegistry,
   type GameRegistrationReader,
 } from "../games/game-registry.js";
 import {
   createLegacyHangulCompatibilityRegistration,
-} from "../games/legacy-hangul-compatibility-registration.js";
+} from "../games/hangul-tile/compatibility/legacy-hangul-compatibility-registration.js";
 import {
   type IdempotencyRecord,
   type RoomRecord,

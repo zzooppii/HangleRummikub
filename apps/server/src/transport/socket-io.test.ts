@@ -93,28 +93,28 @@ import type { ApplicationRuntime } from "../composition-root.js";
 import type {
   FinishedGameState,
   PlayingGameState,
-} from "../domain/game/game-state.js";
-import { createRackEmptyResult } from "../domain/game/result-engine.js";
+} from "../games/hangul-tile/domain/game-state.js";
+import { createRackEmptyResult } from "../games/hangul-tile/domain/result-engine.js";
 import {
   JOKER_ALLOWED_SYMBOLS,
   type OrdinaryTileInstance,
-} from "../domain/game/tile-inventory.js";
+} from "../games/hangul-tile/domain/tile-inventory.js";
 import { GameRegistry } from "../games/game-registry.js";
 import {
   createLegacyHangulCompatibilityRegistration,
   LEGACY_V1_DEFAULT_GAME_TYPE,
-} from "../games/legacy-hangul-compatibility-registration.js";
-import { createLegacyHangulPlayerLifecycleActions } from "../games/legacy-hangul-player-lifecycle-actions.js";
+} from "../games/hangul-tile/compatibility/legacy-hangul-compatibility-registration.js";
+import { createLegacyHangulPlayerLifecycleActions } from "../games/hangul-tile/compatibility/legacy-hangul-player-lifecycle-actions.js";
 import {
   LegacyHangulServerActionRouter,
   type LegacyHangulServerActionCapability,
   type LegacyHangulServerActionRouting,
-} from "../games/legacy-hangul-server-action-router.js";
+} from "../games/hangul-tile/compatibility/legacy-hangul-server-action-router.js";
 import {
   LegacyHangulV1CommandRouter,
   type LegacyHangulV1CommandCapability,
-} from "../games/legacy-hangul-v1-command-router.js";
-import { projectLegacyHangulV1Game } from "../games/legacy-hangul-v1-game-projector.js";
+} from "../games/hangul-tile/compatibility/legacy-hangul-v1-command-router.js";
+import { projectLegacyHangulV1Game } from "../games/hangul-tile/compatibility/legacy-hangul-v1-game-projector.js";
 import { ConnectionRegistry } from "../infrastructure/connection-registry.js";
 import { ConnectionRegistryPresenceReader } from "../infrastructure/connection-registry-presence-reader.js";
 import { InMemoryPersistence } from "../infrastructure/in-memory-persistence.js";
@@ -128,7 +128,7 @@ import {
   RoomLifecycleResources,
   type RoomClosedAdvisoryListener,
 } from "../infrastructure/room-lifecycle-resources.js";
-import { TestDictionaryProvider } from "../infrastructure/test-dictionary-provider.js";
+import { TestDictionaryProvider } from "../games/hangul-tile/infrastructure/test-dictionary-provider.js";
 import type { RoomRecord } from "../model/persistence.js";
 import {
   FakeIdGenerator,

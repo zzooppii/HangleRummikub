@@ -14,7 +14,7 @@ import { parse } from "valibot";
 import type {
   GameTurn,
   PlayingGameState,
-} from "../domain/game/game-state.js";
+} from "../games/hangul-tile/domain/game-state.js";
 import type { RoomRepository } from "../ports/room-repository.js";
 import type {
   IdGenerator,

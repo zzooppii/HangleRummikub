@@ -19,8 +19,8 @@ import {
   createStalemateResult,
   createTimeLimitResult,
   type ResultEngineInput,
-} from "./result-engine.js";
-import type { TileInstance } from "./tile-inventory.js";
+} from "../../games/hangul-tile/domain/result-engine.js";
+import type { TileInstance } from "../../games/hangul-tile/domain/tile-inventory.js";
 
 const A = parse(PlayerIdSchema, "player-a");
 const B = parse(PlayerIdSchema, "player-b");

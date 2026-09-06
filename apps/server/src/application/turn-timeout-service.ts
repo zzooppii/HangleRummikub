@@ -16,16 +16,16 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
-import type { PlayingGameState } from "../domain/game/game-state.js";
+import type { PlayingGameState } from "../games/hangul-tile/domain/game-state.js";
 import {
   createForfeitResult,
   createStalemateResult,
-} from "../domain/game/result-engine.js";
+} from "../games/hangul-tile/domain/result-engine.js";
 import {
   advanceNoMoveTurnEnds,
   isStalemateCycleComplete,
-} from "../domain/game/stalemate.js";
-import type { TileSourceBag } from "../domain/game/tile-inventory.js";
+} from "../games/hangul-tile/domain/stalemate.js";
+import type { TileSourceBag } from "../games/hangul-tile/domain/tile-inventory.js";
 import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
 import type { IdempotencyRepository } from "../ports/idempotency-repository.js";
 import type { PlayerPresenceLeaseReader } from "../ports/player-presence-lease.js";

@@ -3,11 +3,11 @@ import type { TileId } from "@hangul-rummikub/shared";
 import {
   composeWord,
   type HangulCompositionError,
-} from "../hangul/composition.js";
+} from "./composition.js";
 import type {
   DictionaryProvider,
   DictionaryUnavailableReason,
-} from "../../ports/system.js";
+} from "./dictionary-provider.js";
 import type {
   Board,
   BoardTilePlacement,

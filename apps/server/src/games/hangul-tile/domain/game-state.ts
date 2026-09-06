@@ -10,7 +10,7 @@ import {
 } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 
-import type { IdGenerator, RandomSource } from "../../ports/system.js";
+import type { IdGenerator, RandomSource } from "../../../ports/system.js";
 import type {
   Board,
   BoardSyllable,

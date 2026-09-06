@@ -17,15 +17,15 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
-import type { PlayingGameState } from "../domain/game/game-state.js";
+import type { PlayingGameState } from "../games/hangul-tile/domain/game-state.js";
 import {
   createForfeitResult,
   createStalemateResult,
-} from "../domain/game/result-engine.js";
+} from "../games/hangul-tile/domain/result-engine.js";
 import {
   advanceNoMoveTurnEnds,
   isStalemateCycleComplete,
-} from "../domain/game/stalemate.js";
+} from "../games/hangul-tile/domain/stalemate.js";
 import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
 import type { IdempotencyRepository } from "../ports/idempotency-repository.js";
 import type { RoomRepository } from "../ports/room-repository.js";

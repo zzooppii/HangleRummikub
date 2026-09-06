@@ -7,11 +7,11 @@ import {
 } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 
-import { TestDictionaryProvider } from "../../infrastructure/test-dictionary-provider.js";
+import { TestDictionaryProvider } from "../../games/hangul-tile/infrastructure/test-dictionary-provider.js";
 import type {
   DictionaryLookupResult,
   DictionaryProvider,
-} from "../../ports/system.js";
+} from "../../games/hangul-tile/domain/dictionary-provider.js";
 import type {
   Board,
   BoardSyllable,
@@ -19,7 +19,7 @@ import type {
   TileDescriptor,
   TileSourceBag,
   WordGroup,
-} from "./board.js";
+} from "../../games/hangul-tile/domain/board.js";
 import {
   MVP_RULE_VALIDATION_POLICY,
   validateProposedBoard,
@@ -27,7 +27,7 @@ import {
   type BoardValidationResult,
   type ValidateBoardInput,
   type ValidatedBoard,
-} from "./rule-engine.js";
+} from "../../games/hangul-tile/domain/rule-engine.js";
 
 type SyllableSymbols = Readonly<{
   choseong: string;

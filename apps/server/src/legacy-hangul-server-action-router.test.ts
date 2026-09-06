@@ -21,8 +21,8 @@ import {
   LegacyHangulServerActionRouter,
   type LegacyHangulServerActionCapability,
   type LegacyHangulServerActionRouterDependencies,
-} from "./games/legacy-hangul-server-action-router.js";
-import { LEGACY_V1_DEFAULT_GAME_TYPE } from "./games/legacy-hangul-compatibility-registration.js";
+} from "./games/hangul-tile/compatibility/legacy-hangul-server-action-router.js";
+import { LEGACY_V1_DEFAULT_GAME_TYPE } from "./games/hangul-tile/compatibility/legacy-hangul-compatibility-registration.js";
 import {
   createStorageRevision,
   type RoomRecord,

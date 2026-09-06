@@ -13,7 +13,7 @@ import {
 } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 
-import { createInitialGameState } from "../domain/game/game-state.js";
+import { createInitialGameState } from "../games/hangul-tile/domain/game-state.js";
 import { InMemoryPersistence } from "../infrastructure/in-memory-persistence.js";
 import { KeyedSerialExecutor } from "../infrastructure/keyed-serial-executor.js";
 import { OverdueGameDeadlineSweeper } from "../infrastructure/overdue-game-deadline-sweeper.js";

@@ -8,7 +8,7 @@ import type {
 import {
   cloneGameState,
   type GameState,
-} from "../domain/game/game-state.js";
+} from "../domain/game-state.js";
 import { LEGACY_V1_DEFAULT_GAME_TYPE } from "./legacy-hangul-compatibility-registration.js";
 
 export type LegacyHangulGameLifecycleInspection =

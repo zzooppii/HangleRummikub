@@ -6,8 +6,8 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
-import type { LegacyHangulV1GameProjector } from "../games/legacy-hangul-v1-game-projector.js";
-import { LEGACY_V1_DEFAULT_GAME_TYPE } from "../games/legacy-hangul-compatibility-registration.js";
+import type { LegacyHangulV1GameProjector } from "../games/hangul-tile/compatibility/legacy-hangul-v1-game-projector.js";
+import { LEGACY_V1_DEFAULT_GAME_TYPE } from "../games/hangul-tile/compatibility/legacy-hangul-compatibility-registration.js";
 import type { RoomRecord } from "../model/persistence.js";
 import type {
   PlayerPresenceReader,

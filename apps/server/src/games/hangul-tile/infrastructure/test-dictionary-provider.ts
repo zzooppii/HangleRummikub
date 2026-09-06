@@ -1,7 +1,7 @@
 import type {
   DictionaryLookupResult,
   DictionaryProvider,
-} from "../ports/system.js";
+} from "../domain/dictionary-provider.js";
 
 export const TEST_DICTIONARY_VERSION = "test-dictionary-v1";
 

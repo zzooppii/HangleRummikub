@@ -1,13 +1,17 @@
 import * as v from "valibot";
 
 import {
-  GameIdSchema,
+  FinishedPublicGameViewSchema,
+  PlayingPrivatePlayerViewSchema,
+  PublicGameViewSchema,
+  TileCountSchema,
+  boardTileIds,
+} from "./games/hangul-tile/v1-projection-contracts.js";
+import {
   NicknameSchema,
   PlayerIdSchema,
   RoomCodeSchema,
   RoomIdSchema,
-  TileIdSchema,
-  TurnIdSchema,
 } from "./identifiers.js";
 import {
   GameRevisionSchema,
@@ -18,129 +22,48 @@ import {
   ServerTimeSchema,
 } from "./protocol.js";
 
-const NonEmptyWireStringSchema = v.pipe(
-  v.string(),
-  v.nonEmpty("Wire string must not be empty."),
-);
-
-const CHOSEONG_SYMBOLS = [
-  "ㄱ",
-  "ㄲ",
-  "ㄴ",
-  "ㄷ",
-  "ㄸ",
-  "ㄹ",
-  "ㅁ",
-  "ㅂ",
-  "ㅃ",
-  "ㅅ",
-  "ㅆ",
-  "ㅇ",
-  "ㅈ",
-  "ㅉ",
-  "ㅊ",
-  "ㅋ",
-  "ㅌ",
-  "ㅍ",
-  "ㅎ",
-] as const;
-const SINGLE_JUNGSEONG_SYMBOLS = [
-  "ㅏ",
-  "ㅐ",
-  "ㅑ",
-  "ㅒ",
-  "ㅓ",
-  "ㅔ",
-  "ㅕ",
-  "ㅖ",
-  "ㅗ",
-  "ㅛ",
-  "ㅜ",
-  "ㅠ",
-  "ㅡ",
-  "ㅣ",
-] as const;
-const SINGLE_JONGSEONG_SYMBOLS = [
-  "ㄱ",
-  "ㄲ",
-  "ㄴ",
-  "ㄷ",
-  "ㄹ",
-  "ㅁ",
-  "ㅂ",
-  "ㅅ",
-  "ㅆ",
-  "ㅇ",
-  "ㅈ",
-  "ㅊ",
-  "ㅋ",
-  "ㅌ",
-  "ㅍ",
-  "ㅎ",
-] as const;
-const CHOSEONG_SYMBOL_SET = new Set<string>(CHOSEONG_SYMBOLS);
-const SINGLE_JUNGSEONG_SYMBOL_SET = new Set<string>(
-  SINGLE_JUNGSEONG_SYMBOLS,
-);
-const SINGLE_JONGSEONG_SYMBOL_SET = new Set<string>(
-  SINGLE_JONGSEONG_SYMBOLS,
-);
-const COMPOUND_JUNGSEONG_COMPONENTS = new Set([
-  "ㅗㅏ",
-  "ㅗㅐ",
-  "ㅗㅣ",
-  "ㅜㅓ",
-  "ㅜㅔ",
-  "ㅜㅣ",
-  "ㅡㅣ",
-]);
-const CLUSTER_JONGSEONG_COMPONENTS = new Set([
-  "ㄱㅅ",
-  "ㄴㅈ",
-  "ㄴㅎ",
-  "ㄹㄱ",
-  "ㄹㅁ",
-  "ㄹㅂ",
-  "ㄹㅅ",
-  "ㄹㅌ",
-  "ㄹㅍ",
-  "ㄹㅎ",
-  "ㅂㅅ",
-]);
-const ONE_POSITION_ASSIGNED_SYMBOLS = [
-  ...CHOSEONG_SYMBOLS,
-  ...SINGLE_JUNGSEONG_SYMBOLS,
-] as const;
-const OnePositionAssignedSymbolSchema = v.picklist(
-  ONE_POSITION_ASSIGNED_SYMBOLS,
-);
-const TileAllowedSymbolsSchema = v.pipe(
-  v.array(OnePositionAssignedSymbolSchema),
-  v.minLength(1),
-  v.check(
-    (symbols) => new Set(symbols).size === symbols.length,
-    "Tile allowedSymbols must not contain duplicates.",
-  ),
-);
-
-export const TileCountSchema = v.pipe(
-  v.number(),
-  v.integer("Tile count must be an integer."),
-  v.safeInteger("Tile count must be a safe integer."),
-  v.minValue(0, "Tile count must not be negative."),
-);
-export type TileCount = v.InferOutput<typeof TileCountSchema>;
-
-export const TurnNumberSchema = v.pipe(
-  v.number(),
-  v.integer("Turn number must be an integer."),
-  v.safeInteger("Turn number must be a safe integer."),
-  v.minValue(1, "Turn number must be at least one."),
-);
-export type TurnNumber = v.InferOutput<typeof TurnNumberSchema>;
-
-export const TileSourceBagSchema = v.picklist(["CONSONANT", "VOWEL"]);
-export type TileSourceBag = v.InferOutput<typeof TileSourceBagSchema>;
+export {
+  FinishedPublicGameViewSchema,
+  GameFinishReasonSchema,
+  GameRankSchema,
+  GameResultSchema,
+  GameScoreSchema,
+  JokerPrivateRackTileViewSchema,
+  OrdinaryPrivateRackTileViewSchema,
+  PlayingPrivatePlayerViewSchema,
+  PrivateRackTileViewSchema,
+  PublicBagCountsSchema,
+  PublicBoardSyllableSchema,
+  PublicBoardTilePlacementSchema,
+  PublicBoardViewSchema,
+  PublicGameRankingEntrySchema,
+  PublicGameViewSchema,
+  PublicTurnViewSchema,
+  PublicWordGroupSchema,
+  TileCountSchema,
+  TileSourceBagSchema,
+  TurnNumberSchema,
+  type FinishedPublicGameView,
+  type GameFinishReason,
+  type GameRank,
+  type GameResult,
+  type GameScore,
+  type JokerPrivateRackTileView,
+  type OrdinaryPrivateRackTileView,
+  type PlayingPrivatePlayerView,
+  type PrivateRackTileView,
+  type PublicBagCounts,
+  type PublicBoardSyllable,
+  type PublicBoardTilePlacement,
+  type PublicBoardView,
+  type PublicGameRankingEntry,
+  type PublicGameView,
+  type PublicTurnView,
+  type PublicWordGroup,
+  type TileCount,
+  type TileSourceBag,
+  type TurnNumber,
+} from "./games/hangul-tile/v1-projection-contracts.js";
 
 export const ConnectionStatusSchema = v.picklist(["CONNECTED", "OFFLINE"]);
 export type ConnectionStatus = v.InferOutput<typeof ConnectionStatusSchema>;
@@ -209,538 +132,10 @@ export type FinishedPublicRoomView = v.InferOutput<
   typeof FinishedPublicRoomViewSchema
 >;
 
-const OrdinaryPublicBoardTilePlacementSchema = v.strictObject({
-  tileId: TileIdSchema,
-  kind: v.literal("ORDINARY"),
-  physicalType: NonEmptyWireStringSchema,
-  assignedSymbol: NonEmptyWireStringSchema,
-  allowedSymbols: TileAllowedSymbolsSchema,
-});
-
-const JokerPublicBoardTilePlacementSchema = v.strictObject({
-  tileId: TileIdSchema,
-  kind: v.literal("JOKER"),
-  physicalType: v.literal("JOKER"),
-  assignedSymbol: NonEmptyWireStringSchema,
-  allowedSymbols: TileAllowedSymbolsSchema,
-});
-
-const PublicBoardTilePlacementVariantSchema = v.variant("kind", [
-  OrdinaryPublicBoardTilePlacementSchema,
-  JokerPublicBoardTilePlacementSchema,
-]);
-
-export type PublicBoardTilePlacement = v.InferOutput<
-  typeof PublicBoardTilePlacementVariantSchema
->;
-
-export const PublicBoardTilePlacementSchema = v.pipe(
-  PublicBoardTilePlacementVariantSchema,
-  v.check(
-    (placement) =>
-      placement.allowedSymbols.some(
-        (allowedSymbol) => allowedSymbol === placement.assignedSymbol,
-      ),
-    "A Board Tile assignment must belong to allowedSymbols.",
-  ),
-);
-
-const ChoseongPlacementSequenceSchema: v.BaseSchema<
-  unknown,
-  PublicBoardTilePlacement[],
-  v.BaseIssue<unknown>
-> = v.pipe(
-  v.array(PublicBoardTilePlacementSchema),
-  v.length(1, "A syllable must contain exactly one choseong component."),
-  v.check(
-    (components) =>
-      components.every((component) =>
-        CHOSEONG_SYMBOL_SET.has(component.assignedSymbol),
-      ),
-    "A choseong component must contain a supported consonant symbol.",
-  ),
-);
-const JungseongPlacementSequenceSchema: v.BaseSchema<
-  unknown,
-  PublicBoardTilePlacement[],
-  v.BaseIssue<unknown>
-> = v.pipe(
-  v.array(PublicBoardTilePlacementSchema),
-  v.minLength(1, "A syllable must contain a jungseong component."),
-  v.maxLength(2, "A syllable may contain at most two jungseong components."),
-  v.check(
-    (components) =>
-      components.every((component) =>
-        SINGLE_JUNGSEONG_SYMBOL_SET.has(component.assignedSymbol),
-      ) &&
-      (components.length === 1 ||
-        COMPOUND_JUNGSEONG_COMPONENTS.has(
-          components.map((component) => component.assignedSymbol).join(""),
-        )),
-    "Two jungseong components must form a supported compound vowel.",
-  ),
-);
-const JongseongPlacementSequenceSchema: v.BaseSchema<
-  unknown,
-  PublicBoardTilePlacement[],
-  v.BaseIssue<unknown>
-> = v.pipe(
-  v.array(PublicBoardTilePlacementSchema),
-  v.maxLength(2, "A syllable may contain at most two jongseong components."),
-  v.check(
-    (components) =>
-      components.every((component) =>
-        SINGLE_JONGSEONG_SYMBOL_SET.has(component.assignedSymbol),
-      ) &&
-      (components.length < 2 ||
-        CLUSTER_JONGSEONG_COMPONENTS.has(
-          components.map((component) => component.assignedSymbol).join(""),
-        )),
-    "Two jongseong components must form a supported final cluster.",
-  ),
-);
-
-export type PublicBoardSyllable = {
-  choseong: PublicBoardTilePlacement[];
-  jungseong: PublicBoardTilePlacement[];
-  jongseong: PublicBoardTilePlacement[];
-};
-
-export const PublicBoardSyllableSchema: v.BaseSchema<
-  unknown,
-  PublicBoardSyllable,
-  v.BaseIssue<unknown>
-> = v.strictObject({
-  choseong: ChoseongPlacementSequenceSchema,
-  jungseong: JungseongPlacementSequenceSchema,
-  jongseong: JongseongPlacementSequenceSchema,
-});
-
-export type PublicWordGroup = {
-  groupId: string;
-  syllables: PublicBoardSyllable[];
-};
-
-export const PublicWordGroupSchema: v.BaseSchema<
-  unknown,
-  PublicWordGroup,
-  v.BaseIssue<unknown>
-> = v.strictObject({
-  groupId: NonEmptyWireStringSchema,
-  syllables: v.pipe(
-    v.array(PublicBoardSyllableSchema),
-    v.minLength(1, "A WordGroup must contain at least one syllable."),
-  ),
-});
-
-export type PublicBoardView = {
-  wordGroups: PublicWordGroup[];
-};
-
-const PublicBoardViewObjectSchema: v.BaseSchema<
-  unknown,
-  PublicBoardView,
-  v.BaseIssue<unknown>
-> = v.strictObject({
-  wordGroups: v.array(PublicWordGroupSchema),
-});
-
-function boardTileIds(
-  board: PublicBoardView,
-): readonly string[] {
-  return board.wordGroups.flatMap((group) =>
-    group.syllables.flatMap((syllable) => [
-      ...syllable.choseong.map((component) => component.tileId),
-      ...syllable.jungseong.map((component) => component.tileId),
-      ...syllable.jongseong.map((component) => component.tileId),
-    ]),
-  );
-}
-
-export const PublicBoardViewSchema: v.BaseSchema<
-  unknown,
-  PublicBoardView,
-  v.BaseIssue<unknown>
-> = v.pipe(
-  PublicBoardViewObjectSchema,
-  v.check(
-    (board) =>
-      new Set(board.wordGroups.map((group) => group.groupId)).size ===
-      board.wordGroups.length,
-    "Board WordGroup identifiers must be unique.",
-  ),
-  v.check((board) => {
-    const tileIds = boardTileIds(board);
-    return new Set(tileIds).size === tileIds.length;
-  }, "A physical Tile may appear only once on the Board."),
-);
-
-const PublicTurnViewObjectSchema = v.strictObject({
-  turnId: TurnIdSchema,
-  turnNumber: TurnNumberSchema,
-  activePlayerId: PlayerIdSchema,
-  startedAt: ServerTimeSchema,
-  deadlineAt: ServerTimeSchema,
-});
-
-export const PublicTurnViewSchema = v.pipe(
-  PublicTurnViewObjectSchema,
-  v.check(
-    (turn) => turn.deadlineAt >= turn.startedAt,
-    "Turn deadline must not precede its start time.",
-  ),
-);
-export type PublicTurnView = v.InferOutput<typeof PublicTurnViewSchema>;
-
-export const PublicBagCountsSchema = v.strictObject({
-  consonant: TileCountSchema,
-  vowel: TileCountSchema,
-});
-export type PublicBagCounts = v.InferOutput<typeof PublicBagCountsSchema>;
-
-const PublicGameViewObjectSchema = v.strictObject({
-  gameId: GameIdSchema,
-  board: PublicBoardViewSchema,
-  turnOrder: v.pipe(
-    v.array(PlayerIdSchema),
-    v.minLength(2),
-    v.maxLength(4),
-  ),
-  turn: PublicTurnViewSchema,
-  bagCounts: PublicBagCountsSchema,
-});
-
-export const PublicGameViewSchema = v.pipe(
-  PublicGameViewObjectSchema,
-  v.check(
-    (game) => new Set(game.turnOrder).size === game.turnOrder.length,
-    "Turn order must not contain duplicate players.",
-  ),
-  v.check(
-    (game) => game.turnOrder.includes(game.turn.activePlayerId),
-    "The active player must be present in turn order.",
-  ),
-);
-export type PublicGameView = v.InferOutput<typeof PublicGameViewSchema>;
-
-export const GameScoreSchema = v.pipe(
-  v.number(),
-  v.integer("A Game score must be an integer."),
-  v.safeInteger("A Game score must be a safe integer."),
-);
-export type GameScore = v.InferOutput<typeof GameScoreSchema>;
-
-export const GameFinishReasonSchema = v.picklist([
-  "RACK_EMPTY",
-  "TIME_LIMIT",
-  "STALEMATE",
-  "LAST_PLAYER_STANDING",
-  "ALL_PLAYERS_FORFEITED",
-]);
-export type GameFinishReason = v.InferOutput<
-  typeof GameFinishReasonSchema
->;
-
-export const GameRankSchema = v.pipe(
-  v.number(),
-  v.integer("A Game rank must be an integer."),
-  v.safeInteger("A Game rank must be a safe integer."),
-  v.minValue(1, "A Game rank must be at least one."),
-);
-export type GameRank = v.InferOutput<typeof GameRankSchema>;
-
-export const PublicGameRankingEntrySchema = v.strictObject({
-  playerId: PlayerIdSchema,
-  rank: GameRankSchema,
-  score: GameScoreSchema,
-  remainingRackCount: TileCountSchema,
-  penaltyCost: TileCountSchema,
-  forfeited: v.boolean(),
-});
-export type PublicGameRankingEntry = v.InferOutput<
-  typeof PublicGameRankingEntrySchema
->;
-
-const GameResultObjectSchema = v.strictObject({
-  reason: GameFinishReasonSchema,
-  winnerPlayerIds: v.pipe(
-    v.array(PlayerIdSchema),
-    v.maxLength(4),
-  ),
-  rankings: v.pipe(
-    v.array(PublicGameRankingEntrySchema),
-    v.minLength(2),
-    v.maxLength(4),
-  ),
-  finishedAt: ServerTimeSchema,
-});
-
-type GameResultForValidation = v.InferOutput<typeof GameResultObjectSchema>;
-type GameRankingEntryForValidation =
-  GameResultForValidation["rankings"][number];
-
-function compareRankingKeys(
-  left: readonly number[],
-  right: readonly number[],
-): number {
-  for (let index = 0; index < left.length; index += 1) {
-    const leftValue = left[index];
-    const rightValue = right[index];
-    if (leftValue === undefined || rightValue === undefined) {
-      return left.length - right.length;
-    }
-    if (leftValue < rightValue) {
-      return -1;
-    }
-    if (leftValue > rightValue) {
-      return 1;
-    }
-  }
-  return left.length - right.length;
-}
-
-function rankingKey(
-  result: GameResultForValidation,
-  entry: GameRankingEntryForValidation,
-): readonly number[] {
-  switch (result.reason) {
-    case "TIME_LIMIT":
-      return [entry.remainingRackCount, entry.penaltyCost];
-    case "STALEMATE":
-    case "ALL_PLAYERS_FORFEITED":
-      return [entry.penaltyCost];
-    case "RACK_EMPTY":
-    case "LAST_PLAYER_STANDING":
-      return [
-        result.winnerPlayerIds.includes(entry.playerId) ? 0 : 1,
-        entry.penaltyCost,
-      ];
-  }
-}
-
-function hasReasonSpecificCompetitionRanking(
-  result: GameResultForValidation,
-): boolean {
-  let previousKey: readonly number[] | undefined;
-  let expectedRank = 0;
-
-  return result.rankings.every((entry, index) => {
-    const currentKey = rankingKey(result, entry);
-    if (previousKey === undefined) {
-      expectedRank = 1;
-    } else {
-      const comparison = compareRankingKeys(previousKey, currentKey);
-      if (comparison > 0) {
-        return false;
-      }
-      if (comparison < 0) {
-        expectedRank = index + 1;
-      }
-    }
-    previousKey = currentKey;
-    return entry.rank === expectedRank;
-  });
-}
-
-function hasCanonicalPenaltyScore(
-  entry: GameRankingEntryForValidation,
-): boolean {
-  const expectedScore = entry.penaltyCost === 0 ? 0 : -entry.penaltyCost;
-  return Object.is(entry.score, expectedScore);
-}
-
-function hasSingleWinnerTransferScores(
-  result: GameResultForValidation,
-): boolean {
-  const winnerPlayerId = result.winnerPlayerIds[0];
-  if (winnerPlayerId === undefined || result.winnerPlayerIds.length !== 1) {
-    return false;
-  }
-
-  const winner = result.rankings.find(
-    (entry) => entry.playerId === winnerPlayerId,
-  );
-  if (winner === undefined) {
-    return false;
-  }
-
-  let losingPenaltyTotal = 0;
-  for (const entry of result.rankings) {
-    if (entry.playerId === winnerPlayerId) {
-      continue;
-    }
-    if (!hasCanonicalPenaltyScore(entry)) {
-      return false;
-    }
-    losingPenaltyTotal += entry.penaltyCost;
-  }
-
-  return (
-    Number.isSafeInteger(losingPenaltyTotal) &&
-    winner.score === losingPenaltyTotal
-  );
-}
-
-export const GameResultSchema = v.pipe(
-  GameResultObjectSchema,
-  v.check(
-    (result) =>
-      new Set(result.rankings.map((entry) => entry.playerId)).size ===
-      result.rankings.length,
-    "Game result rankings must not contain duplicate players.",
-  ),
-  v.check(
-    hasReasonSpecificCompetitionRanking,
-    "Game result rankings must follow the finish reason and competition ranking order.",
-  ),
-  v.check((result) => {
-    if (
-      new Set(result.winnerPlayerIds).size !== result.winnerPlayerIds.length
-    ) {
-      return false;
-    }
-    if (result.reason === "ALL_PLAYERS_FORFEITED") {
-      return result.winnerPlayerIds.length === 0;
-    }
-
-    const rankOnePlayerIds = result.rankings
-      .filter((entry) => entry.rank === 1)
-      .map((entry) => entry.playerId);
-    return (
-      rankOnePlayerIds.length === result.winnerPlayerIds.length &&
-      rankOnePlayerIds.every(
-        (playerId, index) => result.winnerPlayerIds[index] === playerId,
-      )
-    );
-  }, "Winners must be exactly the ordered rank-one players."),
-  v.check(
-    (result) =>
-      result.reason === "RACK_EMPTY" ||
-      result.reason === "LAST_PLAYER_STANDING"
-        ? hasSingleWinnerTransferScores(result)
-        : result.rankings.every(hasCanonicalPenaltyScore),
-    "Game result scores must follow the finish reason's penalty policy.",
-  ),
-  v.check(
-    (result) =>
-      result.reason !== "ALL_PLAYERS_FORFEITED" ||
-      result.rankings.every((entry) => entry.forfeited),
-    "Every player must be forfeited in an all-players-forfeited result.",
-  ),
-  v.check(
-    (result) =>
-      result.reason === "ALL_PLAYERS_FORFEITED"
-        ? result.winnerPlayerIds.length === 0
-        : result.winnerPlayerIds.length > 0,
-    "Only an all-players-forfeited result may omit winners.",
-  ),
-  v.check(
-    (result) =>
-      result.reason === "RACK_EMPTY" ||
-      result.reason === "LAST_PLAYER_STANDING"
-        ? result.winnerPlayerIds.length === 1
-        : true,
-    "Rack-empty and last-player-standing results require one winner.",
-  ),
-  v.check((result) => {
-    if (result.reason !== "RACK_EMPTY") {
-      return true;
-    }
-    const winner = result.rankings.find(
-      (entry) => entry.playerId === result.winnerPlayerIds[0],
-    );
-    return (
-      winner !== undefined &&
-      winner.remainingRackCount === 0 &&
-      winner.penaltyCost === 0 &&
-      !winner.forfeited
-    );
-  }, "A rack-empty winner must be non-forfeited with an empty zero-penalty rack."),
-  v.check((result) => {
-    if (result.reason !== "LAST_PLAYER_STANDING") {
-      return true;
-    }
-    const winnerPlayerId = result.winnerPlayerIds[0];
-    return result.rankings.every((entry) =>
-      entry.playerId === winnerPlayerId ? !entry.forfeited : entry.forfeited,
-    );
-  }, "A last-player-standing winner must be the only non-forfeited player."),
-);
-export type GameResult = v.InferOutput<typeof GameResultSchema>;
-
-const FinishedPublicGameViewObjectSchema = v.strictObject({
-  gameId: GameIdSchema,
-  board: PublicBoardViewSchema,
-  turnOrder: v.pipe(
-    v.array(PlayerIdSchema),
-    v.minLength(2),
-    v.maxLength(4),
-  ),
-  bagCounts: PublicBagCountsSchema,
-  result: GameResultSchema,
-});
-
-export const FinishedPublicGameViewSchema = v.pipe(
-  FinishedPublicGameViewObjectSchema,
-  v.check(
-    (game) => new Set(game.turnOrder).size === game.turnOrder.length,
-    "Turn order must not contain duplicate players.",
-  ),
-  v.check(
-    (game) =>
-      game.result.rankings.length === game.turnOrder.length &&
-      game.turnOrder.every((playerId) =>
-        game.result.rankings.some((entry) => entry.playerId === playerId),
-      ),
-    "Game result rankings must contain the complete turn order.",
-  ),
-);
-export type FinishedPublicGameView = v.InferOutput<
-  typeof FinishedPublicGameViewSchema
->;
-
-export const OrdinaryPrivateRackTileViewSchema = v.strictObject({
-  tileId: TileIdSchema,
-  kind: v.literal("ORDINARY"),
-  physicalType: NonEmptyWireStringSchema,
-  sourceBag: TileSourceBagSchema,
-  allowedSymbols: TileAllowedSymbolsSchema,
-});
-export type OrdinaryPrivateRackTileView = v.InferOutput<
-  typeof OrdinaryPrivateRackTileViewSchema
->;
-
-export const JokerPrivateRackTileViewSchema = v.strictObject({
-  tileId: TileIdSchema,
-  kind: v.literal("JOKER"),
-  physicalType: v.literal("JOKER"),
-  sourceBag: TileSourceBagSchema,
-  allowedSymbols: TileAllowedSymbolsSchema,
-});
-export type JokerPrivateRackTileView = v.InferOutput<
-  typeof JokerPrivateRackTileViewSchema
->;
-
-export const PrivateRackTileViewSchema = v.variant("kind", [
-  OrdinaryPrivateRackTileViewSchema,
-  JokerPrivateRackTileViewSchema,
-]);
-export type PrivateRackTileView = v.InferOutput<
-  typeof PrivateRackTileViewSchema
->;
-
 export const PrivatePlayerViewSchema = v.strictObject({
   playerId: PlayerIdSchema,
 });
 export type PrivatePlayerView = v.InferOutput<typeof PrivatePlayerViewSchema>;
-
-export const PlayingPrivatePlayerViewSchema = v.strictObject({
-  playerId: PlayerIdSchema,
-  rack: v.array(PrivateRackTileViewSchema),
-});
-export type PlayingPrivatePlayerView = v.InferOutput<
-  typeof PlayingPrivatePlayerViewSchema
->;
 
 export const LobbyStateVersionsSchema = v.strictObject({
   roomRevision: RoomRevisionSchema,

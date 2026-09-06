@@ -3,20 +3,20 @@ import type { ErrorDto, RoomId } from "@hangul-rummikub/shared";
 import type {
   GameStartResult,
   StartGameInput,
-} from "../application/game-start-service.js";
+} from "../../../application/game-start-service.js";
 import type {
   TurnDrawInput,
   TurnDrawResult,
-} from "../application/turn-draw-service.js";
+} from "../../../application/turn-draw-service.js";
 import type {
   TurnPassInput,
   TurnPassResult,
-} from "../application/turn-pass-service.js";
+} from "../../../application/turn-pass-service.js";
 import type {
   TurnSubmitInput,
   TurnSubmitResult,
-} from "../application/turn-submit-service.js";
-import type { RoomRepository } from "../ports/room-repository.js";
+} from "../../../application/turn-submit-service.js";
+import type { RoomRepository } from "../../../ports/room-repository.js";
 import { LEGACY_V1_DEFAULT_GAME_TYPE } from "./legacy-hangul-compatibility-registration.js";
 
 export type LegacyHangulV1CommandCapability = Readonly<{

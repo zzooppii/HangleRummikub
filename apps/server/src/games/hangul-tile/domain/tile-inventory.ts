@@ -1,6 +1,6 @@
 import type { TileId } from "@hangul-rummikub/shared";
 
-import type { IdGenerator } from "../../ports/system.js";
+import type { IdGenerator } from "../../../ports/system.js";
 
 export const TILE_INVENTORY_VERSION = "hangul-tile-inventory-v1";
 

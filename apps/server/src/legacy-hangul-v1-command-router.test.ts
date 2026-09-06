@@ -39,8 +39,8 @@ import {
   LegacyHangulV1CommandRouter,
   type LegacyHangulV1CommandCapability,
   type LegacyHangulV1CommandRouterDependencies,
-} from "./games/legacy-hangul-v1-command-router.js";
-import { LEGACY_V1_DEFAULT_GAME_TYPE } from "./games/legacy-hangul-compatibility-registration.js";
+} from "./games/hangul-tile/compatibility/legacy-hangul-v1-command-router.js";
+import { LEGACY_V1_DEFAULT_GAME_TYPE } from "./games/hangul-tile/compatibility/legacy-hangul-compatibility-registration.js";
 import {
   createStorageRevision,
   type RoomRecord,
