@@ -1,6 +1,6 @@
 # Multi-game Platform Architecture
 
-> 상태: P0~P7B COMPLETE / P7C READY
+> 상태: P0~P7C COMPLETE / P8 READY
 > 작성일: 2026-09-06
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
@@ -26,11 +26,14 @@
 
 ## 2. 현재 architecture 요약
 
-P0 당시 코드는 단일 한글 게임의 완성된 vertical slice에 최적화되어 있었다. P7B 현재 구조는 그 legacy surface를 보존하면서 두 concrete server game을 지원한다.
+P0 당시 코드는 단일 한글 게임의 완성된 vertical slice에 최적화되어 있었다. P7C 현재 구조는 그 legacy surface를 보존하면서 두 concrete server game과 각 Web renderer를 지원한다.
 
 ```text
-Current Web App / useLobbyApp (Hangul only)
-  -> shared StateSnapshot, command, realtime contract
+Current Web App / common RoomSnapshotShell
+  -> strict V1/V2 decode + canonical room.gameType routing
+     -> Legacy Hangul adapter/renderer
+     -> Number Tile renderer + Number-local TurnDraft/editor
+  -> shared command/realtime contract
   -> Socket.IO transport
   -> platform room/session/admission + canonical game routers
      -> Hangul compatibility/application
@@ -755,7 +758,7 @@ TurnDraft, Submit, Draw, Pass, timer, rack method를 web registry interface에 �
 ### 15.2 catalog와 invitation
 
 - P5C catalog는 `apps/web`이 소유하는 static browser-safe product metadata다. server `GameRegistry`를 import하거나 runtime availability endpoint를 추가하지 않는다.
-- 현재 catalog에는 실제 생성 가능한 `HANGUL_TILE` 한 항목만 있고 `NUMBER_TILE`/`GEM_CARD` disabled 또는 준비 중 placeholder는 없다.
+- 현재 catalog에는 실제 생성 가능한 `HANGUL_TILE`, `NUMBER_TILE` 두 항목만 있고 `GEM_CARD` disabled 또는 준비 중 placeholder는 없다.
 - Home의 semantic selection은 create 요청에만 사용하며 create handler는 선택된 `GameType`을 명시적으로 전달한다.
 - ack loss retry를 위해 pending create command에 동일한 effective `gameType`과 `requestId`를 보존한다. selection preference 자체를 별도 storage에 영구 저장하지 않고 bound credential과 pending join에는 `gameType`을 넣지 않는다.
 - create 성공 후에도 local 선택값이 아니라 server ack snapshot의 canonical gameType을 사용한다.
@@ -1004,16 +1007,16 @@ P5C는 snapshot negotiation이나 server registry를 다시 설계하지 않고 
 ### 29.1 Catalog ownership과 Home state
 
 ```text
-Web static catalog [HANGUL_TILE]
+Web static catalog [HANGUL_TILE, NUMBER_TILE]
   -> Home selectedGameType
   -> pending room:create command
   -> acknowledgement의 negotiated canonical snapshot
   -> room.gameType 기반 existing renderer route
 ```
 
-`apps/web/src/features/game-catalog/game-catalog.ts`의 frozen `GAME_CATALOG`는 `{ gameType, displayName, description }` item과 첫 실제 item에서 파생한 `DEFAULT_SELECTED_GAME_TYPE`을 제공한다. Catalog item은 browser-visible copy와 `GameType` identity만 가진 Web product metadata다. 실제 server availability는 identity-only `GameRegistry`, canonical state는 `RoomRecord`, renderer 선택은 negotiated snapshot이 각각 소유한다. 이 세 object를 하나의 mutable registry로 합치지 않는다. 현재 실제 지원 game이 하나이므로 runtime catalog endpoint, availability flag, future URL/settings와 disabled `NUMBER_TILE`/`GEM_CARD` item을 만들지 않는다.
+`apps/web/src/features/game-catalog/game-catalog.ts`의 frozen `GAME_CATALOG`는 `{ gameType, displayName, description }` item과 첫 실제 item에서 파생한 `DEFAULT_SELECTED_GAME_TYPE`을 제공한다. Catalog item은 browser-visible copy와 `GameType` identity만 가진 Web product metadata다. 실제 server availability는 identity-only `GameRegistry`, canonical state는 `RoomRecord`, renderer 선택은 negotiated snapshot이 각각 소유한다. 이 세 object를 하나의 mutable registry로 합치지 않는다. P7C catalog에는 실제 지원하는 Hangul/Number 두 item만 있고 runtime catalog endpoint, availability flag, future URL/settings와 disabled `GEM_CARD` item은 없다.
 
-`selectedGameType`은 Home/create flow state일 뿐 Room authority가 아니다. 한 항목을 기본 선택해도 create handler는 `HANGUL_TILE` literal을 다시 주입하지 않고 state의 선택값을 사용한다. Native button/radio semantics, selected state, focus-visible과 48px touch target을 유지한다. 선택 preference는 refresh 뒤 기본값으로 돌아가도 되며 credential storage와 섞지 않는다.
+`selectedGameType`은 Home/create flow state일 뿐 Room authority가 아니다. 첫 항목을 기본 선택해도 create handler는 `HANGUL_TILE` literal을 다시 주입하지 않고 state의 선택값을 사용한다. Native button/radio semantics, selected state, focus-visible과 48px touch target을 유지한다. 선택 preference는 refresh 뒤 기본값으로 돌아가도 되며 credential storage와 섞지 않는다.
 
 ### 29.2 Additive create resolution과 atomicity
 
@@ -1155,7 +1158,29 @@ Common Turn scheduler callback은 `ScheduledTurnRouter`로 Hangul/Number timeout
 
 ### 32.5 남은 의도적 경계
 
-- Current Web catalog/connection/decoder/renderer는 Hangul-only이며 P7C가 Number capability와 UI를 소유한다.
+- Current Web은 exact Hangul/Number capability, strict V2 Number decoder/renderer와 Number-local draft를 제공한다. Public deployment 여부는 별도 release gate다.
 - Start, command, timeout, lifecycle과 projection은 두 concrete implementation으로 유지한다. 유사 부분의 platform 승격 여부는 P9에서 실제 호출을 비교한 뒤 결정한다.
 - In-memory single-process storage, one replica와 `test-dictionary-v1` 제약은 해결하지 않았다.
 - 상세 contract와 rollout gate는 [NUMBER_TILE_SERVER_INTEGRATION.md](./NUMBER_TILE_SERVER_INTEGRATION.md)를 따른다.
+
+## 33. P7C Number Tile Web routing과 ownership
+
+```text
+Socket.IO state:snapshot / snapshot-bearing ack
+  -> strict Web decoder
+  -> common RoomSnapshotShell (Room/session/order only)
+  -> exact canonical game branch
+     -> HANGUL_TILE: existing V1/V2-to-legacy renderer path
+     -> NUMBER_TILE: direct PlatformSnapshotV2 Number renderer
+
+NumberTilePlayingScreen
+  -> Number-local TurnDraft/controller
+  -> exact number:submit / number:draw / number:pass client methods
+  -> authoritative ack/snapshot reconciliation
+```
+
+`RoomSnapshotShell`은 Room/player/presence/revision과 canonical game type만 투영하며 Number state를 Hangul shape로 바꾸지 않는다. Lobby/start/session/reconnect는 이 shell을 사용하고 game 화면은 exact decoded projection을 받는다. Home selection은 create input일 뿐 renderer authority가 아니다.
+
+Number draft는 base game/revision/turn과 complete proposed Table, own rack identity, 최대 50 history를 소유한다. Intermediate invalid meld를 허용하고 `tileId` move/conservation, initial Table lock, rack-origin return, Joker assignment/reassignment만 local operation으로 수행한다. RuleEngine, score, timeout outcome, Joker recovery legality는 client에 복제하지 않는다.
+
+`RealtimeClient`는 `[2,1]` snapshot과 exact `[HANGUL_TILE, NUMBER_TILE]` game capability를 광고하고 strict Number ack를 검증한다. `useLobbyApp`은 공통 connection/Room ordering과 game별 pending command를 조정하지만 Number/Hangul draft 타입을 합치지 않는다. Number에는 advisory가 없으며 game/start, scheduler, persistence와 server domain은 P7C에서 변경하지 않았다. 구체 UI와 mobile/reconnect 계약은 [NUMBER_TILE_WEB_IMPLEMENTATION.md](./NUMBER_TILE_WEB_IMPLEMENTATION.md)에 있다.

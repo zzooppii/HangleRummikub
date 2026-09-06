@@ -1,9 +1,8 @@
-import type { StateSnapshot } from "@hangul-rummikub/shared";
-
 import type { GameStartControl } from "../../lib/game-start.js";
+import type { RoomSnapshotShell } from "../../lib/room-snapshot-shell.js";
 
 export type LobbyScreenProps = Readonly<{
-  snapshot: StateSnapshot;
+  snapshot: RoomSnapshotShell;
   invitationUrl: string;
   connectionLabel: string;
   connectionTone: "connected" | "pending" | "offline" | "replaced";
@@ -25,7 +24,11 @@ export function LobbyScreen(props: LobbyScreenProps) {
     <main className="app-shell lobby-shell">
       <header className="lobby-header">
         <div>
-          <p className="eyebrow">한글 루미큐브</p>
+          <p className="eyebrow">
+            {room.gameType === "NUMBER_TILE"
+              ? "숫자 타일 게임"
+              : "한글 타일 게임"}
+          </p>
           <h1>게임 대기실</h1>
         </div>
         <span className={`connection-chip ${props.connectionTone}`}>

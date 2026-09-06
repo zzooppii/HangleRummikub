@@ -1,12 +1,12 @@
 # Number Tile Server Integration
 
-> 상태: P7B IMPLEMENTED / P7C WEB UI PENDING
+> 상태: P7B IMPLEMENTED / P7C WEB INTEGRATED / P8 READY
 > 기준 규칙: `number-tile-rules-v1`
 > 적용 범위: shared wire, server application, persistence, projection, scheduling, admission
 
 ## 1. 경계와 호환성
 
-P7B는 `NUMBER_TILE`을 두 번째 실제 server runtime game으로 연결한다. Runtime의 exact supported game type과 identity registration은 `HANGUL_TILE`, `NUMBER_TILE` 두 개다. `GEM_CARD`나 future placeholder는 없다. Web Home catalog와 current Web renderer는 계속 `HANGUL_TILE`만 제공하며 Number UI는 P7C 범위다.
+P7B는 `NUMBER_TILE`을 두 번째 실제 server runtime game으로 연결했다. Runtime의 exact supported game type과 identity registration은 `HANGUL_TILE`, `NUMBER_TILE` 두 개다. `GEM_CARD`나 future placeholder는 없다. P7C Current Web도 exact 두 game capability, Home card, Number V2 renderer와 editor를 갖추었으며 server contract는 변경하지 않았다.
 
 다음 기존 계약은 그대로 유지한다.
 
@@ -92,11 +92,11 @@ Number public game projection은 game ID/revision, Table, pool count, Turn, play
 
 Number command success와 timeout은 player별 authoritative V2 snapshot을 fan-out한다. Number용 `turn:started`, `game:finished` 또는 새 advisory는 emit하지 않는다. Hangul advisory ordering은 변경하지 않는다.
 
-## 8. Current Web와 P7C gate
+## 8. Current Web와 P8 gate
 
-P7B current Web은 `supportedGameTypes`를 보내지 않으므로 effective Hangul-only client다. Home catalog도 한글 타일 카드 하나뿐이다. 따라서 Web은 정상 경로에서 Number Room에 create/join/resume할 수 없고 Number snapshot을 renderer fallback으로 해석하지 않는다.
+P7C Current Web은 handshake마다 `supportedGameTypes: [HANGUL_TILE, NUMBER_TILE]`과 snapshot versions `[2,1]`을 광고한다. Home catalog의 두 card는 create 선택만 소유하며 join/resume 뒤 renderer는 canonical V2 `room.gameType`을 따른다. Number V2를 Hangul V1로 변환하거나 local Home 선택으로 route하지 않는다.
 
-P7C에서만 Number capability advertisement, catalog card, V2 decoder/renderer, Number draft/editor와 command controls를 추가한다. P7B는 giant `GameModule`, generic Tile/Rack/Turn/Result, generic `game:command`, Number advisory, persistent JSON state 또는 new dependency를 도입하지 않는다.
+Number-local TurnDraft/editor는 P7B projection/command를 그대로 사용한다. Giant `GameModule`, generic Tile/Rack/Turn/Result, generic `game:command`, Number advisory, persistent JSON state 또는 new dependency는 없다. 상세는 [NUMBER_TILE_WEB_IMPLEMENTATION.md](./NUMBER_TILE_WEB_IMPLEMENTATION.md)이며 P8이 two-game E2E/deployment stop gate다.
 
 ## 9. P7B verification checkpoint
 

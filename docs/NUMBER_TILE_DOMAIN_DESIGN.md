@@ -1,6 +1,6 @@
 # Number Tile Domain Design
 
-> 상태: P7A DOMAIN COMPLETE / P7B SERVER INTEGRATED / P7C WEB PENDING
+> 상태: P7A DOMAIN COMPLETE / P7B SERVER INTEGRATED / P7C WEB INTEGRATED
 > Canonical ruleset: `number-tile-rules-v1`
 > 기준 문서: [NUMBER_TILE_GAME_RULES.md](./NUMBER_TILE_GAME_RULES.md)
 
@@ -135,4 +135,4 @@ P7B가 연결한 항목은 다음뿐이다.
 - injected random draw와 90초 Turn scheduler/recovery
 - viewer별 rack/pool privacy와 `supportedGameTypes` admission
 
-P7B 뒤 `GameType`, GameRegistry, exact Room state, PlatformSnapshotV2, Socket.IO events와 production composition은 Number를 지원한다. Web catalog/renderer와 Web의 `NUMBER_TILE` capability advertisement는 여전히 없으며 P7C로 남긴다. Concrete runtime 경계는 [NUMBER_TILE_SERVER_INTEGRATION.md](./NUMBER_TILE_SERVER_INTEGRATION.md)에 기록한다.
+P7B 뒤 `GameType`, GameRegistry, exact Room state, PlatformSnapshotV2, Socket.IO events와 production composition은 Number를 지원한다. P7C는 이 domain을 재구현하지 않고 strict V2 projection과 shared command만 소비하는 독립 Web draft/renderer를 추가했다. Concrete runtime 경계는 [NUMBER_TILE_SERVER_INTEGRATION.md](./NUMBER_TILE_SERVER_INTEGRATION.md), Web ownership은 [NUMBER_TILE_WEB_IMPLEMENTATION.md](./NUMBER_TILE_WEB_IMPLEMENTATION.md)에 기록한다.

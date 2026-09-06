@@ -3,7 +3,6 @@ import {
   type GameStartCommand,
   type RequestId,
   type RoomRevision,
-  type StateSnapshot,
 } from "@hangul-rummikub/shared";
 
 const MIN_GAME_PLAYERS = 2;
@@ -15,8 +14,20 @@ export type GameStartControl = Readonly<{
   guidance: string;
 }>;
 
+export type GameStartSnapshot = Readonly<{
+  room: Readonly<{
+    phase: "LOBBY" | "PLAYING" | "FINISHED";
+    players: readonly Readonly<{
+      playerId: string;
+      isHost: boolean;
+      connectionStatus: "CONNECTED" | "OFFLINE";
+    }>[];
+  }>;
+  self: Readonly<{ playerId: string }>;
+}>;
+
 export function getGameStartControl(
-  snapshot: StateSnapshot,
+  snapshot: GameStartSnapshot,
   commandPending: boolean,
 ): GameStartControl {
   const self = snapshot.room.players.find(

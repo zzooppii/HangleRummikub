@@ -305,6 +305,19 @@ test("revision vector가 서로 비교 불가능하면 full sync를 요청한다
   );
 });
 
+test("같은 Room identity에서 canonical gameType이 달라지면 silent renderer 전환 대신 sync한다", () => {
+  const current = {
+    ...snapshot(2, 4),
+    room: { ...snapshot(2, 4).room, gameType: "HANGUL_TILE" },
+  };
+  const incoming = {
+    ...snapshot(2, 4),
+    room: { ...snapshot(2, 4).room, gameType: "NUMBER_TILE" },
+  };
+
+  assert.equal(decideSnapshotUpdate(current, incoming), "REQUEST_SYNC");
+});
+
 test("LOBBY의 Game 부재에서 PLAYING revision 0으로 전이하면 적용한다", () => {
   const current = snapshot(2, 4).versions;
   const incomingResult = validateStateVersions({

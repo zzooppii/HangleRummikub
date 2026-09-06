@@ -1,6 +1,6 @@
 # Number Tile Protocol Gate
 
-> 상태: `IMPLEMENTED` — P6/P7A/P7B COMPLETE / P7C READY
+> 상태: `IMPLEMENTED` — P6/P7A/P7B/P7C COMPLETE / P8 READY
 > 확정일: 2026-09-06
 > 사용자 결정: `ALL:A` + consistency blocker clarification A/A/A
 > 범위: `NUMBER_TILE`의 confirmed wire·projection·compatibility contract와 P7B 구현 결과
@@ -18,7 +18,7 @@ P6가 이 문서를 확정할 당시 P5C runtime은 다음 상태였다.
 - existing `turn:submit`, `turn:draw`, `turn:pass`, `turn:started`, `game:finished`는 Hangul-specific payload 또는 result에 결합
 - `RoomRecord.game`과 in-memory state adapter도 concrete Hangul `GameState`에 결합
 
-P7A는 독립 domain을, P7B는 shared/server integration을 완료해 이 결합을 실제 두-game 경계로 바꿨다. 다만 current Web에는 Number capability, renderer와 catalog item이 없으므로 P7C 전에는 catalog에 노출하지 않는다. 상세 구현은 [NUMBER_TILE_SERVER_INTEGRATION.md](./NUMBER_TILE_SERVER_INTEGRATION.md)에 기록한다.
+P7A는 독립 domain을, P7B는 shared/server integration을 완료해 이 결합을 실제 두-game 경계로 바꿨다. P7C는 exact Web capability, renderer와 catalog item을 추가해 브라우저 vertical slice를 완성했다. 상세 server 구현은 [NUMBER_TILE_SERVER_INTEGRATION.md](./NUMBER_TILE_SERVER_INTEGRATION.md), Web 구현은 [NUMBER_TILE_WEB_IMPLEMENTATION.md](./NUMBER_TILE_WEB_IMPLEMENTATION.md)에 기록한다.
 
 ## 2. Platform commands reused
 
@@ -352,7 +352,7 @@ Existing Hangul advisory behavior는 그대로 유지한다. Number의 authorita
 | `LIKELY_REUSE` | `game:start` outer event와 Host/Room checks | existing service는 Hangul deal/timer에 결합 |
 | `LIKELY_REUSE` | game revision, turn ID/order, Clock, RandomSource, ID source | 확정 Number semantics로 concrete reuse 검증 필요 |
 | `LIKELY_REUSE` | Turn scheduler/recovery mechanism과 retention | 90초 timer/lifecycle에 맞는 adapter 필요; Game deadline capability는 없음 |
-| `LIKELY_REUSE` | PlatformSnapshot V2 outer shell | current concrete schema/mapper/Web decoder는 Hangul-only |
+| `REUSE_VERIFIED` | PlatformSnapshot V2 outer shell | strict Hangul/Number branch를 Web이 canonical game type으로 route |
 | `GAME_SPECIFIC` | inventory, pool, rack, Table/Meld, Joker | Number domain owns all semantics |
 | `GAME_SPECIFIC` | initial meld, rearrangement, draw/pass, timeout/stalemate | Number RuleEngine and application actions |
 | `GAME_SPECIFIC` | score/result, private projection, error detail | Hangul format을 공통화하지 않음 |
@@ -369,11 +369,11 @@ Existing Hangul advisory behavior는 그대로 유지한다. Number의 authorita
 | Start | shared `game:start`가 canonical Room type으로 exact start path dispatch | 없음 |
 | Commands | legacy Hangul `turn:*` 유지 + strict protocol v1 `number:*` | 없음 |
 | Server actions | common Turn mechanism이 concrete timeout을 dispatch; Number game deadline 없음 | 없음 |
-| Client admission | independent `supportedGameTypes`; Number는 advertised support + selected V2 필수 | P7C에서 Web advertisement |
-| Web | catalog, decoder, view/controller/editor는 계속 Hangul only | P7C |
+| Client admission | independent `supportedGameTypes`; Number는 advertised support + selected V2 필수 | Current Web이 exact 두 game을 광고 |
+| Web | canonical Number V2 decoder/renderer와 독립 TurnDraft/editor | P7C 완료 |
 | Result/error | Number-owned result projection과 closed safe error mapping | 없음 |
 
-P7B server prerequisite는 완료됐지만 Number Web capability와 renderer가 없으므로 P7C 전에는 catalog에 Number card를 추가하지 않는다.
+P7C는 Web capability, Number V2 renderer와 독립 TurnDraft/editor를 연결했다. Catalog에는 구현된 Hangul/Number 두 game만 있으며 다음 배포 stop gate는 P8이다.
 
 ## 17. Confirmed implementation consequences
 
@@ -388,7 +388,9 @@ P7B server prerequisite는 완료됐지만 Number Web capability와 renderer가 
 ## 18. Implementation gate
 
 - P6와 P7A는 `COMPLETE`이며 canonical ruleset은 `number-tile-rules-v1`이다.
-- P7B는 shared/server runtime integration을 완료했다. `NUMBER_TILE`은 server-supported identity지만 Web catalog에는 노출하지 않는다.
-- Current Web은 `supportedGameTypes`를 생략하는 Hangul-only client이며 Number create/join/resume은 server admission에서 차단된다.
-- P7C는 Number capability advertisement, decoder/renderer, gameplay UI를 구현하는 다음 stop gate다.
-- P7C/P8 gate 전에는 public Home catalog에서 `NUMBER_TILE`을 enable하지 않는다.
+- P7B는 shared/server runtime integration을 완료했다.
+- P7C Current Web은 exact `[HANGUL_TILE, NUMBER_TILE]` capability를 광고하고 strict Number V2 projection만 Number renderer로 전달한다.
+- Home catalog는 구현된 두 game을 공개하며 join과 URL에는 game type을 추가하지 않았다.
+- Number-local draft/editor와 `number:submit/draw/pass` client가 준비됐고 P8 two-game E2E/deployment gate가 다음 단계다.
+
+구체 Web 구조와 reconnect/accessibility 제한은 [NUMBER_TILE_WEB_IMPLEMENTATION.md](./NUMBER_TILE_WEB_IMPLEMENTATION.md)를 따른다.

@@ -13,6 +13,12 @@ export type SnapshotUpdateDecision =
 
 export type AdvisorySnapshotDecision = "IGNORE" | "REQUEST_SYNC";
 
+export type SnapshotOrderingState = Readonly<{
+  versions: StateVersions;
+  room: Readonly<{ roomId: string; gameType?: string }>;
+  self: Readonly<{ playerId: string }>;
+}>;
+
 type RevisionComparison = -1 | 0 | 1;
 
 function compareRevision(
@@ -84,8 +90,8 @@ export function compareStateVersions(
 }
 
 export function decideSnapshotUpdate(
-  currentSnapshot: StateSnapshot | null,
-  incomingSnapshot: StateSnapshot,
+  currentSnapshot: SnapshotOrderingState | null,
+  incomingSnapshot: SnapshotOrderingState,
 ): SnapshotUpdateDecision {
   if (currentSnapshot === null) {
     return "APPLY";
@@ -93,7 +99,10 @@ export function decideSnapshotUpdate(
 
   if (
     currentSnapshot.room.roomId !== incomingSnapshot.room.roomId ||
-    currentSnapshot.self.playerId !== incomingSnapshot.self.playerId
+    currentSnapshot.self.playerId !== incomingSnapshot.self.playerId ||
+    (currentSnapshot.room.gameType !== undefined &&
+      incomingSnapshot.room.gameType !== undefined &&
+      currentSnapshot.room.gameType !== incomingSnapshot.room.gameType)
   ) {
     return "REQUEST_SYNC";
   }

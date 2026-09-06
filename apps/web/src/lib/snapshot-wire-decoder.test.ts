@@ -10,8 +10,10 @@ import {
 
 import { adaptPlatformSnapshotV2ToLegacyHangulV1 } from "./platform-snapshot-v2-hangul-adapter.js";
 import { resolveRoomSnapshotView } from "./room-snapshot-view.js";
+import { projectRoomSnapshotShell } from "./room-snapshot-shell.js";
 import {
   WEB_SUPPORTED_SNAPSHOT_VERSIONS,
+  WEB_SUPPORTED_GAME_TYPES,
   decodeWebSnapshot,
 } from "./snapshot-wire-decoder.js";
 import {
@@ -163,6 +165,109 @@ function finishedV2(): Record<string, unknown> {
   };
 }
 
+function numberLobbyV2(): Record<string, unknown> {
+  const lobby = lobbyV2();
+  return {
+    ...lobby,
+    room: {
+      ...(lobby.room as Record<string, unknown>),
+      gameType: "NUMBER_TILE",
+    },
+  };
+}
+
+function numberPlayingV2(): Record<string, unknown> {
+  return {
+    snapshotVersion: 2,
+    versions: { roomRevision: 3, presenceVersion: 4 },
+    serverTime: 1_750_000_000_100,
+    room: {
+      roomId: "room_number_web_v2",
+      roomCode: "NUM234",
+      phase: "PLAYING",
+      gameType: "NUMBER_TILE",
+      players: [
+        {
+          playerId: PLAYER_A,
+          nickname: "혁상",
+          isHost: true,
+          connectionStatus: "CONNECTED",
+        },
+        {
+          playerId: PLAYER_B,
+          nickname: "참가자",
+          isHost: false,
+          connectionStatus: "CONNECTED",
+        },
+      ],
+    },
+    self: { playerId: PLAYER_A },
+    game: {
+      gameType: "NUMBER_TILE",
+      gameId: "game_number_web_v2",
+      gameRevision: 7,
+      remainingPoolCount: 101,
+      table: {
+        melds: [
+          {
+            kind: "RUN",
+            tiles: [
+              { tileId: "number-table-1", kind: "ORDINARY", number: 1, color: "RED" },
+              { tileId: "number-table-2", kind: "ORDINARY", number: 2, color: "RED" },
+              { tileId: "number-table-3", kind: "ORDINARY", number: 3, color: "RED" },
+            ],
+          },
+        ],
+      },
+      playerStates: [
+        { playerId: PLAYER_A, rackCount: 1, initialMeldCompleted: true, forfeited: false },
+        { playerId: PLAYER_B, rackCount: 1, initialMeldCompleted: true, forfeited: false },
+      ],
+      turn: {
+        turnId: "turn_number_web_v2",
+        turnNumber: 8,
+        activePlayerId: PLAYER_A,
+        startedAt: 1_750_000_000_100,
+        deadlineAt: 1_750_000_090_100,
+      },
+      privateState: {
+        rack: [
+          { tileId: "number-private-7", kind: "ORDINARY", number: 7, color: "BLUE" },
+        ],
+      },
+    },
+  };
+}
+
+function numberFinishedV2(): Record<string, unknown> {
+  const playing = numberPlayingV2();
+  const game = playing.game as Record<string, unknown>;
+  const { turn: _turn, ...gameWithoutTurn } = game;
+  return {
+    ...playing,
+    room: { ...(playing.room as Record<string, unknown>), phase: "FINISHED" },
+    game: {
+      ...gameWithoutTurn,
+      gameRevision: 8,
+      remainingPoolCount: 102,
+      playerStates: [
+        { playerId: PLAYER_A, rackCount: 0, initialMeldCompleted: true, forfeited: false },
+        { playerId: PLAYER_B, rackCount: 1, initialMeldCompleted: true, forfeited: false },
+      ],
+      privateState: { rack: [] },
+      result: {
+        reason: "RACK_EMPTY",
+        finishedAt: 1_750_000_001_000,
+        winnerPlayerIds: [PLAYER_A],
+        playerResults: [
+          { playerId: PLAYER_A, score: 5, remainingRackCount: 0, penaltyCost: 0, forfeited: false },
+          { playerId: PLAYER_B, score: -5, remainingRackCount: 1, penaltyCost: 5, forfeited: false },
+        ],
+      },
+    },
+  };
+}
+
 function requireCompatible(input: unknown) {
   const result = decodeWebSnapshot(input);
   assert.equal(result.kind, "COMPATIBLE");
@@ -188,8 +293,65 @@ test("new Web은 snapshot capability 2와 legacy 1을 내림차순으로 adverti
   assert.equal(Object.isFrozen(WEB_SUPPORTED_SNAPSHOT_VERSIONS), true);
 });
 
+test("new Web은 실제 renderer가 있는 Hangul/Number game capability만 advertise한다", () => {
+  assert.deepEqual(WEB_SUPPORTED_GAME_TYPES, ["HANGUL_TILE", "NUMBER_TILE"]);
+  assert.equal(Object.isFrozen(WEB_SUPPORTED_GAME_TYPES), true);
+});
+
+test("NUMBER_TILE V2 LOBBY/PLAYING/FINISHED는 Hangul V1 변환 없이 canonical branch로 decode한다", () => {
+  for (const [input, routeKind] of [
+    [numberLobbyV2(), "LOBBY"],
+    [numberPlayingV2(), "NUMBER_TILE_PLAYING"],
+    [numberFinishedV2(), "NUMBER_TILE_FINISHED"],
+  ] as const) {
+    const decoded = requireCompatible(input);
+    assert.equal(decoded.kind, "PLATFORM_V2_NUMBER_TILE");
+    if (decoded.kind !== "PLATFORM_V2_NUMBER_TILE") {
+      throw new Error("Expected the canonical Number Tile V2 branch.");
+    }
+    assert.equal(decoded.platformSnapshot.room.gameType, "NUMBER_TILE");
+    assert.equal("legacySnapshot" in decoded, false);
+    assert.equal(resolveRoomSnapshotView(decoded).kind, routeKind);
+  }
+});
+
+test("공통 Room shell은 Number game payload를 해석하지 않고 canonical identity/version만 투영한다", () => {
+  const decoded = requireCompatible(numberPlayingV2());
+  assert.equal(decoded.kind, "PLATFORM_V2_NUMBER_TILE");
+  if (decoded.kind !== "PLATFORM_V2_NUMBER_TILE") {
+    throw new Error("Expected the canonical Number Tile V2 branch.");
+  }
+
+  const shell = projectRoomSnapshotShell(decoded);
+  assert.equal(shell.room.gameType, "NUMBER_TILE");
+  assert.equal(shell.room.phase, "PLAYING");
+  assert.equal(shell.versions.gameRevision, 7);
+  assert.equal(shell.self.playerId, PLAYER_A);
+  assert.equal("game" in shell, false);
+  assert.equal("privateState" in shell, false);
+});
+
+test("NUMBER_TILE room/game discriminator mismatch와 malformed projection은 fail-closed한다", () => {
+  const wrongGame = numberPlayingV2();
+  Reflect.set(wrongGame.game as object, "gameType", "HANGUL_TILE");
+  const missingPrivateRack = numberPlayingV2();
+  Reflect.deleteProperty(missingPrivateRack.game as object, "privateState");
+
+  for (const input of [wrongGame, missingPrivateRack]) {
+    assert.deepEqual(decodeWebSnapshot(input), {
+      kind: "INCOMPATIBLE",
+      reason: "INVALID_V2_PROJECTION",
+    });
+  }
+});
+
 test("V1 snapshot은 legacy compatibility path로 그대로 decode한다", () => {
-  const adapted = requireCompatible(lobbyV2()).legacySnapshot;
+  const v2 = requireCompatible(lobbyV2());
+  assert.equal(v2.kind, "PLATFORM_V2_HANGUL_TILE");
+  if (v2.kind !== "PLATFORM_V2_HANGUL_TILE") {
+    throw new Error("Expected a compatible Hangul V2 Lobby fixture.");
+  }
+  const adapted = v2.legacySnapshot;
   const result = decodeWebSnapshot(adapted);
 
   assert.equal(result.kind, "COMPATIBLE");

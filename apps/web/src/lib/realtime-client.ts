@@ -2,6 +2,12 @@ import {
   validateGameStartWireAck,
   validateGameStartCommand,
   validateGameFinishedEvent,
+  validateNumberDrawCommand,
+  validateNumberDrawWireAck,
+  validateNumberPassCommand,
+  validateNumberPassWireAck,
+  validateNumberSubmitCommand,
+  validateNumberSubmitWireAck,
   validateRoomCreateWireAck,
   validateRoomCreateCommand,
   validateRoomJoinWireAck,
@@ -27,6 +33,12 @@ import {
   type GameStartWireAck,
   type GameStartCommand,
   type GameFinishedEvent,
+  type NumberDrawCommand,
+  type NumberDrawWireAck,
+  type NumberPassCommand,
+  type NumberPassWireAck,
+  type NumberSubmitCommand,
+  type NumberSubmitWireAck,
   type RoomCreateWireAck,
   type RoomCreateCommand,
   type RoomJoinWireAck,
@@ -63,7 +75,10 @@ import {
 } from "socket.io-client";
 
 import { hasMatchingAcknowledgementRequestId } from "./ack-correlation.js";
-import { WEB_SUPPORTED_SNAPSHOT_VERSIONS } from "./snapshot-wire-decoder.js";
+import {
+  WEB_SUPPORTED_GAME_TYPES,
+  WEB_SUPPORTED_SNAPSHOT_VERSIONS,
+} from "./snapshot-wire-decoder.js";
 
 const DEFAULT_ACKNOWLEDGEMENT_TIMEOUT_MS = 8_000;
 const DEFAULT_SOCKET_PATH = "/socket.io";
@@ -255,6 +270,9 @@ function hasConsistentSnapshotAcknowledgement(
     | SessionResumeWireAck
     | StateSyncWireAck
     | GameStartWireAck
+    | NumberDrawWireAck
+    | NumberPassWireAck
+    | NumberSubmitWireAck
     | TurnDrawWireAck
     | TurnPassWireAck
     | TurnSubmitWireAck,
@@ -309,6 +327,7 @@ export class RealtimeClient {
       path: options.path ?? DEFAULT_SOCKET_PATH,
       auth: {
         supportedSnapshotVersions: [...WEB_SUPPORTED_SNAPSHOT_VERSIONS],
+        supportedGameTypes: [...WEB_SUPPORTED_GAME_TYPES],
       },
     };
 
@@ -686,6 +705,69 @@ export class RealtimeClient {
     );
   }
 
+  submitNumberTurn(
+    command: NumberSubmitCommand,
+  ): Promise<NumberSubmitWireAck> {
+    const validatedCommand = validateNumberSubmitCommand(command);
+    if (!validatedCommand.ok) {
+      return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    }
+
+    return this.#emitAcknowledged(
+      "number:submit",
+      validatedCommand.value.requestId,
+      (acknowledge) => {
+        this.#socket.emit(
+          "number:submit",
+          validatedCommand.value,
+          acknowledge,
+        );
+      },
+      validateNumberSubmitWireAck,
+      (acknowledgement) =>
+        hasConsistentSnapshotAcknowledgement(acknowledgement) &&
+        this.#acceptAcknowledgementSnapshotVersion(acknowledgement),
+    );
+  }
+
+  drawNumberTurn(command: NumberDrawCommand): Promise<NumberDrawWireAck> {
+    const validatedCommand = validateNumberDrawCommand(command);
+    if (!validatedCommand.ok) {
+      return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    }
+
+    return this.#emitAcknowledged(
+      "number:draw",
+      validatedCommand.value.requestId,
+      (acknowledge) => {
+        this.#socket.emit("number:draw", validatedCommand.value, acknowledge);
+      },
+      validateNumberDrawWireAck,
+      (acknowledgement) =>
+        hasConsistentSnapshotAcknowledgement(acknowledgement) &&
+        this.#acceptAcknowledgementSnapshotVersion(acknowledgement),
+    );
+  }
+
+  passNumberTurn(command: NumberPassCommand): Promise<NumberPassWireAck> {
+    const validatedCommand = validateNumberPassCommand(command);
+    if (!validatedCommand.ok) {
+      return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    }
+
+    return this.#emitAcknowledged(
+      "number:pass",
+      validatedCommand.value.requestId,
+      (acknowledge) => {
+        this.#socket.emit("number:pass", validatedCommand.value, acknowledge);
+      },
+      validateNumberPassWireAck,
+      (acknowledgement) =>
+        hasConsistentSnapshotAcknowledgement(acknowledgement) &&
+        this.#acceptAcknowledgementSnapshotVersion(acknowledgement),
+    );
+  }
+
   #emitAcknowledged<
     TAcknowledgement extends Readonly<{ requestId: string | null }>,
   >(
@@ -822,6 +904,9 @@ export class RealtimeClient {
       | SessionResumeWireAck
       | StateSyncWireAck
       | GameStartWireAck
+      | NumberDrawWireAck
+      | NumberPassWireAck
+      | NumberSubmitWireAck
       | TurnDrawWireAck
       | TurnPassWireAck
       | TurnSubmitWireAck,
@@ -862,7 +947,8 @@ export class RealtimeClient {
 
     if (
       error.message === "INCOMPATIBLE_SNAPSHOT_VERSION" ||
-      error.message === "INVALID_SNAPSHOT_CAPABILITY"
+      error.message === "INVALID_SNAPSHOT_CAPABILITY" ||
+      error.message === "INVALID_GAME_CAPABILITY"
     ) {
       this.#notifyProtocolIssue({
         kind: "INCOMPATIBLE_SNAPSHOT",

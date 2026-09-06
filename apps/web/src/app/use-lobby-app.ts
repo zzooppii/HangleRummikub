@@ -7,6 +7,8 @@ import {
   type GameStartCommand,
   type GameType,
   type Nickname,
+  type NumberSubmitCommand,
+  type NumberTilePlayingPlatformSnapshotV2,
   type RoomCode,
   type RoomCreateWireAck,
   type RoomJoinWireAck,
@@ -34,6 +36,19 @@ import {
   type RealtimeProtocolIssue,
 } from "../lib/realtime-client.js";
 import { createRequestId } from "../lib/request-id.js";
+import {
+  createOrReuseNumberDrawCommand,
+  createOrReuseNumberPassCommand,
+  createOrReuseNumberSubmitCommand,
+  decideNumberTileCommandFailureAction,
+  numberSnapshotSupersedesCommand,
+  runNumberTileCommandSingleFlight,
+  type PendingNumberTileActionCommand,
+} from "../lib/number-tile-actions.js";
+import {
+  projectRoomSnapshotShell,
+  type RoomSnapshotShell,
+} from "../lib/room-snapshot-shell.js";
 import {
   createOrReuseRoomLeaveCommand,
   decideRoomLeaveClientAction,
@@ -86,6 +101,7 @@ import {
   snapshotSupersedesPendingTurnSubmit,
 } from "../lib/turn-submit.js";
 import type { TurnDraft } from "../lib/turn-draft.js";
+import type { NumberTileTurnDraft } from "../features/number-tile/number-tile-turn-draft.js";
 
 const STALE_SESSION_MESSAGE =
   "재접속 유예 시간이 만료되었거나 방이 종료되어 연결 정보가 더 이상 유효하지 않습니다. 새 방을 만들거나 다시 참가해주세요.";
@@ -98,6 +114,21 @@ const INVALID_SERVER_STATE_MESSAGE =
 
 type EntryAck = RoomCreateWireAck | RoomJoinWireAck;
 type SnapshotApplication = "CURRENT" | "REQUEST_SYNC" | "REJECTED";
+export type NumberTileCommandRetryKind = "SUBMIT" | "DRAW" | "PASS" | null;
+
+function isNumberTilePlayingSnapshot(
+  snapshot: Extract<
+    CompatibleWebSnapshot,
+    { kind: "PLATFORM_V2_NUMBER_TILE" }
+  >["platformSnapshot"],
+): snapshot is NumberTilePlayingPlatformSnapshotV2 {
+  return (
+    snapshot.room.phase === "PLAYING" &&
+    snapshot.game !== null &&
+    snapshot.game.gameType === "NUMBER_TILE" &&
+    "turn" in snapshot.game
+  );
+}
 export type SnapshotIncompatibility =
   | WebSnapshotIncompatibilityReason
   | Extract<
@@ -109,7 +140,7 @@ export type LobbyAppState = Readonly<{
   route: AppRoute;
   nickname: string;
   roomCodeInput: string;
-  snapshot: StateSnapshot | null;
+  snapshot: RoomSnapshotShell | null;
   compatibleSnapshot: CompatibleWebSnapshot | null;
   snapshotIncompatibility: SnapshotIncompatibility | null;
   connectionState: RealtimeConnectionState;
@@ -120,6 +151,7 @@ export type LobbyAppState = Readonly<{
   gameStartPending: boolean;
   turnSubmitPending: boolean;
   turnActionPending: boolean;
+  numberCommandRetryKind: NumberTileCommandRetryKind;
   roomLeavePending: boolean;
   turnDraftResetGeneration: number;
   setNickname: (value: string) => void;
@@ -130,6 +162,9 @@ export type LobbyAppState = Readonly<{
   submitTurn: (draft: TurnDraft) => void;
   drawTurn: (bagKind: TurnDrawBagKind) => void;
   passTurn: () => void;
+  submitNumberTurn: (draft: NumberTileTurnDraft) => void;
+  drawNumberTurn: () => void;
+  passNumberTurn: () => void;
   leaveRoom: () => void;
   copyInvitation: (invitationUrl: string) => void;
   goHome: () => void;
@@ -163,7 +198,7 @@ function pendingMatchesRoute(
 }
 
 function isSnapshotForSession(
-  snapshot: StateSnapshot,
+  snapshot: RoomSnapshotShell,
   session: BrowserStoredPlayerSession,
 ): boolean {
   return (
@@ -207,7 +242,7 @@ export function useLobbyApp(): LobbyAppState {
   const [route, setRoute] = useState<AppRoute>(initialRoute);
   const [nickname, setNicknameState] = useState("");
   const [roomCodeInput, setRoomCodeInputState] = useState("");
-  const [snapshot, setSnapshot] = useState<StateSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<RoomSnapshotShell | null>(null);
   const [compatibleSnapshot, setCompatibleSnapshot] =
     useState<CompatibleWebSnapshot | null>(null);
   const [snapshotIncompatibility, setSnapshotIncompatibility] =
@@ -221,11 +256,14 @@ export function useLobbyApp(): LobbyAppState {
   const [gameStartPending, setGameStartPending] = useState(false);
   const [turnSubmitPending, setTurnSubmitPending] = useState(false);
   const [turnActionPending, setTurnActionPending] = useState(false);
+  const [numberCommandRetryKind, setNumberCommandRetryKind] =
+    useState<NumberTileCommandRetryKind>(null);
   const [roomLeavePending, setRoomLeavePending] = useState(false);
   const [turnDraftResetGeneration, setTurnDraftResetGeneration] = useState(0);
 
   const routeRef = useRef<AppRoute>(initialRoute);
-  const snapshotRef = useRef<StateSnapshot | null>(null);
+  const snapshotRef = useRef<RoomSnapshotShell | null>(null);
+  const compatibleSnapshotRef = useRef<CompatibleWebSnapshot | null>(null);
   const snapshotIncompatibilityRef =
     useRef<SnapshotIncompatibility | null>(null);
   const clientRef = useRef<RealtimeClient | null>(null);
@@ -245,10 +283,45 @@ export function useLobbyApp(): LobbyAppState {
   const pendingTurnActionCommandRef =
     useRef<PendingTurnActionCommand | null>(null);
   const turnActionRetryRequestedRef = useRef(false);
+  const pendingNumberSubmitCommandRef = useRef<NumberSubmitCommand | null>(null);
+  const numberSubmitRetryRequestedRef = useRef(false);
+  const pendingNumberActionCommandRef =
+    useRef<PendingNumberTileActionCommand | null>(null);
+  const numberActionRetryRequestedRef = useRef(false);
   const roomLeaveFlightRef = useRef<Promise<void> | null>(null);
   const pendingRoomLeaveCommandRef = useRef<RoomLeaveCommand | null>(null);
   const roomLeaveRetryRequestedRef = useRef(false);
   const sessionReplacedRef = useRef(false);
+
+  function refreshNumberCommandRetryKind(): void {
+    setNumberCommandRetryKind(
+      pendingNumberSubmitCommandRef.current !== null
+        ? "SUBMIT"
+        : pendingNumberActionCommandRef.current?.kind === "number:draw"
+          ? "DRAW"
+          : pendingNumberActionCommandRef.current?.kind === "number:pass"
+            ? "PASS"
+            : null,
+    );
+  }
+
+  function currentLegacyHangulSnapshot(): StateSnapshot | null {
+    const compatible = compatibleSnapshotRef.current;
+    return compatible === null || compatible.kind === "PLATFORM_V2_NUMBER_TILE"
+      ? null
+      : compatible.legacySnapshot;
+  }
+
+  function currentNumberTilePlayingSnapshot(): NumberTilePlayingPlatformSnapshotV2 | null {
+    const compatible = compatibleSnapshotRef.current;
+    if (
+      compatible?.kind !== "PLATFORM_V2_NUMBER_TILE" ||
+      !isNumberTilePlayingSnapshot(compatible.platformSnapshot)
+    ) {
+      return null;
+    }
+    return compatible.platformSnapshot;
+  }
 
   function clearPendingGameStartRequest(): void {
     pendingGameStartCommandRef.current = null;
@@ -259,12 +332,18 @@ export function useLobbyApp(): LobbyAppState {
   function clearPendingTurnSubmitRequest(): void {
     pendingTurnSubmitCommandRef.current = null;
     turnSubmitRetryRequestedRef.current = false;
+    pendingNumberSubmitCommandRef.current = null;
+    numberSubmitRetryRequestedRef.current = false;
+    refreshNumberCommandRetryKind();
     setTurnSubmitPending(false);
   }
 
   function clearPendingTurnActionRequest(settled = true): void {
     pendingTurnActionCommandRef.current = null;
     turnActionRetryRequestedRef.current = false;
+    pendingNumberActionCommandRef.current = null;
+    numberActionRetryRequestedRef.current = false;
+    refreshNumberCommandRetryKind();
     if (settled) {
       setTurnActionPending(false);
     }
@@ -288,10 +367,11 @@ export function useLobbyApp(): LobbyAppState {
   }
 
   function updateSnapshot(
-    nextSnapshot: StateSnapshot | null,
+    nextSnapshot: RoomSnapshotShell | null,
     nextCompatibleSnapshot: CompatibleWebSnapshot | null = null,
   ): void {
     snapshotRef.current = nextSnapshot;
+    compatibleSnapshotRef.current = nextCompatibleSnapshot;
     setSnapshot(nextSnapshot);
     setCompatibleSnapshot(nextCompatibleSnapshot);
   }
@@ -415,7 +495,16 @@ export function useLobbyApp(): LobbyAppState {
     compatible: CompatibleWebSnapshot,
     session: BrowserStoredPlayerSession,
   ): SnapshotApplication {
-    const incomingSnapshot = compatible.legacySnapshot;
+    const incomingSnapshot = projectRoomSnapshotShell(compatible);
+    const incomingLegacySnapshot =
+      compatible.kind === "PLATFORM_V2_NUMBER_TILE"
+        ? null
+        : compatible.legacySnapshot;
+    const incomingNumberSnapshot =
+      compatible.kind === "PLATFORM_V2_NUMBER_TILE" &&
+      isNumberTilePlayingSnapshot(compatible.platformSnapshot)
+        ? compatible.platformSnapshot
+        : null;
     if (!isSnapshotForSession(incomingSnapshot, session)) {
       setErrorMessage(INVALID_SERVER_STATE_MESSAGE);
       return "REJECTED";
@@ -437,18 +526,38 @@ export function useLobbyApp(): LobbyAppState {
       case "APPLY":
         if (
           pendingTurnSubmitCommandRef.current !== null &&
-          snapshotSupersedesPendingTurnSubmit(
-            pendingTurnSubmitCommandRef.current,
-            incomingSnapshot,
-          )
+          (incomingLegacySnapshot === null ||
+            snapshotSupersedesPendingTurnSubmit(
+              pendingTurnSubmitCommandRef.current,
+              incomingLegacySnapshot,
+            ))
         ) {
           clearPendingTurnSubmitRequest();
         }
         if (
           pendingTurnActionCommandRef.current !== null &&
-          snapshotSupersedesPendingTurnAction(
-            pendingTurnActionCommandRef.current,
-            incomingSnapshot,
+          (incomingLegacySnapshot === null ||
+            snapshotSupersedesPendingTurnAction(
+              pendingTurnActionCommandRef.current,
+              incomingLegacySnapshot,
+            ))
+        ) {
+          clearPendingTurnActionRequest(false);
+        }
+        if (
+          pendingNumberSubmitCommandRef.current !== null &&
+          numberSnapshotSupersedesCommand(
+            pendingNumberSubmitCommandRef.current,
+            incomingNumberSnapshot,
+          )
+        ) {
+          clearPendingTurnSubmitRequest();
+        }
+        if (
+          pendingNumberActionCommandRef.current !== null &&
+          numberSnapshotSupersedesCommand(
+            pendingNumberActionCommandRef.current,
+            incomingNumberSnapshot,
           )
         ) {
           clearPendingTurnActionRequest(false);
@@ -461,6 +570,7 @@ export function useLobbyApp(): LobbyAppState {
         // canonical V1-shaped state (and therefore TurnDraft identity), while
         // refreshing the renderer-routing metadata even when revisions are
         // equal across a V1 <-> V2 representation change.
+        compatibleSnapshotRef.current = compatible;
         setCompatibleSnapshot(compatible);
         clearSnapshotIncompatibility();
         return "CURRENT";
@@ -565,7 +675,7 @@ export function useLobbyApp(): LobbyAppState {
     if (compatible === null) {
       return;
     }
-    const normalizedSnapshot = compatible.legacySnapshot;
+    const normalizedSnapshot = projectRoomSnapshotShell(compatible);
     if (!isSnapshotForSession(normalizedSnapshot, session)) {
       return;
     }
@@ -859,6 +969,204 @@ export function useLobbyApp(): LobbyAppState {
     }
   }
 
+  async function executeNumberSubmitCommand(
+    command: NumberSubmitCommand,
+  ): Promise<void> {
+    if (gameplayMutationFlightRef.current !== null) {
+      return gameplayMutationFlightRef.current;
+    }
+
+    const client = clientRef.current;
+    const session = storedSessionForCurrentRoute();
+    if (
+      client === null ||
+      !client.connected ||
+      session === null ||
+      sessionReplacedRef.current
+    ) {
+      refreshNumberCommandRetryKind();
+      setErrorMessage("서버에 연결되지 않았습니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    pendingNumberSubmitCommandRef.current = command;
+    setNumberCommandRetryKind(null);
+    setTurnSubmitPending(true);
+    setOperationLabel("숫자 타일 배치 제출 중...");
+    setErrorMessage(null);
+
+    const flight = runNumberTileCommandSingleFlight(
+      gameplayMutationFlightRef,
+      async () => {
+        try {
+          const acknowledgement = await client.submitNumberTurn(command);
+          pendingNumberSubmitCommandRef.current = null;
+
+          if (!acknowledgement.ok) {
+            setErrorMessage(getUserErrorMessage(acknowledgement.error.code));
+            if (
+              decideNumberTileCommandFailureAction(
+                acknowledgement.error.code,
+                acknowledgement.scope === "ROOM"
+                  ? acknowledgement.versions.gameRevision
+                  : null,
+                command.expectedGameRevision,
+              ) === "RESET_DRAFT_AND_SYNC"
+            ) {
+              resetTurnDraftFromAuthority();
+              void requestLatestSnapshot();
+            }
+            return;
+          }
+
+          const application = applyWireSnapshot(
+            acknowledgement.data.snapshot,
+            session,
+          );
+          if (application === "CURRENT") {
+            setErrorMessage(null);
+          } else {
+            resetTurnDraftFromAuthority();
+            void requestLatestSnapshot();
+          }
+        } catch (error: unknown) {
+          if (!isRetryableCommandFailure(error)) {
+            pendingNumberSubmitCommandRef.current = null;
+            if (
+              error instanceof RealtimeClientError &&
+              error.code === "INVALID_SERVER_RESPONSE"
+            ) {
+              resetTurnDraftFromAuthority();
+              void requestLatestSnapshot();
+            }
+          }
+          setErrorMessage(clientFailureMessage(error));
+        }
+      },
+    );
+    try {
+      await flight;
+    } finally {
+      setTurnSubmitPending(false);
+      setOperationLabel(null);
+      refreshNumberCommandRetryKind();
+    }
+
+    const retryRequested = numberSubmitRetryRequestedRef.current;
+    numberSubmitRetryRequestedRef.current = false;
+    const pendingCommand = pendingNumberSubmitCommandRef.current;
+    if (
+      retryRequested &&
+      pendingCommand !== null &&
+      client.connected &&
+      !sessionReplacedRef.current
+    ) {
+      await executeNumberSubmitCommand(pendingCommand);
+    }
+  }
+
+  async function executeNumberActionCommand(
+    command: PendingNumberTileActionCommand,
+  ): Promise<void> {
+    if (gameplayMutationFlightRef.current !== null) {
+      return gameplayMutationFlightRef.current;
+    }
+
+    const client = clientRef.current;
+    const session = storedSessionForCurrentRoute();
+    if (
+      client === null ||
+      !client.connected ||
+      session === null ||
+      sessionReplacedRef.current
+    ) {
+      refreshNumberCommandRetryKind();
+      setErrorMessage("서버에 연결되지 않았습니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    pendingNumberActionCommandRef.current = command;
+    setNumberCommandRetryKind(null);
+    setTurnActionPending(true);
+    setOperationLabel(
+      command.kind === "number:draw"
+        ? "숫자 타일 가져오는 중..."
+        : "턴 넘기는 중...",
+    );
+    setErrorMessage(null);
+
+    const flight = runNumberTileCommandSingleFlight(
+      gameplayMutationFlightRef,
+      async () => {
+        try {
+          const acknowledgement = command.kind === "number:draw"
+            ? await client.drawNumberTurn(command)
+            : await client.passNumberTurn(command);
+          pendingNumberActionCommandRef.current = null;
+
+          if (!acknowledgement.ok) {
+            setErrorMessage(getUserErrorMessage(acknowledgement.error.code));
+            if (
+              decideNumberTileCommandFailureAction(
+                acknowledgement.error.code,
+                acknowledgement.scope === "ROOM"
+                  ? acknowledgement.versions.gameRevision
+                  : null,
+                command.expectedGameRevision,
+              ) === "RESET_DRAFT_AND_SYNC"
+            ) {
+              resetTurnDraftFromAuthority();
+              void requestLatestSnapshot();
+            }
+            return;
+          }
+
+          const application = applyWireSnapshot(
+            acknowledgement.data.snapshot,
+            session,
+          );
+          if (application === "CURRENT") {
+            setErrorMessage(null);
+          } else {
+            resetTurnDraftFromAuthority();
+            void requestLatestSnapshot();
+          }
+        } catch (error: unknown) {
+          if (!isRetryableCommandFailure(error)) {
+            pendingNumberActionCommandRef.current = null;
+            if (
+              error instanceof RealtimeClientError &&
+              error.code === "INVALID_SERVER_RESPONSE"
+            ) {
+              resetTurnDraftFromAuthority();
+              void requestLatestSnapshot();
+            }
+          }
+          setErrorMessage(clientFailureMessage(error));
+        }
+      },
+    );
+    try {
+      await flight;
+    } finally {
+      setTurnActionPending(false);
+      setOperationLabel(null);
+      refreshNumberCommandRetryKind();
+    }
+
+    const retryRequested = numberActionRetryRequestedRef.current;
+    numberActionRetryRequestedRef.current = false;
+    const pendingCommand = pendingNumberActionCommandRef.current;
+    if (
+      retryRequested &&
+      pendingCommand !== null &&
+      client.connected &&
+      !sessionReplacedRef.current
+    ) {
+      await executeNumberActionCommand(pendingCommand);
+    }
+  }
+
   async function executeRoomLeaveCommand(
     command: RoomLeaveCommand,
   ): Promise<void> {
@@ -1043,7 +1351,7 @@ export function useLobbyApp(): LobbyAppState {
     if (compatible === null) {
       return;
     }
-    const nextSnapshot = compatible.legacySnapshot;
+    const nextSnapshot = projectRoomSnapshotShell(compatible);
     if (
       operation.kind === "room:join" &&
       operation.payload.roomCode !== nextSnapshot.room.roomCode
@@ -1321,16 +1629,41 @@ export function useLobbyApp(): LobbyAppState {
     }
 
     const pendingTurnActionCommand = pendingTurnActionCommandRef.current;
-    if (pendingTurnActionCommand === null || sessionReplacedRef.current) {
+    if (sessionReplacedRef.current) {
+      return;
+    }
+    if (pendingTurnActionCommand !== null) {
+      if (gameplayMutationFlightRef.current !== null) {
+        turnActionRetryRequestedRef.current = true;
+        await gameplayMutationFlightRef.current;
+      } else {
+        await executeTurnActionCommand(pendingTurnActionCommand);
+      }
+    }
+
+    const pendingNumberSubmitCommand = pendingNumberSubmitCommandRef.current;
+    if (sessionReplacedRef.current) {
+      return;
+    }
+    if (pendingNumberSubmitCommand !== null) {
+      if (gameplayMutationFlightRef.current !== null) {
+        numberSubmitRetryRequestedRef.current = true;
+        await gameplayMutationFlightRef.current;
+      } else {
+        await executeNumberSubmitCommand(pendingNumberSubmitCommand);
+      }
+    }
+
+    const pendingNumberActionCommand = pendingNumberActionCommandRef.current;
+    if (pendingNumberActionCommand === null || sessionReplacedRef.current) {
       return;
     }
     if (gameplayMutationFlightRef.current !== null) {
-      turnActionRetryRequestedRef.current = true;
+      numberActionRetryRequestedRef.current = true;
       await gameplayMutationFlightRef.current;
       return;
     }
-
-    await executeTurnActionCommand(pendingTurnActionCommand);
+    await executeNumberActionCommand(pendingNumberActionCommand);
   }
 
   useEffect(() => {
@@ -1348,7 +1681,7 @@ export function useLobbyApp(): LobbyAppState {
     });
     const unsubscribeTurnStarted = client.subscribeTurnStarted((event) => {
       if (
-        decideTurnStartedAdvisory(snapshotRef.current, event) ===
+        decideTurnStartedAdvisory(currentLegacyHangulSnapshot(), event) ===
         "REQUEST_SYNC"
       ) {
         void requestLatestSnapshot();
@@ -1356,7 +1689,7 @@ export function useLobbyApp(): LobbyAppState {
     });
     const unsubscribeGameFinished = client.subscribeGameFinished((event) => {
       if (
-        decideGameFinishedAdvisory(snapshotRef.current, event) ===
+        decideGameFinishedAdvisory(currentLegacyHangulSnapshot(), event) ===
         "REQUEST_SYNC"
       ) {
         void requestLatestSnapshot();
@@ -1633,7 +1966,7 @@ export function useLobbyApp(): LobbyAppState {
       return;
     }
 
-    const currentSnapshot = snapshotRef.current;
+    const currentSnapshot = currentLegacyHangulSnapshot();
     const client = clientRef.current;
     if (
       currentSnapshot?.room.phase !== "PLAYING" ||
@@ -1676,7 +2009,7 @@ export function useLobbyApp(): LobbyAppState {
       return;
     }
 
-    const currentSnapshot = snapshotRef.current;
+    const currentSnapshot = currentLegacyHangulSnapshot();
     const client = clientRef.current;
     if (
       currentSnapshot?.room.phase !== "PLAYING" ||
@@ -1730,7 +2063,7 @@ export function useLobbyApp(): LobbyAppState {
       return;
     }
 
-    const currentSnapshot = snapshotRef.current;
+    const currentSnapshot = currentLegacyHangulSnapshot();
     const client = clientRef.current;
     if (
       currentSnapshot?.room.phase !== "PLAYING" ||
@@ -1766,12 +2099,162 @@ export function useLobbyApp(): LobbyAppState {
     void executeTurnActionCommand(command);
   }
 
+  function submitNumberTurn(draft: NumberTileTurnDraft): void {
+    if (
+      gameplayMutationFlightRef.current !== null ||
+      pendingTurnActionCommandRef.current !== null ||
+      pendingNumberActionCommandRef.current !== null ||
+      resumeFlightRef.current !== null ||
+      entryFlightRef.current !== null ||
+      gameStartFlightRef.current !== null ||
+      roomLeaveFlightRef.current !== null ||
+      pendingRoomLeaveCommandRef.current !== null ||
+      operationLabel !== null
+    ) {
+      return;
+    }
+
+    const currentSnapshot = currentNumberTilePlayingSnapshot();
+    const client = clientRef.current;
+    if (
+      currentSnapshot === null ||
+      currentSnapshot.game.gameRevision !== draft.baseGameRevision ||
+      currentSnapshot.game.gameId !== draft.baseGameId ||
+      currentSnapshot.game.turn.turnId !== draft.baseTurnId ||
+      currentSnapshot.game.turn.activePlayerId !== currentSnapshot.self.playerId
+    ) {
+      resetTurnDraftFromAuthority();
+      void requestLatestSnapshot();
+      return;
+    }
+    if (client === null || !client.connected || sessionReplacedRef.current) {
+      setErrorMessage("서버에 연결되지 않았습니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    const command = createOrReuseNumberSubmitCommand(
+      pendingNumberSubmitCommandRef.current,
+      draft,
+      createRequestId,
+    );
+    if (command === null) {
+      setErrorMessage("모든 조커의 숫자와 색상을 지정해주세요.");
+      return;
+    }
+    pendingNumberSubmitCommandRef.current = command;
+    void executeNumberSubmitCommand(command);
+  }
+
+  function drawNumberTurn(): void {
+    if (
+      gameplayMutationFlightRef.current !== null ||
+      pendingTurnSubmitCommandRef.current !== null ||
+      pendingNumberSubmitCommandRef.current !== null ||
+      resumeFlightRef.current !== null ||
+      entryFlightRef.current !== null ||
+      gameStartFlightRef.current !== null ||
+      roomLeaveFlightRef.current !== null ||
+      pendingRoomLeaveCommandRef.current !== null ||
+      operationLabel !== null
+    ) {
+      return;
+    }
+
+    const currentSnapshot = currentNumberTilePlayingSnapshot();
+    const client = clientRef.current;
+    if (
+      currentSnapshot === null ||
+      currentSnapshot.game.turn.activePlayerId !== currentSnapshot.self.playerId
+    ) {
+      resetTurnDraftFromAuthority();
+      void requestLatestSnapshot();
+      return;
+    }
+    if (currentSnapshot.game.remainingPoolCount === 0) {
+      setErrorMessage(getUserErrorMessage("POOL_EMPTY"));
+      return;
+    }
+    if (client === null || !client.connected || sessionReplacedRef.current) {
+      setErrorMessage("서버에 연결되지 않았습니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    const pending = pendingNumberActionCommandRef.current;
+    if (pending !== null && pending.kind !== "number:draw") {
+      setErrorMessage(
+        "이전 턴 종료 요청의 결과를 확인 중입니다. 같은 요청을 다시 시도해주세요.",
+      );
+      return;
+    }
+    const command = createOrReuseNumberDrawCommand(
+      pending,
+      currentSnapshot.game.gameRevision,
+      currentSnapshot.game.turn.turnId,
+      createRequestId,
+    );
+    pendingNumberActionCommandRef.current = command;
+    void executeNumberActionCommand(command);
+  }
+
+  function passNumberTurn(): void {
+    if (
+      gameplayMutationFlightRef.current !== null ||
+      pendingTurnSubmitCommandRef.current !== null ||
+      pendingNumberSubmitCommandRef.current !== null ||
+      resumeFlightRef.current !== null ||
+      entryFlightRef.current !== null ||
+      gameStartFlightRef.current !== null ||
+      roomLeaveFlightRef.current !== null ||
+      pendingRoomLeaveCommandRef.current !== null ||
+      operationLabel !== null
+    ) {
+      return;
+    }
+
+    const currentSnapshot = currentNumberTilePlayingSnapshot();
+    const client = clientRef.current;
+    if (
+      currentSnapshot === null ||
+      currentSnapshot.game.turn.activePlayerId !== currentSnapshot.self.playerId
+    ) {
+      resetTurnDraftFromAuthority();
+      void requestLatestSnapshot();
+      return;
+    }
+    if (currentSnapshot.game.remainingPoolCount !== 0) {
+      setErrorMessage(getUserErrorMessage("PASS_NOT_ALLOWED"));
+      return;
+    }
+    if (client === null || !client.connected || sessionReplacedRef.current) {
+      setErrorMessage("서버에 연결되지 않았습니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    const pending = pendingNumberActionCommandRef.current;
+    if (pending !== null && pending.kind !== "number:pass") {
+      setErrorMessage(
+        "이전 턴 종료 요청의 결과를 확인 중입니다. 같은 요청을 다시 시도해주세요.",
+      );
+      return;
+    }
+    const command = createOrReuseNumberPassCommand(
+      pending,
+      currentSnapshot.game.gameRevision,
+      currentSnapshot.game.turn.turnId,
+      createRequestId,
+    );
+    pendingNumberActionCommandRef.current = command;
+    void executeNumberActionCommand(command);
+  }
+
   function leaveRoom(): void {
     if (
       roomLeaveFlightRef.current !== null ||
       gameplayMutationFlightRef.current !== null ||
       pendingTurnSubmitCommandRef.current !== null ||
       pendingTurnActionCommandRef.current !== null ||
+      pendingNumberSubmitCommandRef.current !== null ||
+      pendingNumberActionCommandRef.current !== null ||
       gameStartFlightRef.current !== null ||
       pendingGameStartCommandRef.current !== null ||
       resumeFlightRef.current !== null ||
@@ -1854,6 +2337,7 @@ export function useLobbyApp(): LobbyAppState {
     gameStartPending,
     turnSubmitPending,
     turnActionPending,
+    numberCommandRetryKind,
     roomLeavePending,
     turnDraftResetGeneration,
     setNickname,
@@ -1864,6 +2348,9 @@ export function useLobbyApp(): LobbyAppState {
     submitTurn,
     drawTurn,
     passTurn,
+    submitNumberTurn,
+    drawNumberTurn,
+    passNumberTurn,
     leaveRoom,
     copyInvitation,
     goHome,

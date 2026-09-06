@@ -4,6 +4,9 @@ import { useLobbyApp } from "./app/use-lobby-app.js";
 import { PlayingScreen } from "./features/game/PlayingScreen.js";
 import { FinishedScreen } from "./features/game/FinishedScreen.js";
 import { useTurnDraft } from "./features/game/use-turn-draft.js";
+import { NumberTileFinishedScreen } from "./features/number-tile/NumberTileFinishedScreen.js";
+import { NumberTilePlayingScreen } from "./features/number-tile/NumberTilePlayingScreen.js";
+import { useNumberTileTurnDraft } from "./features/number-tile/use-number-tile-turn-draft.js";
 import { HomeScreen } from "./features/lobby/HomeScreen.js";
 import { LobbyScreen } from "./features/lobby/LobbyScreen.js";
 import { IncompatibleSnapshotScreen } from "./features/platform/IncompatibleSnapshotScreen.js";
@@ -76,6 +79,84 @@ function PlayingRoute(props: PlayingRouteProps) {
       onSubmitTurn={props.onSubmitTurn}
       onDrawTurn={props.onDrawTurn}
       onPassTurn={props.onPassTurn}
+      onLeaveRoom={props.onLeaveRoom}
+      onGoHome={props.onGoHome}
+    />
+  );
+}
+
+type NumberTilePlayingRouteProps = Readonly<{
+  snapshot: Parameters<typeof NumberTilePlayingScreen>[0]["snapshot"];
+  connectionState: RealtimeConnectionState;
+  connectionLabel: string;
+  connectionTone: ConnectionPresentation["tone"];
+  errorMessage: string | null;
+  sessionReplaced: boolean;
+  operationPending: boolean;
+  submitPending: boolean;
+  actionPending: boolean;
+  commandRetryKind: ReturnType<typeof useLobbyApp>["numberCommandRetryKind"];
+  roomLeavePending: boolean;
+  draftResetGeneration: number;
+  onSubmit: ReturnType<typeof useLobbyApp>["submitNumberTurn"];
+  onDraw: ReturnType<typeof useLobbyApp>["drawNumberTurn"];
+  onPass: ReturnType<typeof useLobbyApp>["passNumberTurn"];
+  onLeaveRoom: ReturnType<typeof useLobbyApp>["leaveRoom"];
+  onGoHome: () => void;
+}>;
+
+function NumberTilePlayingRoute(props: NumberTilePlayingRouteProps) {
+  const selfState = props.snapshot.game.playerStates.find(
+    (player) => player.playerId === props.snapshot.self.playerId,
+  );
+  const isActivePlayer =
+    props.snapshot.game.turn.activePlayerId === props.snapshot.self.playerId;
+  const commandCapable =
+    props.connectionState === "CONNECTED" &&
+    !props.sessionReplaced &&
+    !props.operationPending &&
+    !props.roomLeavePending &&
+    selfState?.forfeited !== true;
+  const editorEnabled =
+    commandCapable &&
+    isActivePlayer &&
+    !props.submitPending &&
+    !props.actionPending &&
+    props.commandRetryKind === null;
+  const draft = useNumberTileTurnDraft(
+    props.snapshot,
+    editorEnabled,
+    props.sessionReplaced,
+    props.draftResetGeneration,
+  );
+
+  return (
+    <NumberTilePlayingScreen
+      snapshot={props.snapshot}
+      connectionLabel={props.connectionLabel}
+      connectionTone={props.connectionTone}
+      errorMessage={props.errorMessage}
+      sessionReplaced={props.sessionReplaced}
+      turnDraft={draft}
+      submitPending={props.submitPending}
+      actionPending={props.actionPending}
+      commandRetryKind={props.commandRetryKind}
+      roomLeavePending={props.roomLeavePending}
+      canSubmit={
+        commandCapable &&
+        isActivePlayer &&
+        !props.actionPending &&
+        (props.commandRetryKind === null || props.commandRetryKind === "SUBMIT")
+      }
+      canAct={
+        commandCapable &&
+        isActivePlayer &&
+        !props.submitPending &&
+        props.commandRetryKind !== "SUBMIT"
+      }
+      onSubmit={props.onSubmit}
+      onDraw={props.onDraw}
+      onPass={props.onPass}
       onLeaveRoom={props.onLeaveRoom}
       onGoHome={props.onGoHome}
     />
@@ -160,6 +241,49 @@ export function App() {
       return (
         <div data-protocol-version={PROTOCOL_VERSION}>
           <FinishedScreen
+            snapshot={roomView.snapshot}
+            connectionLabel={connectionLabel}
+            connectionTone={connection.tone}
+            errorMessage={app.errorMessage}
+            sessionReplaced={app.sessionReplaced}
+            roomLeavePending={app.roomLeavePending}
+            onLeaveRoom={app.leaveRoom}
+            onGoHome={app.goHome}
+          />
+        </div>
+      );
+    }
+
+    if (roomView.kind === "NUMBER_TILE_PLAYING") {
+      return (
+        <div data-protocol-version={PROTOCOL_VERSION}>
+          <NumberTilePlayingRoute
+            snapshot={roomView.snapshot}
+            connectionState={app.connectionState}
+            connectionLabel={connectionLabel}
+            connectionTone={connection.tone}
+            errorMessage={app.errorMessage}
+            sessionReplaced={app.sessionReplaced}
+            operationPending={app.operationLabel !== null}
+            submitPending={app.turnSubmitPending}
+            actionPending={app.turnActionPending}
+            commandRetryKind={app.numberCommandRetryKind}
+            roomLeavePending={app.roomLeavePending}
+            draftResetGeneration={app.turnDraftResetGeneration}
+            onSubmit={app.submitNumberTurn}
+            onDraw={app.drawNumberTurn}
+            onPass={app.passNumberTurn}
+            onLeaveRoom={app.leaveRoom}
+            onGoHome={app.goHome}
+          />
+        </div>
+      );
+    }
+
+    if (roomView.kind === "NUMBER_TILE_FINISHED") {
+      return (
+        <div data-protocol-version={PROTOCOL_VERSION}>
+          <NumberTileFinishedScreen
             snapshot={roomView.snapshot}
             connectionLabel={connectionLabel}
             connectionTone={connection.tone}

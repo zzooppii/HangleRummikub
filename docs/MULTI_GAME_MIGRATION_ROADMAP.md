@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0~P7B COMPLETE / P7C READY
+> 상태: P0~P7C COMPLETE / P8 READY
 > 작성일: 2026-09-06
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -25,7 +25,7 @@
 
 production 기준선 573 tests는 shared 55, web 87, server 431로 구성됐다. 이후 추가된 test를 포함한 수는 이유 없이 감소하면 해당 Phase는 완료가 아니다.
 
-P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A checkpoint `a215eaa`는 이 tests를 삭제·skip하지 않고 신규 boundary 6개를 더해 shared 59, web 91, server 453으로 총 603 tests를 통과했다. P3B checkpoint `bc4a62a`는 기존 603개와 신규 command-routing 9개를 포함해 총 612 tests를 통과했다. P3C checkpoint `d21eaad`는 신규 server-action regression 16개를 더해 shared 59, web 91, server 478로 총 628 tests를 통과했다. P3D checkpoint `cedda1a`는 import-boundary regression 3개를 더해 shared 59, web 91, server 481로 총 631 tests를 통과했다. P4 checkpoint `60eb77e`는 새 case 수를 늘리지 않고 production A/B smoke의 behavioral assertions를 강화하며 이 631-test 기준선을 두 번 검증했다. P5A checkpoint `05cac94`는 shared contract 6개와 server mapper/wire-isolation 8개를 더해 shared 65, web 91, server 489로 총 645 tests를 기준선으로 만들었다. P5B checkpoint `e9211bc`는 negotiation/wire contract 4개, Web decode·routing·storage regression 14개, server negotiation·selector·mixed-version regression 14개를 더해 shared 69, web 105, server 503으로 총 677 tests를 통과했다. P5C는 additive create contract, requested-type resolution/atomicity, Web catalog/selection/retry와 mixed legacy/V2 create/join 회귀 8개를 더해 shared 69, web 108, server 508로 총 685 tests를 통과했다.
+P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A checkpoint `a215eaa`는 이 tests를 삭제·skip하지 않고 신규 boundary 6개를 더해 shared 59, web 91, server 453으로 총 603 tests를 통과했다. P3B checkpoint `bc4a62a`는 기존 603개와 신규 command-routing 9개를 포함해 총 612 tests를 통과했다. P3C checkpoint `d21eaad`는 신규 server-action regression 16개를 더해 shared 59, web 91, server 478로 총 628 tests를 통과했다. P3D checkpoint `cedda1a`는 import-boundary regression 3개를 더해 shared 59, web 91, server 481로 총 631 tests를 통과했다. P4 checkpoint `60eb77e`는 새 case 수를 늘리지 않고 production A/B smoke의 behavioral assertions를 강화하며 이 631-test 기준선을 두 번 검증했다. P5A checkpoint `05cac94`는 shared contract 6개와 server mapper/wire-isolation 8개를 더해 shared 65, web 91, server 489로 총 645 tests를 기준선으로 만들었다. P5B checkpoint `e9211bc`는 negotiation/wire contract 4개, Web decode·routing·storage regression 14개, server negotiation·selector·mixed-version regression 14개를 더해 shared 69, web 105, server 503으로 총 677 tests를 통과했다. P5C는 additive create contract, requested-type resolution/atomicity, Web catalog/selection/retry와 mixed legacy/V2 create/join 회귀 8개를 더해 shared 69, web 108, server 508로 총 685 tests를 통과했다. P7B checkpoint `d9329d1`은 P7A domain과 server/shared integration 회귀를 포함해 shared 75, web 109, server 694, 총 878 tests다. P7C는 Web capability/catalog/Number renderer와 local draft·active-control·responsive 회귀 31개를 더해 shared 75, web 140, server 694, 총 909 tests를 기준선으로 만든다.
 
 ## 2. Phase 개요
 
@@ -812,7 +812,7 @@ NUMBER_TILE의 닫힌 command/projection contract와 server application을 regis
 - P7A 기준 784 tests를 유지하고 P7B 신규 94 tests를 더해 shared 75, web 109, server 694, 총 878 tests를 통과했다. Production-serving 5/5와 실제 build의 local raw A/B Number create/join/start/Draw/privacy/resume smoke도 통과했다.
 - 상세 architecture와 contract는 [NUMBER_TILE_SERVER_INTEGRATION.md](./NUMBER_TILE_SERVER_INTEGRATION.md)에 기록했다.
 
-P7B는 `COMPLETE`, P7C는 `READY`다. P7C/P8 gate 전에는 public Home catalog에 `NUMBER_TILE`을 노출하지 않는다.
+P7B checkpoint에서 server prerequisite는 `COMPLETE`였고 당시 P7C는 `READY`였다. 이후 P7C가 Web bundle의 exact two-game catalog와 renderer를 완료했으며 public deployment는 P8 전 사용자 배포 확인 대상이다.
 
 #### Codex 실행 명령
 
@@ -820,7 +820,7 @@ P7B는 `COMPLETE`, P7C는 `READY`다. P7C/P8 gate 전에는 public Home catalog�
 Multi-game Platform P7B만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 P7A를 기준으로 NUMBER_TILE의 닫힌 shared command/failure/projection schema, state codec/lifecycle/projector, server application을 canonical registry와 Room UoW에 연결하라. `number-tile-rules-v1`의 protocol v1 `number:*`, V2-only projection, selected snapshot V2 + exact supportedGameTypes admission과 no-advisory 결정을 그대로 구현하고 기존 Hangul v1 turn:* adapter를 유지하며 unchecked envelope를 금지하라. actor/scoped revision/idempotency/serialization/privacy/atomic commit과 90초 Turn timeout scheduling/recovery를 지키되 overall Game deadline capability는 만들지 말고 React와 production enablement 없이 전체 typecheck/test/build/diff-check를 통과시켜라.
 ```
 
-### 10.3 P7C — Number Tile web implementation
+### 10.3 P7C — Number Tile web implementation (`COMPLETE`)
 
 #### 목표
 
@@ -833,21 +833,21 @@ authoritative NUMBER_TILE projection만 소비하는 독립 web renderer와 loca
 - local draft와 authoritative revision reconciliation
 - reconnect/resume/same-ID retry 및 pending command cleanup
 - keyboard/touch/responsive/accessibility behavior
-- controlled test route/feature flag에서만 접근
+- Home catalog의 실제 `NUMBER_TILE` create와 canonical V2 route
 
 #### 금지사항
 
 - client에서 legal move, score, canonical inventory 확정
 - Hangul TurnDraft/editor를 type-cast하여 재사용
 - shared/server rule 변경
-- P8 E2E 전 production enablement
+- P7C checkpoint에서 Railway 직접 deploy
 
 #### Definition of Done
 
 - server projection과 ack만 authoritative state를 변경한다.
 - reconnect/stale snapshot/game instance change가 local draft를 안전하게 reconcile한다.
 - Hangul renderer와 style/route behavior가 회귀하지 않는다.
-- catalog는 production에서 disabled 상태다.
+- source bundle catalog에는 exact Hangul/Number 두 game만 있고 public deployment는 사용자 작업 전까지 pending이다.
 
 #### Required tests
 
@@ -857,10 +857,22 @@ authoritative NUMBER_TILE projection만 소비하는 독립 web renderer와 loca
 - accessibility/responsive/release UI checks
 - 기존 Hangul 및 전체 tests, typecheck/build/diff-check
 
+#### P7C 완료 결과
+
+- Current Web handshake는 snapshot `[2,1]`과 game `[HANGUL_TILE, NUMBER_TILE]` capability를 exact하게 광고한다.
+- Home은 구현된 두 game을 같은 hierarchy로 제공하며 `GEM_CARD` placeholder가 없다. Create만 selected game을 보내고 join/URL/renderer authority는 바뀌지 않았다.
+- Number V2 LOBBY/PLAYING/FINISHED를 direct strict branch로 decode하며 Number를 Hangul V1 shape로 변환하지 않는다.
+- `apps/web/src/features/number-tile/`의 독립 TurnDraft/editor는 GROUP/RUN, physical `tileId`, initial lock, rearrangement, Joker assignment, rack return, Undo/Reset과 최대 50 history를 소유한다.
+- Exact `number:submit/draw/pass` client와 same-ID retry, stale/reset/sync, reconnect draft lifecycle을 연결했다. Number advisory와 `number:start`는 없다.
+- PLAYING/FINISHED privacy, 90초 display countdown, keyboard/touch controls와 390/320 responsive behavior를 검증한다.
+- Server/shared/domain rules와 dependency는 변경하지 않았고 자세한 구조는 [NUMBER_TILE_WEB_IMPLEMENTATION.md](./NUMBER_TILE_WEB_IMPLEMENTATION.md)에 기록했다.
+
+P7C는 `COMPLETE`, P8은 `READY`다. P7C checkpoint는 Railway를 배포하지 않으므로 public two-game verification은 사용자 수동 배포 뒤 수행한다.
+
 #### Codex 실행 명령
 
 ```text
-Multi-game Platform P7C만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 P7B projection/command를 사용해 독립 NUMBER_TILE web decoder, renderer, local draft/editor, result UI를 구현하라. server snapshot/ack만 authority로 삼고 Hangul TurnDraft를 type-cast해 재사용하지 말며 reconnect, same-ID retry, stale revision, game instance change를 안전하게 reconcile하라. controlled test flag 외 production catalog는 disabled로 유지하고 accessibility와 전체 typecheck/test/build/diff-check를 통과시켜라.
+Multi-game Platform P7C만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 P7B projection/command를 사용해 독립 NUMBER_TILE web decoder, renderer, local draft/editor, result UI를 구현하라. server snapshot/ack만 authority로 삼고 Hangul TurnDraft를 type-cast해 재사용하지 말며 reconnect, same-ID retry, stale revision, game instance change를 안전하게 reconcile하라. Home에는 실제 구현된 Hangul/Number 두 game만 제공하고 accessibility, local browser smoke와 전체 typecheck/test/build/diff-check를 통과시키되 Railway는 배포하지 마라.
 ```
 
 ## 11. P8 — Number Tile E2E gate

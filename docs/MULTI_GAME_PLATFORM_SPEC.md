@@ -1,6 +1,6 @@
 # Multi-game Platform Specification
 
-> 상태: P0~P7B COMPLETE / P7C READY
+> 상태: P0~P7C COMPLETE / P8 READY
 > 작성일: 2026-09-06
 > 적용 범위: 현재 production 한글 타일 게임을 보존하면서 여러 턴제 보드게임을 수용하기 위한 제품 경계  
 > 비고: 이 문서는 구현 계약이 아니라 후속 Phase의 의사결정 기준이다.
@@ -48,12 +48,12 @@ P0 및 초기 migration의 비목표는 다음과 같다.
 | ID | 역할 | 현재 상태 |
 | --- | --- | --- |
 | `HANGUL_TILE` | 기존 한글 타일 게임 | production 기준 implementation |
-| `NUMBER_TILE` | 숫자 타일 게임 | P7A domain + P7B server/shared runtime 완료, Web/catalog는 P7C 대기 |
+| `NUMBER_TILE` | 숫자 타일 게임 | P7A domain + P7B server/shared + P7C Web 완료, P8 E2E 대기 |
 | `GEM_CARD` | 보석·카드형 게임 | 후속 rules gate 대상 |
 
 `HANGUL_TILE`과 `NUMBER_TILE`은 확정된 중립 내부 식별자이고 `GEM_CARD`는 후속 rules gate의 후보다. 장기적으로 protocol, persistence, registry, telemetry에서 일관되게 사용하되 공개 UI 명칭과 licensing은 별도 결정하며, 특정 상용 게임 브랜드나 asset 이름을 결합하지 않는다.
 
-P7B의 runtime contract인 `SUPPORTED_GAME_TYPES`와 `GameTypeSchema`는 `HANGUL_TILE`, `NUMBER_TILE` 두 값만 허용한다. Identity-only GameRegistry에도 이 두 registration만 존재한다. 후보 `GEM_CARD`는 runtime 지원 값이나 registration이 아니다. Current Web catalog는 P7C 전까지 계속 `HANGUL_TILE` 한 항목만 제공한다.
+Runtime contract인 `SUPPORTED_GAME_TYPES`와 `GameTypeSchema`는 `HANGUL_TILE`, `NUMBER_TILE` 두 값만 허용한다. Identity-only GameRegistry와 P7C Current Web capability/catalog도 이 두 값만 가진다. 후보 `GEM_CARD`는 runtime 지원 값, registration 또는 placeholder card가 아니다.
 
 ## 5. 공통 플랫폼 범위
 
@@ -141,7 +141,7 @@ P7B의 runtime contract인 `SUPPORTED_GAME_TYPES`와 `GameTypeSchema`는 `HANGUL
 
 공통화는 두 구현을 비교한 뒤 의미와 불변 조건이 동일함이 입증된 작은 primitive에 한한다. 이름이 비슷하다는 이유만으로 한글 board나 TurnDraft를 재사용하지 않는다.
 
-P6는 [NUMBER_TILE_GAME_RULES.md](./NUMBER_TILE_GAME_RULES.md)에 `number-tile-rules-v1`과 `NT-001`~`NT-044`의 확정 규칙을, [NUMBER_TILE_PROTOCOL_GATE.md](./NUMBER_TILE_PROTOCOL_GATE.md)에 confirmed command·projection·compatibility 방향을 기록했다. P7A가 독립 domain을 구현했고 P7B가 shared/server runtime에 연결했다. Web catalog와 renderer는 P7C 전까지 추가하지 않는다.
+P6는 [NUMBER_TILE_GAME_RULES.md](./NUMBER_TILE_GAME_RULES.md)에 `number-tile-rules-v1`과 `NT-001`~`NT-044`의 확정 규칙을, [NUMBER_TILE_PROTOCOL_GATE.md](./NUMBER_TILE_PROTOCOL_GATE.md)에 confirmed command·projection·compatibility 방향을 기록했다. P7A가 독립 domain을 구현하고 P7B가 shared/server runtime에 연결했으며 P7C가 Web catalog와 renderer를 추가했다.
 
 ### 7.3 `GEM_CARD`
 
@@ -218,9 +218,9 @@ P5C의 Home 흐름은 다음과 같다.
 
 catalog는 Web이 소유하는 static product metadata이며 server `GameRegistry`와 별개다. 현재 item은 UI에 실제 필요한 `gameType`, 중립적인 표시 이름과 짧은 설명만 가진다. server registration, player 수, start 가능 여부, renderer 또는 game rule은 catalog metadata에서 결정하지 않는다.
 
-현재 catalog에는 `HANGUL_TILE` 한 항목만 있다. `NUMBER_TILE`, `GEM_CARD`, `UNKNOWN`, disabled/준비 중 card와 fake availability metadata는 존재하지 않는다. 별도 `/games`, `game:catalog` 또는 catalog snapshot discovery API도 만들지 않는다.
+P7C catalog에는 실제 end-to-end 구현을 갖춘 `HANGUL_TILE`, `NUMBER_TILE` 두 항목만 있다. `GEM_CARD`, `UNKNOWN`, disabled/준비 중 card와 fake availability metadata는 존재하지 않는다. 별도 `/games`, `game:catalog` 또는 catalog snapshot discovery API도 만들지 않는다.
 
-한 항목뿐이어도 Home은 실제 `GameType` selection model을 사용한다. 기본 선택은 catalog의 `HANGUL_TILE` item이며 native semantic control의 keyboard/focus/selected-state 표현을 제공한다. create handler는 literal을 다시 hard-code하지 않고 `selectedGameType`을 pending create command로 전달한다. 이 선택 preference 자체는 local/session storage에 영구 저장하지 않는다.
+Home은 실제 `GameType` selection model을 사용한다. 기본 선택은 catalog의 첫 `HANGUL_TILE` item이며 두 card 모두 native semantic control의 keyboard/focus/selected-state 표현을 제공한다. create handler는 literal을 다시 hard-code하지 않고 `selectedGameType`을 pending create command로 전달한다. 이 선택 preference 자체는 local/session storage에 영구 저장하지 않는다.
 
 직접 초대 URL로 들어온 사용자는 gameType을 아직 모르므로 일반적인 참가 화면을 본다. `room:join`은 game selection이나 `gameType`을 받지 않고, 참가 성공 후 canonical server snapshot을 기준으로 Lobby와 renderer를 선택한다. Home의 local selection은 invitation, direct Room, resume 또는 Room 내부 routing의 authority가 아니다.
 
@@ -242,7 +242,7 @@ P5A는 이 호환성 정책 아래 새 `PlatformSnapshotV2`를 additive하게 �
 
 V2는 Room identity·phase·player identity/presence·Room/presence revision·server time·canonical `gameType`을 platform shell에 둔다. `gameRevision`, game state와 private rack, result는 concrete game projection에 남긴다. P5A 당시 Hangul-only였던 strict phase/game correlation은 P7B에서 Hangul과 Number 각각의 LOBBY/PLAYING/FINISHED branch로 확장됐다. Number는 V1 down-conversion 없이 V2만 사용한다.
 
-P5A의 server mapper는 이미 검증되고 player-private한 v1 snapshot과 canonical Room `gameType`을 V2 구조로 재배치하는 transitional seam이다. game rule을 다시 계산하거나 canonical private state를 읽지 않는다. P5B는 이를 per-socket negotiation 뒤 production transport에 연결했다. capability가 없는 legacy socket은 exact V1, `[2, 1]`을 광고하는 current Web은 V2를 같은 `state:snapshot` event에서 받는다. Web은 V2 canonical `room.gameType`을 먼저 확인한 뒤에만 pure compatibility adapter로 현재 Hangul UI를 재사용하며, unsupported/future/malformed V2는 명시적인 incompatible 화면으로 차단한다. 세부 계약은 [MULTI_GAME_P5A_PLATFORM_SNAPSHOT_V2.md](./MULTI_GAME_P5A_PLATFORM_SNAPSHOT_V2.md)와 [MULTI_GAME_P5B_SNAPSHOT_MIGRATION.md](./MULTI_GAME_P5B_SNAPSHOT_MIGRATION.md)에 기록한다.
+P5A의 server mapper는 이미 검증되고 player-private한 v1 snapshot과 canonical Room `gameType`을 V2 구조로 재배치하는 transitional seam이다. game rule을 다시 계산하거나 canonical private state를 읽지 않는다. P5B는 이를 per-socket negotiation 뒤 production transport에 연결했다. capability가 없는 legacy socket은 exact V1, `[2, 1]`을 광고하는 Current Web은 V2를 같은 `state:snapshot` event에서 받는다. Web은 V2 canonical `room.gameType`을 먼저 확인해 Hangul은 pure compatibility adapter로 기존 UI에 연결하고 Number는 direct V2 renderer로 전달한다. Unsupported/future/malformed V2는 명시적인 incompatible 화면으로 차단한다. 세부 계약은 [MULTI_GAME_P5A_PLATFORM_SNAPSHOT_V2.md](./MULTI_GAME_P5A_PLATFORM_SNAPSHOT_V2.md), [MULTI_GAME_P5B_SNAPSHOT_MIGRATION.md](./MULTI_GAME_P5B_SNAPSHOT_MIGRATION.md), [NUMBER_TILE_WEB_IMPLEMENTATION.md](./NUMBER_TILE_WEB_IMPLEMENTATION.md)에 기록한다.
 
 ## 12. Production 기준선과 rollout
 
@@ -262,7 +262,7 @@ Legacy `StateSnapshot` V1 shape는 그대로다. P5B의 snapshot format은 Room/
 
 P5C의 catalog metadata는 Web bundle에만 있고 `GameRegistry`는 `{ gameType }` identity-only entry를 유지한다. Current Web의 pending create command는 acknowledgement loss retry를 위해 explicit `gameType`과 같은 `requestId`를 기존 v1 storage key 아래 잠시 보존한다. 이는 Home selection preference나 renderer authority를 저장한다는 뜻이 아니다. bound Player credential과 pending join에는 여전히 `gameType`/snapshot capability가 없고, Room 진입 뒤에는 snapshot만 권위다.
 
-P7B는 identity-only Registry에 `NUMBER_TILE`을 추가했지만 catalog metadata를 바꾸지 않았다. Number Room admission에는 connection-scoped `supportedGameTypes`의 `NUMBER_TILE` 포함과 selected snapshot V2가 모두 필요하다. Field를 보내지 않는 current Web과 legacy client는 effective Hangul-only이므로 Number Room에 mutation/binding되기 전에 차단된다. Server/shared 구현 세부는 [NUMBER_TILE_SERVER_INTEGRATION.md](./NUMBER_TILE_SERVER_INTEGRATION.md)를 따른다.
+P7B는 identity-only Registry에 `NUMBER_TILE`을 추가했고 P7C가 Web catalog metadata와 exact game capability를 함께 확장했다. Number Room admission에는 connection-scoped `supportedGameTypes`의 `NUMBER_TILE` 포함과 selected snapshot V2가 모두 필요하다. Field를 보내지 않는 legacy client는 effective Hangul-only이므로 Number Room에 mutation/binding되기 전에 차단된다. Server/shared 구현 세부는 [NUMBER_TILE_SERVER_INTEGRATION.md](./NUMBER_TILE_SERVER_INTEGRATION.md)를 따른다.
 
 ## 13. 결과 모델 방향
 
@@ -300,9 +300,9 @@ P6는 runtime 구현 전에 다음 경계를 확정했다.
 - existing platform Room/session/presence/reconnect/idempotency/serialization mechanism과 Number-specific rule/state/result를 reuse matrix로 분리했다.
 - `game:start`와 protocol v1을 유지하면서 additive `number:submit`/`number:draw`/`number:pass`, V2-only projection, no Number advisory를 확정했다.
 - Current snapshot capability만으로는 Hangul-only V2 Web과 Number-capable Web을 구분할 수 없으므로 `selectedSnapshotVersion === 2`와 exact `supportedGameTypes`의 `NUMBER_TILE` 포함을 create/join/resume mutation 전에 함께 확인하도록 확정했다.
-- P7A와 P7B는 완료됐고 P7C가 다음 stop gate다.
+- P7A, P7B와 P7C가 완료됐고 P8이 다음 stop gate다.
 
-현재 P6/P7A/P7B 판정은 `COMPLETE`, P7C는 `READY`다. P7B server는 두 game을 지원하지만 current production Web의 catalog/rendering은 의도적으로 `HANGUL_TILE` only다.
+현재 P6/P7A/P7B/P7C 판정은 `COMPLETE`, P8은 `READY`다. Current Web bundle의 catalog와 rendering은 exact 두 game을 지원하지만 P7C checkpoint 자체는 Railway에 배포하지 않는다.
 
 ## 16. P7B Number Tile server/shared integration
 
@@ -314,7 +314,13 @@ P7B는 실제 두 번째 state를 추가한 뒤에도 미래 game을 추측하�
 - Number start는 2~4명 rack 14장, pool 78/64/50장, shuffled immutable order와 90초 Turn을 만든다. Timeout/recovery는 common scheduling mechanism에 연결되지만 overall game deadline은 없다.
 - `PlatformSnapshotV2`는 Number LOBBY/PLAYING/FINISHED와 viewer-private rack을 지원한다. Pool은 count만, 상대 rack은 count만 공개하며 FINISHED에서도 privacy를 유지한다.
 - Number command/timeout/leave 결과는 authoritative snapshot으로 전달하고 Number advisory를 추가하지 않는다. Existing Hangul V1/V2와 advisory는 유지한다.
-- Home Number card, Web capability, decoder/renderer/editor는 P7C 범위로 남는다.
+- Home Number card, exact Web capability, decoder/renderer/editor는 P7C에서 완료됐다.
+
+## 17. P7C Number Tile Web
+
+P7C는 common Room shell과 canonical V2 game routing을 유지하면서 `apps/web/src/features/number-tile/`에 Number 전용 TurnDraft, editor, PLAYING/FINISHED 화면을 추가했다. Draft는 full proposed Table과 physical `tileId`, base game/revision/turn, 최대 50 history를 보존하며 Hangul Board/TurnDraft를 사용하지 않는다. Submit/Draw/Pass는 P7B strict commands와 authoritative snapshot-bearing ack만 사용하고 Number advisory를 만들지 않는다.
+
+Home은 Hangul/Number 두 항목만 제공하지만 join payload와 `/room/{ROOM_CODE}`에는 game type이 없다. Number는 V2-only이며 incompatible projection은 fail-closed한다. Countdown은 server deadline의 display-only view이고 rule/result/privacy 계산은 server가 계속 소유한다. 상세 Web contract는 [NUMBER_TILE_WEB_IMPLEMENTATION.md](./NUMBER_TILE_WEB_IMPLEMENTATION.md), 다음 two-game 검증은 P8 roadmap을 따른다.
 
 ## 17. 완료 조건
 

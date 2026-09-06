@@ -30,6 +30,27 @@ const realtimeClientSource = readFileSync(
   new URL("../../src/lib/realtime-client.ts", import.meta.url),
   "utf8",
 );
+const numberEditorSource = readFileSync(
+  new URL(
+    "../../src/features/number-tile/NumberTileTurnDraftEditor.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const numberPlayingSource = readFileSync(
+  new URL(
+    "../../src/features/number-tile/NumberTilePlayingScreen.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const numberDraftControllerSource = readFileSync(
+  new URL(
+    "../../src/features/number-tile/use-number-tile-turn-draft.ts",
+    import.meta.url,
+  ),
+  "utf8",
+);
 const incompatibleSnapshotSource = readFileSync(
   new URL(
     "../../src/features/platform/IncompatibleSnapshotScreen.tsx",
@@ -52,8 +73,9 @@ test("최대 길이 nickname과 결과 metadata는 narrow flex/grid에서 wrap �
   assert.match(ruleFor(".result-player"), /overflow-wrap:\s*anywhere/u);
 });
 
-test("320px mobile layout과 핵심 touch target 제약이 명시되어 있다", () => {
-  assert.match(styles, /html\s*\{[^}]*min-width:\s*320px/su);
+test("320px mobile layout은 document overflow를 강제하지 않고 핵심 touch target을 유지한다", () => {
+  assert.match(styles, /html\s*\{[^}]*min-width:\s*0/su);
+  assert.match(styles, /body\s*\{[^}]*min-width:\s*0/su);
   assert.match(styles, /@media \(max-width:\s*480px\)/u);
   assert.match(ruleFor("button"), /min-height:\s*48px/u);
   assert.match(ruleFor(".game-option"), /width:\s*100%/u);
@@ -120,12 +142,88 @@ test("P5B legacy pending create는 현재 기본 gameType과 같은 요청으로
   );
 });
 
-test("P7B current Web은 snapshot V2를 유지하되 Number game capability를 광고하지 않는다", () => {
+test("P7C current Web은 snapshot V2와 구현된 Hangul/Number capability만 광고한다", () => {
   assert.match(
     realtimeClientSource,
     /supportedSnapshotVersions:\s*\[\.\.\.WEB_SUPPORTED_SNAPSHOT_VERSIONS\]/u,
   );
-  assert.doesNotMatch(realtimeClientSource, /supportedGameTypes/u);
+  assert.match(
+    realtimeClientSource,
+    /supportedGameTypes:\s*\[\.\.\.WEB_SUPPORTED_GAME_TYPES\]/u,
+  );
+  assert.match(realtimeClientSource, /"number:submit"/u);
+  assert.match(realtimeClientSource, /"number:draw"/u);
+  assert.match(realtimeClientSource, /"number:pass"/u);
+  assert.doesNotMatch(realtimeClientSource, /"number:start"/u);
+});
+
+test("Number editor는 keyboard/touch controls와 색상 외 marker를 제공한다", () => {
+  assert.match(numberEditorSource, /type="button"/u);
+  assert.match(numberEditorSource, /aria-pressed=\{props\.selected\}/u);
+  assert.match(numberEditorSource, /className="number-tile-marker"/u);
+  assert.match(numberEditorSource, /RED:\s*"R"/u);
+  assert.match(numberEditorSource, /BLUE:\s*"B"/u);
+  assert.match(numberEditorSource, /BLACK:\s*"K"/u);
+  assert.match(numberEditorSource, /ORANGE:\s*"O"/u);
+  assert.match(numberEditorSource, /confirmationButtonRef\.current\?\.focus\(\)/u);
+  assert.match(numberEditorSource, /drawButtonRef\.current/u);
+  assert.match(numberEditorSource, /passButtonRef\.current/u);
+  assert.match(numberEditorSource, /"assignedNumber" in props\.tile/u);
+  assert.match(numberEditorSource, /props\.tile\.assignedColor/u);
+});
+
+test("Number 화면은 display-only 90초 countdown과 authoritative snapshot을 사용한다", () => {
+  assert.match(numberPlayingSource, /calculateTurnCountdown/u);
+  assert.match(numberPlayingSource, /game\.turn\.deadlineAt/u);
+  assert.match(numberPlayingSource, /remainingPoolCount/u);
+  assert.match(numberPlayingSource, /game\.privateState\.rack/u);
+  assert.doesNotMatch(numberPlayingSource, /TIME_LIMIT|ALL_PLAYERS_FORFEITED/u);
+});
+
+test("Number gameplay controls are enabled only for the canonical active player", () => {
+  assert.match(
+    appSource,
+    /const isActivePlayer =\s*props\.snapshot\.game\.turn\.activePlayerId === props\.snapshot\.self\.playerId/u,
+  );
+  assert.match(
+    appSource,
+    /canSubmit=\{[\s\S]*commandCapable &&[\s\S]*isActivePlayer &&[\s\S]*!props\.actionPending &&[\s\S]*props\.commandRetryKind === "SUBMIT"[\s\S]*\}/u,
+  );
+  assert.match(
+    appSource,
+    /canAct=\{[\s\S]*commandCapable &&[\s\S]*isActivePlayer &&[\s\S]*!props\.submitPending &&[\s\S]*props\.commandRetryKind !== "SUBMIT"[\s\S]*\}/u,
+  );
+  assert.match(numberEditorSource, /disabled=\{!canDraw\}/u);
+  assert.match(numberEditorSource, /disabled=\{!canPass\}/u);
+});
+
+test("Number draft is preserved but editor input is locked while authority commands are pending", () => {
+  assert.match(
+    appSource,
+    /const commandCapable =[\s\S]*!props\.operationPending[\s\S]*const editorEnabled =[\s\S]*isActivePlayer[\s\S]*!props\.submitPending[\s\S]*!props\.actionPending[\s\S]*props\.commandRetryKind === null/u,
+  );
+  assert.match(
+    numberDraftControllerSource,
+    /canEdit: canEditNumberTileTurnDraft\([\s\S]*currentCommandSession/u,
+  );
+  assert.match(
+    numberEditorSource,
+    /!props\.controller\.canEdit && confirmation !== null[\s\S]*setConfirmation\(null\)/u,
+  );
+  assert.match(numberEditorSource, /fieldset className="joker-assignment" disabled=\{!props\.controller\.canEdit\}/u);
+  assert.match(
+    appSource,
+    /props\.commandRetryKind === null \|\| props\.commandRetryKind === "SUBMIT"/u,
+  );
+  assert.match(
+    numberEditorSource,
+    /if \(props\.commandRetryKind === action\)[\s\S]*props\.onDraw\(\)[\s\S]*props\.onPass\(\)[\s\S]*return/u,
+  );
+  assert.match(
+    numberEditorSource,
+    /props\.commandRetryKind === null \|\| props\.commandRetryKind === "DRAW"/u,
+  );
+  assert.match(appControllerSource, /refreshNumberCommandRetryKind\(\)/u);
 });
 
 test("dirty draw confirmation은 keyboard focus를 확인 동작으로 옮기고 취소 시 복원한다", () => {

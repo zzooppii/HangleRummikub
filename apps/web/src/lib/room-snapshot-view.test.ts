@@ -44,6 +44,9 @@ test("accepted V1은 기존 Legacy Hangul renderer resolver를 그대로 사용�
   if (legacy.kind !== "COMPATIBLE") {
     throw new Error("Expected a compatible legacy fixture.");
   }
+  if (legacy.value.kind !== "LEGACY_HANGUL_V1") {
+    throw new Error("Expected the legacy Hangul branch.");
+  }
 
   assert.deepEqual(resolveRoomSnapshotView(legacy.value), { kind: "LOBBY" });
 

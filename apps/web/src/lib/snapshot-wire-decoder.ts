@@ -2,6 +2,9 @@ import {
   PLATFORM_SNAPSHOT_VERSION,
   validatePlatformSnapshotV2,
   validateStateSnapshot,
+  type NumberTileFinishedPlatformSnapshotV2,
+  type NumberTileLobbyPlatformSnapshotV2,
+  type NumberTilePlayingPlatformSnapshotV2,
   type PlatformSnapshotV2,
   type StateSnapshot,
 } from "@hangul-rummikub/shared";
@@ -9,6 +12,15 @@ import {
 import { adaptPlatformSnapshotV2ToLegacyHangulV1 } from "./platform-snapshot-v2-hangul-adapter.js";
 
 export const WEB_SUPPORTED_SNAPSHOT_VERSIONS = Object.freeze([2, 1] as const);
+export const WEB_SUPPORTED_GAME_TYPES = Object.freeze([
+  "HANGUL_TILE",
+  "NUMBER_TILE",
+] as const);
+
+export type NumberTilePlatformSnapshotV2 =
+  | NumberTileLobbyPlatformSnapshotV2
+  | NumberTilePlayingPlatformSnapshotV2
+  | NumberTileFinishedPlatformSnapshotV2;
 
 export type CompatibleWebSnapshot =
   | Readonly<{
@@ -21,6 +33,12 @@ export type CompatibleWebSnapshot =
       gameType: "HANGUL_TILE";
       platformSnapshot: PlatformSnapshotV2;
       legacySnapshot: StateSnapshot;
+    }>
+  | Readonly<{
+      kind: "PLATFORM_V2_NUMBER_TILE";
+      snapshotVersion: typeof PLATFORM_SNAPSHOT_VERSION;
+      gameType: "NUMBER_TILE";
+      platformSnapshot: NumberTilePlatformSnapshotV2;
     }>;
 
 export type WebSnapshotIncompatibilityReason =
@@ -52,6 +70,15 @@ function looksLikeVersionedSnapshot(input: Record<string, unknown>): boolean {
   return isRecord(input.room) && hasOwn(input.room, "gameType");
 }
 
+function isNumberTilePlatformSnapshot(
+  snapshot: PlatformSnapshotV2,
+): snapshot is NumberTilePlatformSnapshotV2 {
+  return (
+    snapshot.room.gameType === "NUMBER_TILE" &&
+    (snapshot.game === null || snapshot.game.gameType === "NUMBER_TILE")
+  );
+}
+
 function decodePlatformSnapshotV2(
   input: Record<string, unknown>,
 ): WebSnapshotDecodeResult {
@@ -66,7 +93,10 @@ function decodePlatformSnapshotV2(
     return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
   }
 
-  if (input.room.gameType !== "HANGUL_TILE") {
+  if (
+    input.room.gameType !== "HANGUL_TILE" &&
+    input.room.gameType !== "NUMBER_TILE"
+  ) {
     return typeof input.room.gameType === "string"
       ? { kind: "INCOMPATIBLE", reason: "UNSUPPORTED_GAME_TYPE" }
       : { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
@@ -75,6 +105,21 @@ function decodePlatformSnapshotV2(
   const validation = validatePlatformSnapshotV2(input);
   if (!validation.ok) {
     return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
+  }
+  if (input.room.gameType === "NUMBER_TILE") {
+    if (!isNumberTilePlatformSnapshot(validation.value)) {
+      return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
+    }
+
+    return {
+      kind: "COMPATIBLE",
+      value: {
+        kind: "PLATFORM_V2_NUMBER_TILE",
+        snapshotVersion: PLATFORM_SNAPSHOT_VERSION,
+        gameType: "NUMBER_TILE",
+        platformSnapshot: validation.value,
+      },
+    };
   }
 
   let legacySnapshot: StateSnapshot;
