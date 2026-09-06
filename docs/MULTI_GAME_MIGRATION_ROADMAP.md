@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0~P5C COMPLETE / P6 READY
+> 상태: P0~P5C COMPLETE / P6 first pass `AWAITING_RULE_DECISIONS` / P7 NOT READY
 > 작성일: 2026-09-06
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -44,7 +44,7 @@ P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3
 | P5A | Versioned platform snapshot contract | authoritative gameType을 가진 v2/dual-version snapshot envelope를 정의한다. |
 | P5B | Snapshot v2 negotiation and Web routing | connection별 V1/V2 협상, decoding, canonical gameType routing을 연결한다. |
 | P5C | Game catalog and create selection | Home catalog와 HANGUL_TILE create 선택을 공개한다. |
-| P6 | Number Tile rules gate | 구현 전에 NUMBER_TILE 규칙·state·privacy·command를 확정한다. |
+| P6 | Number Tile rules gate | 구현 전 NUMBER_TILE 규칙·state·privacy·command 후보를 문서화하고 사용자 결정으로 확정한다. |
 | P7A | Number Tile domain implementation | 확정된 규칙으로 독립 state와 RuleEngine을 구현한다. |
 | P7B | Number Tile server/shared integration | command, projection, persistence, registry를 platform 경계에 연결한다. |
 | P7C | Number Tile web implementation | server projection만 소비하는 독립 game renderer를 구현한다. |
@@ -687,6 +687,17 @@ Multi-game Platform P5C만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의
 ```text
 Multi-game Platform P6 NUMBER_TILE rules gate만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙을 지키고 구현 코드는 작성하지 말며, neutral naming 아래 inventory, unique tile identity, Joker, rack/board group, initial meld, rearrangement, draw/pass/turn/optional timer, disconnect/forfeit, finish/score/ranking, player count, command/projection privacy를 docs/NUMBER_TILE_GAME_RULES.md에 근거와 함께 기록하라. 확정 command set으로 namespaced event와 closed game:command를 비교해 protocol/version/compatibility decision 및 사용자 승인 gate를 기록하고 기존 Hangul v1 turn:* adapter 유지를 명시하라. 기존 docs/GAME_RULES.md에는 링크 외 NUMBER_TILE 규칙을 섞지 말고 미확정 항목은 blocker로 남겨 P7 test matrix와 전체 문서 검증 결과를 제출하라.
 ```
+
+### P6 first-pass 기록 (2026-09-06)
+
+- [NUMBER_TILE_GAME_RULES.md](./NUMBER_TILE_GAME_RULES.md)에 confirmed safety invariant, proposed baseline, examples와 `NT-001`~`NT-044` decision matrix를 작성했다.
+- [NUMBER_TILE_PROTOCOL_GATE.md](./NUMBER_TILE_PROTOCOL_GATE.md)에 existing platform command reuse, Number-specific proposed command, atomic whole-table submit, V2 projection/privacy, revision/idempotency와 server-action 요구를 기록했다.
+- current implementation을 조사한 결과 `RoomRecord.game`, in-memory state adapter, start/command/server-action paths, PlatformSnapshot V2와 Web decoder/renderer가 각각 Hangul compatibility에 결합되어 있어 registration 하나만 추가하는 rollout은 불가능함을 명시했다.
+- `supportedSnapshotVersions`만으로는 Number-capable client를 판별할 수 없으므로 create/join/resume mutation 전 exact game capability admission을 별도 decision으로 뒀다.
+- `NUMBER_TILE`은 `GameType`, registry, catalog, shared protocol/schema 또는 production에 추가하지 않았다. `docs/GAME_RULES.md`, runtime source와 dependency도 변경하지 않았다.
+- 기존 P5C 685-test 기준선을 유지해야 하며 docs-only 작업이라 Number runtime test는 추가하지 않는다.
+
+사용자 결정이 남아 있어 P6는 `COMPLETE`가 아니라 `AWAITING_RULE_DECISIONS`다. P7A, P7B와 P7C는 모두 `NOT_READY`다. 후속 작업은 이 decision table의 선택을 받아 문서를 `CONFIRMED`로 갱신하는 **P6 rule decisions 확정** 하나뿐이다.
 
 ## 10. P7 — Number Tile implementation
 

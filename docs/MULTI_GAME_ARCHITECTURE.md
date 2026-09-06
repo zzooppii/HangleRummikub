@@ -1,6 +1,6 @@
 # Multi-game Platform Architecture
 
-> 상태: P0~P5C checkpoint 완료 / P6 READY
+> 상태: P0~P5C checkpoint 완료 / P6 first pass `AWAITING_RULE_DECISIONS` / P7 NOT READY
 > 작성일: 2026-09-06
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
@@ -1041,3 +1041,47 @@ Create fingerprint는 `["room:create", normalized nickname, resolved gameType]` 
 Capability가 없는 legacy socket은 explicit `HANGUL_TILE`로 생성된 Room에서도 exact `StateSnapshot` V1을 받으며 V1 shape에는 `snapshotVersion`과 `gameType`이 없다. `[2, 1]` Web socket은 omitted legacy create Room에서도 `PlatformSnapshotV2`의 `room.gameType = HANGUL_TILE`을 받는다. Per-socket selector, `state:snapshot` event, V2 Hangul adapter와 unsupported/incompatible fail-closed route는 P5B 그대로다. Game start, Submit, Draw, Pass, timeout, finish와 leave command/advisory에는 `gameType`을 추가하지 않고 lifetime 동안 stored Room value를 보존한다.
 
 P5C 뒤에도 구현된 game은 `HANGUL_TILE` 하나다. 다음 stop gate는 catalog placeholder나 schema를 먼저 추가하는 단계가 아니라 `NUMBER_TILE` 규칙·protocol 결정을 문서로 확정하는 P6다.
+
+## 30. P6 Number Tile rules/protocol gate
+
+P6 first pass는 application/runtime source를 바꾸지 않고 [NUMBER_TILE_GAME_RULES.md](./NUMBER_TILE_GAME_RULES.md)와 [NUMBER_TILE_PROTOCOL_GATE.md](./NUMBER_TILE_PROTOCOL_GATE.md)를 만들었다. 모든 제품 규칙과 wire 선택은 `NT-001`~`NT-044` stable decision ID로 남겼으며, 사용자 승인 전에는 proposed default일 뿐이다.
+
+### 30.1 현재 두 번째 game을 막는 concrete coupling
+
+```text
+Room create(GameType/identity registry)
+  X InMemoryPersistence(single LegacyHangul state adapter)
+  X RoomRecord.game: concrete Hangul GameState
+
+PlatformSnapshotV2
+  X room.gameType literal HANGUL_TILE
+  X Hangul-only game projection union/mapper/selector
+  X Hangul-only Web decoder/renderer
+
+game:start / turn:* / server actions
+  X Hangul initial state and command DTO
+  X LegacyHangul command/lifecycle/server-action capability
+```
+
+따라서 `SUPPORTED_GAME_TYPES`와 identity registration만 늘리는 방식은 Number Room을 만들 수 없다. in-memory persistence는 LOBBY candidate도 configured Legacy Hangul adapter의 exact game type인지 먼저 검사하고, V2 Room/game schemas와 Web routing은 `HANGUL_TILE`만 허용한다. 현재 `turn:submit`은 `proposedBoard`, `turn:draw`는 consonant/vowel `bagKind`, `turn:started`는 deadline, `game:finished`는 Hangul finish reason에 결합되어 있다.
+
+### 30.2 P6 dependency direction
+
+```text
+Platform Room/session/realtime mechanisms
+  -> future canonical gameType dispatch
+     -> Number compatibility/application boundary
+        -> Number-owned state / Table / Meld / RuleEngine
+```
+
+재사용이 검증된 것은 Room/session/presence/Host/invitation/reconnect, Room lane/UoW/CAS, idempotency storage, snapshot negotiation mechanism과 cleanup mechanism이다. Start orchestration, game revision, turn order와 scheduler는 rules 승인 후 검증할 `CROSS_GAME_CANDIDATE`다. Inventory, pool/rack, `GROUP`/`RUN`, Joker, initial meld, rearrangement, timeout, stalemate, result와 private game projection은 `NUMBER_TILE` 소유다.
+
+P6는 `GenericTile`, `GenericMeld`, `GenericRack`, `GenericGameState`, giant `GameModule`을 제안하거나 구현하지 않는다. Hangul composer, dictionary, WordGroup, Board, RuleEngine과 TurnDraft도 Number module dependency가 될 수 없다.
+
+### 30.3 Protocol와 compatibility decision gate
+
+현재 권고는 existing platform command와 `game:start` outer surface는 유지하되 Hangul `turn:*`를 재해석하지 않고 additive `number:submit`/`number:draw`/조건부 `number:pass`를 두는 것이다. 이것은 `NT-038`·`NT-039` 승인 전 확정 contract가 아니며 `game:command`도 구현하지 않는다.
+
+Snapshot V2 outer shell은 재사용 후보지만 current union은 Hangul only다. Number에는 독립 PLAYING/FINISHED projection과 own-rack privacy validator가 필요하며 V1 down-conversion은 만들지 않는다. 또한 `supportedSnapshotVersions`만으로는 P5B-era Hangul-only V2 client와 Number renderer를 가진 client를 구분할 수 없다. `NT-042`는 connection-scoped `supportedGameTypes` 같은 exact capability를 사용해 Number create/join/resume를 membership/session/idempotency mutation 전에 차단하는 방안을 권고한다.
+
+현재 상태는 `AWAITING_RULE_DECISIONS`이다. P7A/P7B/P7C는 각각 core rules, projection privacy·protocol/capability, Web draft decision gate를 통과할 때까지 `NOT_READY`이며 production catalog와 registry는 계속 `HANGUL_TILE` 하나다.

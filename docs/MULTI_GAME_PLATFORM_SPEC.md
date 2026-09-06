@@ -1,6 +1,6 @@
 # Multi-game Platform Specification
 
-> 상태: P0~P5C checkpoint 완료 / P6 READY
+> 상태: P0~P5C checkpoint 완료 / P6 first pass `AWAITING_RULE_DECISIONS` / P7 NOT READY
 > 작성일: 2026-09-06
 > 적용 범위: 현재 production 한글 타일 게임을 보존하면서 여러 턴제 보드게임을 수용하기 위한 제품 경계  
 > 비고: 이 문서는 구현 계약이 아니라 후속 Phase의 의사결정 기준이다.
@@ -48,7 +48,7 @@ P0 및 초기 migration의 비목표는 다음과 같다.
 | ID | 역할 | 현재 상태 |
 | --- | --- | --- |
 | `HANGUL_TILE` | 기존 한글 타일 게임 | production 기준 implementation |
-| `NUMBER_TILE` | 숫자 타일 게임 | 후속 rules gate 대상 |
+| `NUMBER_TILE` | 숫자 타일 게임 | P6 rules/protocol 초안 완료, 사용자 결정 대기, runtime 미지원 |
 | `GEM_CARD` | 보석·카드형 게임 | 후속 rules gate 대상 |
 
 이 ID는 장기적으로 protocol, persistence, registry, telemetry에서 일관되게 사용할 내부 식별자 후보다. 공개 UI 명칭과 licensing은 별도 결정이며, 내부 ID에 특정 상용 게임 브랜드나 asset 이름을 결합하지 않는다.
@@ -140,6 +140,8 @@ P2의 실제 runtime contract인 `SUPPORTED_GAME_TYPES`와 `GameTypeSchema`는 `
 두 번째 게임은 Tile, Rack, Board, Joker, initial meld, rearrangement 같은 어휘가 일부 겹칠 가능성이 있다. 그러나 규칙 state와 RuleEngine은 독립적으로 구현한다.
 
 공통화는 두 구현을 비교한 뒤 의미와 불변 조건이 동일함이 입증된 작은 primitive에 한한다. 이름이 비슷하다는 이유만으로 한글 board나 TurnDraft를 재사용하지 않는다.
+
+P6 first pass는 [NUMBER_TILE_GAME_RULES.md](./NUMBER_TILE_GAME_RULES.md)에 physical identity, server authority와 proposed rules를, [NUMBER_TILE_PROTOCOL_GATE.md](./NUMBER_TILE_PROTOCOL_GATE.md)에 command·projection·compatibility 후보를 기록했다. 규칙과 protocol decision은 아직 `USER_DECISION_REQUIRED`이며 `NUMBER_TILE`을 shared `GameType`, registry, catalog 또는 production에 추가하지 않았다.
 
 ### 7.3 `GEM_CARD`
 
@@ -272,7 +274,7 @@ P5C의 catalog metadata는 Web bundle에만 있고 `GameRegistry`는 `{ gameType
 
 ## 14. P0에서 확정하지 않는 결정
 
-다음 항목은 실제 두 번째 command/state가 준비되는 후속 gate에서 결정한다.
+다음 항목은 실제 두 번째 command/state가 준비되는 후속 gate에서 결정한다. NUMBER_TILE에 대한 현재 선택지와 stable decision ID는 P6 rules/protocol 문서가 우선한다.
 
 - 공개 wire가 game별 event namespace를 쓸지 단일 `game:command` envelope를 쓸지
 - `gameRevision` 이름을 그대로 공통화할지 더 중립적인 state revision으로 versioning할지
@@ -282,9 +284,22 @@ P5C의 catalog metadata는 Web bundle에만 있고 `GameRegistry`는 `{ gameType
 - 플랫폼 result summary의 필수 필드
 - web game renderer contract의 세부 component API
 
-P0 문서는 이 결정들을 위한 seam과 검증 기준만 제공한다.
+P0 문서는 이 결정들을 위한 seam과 검증 기준만 제공한다. P6 first pass 뒤에도 unresolved decision이 남아 있으므로 이 항목을 공통 platform contract로 승격하지 않는다.
 
-## 15. 완료 조건
+## 15. P6 Number Tile rules/protocol gate
+
+P6는 runtime 구현 전에 다음 경계를 명시했다.
+
+- confirmed platform safety invariant와 일반적인 규칙에서 가져온 proposed default를 분리했다.
+- inventory, meld, initial meld, rearrangement, Joker, Draw/Pass, timer/deadline, lifecycle, result/privacy와 protocol을 `NT-001`~`NT-044` decision으로 식별하고 rules draft/canonical version을 구분했다.
+- Number 전용 `Table`/`Meld`/`ProposedTable`과 player-private projection을 후보로 두고 Hangul Board/RuleEngine/TurnDraft reuse를 금지했다.
+- existing platform Room/session/presence/reconnect/idempotency/serialization mechanism과 Number-specific rule/state/result를 reuse matrix로 분리했다.
+- current snapshot capability만으로는 Hangul-only V2 Web과 Number-capable Web을 구분할 수 없으므로 pre-mutation client game capability admission을 별도 decision으로 뒀다.
+- P7A는 core rules 승인 전, P7B는 projection privacy와 command/advisory/capability/revision 승인 전, P7C는 Web draft 정책 승인 전 시작하지 않는다.
+
+현재 P6 판정은 `AWAITING_RULE_DECISIONS`이며 `P7 NOT READY`다. P6 문서는 design gate일 뿐 current production의 `HANGUL_TILE` only behavior를 바꾸지 않는다.
+
+## 16. 완료 조건
 
 P0는 다음 조건을 만족할 때 완료다.
 
