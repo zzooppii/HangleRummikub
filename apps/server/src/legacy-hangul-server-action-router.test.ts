@@ -11,7 +11,6 @@ import {
   RoomRevisionSchema,
   ServerTimeSchema,
   TurnIdSchema,
-  type GameType,
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
@@ -163,11 +162,10 @@ test("missing Room은 action별 ROOM_NOT_FOUND no-op이며 capability를 호출�
 });
 
 test("unsupported canonical gameType은 두 action 모두 fail closed하고 delegate를 호출하지 않는다", async () => {
-  const corruptRoom = Object.freeze({
-    ...createRoom(),
-    // Models corrupt persistence that cannot be constructed through GameTypeSchema.
-    gameType: "UNKNOWN_GAME" as GameType,
-  });
+  const corruptRoom: RoomRecord = { ...createRoom() };
+  // Models corrupt persistence that cannot be constructed through GameTypeSchema.
+  Reflect.set(corruptRoom, "gameType", "UNKNOWN_GAME");
+  Object.freeze(corruptRoom);
   const { router, calls } = createRouter(corruptRoom);
 
   assert.deepEqual(await router.handleTurnTimeout(turnDeadline), {

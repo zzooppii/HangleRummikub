@@ -15,7 +15,6 @@ import {
   TileIdSchema,
   TurnIdSchema,
   TurnNumberSchema,
-  type GameType,
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
@@ -279,11 +278,10 @@ test("turn:pass는 rule 판단 없이 exact input과 result를 한 번 전달한
 
 test("unsupported canonical gameType은 모든 Hangul capability 호출 전에 fail closed한다", async () => {
   const originalRoom = createLobbyRoom();
-  const corruptRoom = Object.freeze({
-    ...originalRoom,
-    // This intentionally models corrupt persistence that cannot be expressed by GameType.
-    gameType: "UNKNOWN_GAME" as GameType,
-  });
+  const corruptRoom: RoomRecord = { ...originalRoom };
+  // This intentionally models corrupt persistence that cannot be expressed by GameType.
+  Reflect.set(corruptRoom, "gameType", "UNKNOWN_GAME");
+  Object.freeze(corruptRoom);
   const { router, calls } = createRouter(corruptRoom);
 
   const results = await Promise.all([

@@ -34,9 +34,10 @@ import { TestDictionaryProvider } from "../games/hangul-tile/infrastructure/test
 import { createLegacyHangulPlayerLifecycleActions } from "../games/hangul-tile/compatibility/legacy-hangul-player-lifecycle-actions.js";
 import { LegacyHangulServerActionRouter } from "../games/hangul-tile/compatibility/legacy-hangul-server-action-router.js";
 import { LEGACY_V1_DEFAULT_GAME_TYPE } from "../games/hangul-tile/compatibility/legacy-hangul-compatibility-registration.js";
+import { createNumberTilePlayerLifecycleActions } from "../games/number-tile/application/number-tile-player-lifecycle-actions.js";
 import {
   createUnboundSessionRecord,
-  type RoomRecord,
+  type HangulRoomRecord,
   type RoomWriteCandidate,
 } from "../model/persistence.js";
 import type { PlayerPresenceLeaseReader } from "../ports/player-presence-lease.js";
@@ -44,6 +45,7 @@ import type { RoomPresencePolicyReader } from "../ports/room-presence-policy.js"
 import type { RandomSource, ScheduledTurnDeadline } from "../ports/system.js";
 import { GameDeadlineService } from "./game-deadline-service.js";
 import type { CurrentActorAuthorization } from "./game-start-service.js";
+import { PlayerLifecycleRouter } from "./player-lifecycle-router.js";
 import { RoomLeaveService } from "./room-leave-service.js";
 import { TurnDrawService } from "./turn-draw-service.js";
 import { TurnPassService } from "./turn-pass-service.js";
@@ -139,7 +141,7 @@ type Harness = Readonly<{
   clock: FakeClock;
   idGenerator: FakeIdGenerator;
   playerIds: readonly PlayerId[];
-  room: RoomRecord;
+  room: HangulRoomRecord;
 }>;
 
 async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
@@ -250,6 +252,7 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   if (created.status !== "CREATED") {
     throw new Error("Phase 16 Room fixture creation failed.");
   }
+  assert.equal(created.room.gameType, "HANGUL_TILE");
   for (const [index, id] of playerIds.entries()) {
     const verificationData = Object.freeze({
       algorithm: "SHA-256" as const,
@@ -278,7 +281,7 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   });
 }
 
-function requirePlaying(room: RoomRecord): PlayingGameState {
+function requirePlaying(room: HangulRoomRecord): PlayingGameState {
   if (
     room.phase !== "PLAYING" ||
     room.game === null ||
@@ -290,11 +293,12 @@ function requirePlaying(room: RoomRecord): PlayingGameState {
   return room.game;
 }
 
-async function currentRoom(harness: Harness): Promise<RoomRecord> {
+async function currentRoom(harness: Harness): Promise<HangulRoomRecord> {
   const room = await harness.persistence.findById(harness.room.roomId);
   if (room === null) {
     throw new Error("Phase 16 fixture Room disappeared.");
   }
+  assert.equal(room.gameType, "HANGUL_TILE");
   return room;
 }
 
@@ -332,7 +336,7 @@ function timeoutService(
   });
 }
 
-function turnDeadline(room: RoomRecord): ScheduledTurnDeadline {
+function turnDeadline(room: HangulRoomRecord): ScheduledTurnDeadline {
   const game = requirePlaying(room);
   return Object.freeze({
     roomId: room.roomId,
@@ -518,9 +522,10 @@ function leaveService(harness: Harness, finished: string[] = []) {
     roomCleanupUnitOfWork: harness.persistence,
     roomMutationExecutor: harness.executor,
     presenceReader: new StaticRoomPresenceReader(),
-    playerLifecycleActions: createLegacyHangulPlayerLifecycleActions(
-      harness.idGenerator,
-    ),
+    playerLifecycleActions: new PlayerLifecycleRouter({
+      hangul: createLegacyHangulPlayerLifecycleActions(harness.idGenerator),
+      numberTile: createNumberTilePlayerLifecycleActions(harness.idGenerator),
+    }),
     clock: harness.clock,
     onGameFinished: ({ gameId }) => {
       finished.push(gameId);

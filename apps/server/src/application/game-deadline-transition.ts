@@ -63,17 +63,17 @@ export async function scheduleGameDeadlineBestEffort(
   }
   try {
     const room = await roomRepository.findById(identity.roomId);
-    const game = room?.game;
     if (
       room?.phase !== "PLAYING" ||
-      game === null ||
-      game === undefined ||
-      game.turn === null ||
-      game.result !== null ||
-      game.gameId !== identity.gameId
+      room.gameType !== "HANGUL_TILE" ||
+      room.game === null ||
+      room.game.turn === null ||
+      room.game.result !== null ||
+      room.game.gameId !== identity.gameId
     ) {
       return false;
     }
+    const game = room.game;
     const deadline = toScheduledGameDeadline(room.roomId, game);
     for (
       let attempt = 1;

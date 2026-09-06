@@ -165,6 +165,7 @@ test("module 밖의 direct Hangul imports는 검증된 mixed/composition allowli
     "application/game-finish-transition.ts",
     "application/game-start-service.ts",
     "application/lobby-state-snapshot-projector.ts",
+    "application/player-lifecycle-router.ts",
     "application/room-leave-service.ts",
     "application/room-presence-policy-service.ts",
     "application/room-session-service.ts",

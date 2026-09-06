@@ -26,7 +26,11 @@ import {
   advanceNoMoveTurnEnds,
   isStalemateCycleComplete,
 } from "../games/hangul-tile/domain/stalemate.js";
-import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
+import type {
+  HangulRoomRecord,
+  RoomRecord,
+  RoomWriteCandidate,
+} from "../model/persistence.js";
 import type { IdempotencyRepository } from "../ports/idempotency-repository.js";
 import type { RoomRepository } from "../ports/room-repository.js";
 import type {
@@ -182,10 +186,11 @@ function parseAcceptedResult(terminalResult: unknown): TurnPassResult {
 
 function isSamePlayingGame(
   latest: RoomRecord,
-  original: RoomRecord,
+  original: HangulRoomRecord,
   originalGame: PlayingGameState,
-): latest is RoomRecord & Readonly<{ game: PlayingGameState }> {
+): latest is HangulRoomRecord & Readonly<{ game: PlayingGameState }> {
   return (
+    latest.gameType === "HANGUL_TILE" &&
     latest.phase === "PLAYING" &&
     latest.game !== null &&
     latest.game.turn !== null &&
@@ -199,7 +204,7 @@ function isSamePlayingGame(
 }
 
 function createCandidate(
-  room: RoomRecord,
+  room: HangulRoomRecord,
   game: PlayingGameState,
   committedAt: ServerTime,
   idGenerator: IdGenerator,
@@ -383,6 +388,9 @@ export class TurnPassService {
     if (room === null) {
       return failed(ERRORS.ROOM_NOT_FOUND);
     }
+    if (room.gameType !== "HANGUL_TILE") {
+      return failed(ERRORS.INTERNAL_ERROR);
+    }
     const game = room.game;
     if (
       room.phase !== "PLAYING" ||
@@ -420,6 +428,9 @@ export class TurnPassService {
     const latest = await this.#roomRepository.findById(room.roomId);
     if (latest === null) {
       return failed(ERRORS.ROOM_NOT_FOUND);
+    }
+    if (latest.gameType !== "HANGUL_TILE") {
+      return failed(ERRORS.INTERNAL_ERROR);
     }
     if (latest.phase !== "PLAYING" || latest.game === null) {
       return failed(ERRORS.INVALID_PHASE);

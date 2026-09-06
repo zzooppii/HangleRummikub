@@ -17,6 +17,9 @@ import {
   type ErrorDto,
   type GameStartCommand,
   type KnownClientCommand,
+  type NumberDrawCommand,
+  type NumberPassCommand,
+  type NumberSubmitCommand,
   type ProtocolErrorCode,
   type RoomCreateCommand,
   type RoomJoinCommand,
@@ -32,6 +35,9 @@ import {
   GameStartWireAckSchema,
   GameFinishedEventSchema,
   GameStartAckSchema,
+  NumberDrawWireAckSchema,
+  NumberPassWireAckSchema,
+  NumberSubmitWireAckSchema,
   RoomCreateWireAckSchema,
   RoomCreateAckSchema,
   RoomJoinWireAckSchema,
@@ -462,6 +468,75 @@ export function validateTurnPassCommand(
   return { ok: true, value: result.value };
 }
 
+export function validateNumberSubmitCommand(
+  input: unknown,
+): RuntimeValidationResult<NumberSubmitCommand> {
+  const result = validateClientCommand(input);
+
+  if (!result.ok) {
+    return result;
+  }
+
+  if (result.value.kind !== "number:submit") {
+    return {
+      ok: false,
+      error: validationError(
+        "INVALID_PAYLOAD",
+        "Number Tile submit command is invalid.",
+        false,
+      ),
+    } satisfies RuntimeValidationResult<never>;
+  }
+
+  return { ok: true, value: result.value };
+}
+
+export function validateNumberDrawCommand(
+  input: unknown,
+): RuntimeValidationResult<NumberDrawCommand> {
+  const result = validateClientCommand(input);
+
+  if (!result.ok) {
+    return result;
+  }
+
+  if (result.value.kind !== "number:draw") {
+    return {
+      ok: false,
+      error: validationError(
+        "INVALID_PAYLOAD",
+        "Number Tile draw command is invalid.",
+        false,
+      ),
+    } satisfies RuntimeValidationResult<never>;
+  }
+
+  return { ok: true, value: result.value };
+}
+
+export function validateNumberPassCommand(
+  input: unknown,
+): RuntimeValidationResult<NumberPassCommand> {
+  const result = validateClientCommand(input);
+
+  if (!result.ok) {
+    return result;
+  }
+
+  if (result.value.kind !== "number:pass") {
+    return {
+      ok: false,
+      error: validationError(
+        "INVALID_PAYLOAD",
+        "Number Tile pass command is invalid.",
+        false,
+      ),
+    } satisfies RuntimeValidationResult<never>;
+  }
+
+  return { ok: true, value: result.value };
+}
+
 export function validateStateVersions(input: unknown) {
   return validateSchema(
     StateVersionsSchema,
@@ -749,6 +824,42 @@ export function validateTurnPassWireAck(input: unknown) {
     validationError(
       "INVALID_PAYLOAD",
       "Negotiated turn pass acknowledgement is invalid.",
+      false,
+    ),
+  );
+}
+
+export function validateNumberSubmitWireAck(input: unknown) {
+  return validateSchema(
+    NumberSubmitWireAckSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Number Tile submit acknowledgement is invalid.",
+      false,
+    ),
+  );
+}
+
+export function validateNumberDrawWireAck(input: unknown) {
+  return validateSchema(
+    NumberDrawWireAckSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Number Tile draw acknowledgement is invalid.",
+      false,
+    ),
+  );
+}
+
+export function validateNumberPassWireAck(input: unknown) {
+  return validateSchema(
+    NumberPassWireAckSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Number Tile pass acknowledgement is invalid.",
       false,
     ),
   );

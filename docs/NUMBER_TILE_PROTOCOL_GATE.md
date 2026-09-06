@@ -1,14 +1,13 @@
 # Number Tile Protocol Gate
 
-> 상태: `CONFIRMED` — P6 COMPLETE / P7A READY
+> 상태: `IMPLEMENTED` — P6/P7A/P7B COMPLETE / P7C READY
 > 확정일: 2026-09-06
 > 사용자 결정: `ALL:A` + consistency blocker clarification A/A/A
-> 범위: `NUMBER_TILE`의 confirmed conceptual wire·projection·compatibility contract
-> 주의: 이 문서는 TypeScript schema, Socket.IO event 또는 runtime registration을 추가하지 않는다.
+> 범위: `NUMBER_TILE`의 confirmed wire·projection·compatibility contract와 P7B 구현 결과
 
 ## 1. 목적과 현재 기준선
 
-P5C 현재 runtime은 다음 상태다.
+P6가 이 문서를 확정할 당시 P5C runtime은 다음 상태였다.
 
 - `protocolVersion = 1`
 - `GameTypeSchema`와 identity-only `GameRegistry`는 `HANGUL_TILE`만 지원
@@ -19,7 +18,7 @@ P5C 현재 runtime은 다음 상태다.
 - existing `turn:submit`, `turn:draw`, `turn:pass`, `turn:started`, `game:finished`는 Hangul-specific payload 또는 result에 결합
 - `RoomRecord.game`과 in-memory state adapter도 concrete Hangul `GameState`에 결합
 
-따라서 `NUMBER_TILE`은 registry 값 하나를 추가해서 활성화할 수 없다. 확정 규칙으로 domain(P7A), shared/server integration(P7B), Web(P7C)을 모두 통과하기 전 catalog에 노출해서는 안 된다.
+P7A는 독립 domain을, P7B는 shared/server integration을 완료해 이 결합을 실제 두-game 경계로 바꿨다. 다만 current Web에는 Number capability, renderer와 catalog item이 없으므로 P7C 전에는 catalog에 노출하지 않는다. 상세 구현은 [NUMBER_TILE_SERVER_INTEGRATION.md](./NUMBER_TILE_SERVER_INTEGRATION.md)에 기록한다.
 
 ## 2. Platform commands reused
 
@@ -359,22 +358,22 @@ Existing Hangul advisory behavior는 그대로 유지한다. Number의 authorita
 | `GAME_SPECIFIC` | score/result, private projection, error detail | Hangul format을 공통화하지 않음 |
 | `GAME_SPECIFIC` | Number commands/router, state clone/inspection, Web draft/renderer | P7A~P7C에서 각각 구현 |
 
-## 16. Current implementation prerequisites
+## 16. P7B implementation status
 
-| Prerequisite | 현재 사실 | 해소 Phase |
+| Prerequisite | P7B 결과 | 남은 Phase |
 | --- | --- | --- |
-| Game type | `SUPPORTED_GAME_TYPES`가 `HANGUL_TILE` only | P7B, domain 완료 후 |
-| Persistence state | `RoomRecord.game: GameState | null`; in-memory adapter가 LOBBY에도 exact Hangul type 요구 | P7B의 typed multi-game state/storage seam |
-| Snapshot schema | V2 Room/game union literal `HANGUL_TILE` only | P7B |
-| Projection mapper | current V1→V2 mapper/projector가 Hangul only | P7B |
-| Start | current service가 Hangul initial deal/turn/deadline 생성 | P7B Number start path |
-| Commands | `turn:*` payload와 router가 Hangul only | 확정 `number:*`/protocol v1 direction으로 P7B 구현 |
-| Server actions | timeout/lifecycle capabilities가 Hangul only | P7B Number turn-timeout/lifecycle path; game deadline 없음 |
-| Client admission | snapshot version metadata만 있고 supported game metadata 없음 | 확정 `supportedGameTypes` direction으로 P7B/P7C coordinated rollout |
-| Web | catalog, decoder, view/controller/editor가 Hangul only | P7C, server/domain complete 후 |
-| Result/error | current event/error set에 Hangul concepts 혼재 | P7B, Number-specific contract only |
+| Game type | exact `HANGUL_TILE | NUMBER_TILE`; identity-only Registry에 두 registration | 없음 |
+| Persistence state | exact two-game Room union과 game별 clone/inspection adapter | 없음 |
+| Snapshot schema | phase×gameType correlated V2 Hangul/Number union; Number V1 없음 | 없음 |
+| Projection | Hangul V1/V2 보존 + player-specific Number V2 projector | 없음 |
+| Start | shared `game:start`가 canonical Room type으로 exact start path dispatch | 없음 |
+| Commands | legacy Hangul `turn:*` 유지 + strict protocol v1 `number:*` | 없음 |
+| Server actions | common Turn mechanism이 concrete timeout을 dispatch; Number game deadline 없음 | 없음 |
+| Client admission | independent `supportedGameTypes`; Number는 advertised support + selected V2 필수 | P7C에서 Web advertisement |
+| Web | catalog, decoder, view/controller/editor는 계속 Hangul only | P7C |
+| Result/error | Number-owned result projection과 closed safe error mapping | 없음 |
 
-이 prerequisite를 완료하기 전에 catalog에 Number card를 추가하면 안 된다. 특히 membership mutation 뒤 snapshot projection에 실패하는 구조를 만들지 않는다.
+P7B server prerequisite는 완료됐지만 Number Web capability와 renderer가 없으므로 P7C 전에는 catalog에 Number card를 추가하지 않는다.
 
 ## 17. Confirmed implementation consequences
 
@@ -388,9 +387,8 @@ Existing Hangul advisory behavior는 그대로 유지한다. Number의 authorita
 
 ## 18. Implementation gate
 
-- P6는 `COMPLETE`이며 canonical ruleset은 `number-tile-rules-v1`이다.
-- P7A는 `READY`다.
-- P7B는 protocol decisions가 확정됐지만 P7A domain 완료 전 시작하지 않는다.
-- P7C는 draft decision이 확정됐지만 P7B server/shared contract 완료 전 시작하지 않는다.
-- P7A~P7C 전체가 통과할 때까지 `NUMBER_TILE` registration/catalog/public create를 enable하지 않는다.
-- P6에서는 `GameType`, registry, protocol, snapshot schema, Web 또는 server source를 변경하지 않는다.
+- P6와 P7A는 `COMPLETE`이며 canonical ruleset은 `number-tile-rules-v1`이다.
+- P7B는 shared/server runtime integration을 완료했다. `NUMBER_TILE`은 server-supported identity지만 Web catalog에는 노출하지 않는다.
+- Current Web은 `supportedGameTypes`를 생략하는 Hangul-only client이며 Number create/join/resume은 server admission에서 차단된다.
+- P7C는 Number capability advertisement, decoder/renderer, gameplay UI를 구현하는 다음 stop gate다.
+- P7C/P8 gate 전에는 public Home catalog에서 `NUMBER_TILE`을 enable하지 않는다.

@@ -14,9 +14,9 @@ import {
 import * as v from "valibot";
 
 import type {
-  LegacyHangulPlayerLifecycleActionRouting,
-  LegacyHangulPlayingLeaveAdvisory,
-} from "../games/hangul-tile/compatibility/legacy-hangul-player-lifecycle-actions.js";
+  PlayerLifecycleActionRouting,
+  PlayingLeaveAdvisory,
+} from "./player-lifecycle-router.js";
 import type {
   IdempotencyRecord,
   RoomWriteCandidate,
@@ -55,7 +55,7 @@ export type RoomLeaveResult =
   | Readonly<{
       ok: true;
       data: RoomLeaveSuccessData;
-      gameAdvisory: LegacyHangulPlayingLeaveAdvisory;
+      gameAdvisory: PlayingLeaveAdvisory;
     }>
   | Readonly<{ ok: false; error: ErrorDto }>;
 
@@ -80,7 +80,7 @@ export type RoomLeaveServiceDependencies = Readonly<{
   roomCleanupUnitOfWork: RoomCleanupUnitOfWork;
   roomMutationExecutor: RoomMutationSerialExecutor;
   presenceReader: RoomPresencePolicyReader;
-  playerLifecycleActions: LegacyHangulPlayerLifecycleActionRouting;
+  playerLifecycleActions: PlayerLifecycleActionRouting;
   clock: Clock;
   resources?: RoomLeaveResources;
   turnScheduler?: TurnScheduler;
@@ -111,7 +111,7 @@ function fingerprint(input: RoomLeaveInput): string {
 
 function success(
   data: RoomLeaveSuccessData,
-  gameAdvisory: LegacyHangulPlayingLeaveAdvisory = "NONE",
+  gameAdvisory: PlayingLeaveAdvisory = "NONE",
 ): RoomLeaveResult {
   return { ok: true, data, gameAdvisory };
 }
@@ -132,7 +132,7 @@ function incrementRoomRevision(revision: RoomRevision): RoomRevision {
 function mapCommit(
   result: RoomUnitOfWorkResult,
   preconditionFailureError: ErrorDto = ERRORS.UNAUTHENTICATED,
-  gameAdvisory: LegacyHangulPlayingLeaveAdvisory = "NONE",
+  gameAdvisory: PlayingLeaveAdvisory = "NONE",
 ): RoomLeaveResult {
   switch (result.status) {
     case "COMMITTED":
@@ -312,14 +312,8 @@ export class RoomLeaveService {
           let terminalResult: RoomLeaveSuccessData;
           let nextTurnIdentity: CurrentTurnIdentity | null = null;
           let finishedGameId: GameId | null = null;
-          let gameAdvisory: LegacyHangulPlayingLeaveAdvisory = "NONE";
+          let gameAdvisory: PlayingLeaveAdvisory = "NONE";
           if (room.phase === "PLAYING" && room.game !== null) {
-            if (
-              room.gameType !==
-              this.#dependencies.playerLifecycleActions.gameType
-            ) {
-              return failure(ERRORS.INTERNAL_ERROR);
-            }
             const playing =
               this.#dependencies.playerLifecycleActions.applyPlayingLeave({
                 room,
@@ -344,7 +338,8 @@ export class RoomLeaveService {
           ) {
             candidate = { ...room, updatedAt: now };
             finishedGameId = room.game.gameId;
-            gameAdvisory = "GAME_FINISHED";
+            gameAdvisory =
+              room.gameType === "HANGUL_TILE" ? "GAME_FINISHED" : "NONE";
             terminalResult = {
               roomId: room.roomId,
               phase: room.phase,

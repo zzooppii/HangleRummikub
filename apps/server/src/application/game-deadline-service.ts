@@ -166,6 +166,12 @@ export class GameDeadlineService {
     if (room === null) {
       return noOp("ROOM_NOT_FOUND");
     }
+    if (room.gameType !== "HANGUL_TILE") {
+      return {
+        result: { status: "FAILED", reason: "INTERNAL_ERROR" },
+        committed: false,
+      };
+    }
     const game = room.game;
     if (
       room.phase !== "PLAYING" ||

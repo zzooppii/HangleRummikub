@@ -141,6 +141,7 @@ for (const offset of [0, 1] as const) {
     const harness = await createHarness();
     harness.clock.set(harness.deadline.deadlineAt + offset);
     const before = await harness.persistence.findById(harness.roomId);
+    assert.equal(before?.gameType, "HANGUL_TILE");
     assert.ok(before?.game?.turn);
     const applied = new Array<string>();
     harness.service.subscribeApplied((data) => {
@@ -151,6 +152,7 @@ for (const offset of [0, 1] as const) {
 
     assert.equal(result.status, "APPLIED");
     const after = await harness.persistence.findById(harness.roomId);
+    assert.equal(after?.gameType, "HANGUL_TILE");
     assert.equal(after?.phase, "FINISHED");
     assert.equal(after?.roomRevision, (before?.roomRevision ?? 0) + 1);
     assert.equal(after?.storageRevision, (before?.storageRevision ?? 0) + 1);

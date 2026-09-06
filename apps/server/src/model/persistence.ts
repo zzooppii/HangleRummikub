@@ -1,7 +1,6 @@
 import {
   BOOTSTRAP_SESSION_TTL_MS,
   ServerTimeSchema,
-  type GameType,
   type Nickname,
   type PlayerId,
   type RequestId,
@@ -13,7 +12,8 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
-import type { GameState } from "../games/hangul-tile/domain/game-state.js";
+import type { GameState as HangulGameState } from "../games/hangul-tile/domain/game-state.js";
+import type { NumberTileGameState } from "../games/number-tile/domain/game-state.js";
 import type { SessionVerificationData } from "../ports/system.js";
 
 export const StorageRevisionSchema = v.pipe(
@@ -41,22 +41,44 @@ export type PlayerRecord = Readonly<{
   joinOrder: number;
 }>;
 
-export type RoomRecord = Readonly<{
+type RoomRecordBase = Readonly<{
   roomId: RoomId;
   roomCode: RoomCode;
-  gameType: GameType;
   phase: RoomPhase;
   /** A Lobby may briefly be hostless while all remaining members are offline. */
   hostPlayerId: PlayerId | null;
   players: readonly PlayerRecord[];
-  game: GameState | null;
   roomRevision: RoomRevision;
   storageRevision: StorageRevision;
   createdAt: ServerTime;
   updatedAt: ServerTime;
 }>;
 
-export type RoomWriteCandidate = Omit<RoomRecord, "storageRevision">;
+export type HangulRoomRecord = RoomRecordBase &
+  Readonly<{
+    gameType: "HANGUL_TILE";
+    game: HangulGameState | null;
+  }>;
+
+export type NumberTileRoomRecord = RoomRecordBase &
+  Readonly<{
+    gameType: "NUMBER_TILE";
+    game: NumberTileGameState | null;
+  }>;
+
+/**
+ * The exact two canonical game states currently supported by the server.
+ * `gameType` is the discriminator so callers cannot construct a typed Room
+ * whose game metadata and concrete state disagree.
+ */
+export type RoomRecord = HangulRoomRecord | NumberTileRoomRecord;
+
+type WithoutStorageRevision<TRoom> = TRoom extends RoomRecord
+  ? Omit<TRoom, "storageRevision">
+  : never;
+
+/** Preserves the `gameType`/state correlation across write candidates. */
+export type RoomWriteCandidate = WithoutStorageRevision<RoomRecord>;
 
 export type UnboundSessionRecord = Readonly<{
   state: "UNBOUND";

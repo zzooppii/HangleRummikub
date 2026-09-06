@@ -262,6 +262,9 @@ export class GameStartService {
       return failed(ROOM_NOT_FOUND_ERROR);
     }
     this.#gameRegistrationReader.getRequired(room.gameType);
+    if (room.gameType !== "HANGUL_TILE") {
+      return failed(INTERNAL_ERROR);
+    }
     if (room.phase !== "LOBBY" || room.game !== null) {
       return failed(INVALID_PHASE_ERROR);
     }

@@ -9,9 +9,7 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
-import type {
-  LegacyHangulPlayerLifecycleActionRouting,
-} from "../games/hangul-tile/compatibility/legacy-hangul-player-lifecycle-actions.js";
+import type { PlayerLifecycleActionRouting } from "./player-lifecycle-router.js";
 import type { PlayerPresenceLeaseReader } from "../ports/player-presence-lease.js";
 import type { RoomPresencePolicyReader } from "../ports/room-presence-policy.js";
 import type { RoomRepository } from "../ports/room-repository.js";
@@ -45,7 +43,7 @@ export type RoomPresencePolicyServiceDependencies = Readonly<{
   scheduler: RoomPolicyScheduler;
   roomPresenceReader: RoomPresencePolicyReader;
   playerPresenceLeaseReader: PlayerPresenceLeaseReader;
-  playerLifecycleActions: LegacyHangulPlayerLifecycleActionRouting;
+  playerLifecycleActions: PlayerLifecycleActionRouting;
   clock: Clock;
   lobbyGraceService: LobbyDisconnectGraceService;
   retentionService: RoomRetentionService;
@@ -302,12 +300,6 @@ export class RoomPresencePolicyService {
       if (room === null || room.phase !== "PLAYING" || room.game === null) {
         return false;
       }
-      if (
-        room.gameType !==
-        this.#dependencies.playerLifecycleActions.gameType
-      ) {
-        return false;
-      }
       const plan =
         this.#dependencies.playerLifecycleActions.planPresenceRestored(
           room,
@@ -326,11 +318,22 @@ export class RoomPresencePolicyService {
       }
 
       const now = this.#dependencies.clock.now();
+      let candidate;
+      if (room.gameType === "HANGUL_TILE" && plan.gameType === "HANGUL_TILE") {
+        candidate = { ...room, game: plan.game, updatedAt: now };
+      } else if (
+        room.gameType === "NUMBER_TILE" &&
+        plan.gameType === "NUMBER_TILE"
+      ) {
+        candidate = { ...room, game: plan.game, updatedAt: now };
+      } else {
+        return false;
+      }
       const committed = await this.#dependencies.roomUnitOfWork.commit(
         {
           roomMutation: {
             kind: "REPLACE",
-            candidate: { ...room, game: plan.game, updatedAt: now },
+            candidate,
             expectedRoomRevision: room.roomRevision,
             expectedStorageRevision: room.storageRevision,
           },

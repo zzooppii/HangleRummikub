@@ -8,7 +8,6 @@ import {
   RoomIdSchema,
   RoomRevisionSchema,
   ServerTimeSchema,
-  type GameType,
   type PlayerId,
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
@@ -25,6 +24,7 @@ import { LEGACY_V1_DEFAULT_GAME_TYPE } from "./games/hangul-tile/compatibility/l
 import { FakeIdGenerator } from "./infrastructure/system.js";
 import {
   createStorageRevision,
+  type HangulRoomRecord,
   type RoomRecord,
 } from "./model/persistence.js";
 
@@ -32,7 +32,7 @@ const startedAt = v.parse(ServerTimeSchema, 1_000);
 const occurredAt = v.parse(ServerTimeSchema, 9_000);
 
 type PlayingFixture = Readonly<{
-  room: RoomRecord;
+  room: HangulRoomRecord;
   game: PlayingGameState;
   playerIds: readonly PlayerId[];
   idGenerator: FakeIdGenerator;
@@ -88,6 +88,7 @@ function requirePlayingCandidate(
   candidate: ReturnType<typeof applyLegacyHangulPlayingLeave>["candidate"],
 ): PlayingGameState {
   if (
+    candidate.gameType !== "HANGUL_TILE" ||
     candidate.phase !== "PLAYING" ||
     candidate.game === null ||
     candidate.game.turn === null ||
@@ -200,7 +201,7 @@ test("already-forfeited leave is storage-only and produces no advisory", () => {
     ...fixture.game,
     forfeitedPlayerIds: Object.freeze(new Set([actorPlayerId])),
   });
-  const room: RoomRecord = Object.freeze({ ...fixture.room, game });
+  const room: HangulRoomRecord = Object.freeze({ ...fixture.room, game });
 
   const result = applyLegacyHangulPlayingLeave({
     room,
@@ -228,7 +229,7 @@ test("presence restoration resets only the Hangul offline streak", () => {
     ...fixture.game,
     offlineTimeoutStreakByPlayerId: streaks,
   });
-  const room: RoomRecord = Object.freeze({ ...fixture.room, game });
+  const room: HangulRoomRecord = Object.freeze({ ...fixture.room, game });
 
   const plan = planLegacyHangulPresenceRestored(room, playerId);
 
@@ -248,10 +249,9 @@ test("presence restoration resets only the Hangul offline streak", () => {
 
 test("wrong canonical gameType is rejected before either lifecycle decision", () => {
   const fixture = createPlayingFixture(3);
-  const corruptRoom: RoomRecord = Object.freeze({
-    ...fixture.room,
-    gameType: "UNKNOWN_GAME" as GameType,
-  });
+  const corruptRoom: RoomRecord = { ...fixture.room };
+  Reflect.set(corruptRoom, "gameType", "UNKNOWN_GAME");
+  Object.freeze(corruptRoom);
 
   assert.throws(
     () =>

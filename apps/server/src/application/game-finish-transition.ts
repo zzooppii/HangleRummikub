@@ -12,7 +12,10 @@ import type {
   GameResult,
   PlayingGameState,
 } from "../games/hangul-tile/domain/game-state.js";
-import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
+import type {
+  HangulRoomRecord,
+  RoomWriteCandidate,
+} from "../model/persistence.js";
 import type { RoomPolicyScheduler } from "../ports/room-policy-scheduler.js";
 import type { RoomRepository } from "../ports/room-repository.js";
 import { ROOM_RETENTION_MS } from "./room-presence-policy-service.js";
@@ -118,12 +121,17 @@ export async function scheduleFinishedRetentionBestEffort(
 
 /** Builds the single atomic Room/Game terminal candidate. */
 export function createFinishedRoomTransition(
-  room: RoomRecord,
+  room: HangulRoomRecord,
   game: PlayingGameState,
   result: GameResult,
   updatedAt: ServerTime,
   gameBase: PlayingGameState = game,
 ): FinishedRoomTransition {
+  if (room.gameType !== "HANGUL_TILE") {
+    throw new TypeError(
+      "Legacy Hangul finish transition received an unsupported gameType.",
+    );
+  }
   const gameRevision = incrementGameRevision(game.gameRevision);
   const roomRevision = v.parse(RoomRevisionSchema, room.roomRevision + 1);
   const finishedGame: FinishedGameState = Object.freeze({

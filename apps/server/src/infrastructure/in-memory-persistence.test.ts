@@ -27,6 +27,7 @@ import {
   createUnboundSessionRecord,
   incrementStorageRevision,
   type IdempotencyRecord,
+  type HangulRoomRecord,
   type JsonValue,
   type RoomRecord,
   type RoomWriteCandidate,
@@ -77,7 +78,8 @@ type RoomFixtureOptions = Readonly<{
   updatedAt?: number;
 }>;
 
-type RoomCandidateWithHost = RoomWriteCandidate &
+type HangulRoomWriteCandidate = Omit<HangulRoomRecord, "storageRevision">;
+type RoomCandidateWithHost = HangulRoomWriteCandidate &
   Readonly<{ hostPlayerId: PlayerId }>;
 type RoomRecordWithHost = RoomRecord & Readonly<{ hostPlayerId: PlayerId }>;
 
@@ -1337,24 +1339,29 @@ test("PLAYING Room의 GameState deep copy는 caller mutation에서 persistence�
     updatedAt: serverTime(10_000),
   });
   assert.equal(created.status, "CREATED");
-  if (created.status !== "CREATED" || created.room.game === null) {
+  if (
+    created.status !== "CREATED" ||
+    created.room.gameType !== "HANGUL_TILE" ||
+    created.room.game === null
+  ) {
     throw new Error("Expected a persisted PLAYING Room.");
   }
+  const storedGame = created.room.game;
   const baseline = await persistence.findById(created.room.roomId);
   assert.ok(baseline?.game);
 
-  const nestedRack = [...created.room.game.racks.values()].find(
+  const nestedRack = [...storedGame.racks.values()].find(
     (rack) => rack.length > 0,
   );
-  const ordinaryTile = [...created.room.game.tilesById.values()].find(
+  const ordinaryTile = [...storedGame.tilesById.values()].find(
     (tile) => tile.kind === "ORDINARY",
   );
   const boardPlacement =
-    created.room.game.board.wordGroups[0]?.syllables[0]?.choseong[0];
+    storedGame.board.wordGroups[0]?.syllables[0]?.choseong[0];
   assert.ok(nestedRack);
   assert.ok(ordinaryTile?.kind === "ORDINARY");
   assert.ok(boardPlacement);
-  assert.ok(created.room.game.turn);
+  assert.ok(storedGame.turn);
 
   assert.throws(() =>
     Reflect.apply(Array.prototype.pop, nestedRack, []),
@@ -1363,33 +1370,33 @@ test("PLAYING Room의 GameState deep copy는 caller mutation에서 persistence�
     Reflect.apply(Array.prototype.push, ordinaryTile.allowedSymbols, ["X"]),
   );
   assert.equal(Reflect.set(boardPlacement, "assignedSymbol", "ㅎ"), false);
-  assert.equal(Reflect.set(created.room.game.turn, "turnNumber", 99), false);
+  assert.equal(Reflect.set(storedGame.turn, "turnNumber", 99), false);
   assert.throws(() =>
-    Reflect.apply(Array.prototype.pop, created.room.game?.vowelBag, []),
+    Reflect.apply(Array.prototype.pop, storedGame.vowelBag, []),
   );
 
-  Reflect.apply(Map.prototype.clear, created.room.game.racks, []);
-  Reflect.apply(Map.prototype.clear, created.room.game.tilesById, []);
+  Reflect.apply(Map.prototype.clear, storedGame.racks, []);
+  Reflect.apply(Map.prototype.clear, storedGame.tilesById, []);
   Reflect.apply(
     Map.prototype.clear,
-    created.room.game.initialMeldCompleted,
+    storedGame.initialMeldCompleted,
     [],
   );
   assert.throws(() =>
-    Reflect.apply(Array.prototype.pop, created.room.game?.consonantBag, []),
+    Reflect.apply(Array.prototype.pop, storedGame.consonantBag, []),
   );
   assert.throws(() =>
-    Reflect.apply(Array.prototype.pop, created.room.game?.turnOrder, []),
+    Reflect.apply(Array.prototype.pop, storedGame.turnOrder, []),
   );
   assert.throws(() =>
     Reflect.apply(
       Array.prototype.push,
-      created.room.game?.board.wordGroups,
+      storedGame.board.wordGroups,
       [{ groupId: "mutated", syllables: [] }],
     ),
   );
   assert.equal(
-    Reflect.set(created.room.game.rulesConfig, "turnDurationMs", 1),
+    Reflect.set(storedGame.rulesConfig, "turnDurationMs", 1),
     false,
   );
 

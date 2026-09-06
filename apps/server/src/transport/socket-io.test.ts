@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   GameRevisionSchema,
+  NumberTilePlayingPlatformSnapshotV2Schema,
   NicknameSchema,
   OPAQUE_IDENTIFIER_MAX_LENGTH,
   PROPOSED_BOARD_MAX_WORD_GROUPS,
@@ -31,6 +32,18 @@ import {
   validateTurnDrawAck,
   validateTurnPassAck,
   validateTurnSubmitAck,
+  type GameType,
+  type GameStartWireAck,
+  type NumberDrawWireAck,
+  type NumberDrawCommand,
+  type NumberTilePlayingPlatformSnapshotV2,
+  type PlatformSnapshotV2,
+  type RoomCreateWireAck,
+  type RoomJoinWireAck,
+  type SessionResumeWireAck,
+  type SnapshotWireClientToServerEvents,
+  type SnapshotWireServerToClientEvents,
+  type StateSnapshotWireEvent,
   type ClientToServerEvents,
   type FinishedStateSnapshot,
   type GameFinishedEvent,
@@ -58,6 +71,7 @@ import {
   type SessionToken,
   type StateSnapshot,
   type StateSnapshotEvent,
+  type StateSnapshotWirePayload,
   type StateSyncAck,
   type StateSyncCommand,
   type TileId,
@@ -76,15 +90,19 @@ import {
 import { parse } from "valibot";
 
 import { GameStartService } from "../application/game-start-service.js";
+import { GameStartRouter } from "../application/game-start-router.js";
 import { GameDeadlineService } from "../application/game-deadline-service.js";
 import { LobbyDisconnectGraceService } from "../application/lobby-disconnect-grace-service.js";
 import { LobbyStateSnapshotProjector } from "../application/lobby-state-snapshot-projector.js";
+import { PlatformSnapshotV2Projector } from "../application/platform-snapshot-v2-projector.js";
+import { PlayerLifecycleRouter } from "../application/player-lifecycle-router.js";
 import { RoomCleanupService } from "../application/room-cleanup-service.js";
 import { RoomLeaveService } from "../application/room-leave-service.js";
 import { RoomPresencePolicyService } from "../application/room-presence-policy-service.js";
 import { RoomRetentionService } from "../application/room-retention-service.js";
 import { RoomSessionApplicationService } from "../application/room-session-service.js";
 import { SessionResumeService } from "../application/session-resume-service.js";
+import { ScheduledTurnRouter } from "../application/scheduled-turn-router.js";
 import { TurnDrawService } from "../application/turn-draw-service.js";
 import { TurnPassService } from "../application/turn-pass-service.js";
 import { TurnSubmitService } from "../application/turn-submit-service.js";
@@ -115,7 +133,24 @@ import {
   type LegacyHangulV1CommandCapability,
 } from "../games/hangul-tile/compatibility/legacy-hangul-v1-command-router.js";
 import { projectLegacyHangulV1Game } from "../games/hangul-tile/compatibility/legacy-hangul-v1-game-projector.js";
-import { ConnectionRegistry } from "../infrastructure/connection-registry.js";
+import { LegacyHangulGameStateAdapter } from "../games/hangul-tile/compatibility/legacy-hangul-game-state-adapter.js";
+import { NumberTileCommandRouter } from "../games/number-tile/application/number-tile-command-router.js";
+import { NumberTileDrawService } from "../games/number-tile/application/number-tile-draw-service.js";
+import { NumberTilePassService } from "../games/number-tile/application/number-tile-pass-service.js";
+import { createNumberTilePlayerLifecycleActions } from "../games/number-tile/application/number-tile-player-lifecycle-actions.js";
+import { NumberTileStartService } from "../games/number-tile/application/number-tile-start-service.js";
+import { NumberTileSubmitService } from "../games/number-tile/application/number-tile-submit-service.js";
+import { NumberTileTimeoutService } from "../games/number-tile/application/number-tile-timeout-service.js";
+import { NumberTileGameStateAdapter } from "../games/number-tile/compatibility/number-tile-game-state-adapter.js";
+import { projectNumberTileV2Game } from "../games/number-tile/compatibility/number-tile-v2-game-projector.js";
+import {
+  createNumberTileRegistration,
+  NUMBER_TILE_GAME_TYPE,
+} from "../games/number-tile/number-tile-registration.js";
+import {
+  ConnectionRegistry,
+  createSocketId,
+} from "../infrastructure/connection-registry.js";
 import { ConnectionRegistryPresenceReader } from "../infrastructure/connection-registry-presence-reader.js";
 import { InMemoryPersistence } from "../infrastructure/in-memory-persistence.js";
 import { InProcessGameDeadlineScheduler } from "../infrastructure/in-process-game-deadline-scheduler.js";
@@ -129,7 +164,7 @@ import {
   type RoomClosedAdvisoryListener,
 } from "../infrastructure/room-lifecycle-resources.js";
 import { TestDictionaryProvider } from "../games/hangul-tile/infrastructure/test-dictionary-provider.js";
-import type { RoomRecord } from "../model/persistence.js";
+import type { HangulRoomRecord } from "../model/persistence.js";
 import {
   FakeIdGenerator,
   NodeCryptoSessionTokenIssuer,
@@ -184,6 +219,10 @@ interface RawClientToServerEvents {
 }
 
 type RawClient = SocketIoClient<ServerToClientEvents, RawClientToServerEvents>;
+type WireClient = SocketIoClient<
+  SnapshotWireServerToClientEvents,
+  SnapshotWireClientToServerEvents
+>;
 type SnapshotCommandAck =
   | GameStartAck
   | RoomCreateAck
@@ -332,9 +371,13 @@ type DeterministicRuntime = Readonly<{
 }>;
 
 function createDeterministicRuntime(): DeterministicRuntime {
-  const persistence = new InMemoryPersistence();
+  const persistence = new InMemoryPersistence({
+    legacyHangulGameStateAdapter: new LegacyHangulGameStateAdapter(),
+    numberTileGameStateAdapter: new NumberTileGameStateAdapter(),
+  });
   const gameRegistry = new GameRegistry([
     createLegacyHangulCompatibilityRegistration(),
+    createNumberTileRegistration(),
   ]);
   const clock = new SystemClock();
   const connectionRegistry = new ConnectionRegistry();
@@ -344,8 +387,10 @@ function createDeterministicRuntime(): DeterministicRuntime {
     roomCode("BCDEFG"),
   ]);
   const idGenerator = new FakeIdGenerator();
-  const playerLifecycleActions =
-    createLegacyHangulPlayerLifecycleActions(idGenerator);
+  const playerLifecycleActions = new PlayerLifecycleRouter({
+    hangul: createLegacyHangulPlayerLifecycleActions(idGenerator),
+    numberTile: createNumberTilePlayerLifecycleActions(idGenerator),
+  });
   const roomMutationExecutor = new KeyedSerialExecutor<RoomId>();
   const registryPresenceReader = new ConnectionRegistryPresenceReader(
     connectionRegistry,
@@ -358,16 +403,17 @@ function createDeterministicRuntime(): DeterministicRuntime {
   let legacyHangulServerActionRouter:
     | LegacyHangulServerActionRouting
     | undefined;
+  let scheduledTurnRouter: ScheduledTurnRouter | undefined;
   const enqueueTimeout = async (
     deadline: ScheduledTurnDeadline,
   ): Promise<void> => {
     if (
       !acceptsTimeoutWork ||
-      legacyHangulServerActionRouter === undefined
+      scheduledTurnRouter === undefined
     ) {
       return;
     }
-    await legacyHangulServerActionRouter.handleTurnTimeout(deadline);
+    await scheduledTurnRouter.handleTurnTimeout(deadline);
   };
   const turnScheduler = new InProcessTurnScheduler({
     clock,
@@ -515,6 +561,29 @@ function createDeterministicRuntime(): DeterministicRuntime {
     gameDeadlineScheduler,
     gameRegistrationReader: gameRegistry,
   });
+  const numberTileStartService = new NumberTileStartService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    presenceLeaseReader: registryPresenceReader,
+    clock,
+    idGenerator,
+    randomSource: new ZeroRandomSource(),
+    gameRegistrationReader: gameRegistry,
+    turnScheduler,
+  });
+  const gameStartRouter = new GameStartRouter({
+    roomRepository: persistence,
+    hangul: {
+      gameType: LEGACY_V1_DEFAULT_GAME_TYPE,
+      start: (input) => gameStartService.start(input),
+    },
+    numberTile: {
+      gameType: NUMBER_TILE_GAME_TYPE,
+      start: (input) => numberTileStartService.start(input),
+    },
+  });
   const turnSubmitService = new TurnSubmitService({
     roomRepository: persistence,
     idempotencyRepository: persistence,
@@ -557,6 +626,45 @@ function createDeterministicRuntime(): DeterministicRuntime {
     roomRepository: persistence,
     capability: legacyHangulV1CommandCapability,
   });
+  const numberTileSubmitService = new NumberTileSubmitService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    clock,
+    idGenerator,
+    turnScheduler,
+    onGameFinished,
+  });
+  const numberTileDrawService = new NumberTileDrawService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    clock,
+    idGenerator,
+    randomSource: new ZeroRandomSource(),
+    turnScheduler,
+  });
+  const numberTilePassService = new NumberTilePassService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    clock,
+    idGenerator,
+    turnScheduler,
+    onGameFinished,
+  });
+  const numberTileCommandRouter = new NumberTileCommandRouter({
+    roomRepository: persistence,
+    capability: {
+      gameType: NUMBER_TILE_GAME_TYPE,
+      submit: (input) => numberTileSubmitService.submit(input),
+      draw: (input) => numberTileDrawService.draw(input),
+      pass: (input) => numberTilePassService.pass(input),
+    },
+  });
   const turnTimeoutService = new TurnTimeoutService({
     roomRepository: persistence,
     idempotencyRepository: persistence,
@@ -568,6 +676,29 @@ function createDeterministicRuntime(): DeterministicRuntime {
     presenceLeaseReader: registryPresenceReader,
     turnScheduler,
     onGameFinished,
+  });
+  const numberTileTimeoutService = new NumberTileTimeoutService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    clock,
+    idGenerator,
+    randomSource: new ZeroRandomSource(),
+    presenceLeaseReader: registryPresenceReader,
+    turnScheduler,
+    onGameFinished,
+  });
+  scheduledTurnRouter = new ScheduledTurnRouter({
+    roomRepository: persistence,
+    hangul: {
+      gameType: LEGACY_V1_DEFAULT_GAME_TYPE,
+      handleTurnTimeout: (input) => turnTimeoutService.timeout(input),
+    },
+    numberTile: {
+      gameType: NUMBER_TILE_GAME_TYPE,
+      handleTurnTimeout: (input) => numberTileTimeoutService.timeout(input),
+    },
   });
   const legacyHangulServerActionCapability: LegacyHangulServerActionCapability =
     Object.freeze({
@@ -583,6 +714,12 @@ function createDeterministicRuntime(): DeterministicRuntime {
     clock,
     presenceReader,
     legacyHangulV1GameProjector: projectLegacyHangulV1Game,
+  });
+  const platformSnapshotV2Projector = new PlatformSnapshotV2Projector({
+    clock,
+    presenceReader,
+    legacyHangulSnapshotProjector: snapshotProjector,
+    numberTileGameProjector: projectNumberTileV2Game,
   });
   const roomLeaveService = new RoomLeaveService({
     roomRepository: persistence,
@@ -603,9 +740,11 @@ function createDeterministicRuntime(): DeterministicRuntime {
       clock,
       connectionRegistry,
       gameRegistry,
+      gameStartRouter,
       gameDeadlineScheduler,
       legacyHangulServerActionRouter,
       legacyHangulV1CommandRouter,
+      numberTileCommandRouter,
       overdueGameDeadlineSweeper,
       persistence,
       roomLeaveService,
@@ -614,6 +753,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
       roomSessionService,
       sessionResumeService,
       snapshotProjector,
+      platformSnapshotV2Projector,
       turnScheduler,
       overdueTurnSweeper,
       subscribeGameDeadlineApplied(listener) {
@@ -621,6 +761,9 @@ function createDeterministicRuntime(): DeterministicRuntime {
       },
       subscribeTurnTimeoutApplied(listener) {
         return turnTimeoutService.subscribeApplied(listener);
+      },
+      subscribeNumberTileTimeoutApplied(listener) {
+        return numberTileTimeoutService.subscribeApplied(listener);
       },
       subscribeRoomClosed(listener) {
         roomClosedListeners.add(listener);
@@ -774,8 +917,12 @@ async function connectTypedClient(harness: TestHarness): Promise<TypedClient> {
   return socket;
 }
 
-async function connectRawClient(harness: TestHarness): Promise<RawClient> {
+async function connectRawClient(
+  harness: TestHarness,
+  auth: Readonly<Record<string, unknown>> = {},
+): Promise<RawClient> {
   const socket: RawClient = createSocketClient(harness.url, {
+    auth,
     autoConnect: false,
     forceNew: true,
     reconnection: false,
@@ -808,6 +955,90 @@ async function connectRawClient(harness: TestHarness): Promise<RawClient> {
   socket.connect();
   await connected;
   return socket;
+}
+
+async function connectWireClient(
+  harness: TestHarness,
+  supportedGameTypes?: readonly GameType[],
+  supportedSnapshotVersions: readonly number[] = [2, 1],
+): Promise<WireClient> {
+  const socket: WireClient = createSocketClient(harness.url, {
+    auth: {
+      supportedSnapshotVersions,
+      ...(supportedGameTypes === undefined ? {} : { supportedGameTypes }),
+    },
+    autoConnect: false,
+    forceNew: true,
+    reconnection: false,
+    transports: ["websocket"],
+  });
+  harness.disconnectClients.push(() => {
+    socket.disconnect();
+  });
+
+  const connected = new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      socket.off("connect", handleConnect);
+      socket.off("connect_error", handleConnectError);
+      reject(new Error("Timed out connecting negotiated Socket.IO client."));
+    }, NETWORK_TIMEOUT_MS);
+    const handleConnect = (): void => {
+      clearTimeout(timeout);
+      socket.off("connect_error", handleConnectError);
+      resolve();
+    };
+    const handleConnectError = (error: Error): void => {
+      clearTimeout(timeout);
+      socket.off("connect", handleConnect);
+      reject(error);
+    };
+
+    socket.once("connect", handleConnect);
+    socket.once("connect_error", handleConnectError);
+  });
+  socket.connect();
+  await connected;
+  return socket;
+}
+
+async function expectRawConnectionError(
+  harness: TestHarness,
+  auth: Readonly<Record<string, unknown>>,
+  expectedMessage: string,
+): Promise<void> {
+  const socket: RawClient = createSocketClient(harness.url, {
+    auth,
+    autoConnect: false,
+    forceNew: true,
+    reconnection: false,
+    transports: ["websocket"],
+  });
+  harness.disconnectClients.push(() => {
+    socket.disconnect();
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      socket.off("connect", handleConnect);
+      socket.off("connect_error", handleConnectError);
+      reject(new Error("Timed out waiting for Socket.IO capability rejection."));
+    }, NETWORK_TIMEOUT_MS);
+    const handleConnect = (): void => {
+      clearTimeout(timeout);
+      socket.off("connect_error", handleConnectError);
+      reject(new Error("Malformed game capability unexpectedly connected."));
+    };
+    const handleConnectError = (error: Error): void => {
+      clearTimeout(timeout);
+      socket.off("connect", handleConnect);
+      assert.equal(error.message, expectedMessage);
+      resolve();
+    };
+
+    socket.once("connect", handleConnect);
+    socket.once("connect_error", handleConnectError);
+    socket.connect();
+  });
 }
 
 function observeClient(
@@ -1076,6 +1307,21 @@ function requireSnapshotSuccess(ack: SnapshotCommandAck): StateSnapshot {
   return ack.data.snapshot;
 }
 
+function requirePlatformSnapshotV2(
+  snapshot: StateSnapshotWirePayload,
+): PlatformSnapshotV2 {
+  if (!("snapshotVersion" in snapshot) || snapshot.snapshotVersion !== 2) {
+    throw new Error("Expected a PlatformSnapshotV2 payload.");
+  }
+  return snapshot;
+}
+
+function requireNumberTilePlayingSnapshotV2(
+  snapshot: StateSnapshotWirePayload,
+): NumberTilePlayingPlatformSnapshotV2 {
+  return parse(NumberTilePlayingPlatformSnapshotV2Schema, snapshot);
+}
+
 function requirePlayingSnapshot(
   snapshot: StateSnapshot,
 ): PlayingStateSnapshot {
@@ -1180,7 +1426,7 @@ async function joinHostedRoom(
 }
 
 type SeededSubmitFixture = Readonly<{
-  room: RoomRecord & Readonly<{ game: PlayingGameState }>;
+  room: HangulRoomRecord & Readonly<{ game: PlayingGameState }>;
   proposedBoard: TurnSubmitCommand["payload"]["proposedBoard"];
   usedTileIds: readonly TileId[];
 }>;
@@ -1234,10 +1480,11 @@ async function seedBothBagsEmpty(
   persistence: InMemoryPersistence,
   roomIdValue: RoomId,
   actorPlayerId: PlayerId,
-): Promise<RoomRecord & Readonly<{ game: PlayingGameState }>> {
+): Promise<HangulRoomRecord & Readonly<{ game: PlayingGameState }>> {
   const room = await persistence.findById(roomIdValue);
   if (
     room === null ||
+    room.gameType !== "HANGUL_TILE" ||
     room.phase !== "PLAYING" ||
     room.game === null ||
     room.game.turn === null ||
@@ -1290,16 +1537,21 @@ async function seedBothBagsEmpty(
   ) {
     throw new Error("Failed to persist deterministic empty-bag fixture.");
   }
-  return result.room as RoomRecord & Readonly<{ game: PlayingGameState }>;
+  if (result.room.gameType !== "HANGUL_TILE") {
+    throw new Error("Pass fixture changed the canonical gameType.");
+  }
+  return result.room as HangulRoomRecord &
+    Readonly<{ game: PlayingGameState }>;
 }
 
 async function seedOverdueCurrentTurn(
   persistence: InMemoryPersistence,
   roomIdValue: RoomId,
-): Promise<RoomRecord & Readonly<{ game: PlayingGameState }>> {
+): Promise<HangulRoomRecord & Readonly<{ game: PlayingGameState }>> {
   const room = await persistence.findById(roomIdValue);
   if (
     room === null ||
+    room.gameType !== "HANGUL_TILE" ||
     room.phase !== "PLAYING" ||
     room.game === null ||
     room.game.turn === null ||
@@ -1338,16 +1590,21 @@ async function seedOverdueCurrentTurn(
   ) {
     throw new Error("Failed to persist deterministic overdue Turn fixture.");
   }
-  return result.room as RoomRecord & Readonly<{ game: PlayingGameState }>;
+  if (result.room.gameType !== "HANGUL_TILE") {
+    throw new Error("Turn fixture changed the canonical gameType.");
+  }
+  return result.room as HangulRoomRecord &
+    Readonly<{ game: PlayingGameState }>;
 }
 
 async function seedOverdueGameDeadline(
   persistence: InMemoryPersistence,
   roomIdValue: RoomId,
-): Promise<RoomRecord & Readonly<{ game: PlayingGameState }>> {
+): Promise<HangulRoomRecord & Readonly<{ game: PlayingGameState }>> {
   const room = await persistence.findById(roomIdValue);
   if (
     room === null ||
+    room.gameType !== "HANGUL_TILE" ||
     room.phase !== "PLAYING" ||
     room.game === null ||
     room.game.turn === null ||
@@ -1385,7 +1642,11 @@ async function seedOverdueGameDeadline(
   ) {
     throw new Error("Failed to persist an overdue Game deadline fixture.");
   }
-  return result.room as RoomRecord & Readonly<{ game: PlayingGameState }>;
+  if (result.room.gameType !== "HANGUL_TILE") {
+    throw new Error("Game deadline fixture changed the canonical gameType.");
+  }
+  return result.room as HangulRoomRecord &
+    Readonly<{ game: PlayingGameState }>;
 }
 
 function findOrdinaryTileForSymbol(
@@ -1418,6 +1679,7 @@ async function seedDalgyalSubmitFixture(
   const room = await persistence.findById(roomIdValue);
   if (
     room === null ||
+    room.gameType !== "HANGUL_TILE" ||
     room.phase !== "PLAYING" ||
     room.game === null ||
     room.game.turn === null ||
@@ -1537,7 +1799,8 @@ async function seedDalgyalSubmitFixture(
   }
 
   return {
-    room: replaced.room as RoomRecord & Readonly<{ game: PlayingGameState }>,
+    room: replaced.room as HangulRoomRecord &
+      Readonly<{ game: PlayingGameState }>,
     usedTileIds: Object.freeze(wordTiles.map((tile) => tile.tileId)),
     proposedBoard: {
       wordGroups: [
@@ -2221,7 +2484,7 @@ test(
       }
     });
 
-    await context.test("room:create의 unsupported gameType은 bootstrap, Room, idempotency를 변경하지 않는다", async () => {
+    await context.test("legacy game capability는 NUMBER_TILE create를 mutation 없이 거절한다", async () => {
       const deterministic = createDeterministicRuntime();
       const harness = await startServer(deterministic.runtime);
       try {
@@ -2239,7 +2502,7 @@ test(
         const token = requireBootstrapSuccess(bootstrapAck);
         const createRequestId = requestId("unsupported-game-create");
         const invalidCreate = await emitWithAck<RoomCreateAck>(
-          "unsupported gameType room:create",
+          "unsupported client capability room:create",
           (acknowledge) => {
             socket.emit(
               "room:create",
@@ -2258,7 +2521,7 @@ test(
           },
         );
         assert.equal(validateRoomCreateAck(invalidCreate).ok, true);
-        requireFailureCode(invalidCreate, "INVALID_PAYLOAD");
+        requireFailureCode(invalidCreate, "INCOMPATIBLE_GAME_CAPABILITY");
 
         const verificationData =
           deterministic.tokenIssuer.deriveVerificationData(token);
@@ -2742,7 +3005,11 @@ test(
             const room = await deterministic.runtime.persistence.findById(
               host.snapshot.room.roomId,
             );
-            return room?.phase === "PLAYING" && room.game !== null ? room : null;
+            return room?.gameType === "HANGUL_TILE" &&
+              room.phase === "PLAYING" &&
+              room.game !== null
+              ? room
+              : null;
           },
         );
         assert.equal(firstAcknowledgement, null);
@@ -3234,6 +3501,7 @@ test(
         );
         if (
           room === null ||
+          room.gameType !== "HANGUL_TILE" ||
           room.phase !== "PLAYING" ||
           room.game === null ||
           room.game.turn === null ||
@@ -4860,6 +5128,794 @@ test(
               (player) => player.playerId === guest.snapshot.self.playerId,
             )?.isHost,
             true,
+          );
+        } finally {
+          await stopServer(harness);
+        }
+      },
+    );
+  },
+);
+
+test(
+  "P7B Number Tile capability admission and raw Socket.IO vertical slice",
+  { concurrency: false, timeout: 30_000 },
+  async (context) => {
+    await context.test(
+      "malformed, duplicate, and unknown supportedGameTypes fail at connection",
+      async () => {
+        const harness = await startServer(createDeterministicRuntime().runtime);
+        try {
+          const invalidCapabilities: readonly Readonly<
+            Record<string, unknown>
+          >[] = [
+            {
+              supportedSnapshotVersions: [2, 1],
+              supportedGameTypes: "NUMBER_TILE",
+            },
+            {
+              supportedSnapshotVersions: [2, 1],
+              supportedGameTypes: ["HANGUL_TILE", "HANGUL_TILE"],
+            },
+            {
+              supportedSnapshotVersions: [2, 1],
+              supportedGameTypes: ["UNKNOWN_GAME"],
+            },
+          ];
+          for (const auth of invalidCapabilities) {
+            await expectRawConnectionError(
+              harness,
+              auth,
+              "INVALID_GAME_CAPABILITY",
+            );
+          }
+        } finally {
+          await stopServer(harness);
+        }
+      },
+    );
+
+    await context.test(
+      "NUMBER_TILE create requires both snapshot V2 and advertised game support",
+      async () => {
+        const deterministic = createDeterministicRuntime();
+        const harness = await startServer(deterministic.runtime);
+        try {
+          const incompatibleClients = [
+            {
+              label: "v1-only",
+              auth: {
+                supportedSnapshotVersions: [1],
+                supportedGameTypes: ["HANGUL_TILE", "NUMBER_TILE"],
+              },
+            },
+            {
+              label: "hangul-only",
+              auth: {
+                supportedSnapshotVersions: [2, 1],
+                supportedGameTypes: ["HANGUL_TILE"],
+              },
+            },
+          ] as const;
+          for (const fixture of incompatibleClients) {
+            const socket = await connectRawClient(harness, fixture.auth);
+            const token = requireBootstrapSuccess(
+              await emitWithAck<SessionBootstrapAck>(
+                `${fixture.label} bootstrap`,
+                (acknowledge) =>
+                  socket.emit(
+                    "session:bootstrap",
+                    bootstrapCommand(`${fixture.label}-bootstrap`),
+                    acknowledge,
+                  ),
+              ),
+            );
+            const acknowledgement = await emitWithAck<RoomCreateAck>(
+              `${fixture.label} NUMBER_TILE create`,
+              (acknowledge) =>
+                socket.emit(
+                  "room:create",
+                  {
+                    kind: "room:create",
+                    protocolVersion: PROTOCOL_VERSION,
+                    requestId: requestId(`${fixture.label}-number-create`),
+                    payload: {
+                      bootstrapCredential: { sessionToken: token },
+                      nickname: "NumberHost",
+                      gameType: "NUMBER_TILE",
+                    },
+                  },
+                  acknowledge,
+                ),
+            );
+            requireFailureCode(
+              acknowledgement,
+              "INCOMPATIBLE_GAME_CAPABILITY",
+            );
+          }
+          assert.equal(deterministic.roomCodeGenerator.callCount, 0);
+          assert.equal(
+            await deterministic.runtime.persistence.findByCode(
+              roomCode("ABCDEF"),
+            ),
+            null,
+          );
+        } finally {
+          await stopServer(harness);
+        }
+      },
+    );
+
+    await context.test(
+      "incompatible NUMBER_TILE join and resume are rejected before membership, binding, presence, streak, or replacement mutation",
+      async () => {
+        const deterministic = createDeterministicRuntime();
+        const harness = await startServer(deterministic.runtime);
+        try {
+          const capabilities = [
+            "HANGUL_TILE",
+            "NUMBER_TILE",
+          ] as const satisfies readonly GameType[];
+          const host = await connectWireClient(harness, capabilities);
+          const hostToken = requireBootstrapSuccess(
+            await emitWithAck<SessionBootstrapAck>(
+              "Number admission host bootstrap",
+              (acknowledge) =>
+                host.emit(
+                  "session:bootstrap",
+                  bootstrapCommand("number-admission-host-bootstrap"),
+                  acknowledge,
+                ),
+            ),
+          );
+          const hostCreate = await emitWithAck<RoomCreateWireAck>(
+            "Number admission room:create",
+            (acknowledge) =>
+              host.emit(
+                "room:create",
+                {
+                  kind: "room:create",
+                  protocolVersion: PROTOCOL_VERSION,
+                  requestId: requestId("number-admission-create"),
+                  payload: {
+                    bootstrapCredential: { sessionToken: hostToken },
+                    nickname: nickname("NumberHost"),
+                    gameType: "NUMBER_TILE",
+                  },
+                },
+                acknowledge,
+              ),
+          );
+          assert.equal(hostCreate.ok, true);
+          if (!hostCreate.ok) {
+            throw new Error("Expected Number admission Room creation.");
+          }
+          const created = requirePlatformSnapshotV2(hostCreate.data.snapshot);
+
+          const incompatibleConnections = [
+            {
+              label: "omitted-game-capability",
+              gameTypes: undefined,
+              snapshotVersions: [2, 1] as const,
+            },
+            {
+              label: "hangul-only",
+              gameTypes: ["HANGUL_TILE"] as const,
+              snapshotVersions: [2, 1] as const,
+            },
+            {
+              label: "v1-only",
+              gameTypes: capabilities,
+              snapshotVersions: [1] as const,
+            },
+          ] as const;
+
+          for (const connection of incompatibleConnections) {
+            const socket = await connectWireClient(
+              harness,
+              connection.gameTypes,
+              connection.snapshotVersions,
+            );
+            const token = requireBootstrapSuccess(
+              await emitWithAck<SessionBootstrapAck>(
+                `${connection.label} join bootstrap`,
+                (acknowledge) =>
+                  socket.emit(
+                    "session:bootstrap",
+                    bootstrapCommand(`${connection.label}-join-bootstrap`),
+                    acknowledge,
+                  ),
+              ),
+            );
+            const canonicalBefore =
+              await deterministic.runtime.persistence.findById(
+                created.room.roomId,
+              );
+            const presenceBefore =
+              deterministic.runtime.connectionRegistry.getPresenceVersion(
+                created.room.roomId,
+              );
+            const activeBindingsBefore =
+              deterministic.runtime.connectionRegistry.listActiveBindings(
+                created.room.roomId,
+              );
+            const joinRequestId = requestId(`${connection.label}-number-join`);
+            const join = await emitWithAck<RoomJoinWireAck>(
+              `${connection.label} Number room:join`,
+              (acknowledge) =>
+                socket.emit(
+                  "room:join",
+                  {
+                    kind: "room:join",
+                    protocolVersion: PROTOCOL_VERSION,
+                    requestId: joinRequestId,
+                    payload: {
+                      bootstrapCredential: { sessionToken: token },
+                      nickname: nickname(`Guest${connection.label.length}`),
+                      roomCode: created.room.roomCode,
+                    },
+                  },
+                  acknowledge,
+                ),
+            );
+            assert.equal(join.ok, false);
+            if (join.ok) {
+              throw new Error("Incompatible Number join unexpectedly succeeded.");
+            }
+            assert.equal(join.error.code, "INCOMPATIBLE_GAME_CAPABILITY");
+            assert.deepEqual(
+              await deterministic.runtime.persistence.findById(
+                created.room.roomId,
+              ),
+              canonicalBefore,
+            );
+            assert.deepEqual(
+              deterministic.runtime.connectionRegistry.listActiveBindings(
+                created.room.roomId,
+              ),
+              activeBindingsBefore,
+            );
+            assert.equal(
+              deterministic.runtime.connectionRegistry.getPresenceVersion(
+                created.room.roomId,
+              ),
+              presenceBefore,
+            );
+            if (socket.id === undefined) {
+              throw new Error("Connected incompatible join socket has no ID.");
+            }
+            assert.equal(
+              deterministic.runtime.connectionRegistry.getAuthenticatedBinding(
+                createSocketId(socket.id),
+              ),
+              null,
+            );
+            const verificationData =
+              deterministic.tokenIssuer.deriveVerificationData(token);
+            assert.equal(
+              (
+                await deterministic.runtime.persistence.findByVerificationData(
+                  verificationData,
+                )
+              )?.state,
+              "UNBOUND",
+            );
+            assert.deepEqual(
+              await deterministic.runtime.persistence.classify(
+                `bootstrap:${verificationData.algorithm}:${verificationData.digestHex}`,
+                joinRequestId,
+                JSON.stringify([
+                  "room:join",
+                  created.room.roomCode,
+                  `Guest${connection.label.length}`,
+                ]),
+              ),
+              { status: "MISS" },
+            );
+            socket.disconnect();
+          }
+
+          const guest = await connectWireClient(harness, capabilities);
+          let replacementNotifications = 0;
+          guest.on("session:replaced", () => {
+            replacementNotifications += 1;
+          });
+          const guestToken = requireBootstrapSuccess(
+            await emitWithAck<SessionBootstrapAck>(
+              "Number admission guest bootstrap",
+              (acknowledge) =>
+                guest.emit(
+                  "session:bootstrap",
+                  bootstrapCommand("number-admission-guest-bootstrap"),
+                  acknowledge,
+                ),
+            ),
+          );
+          const guestJoin = await emitWithAck<RoomJoinWireAck>(
+            "Number admission capable room:join",
+            (acknowledge) =>
+              guest.emit(
+                "room:join",
+                {
+                  kind: "room:join",
+                  protocolVersion: PROTOCOL_VERSION,
+                  requestId: requestId("number-admission-capable-join"),
+                  payload: {
+                    bootstrapCredential: { sessionToken: guestToken },
+                    nickname: nickname("NumberGuest"),
+                    roomCode: created.room.roomCode,
+                  },
+                },
+                acknowledge,
+              ),
+          );
+          assert.equal(guestJoin.ok, true);
+          if (!guestJoin.ok) {
+            throw new Error("Expected capable Number admission join.");
+          }
+          const joined = requirePlatformSnapshotV2(guestJoin.data.snapshot);
+          const start = await emitWithAck<GameStartWireAck>(
+            "Number admission game:start",
+            (acknowledge) =>
+              host.emit(
+                "game:start",
+                {
+                  kind: "game:start",
+                  protocolVersion: PROTOCOL_VERSION,
+                  requestId: requestId("number-admission-start"),
+                  expectedRoomRevision: joined.versions.roomRevision,
+                  payload: {},
+                },
+                acknowledge,
+              ),
+          );
+          assert.equal(start.ok, true);
+          if (!start.ok) {
+            throw new Error("Expected Number admission Game start.");
+          }
+          requireNumberTilePlayingSnapshotV2(start.data.snapshot);
+
+          const beforeSeed = await deterministic.runtime.persistence.findById(
+            created.room.roomId,
+          );
+          if (
+            beforeSeed === null ||
+            beforeSeed.gameType !== "NUMBER_TILE" ||
+            beforeSeed.phase !== "PLAYING" ||
+            beforeSeed.game === null
+          ) {
+            throw new Error("Expected a canonical Number PLAYING Room.");
+          }
+          const { storageRevision, ...roomWithoutStorageRevision } = beforeSeed;
+          const streaks = new Map(
+            beforeSeed.game.offlineTimeoutStreakByPlayerId,
+          );
+          streaks.set(joined.self.playerId, 1);
+          const seeded = await deterministic.runtime.persistence.replace({
+            candidate: {
+              ...roomWithoutStorageRevision,
+              game: Object.freeze({
+                ...beforeSeed.game,
+                offlineTimeoutStreakByPlayerId: streaks,
+              }),
+            },
+            expectedRoomRevision: beforeSeed.roomRevision,
+            expectedStorageRevision: storageRevision,
+          });
+          assert.equal(seeded.status, "REPLACED");
+          if (seeded.status !== "REPLACED") {
+            throw new Error("Failed to seed the Number resume streak fixture.");
+          }
+
+          const canonicalBeforeResume =
+            await deterministic.runtime.persistence.findById(
+              created.room.roomId,
+            );
+          const primaryBefore =
+            deterministic.runtime.connectionRegistry.getPrimaryBinding(
+              created.room.roomId,
+              joined.self.playerId,
+            );
+          assert.notEqual(primaryBefore, null);
+          const generationBefore =
+            deterministic.runtime.connectionRegistry.getConnectionGeneration(
+              created.room.roomId,
+              joined.self.playerId,
+            );
+          const presenceBeforeResume =
+            deterministic.runtime.connectionRegistry.getPresenceVersion(
+              created.room.roomId,
+            );
+
+          for (const connection of incompatibleConnections) {
+            const socket = await connectWireClient(
+              harness,
+              connection.gameTypes,
+              connection.snapshotVersions,
+            );
+            const resume = await emitWithAck<SessionResumeWireAck>(
+              `${connection.label} Number session:resume`,
+              (acknowledge) =>
+                socket.emit(
+                  "session:resume",
+                  {
+                    kind: "session:resume",
+                    protocolVersion: PROTOCOL_VERSION,
+                    requestId: requestId(`${connection.label}-number-resume`),
+                    payload: {
+                      credential: {
+                        roomCode: created.room.roomCode,
+                        sessionToken: guestToken,
+                      },
+                      lastSeenVersions: null,
+                    },
+                  },
+                  acknowledge,
+                ),
+            );
+            assert.equal(resume.ok, false);
+            if (resume.ok) {
+              throw new Error("Incompatible Number resume unexpectedly succeeded.");
+            }
+            assert.equal(resume.error.code, "INCOMPATIBLE_GAME_CAPABILITY");
+            assert.deepEqual(
+              deterministic.runtime.connectionRegistry.getPrimaryBinding(
+                created.room.roomId,
+                joined.self.playerId,
+              ),
+              primaryBefore,
+            );
+            assert.equal(
+              deterministic.runtime.connectionRegistry.getConnectionGeneration(
+                created.room.roomId,
+                joined.self.playerId,
+              ),
+              generationBefore,
+            );
+            assert.equal(
+              deterministic.runtime.connectionRegistry.getPresenceVersion(
+                created.room.roomId,
+              ),
+              presenceBeforeResume,
+            );
+            assert.deepEqual(
+              await deterministic.runtime.persistence.findById(
+                created.room.roomId,
+              ),
+              canonicalBeforeResume,
+            );
+            if (socket.id === undefined) {
+              throw new Error("Connected incompatible resume socket has no ID.");
+            }
+            assert.equal(
+              deterministic.runtime.connectionRegistry.getAuthenticatedBinding(
+                createSocketId(socket.id),
+              ),
+              null,
+            );
+            assert.equal(replacementNotifications, 0);
+            socket.disconnect();
+          }
+
+          const finalRoom = await deterministic.runtime.persistence.findById(
+            created.room.roomId,
+          );
+          assert.equal(finalRoom?.gameType, "NUMBER_TILE");
+          if (finalRoom?.gameType === "NUMBER_TILE" && finalRoom.game !== null) {
+            assert.equal(
+              finalRoom.game.offlineTimeoutStreakByPlayerId.get(
+                joined.self.playerId,
+              ),
+              1,
+            );
+          }
+        } finally {
+          await stopServer(harness);
+        }
+      },
+    );
+
+    await context.test(
+      "capable A/B clients create, join, start, draw, preserve privacy, and resume without Number advisories",
+      async () => {
+        const deterministic = createDeterministicRuntime();
+        const harness = await startServer(deterministic.runtime);
+        try {
+          const capabilities = [
+            "HANGUL_TILE",
+            "NUMBER_TILE",
+          ] as const satisfies readonly GameType[];
+          const host = await connectWireClient(harness, capabilities);
+          const guest = await connectWireClient(harness, capabilities);
+          const hostSnapshots: StateSnapshotWireEvent[] = [];
+          const guestSnapshots: StateSnapshotWireEvent[] = [];
+          let hostTurnAdvisories = 0;
+          let guestTurnAdvisories = 0;
+          let hostFinishAdvisories = 0;
+          let guestFinishAdvisories = 0;
+          host.on("state:snapshot", (event) => hostSnapshots.push(event));
+          guest.on("state:snapshot", (event) => guestSnapshots.push(event));
+          host.on("turn:started", () => {
+            hostTurnAdvisories += 1;
+          });
+          guest.on("turn:started", () => {
+            guestTurnAdvisories += 1;
+          });
+          host.on("game:finished", () => {
+            hostFinishAdvisories += 1;
+          });
+          guest.on("game:finished", () => {
+            guestFinishAdvisories += 1;
+          });
+
+          const hostToken = requireBootstrapSuccess(
+            await emitWithAck<SessionBootstrapAck>(
+              "Number host bootstrap",
+              (acknowledge) =>
+                host.emit(
+                  "session:bootstrap",
+                  bootstrapCommand("number-host-bootstrap"),
+                  acknowledge,
+                ),
+            ),
+          );
+          const hostCreate = await emitWithAck<RoomCreateWireAck>(
+            "Number room:create",
+            (acknowledge) =>
+              host.emit(
+                "room:create",
+                {
+                  kind: "room:create",
+                  protocolVersion: PROTOCOL_VERSION,
+                  requestId: requestId("number-room-create"),
+                  payload: {
+                    bootstrapCredential: { sessionToken: hostToken },
+                    nickname: nickname("NumberHost"),
+                    gameType: "NUMBER_TILE",
+                  },
+                },
+                acknowledge,
+              ),
+          );
+          assert.equal(hostCreate.ok, true);
+          if (!hostCreate.ok) {
+            throw new Error("Expected NUMBER_TILE Room creation to succeed.");
+          }
+          const created = requirePlatformSnapshotV2(hostCreate.data.snapshot);
+          assert.equal(created.room.gameType, "NUMBER_TILE");
+          assert.equal(created.room.phase, "LOBBY");
+          assert.equal(created.game, null);
+
+          const guestToken = requireBootstrapSuccess(
+            await emitWithAck<SessionBootstrapAck>(
+              "Number guest bootstrap",
+              (acknowledge) =>
+                guest.emit(
+                  "session:bootstrap",
+                  bootstrapCommand("number-guest-bootstrap"),
+                  acknowledge,
+                ),
+            ),
+          );
+          const joinCommand: RoomJoinCommand = {
+            kind: "room:join",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: requestId("number-room-join"),
+            payload: {
+              bootstrapCredential: { sessionToken: guestToken },
+              nickname: nickname("NumberGuest"),
+              roomCode: created.room.roomCode,
+            },
+          };
+          assert.equal("gameType" in joinCommand.payload, false);
+          const guestJoin = await emitWithAck<RoomJoinWireAck>(
+            "Number room:join",
+            (acknowledge) => guest.emit("room:join", joinCommand, acknowledge),
+          );
+          assert.equal(guestJoin.ok, true);
+          if (!guestJoin.ok) {
+            throw new Error("Expected NUMBER_TILE Room join to succeed.");
+          }
+          const joined = requirePlatformSnapshotV2(guestJoin.data.snapshot);
+          assert.equal(joined.room.gameType, "NUMBER_TILE");
+          assert.equal(joined.room.players.length, 2);
+
+          const start = await emitWithAck<GameStartWireAck>(
+            "Number game:start",
+            (acknowledge) =>
+              host.emit(
+                "game:start",
+                {
+                  kind: "game:start",
+                  protocolVersion: PROTOCOL_VERSION,
+                  requestId: requestId("number-game-start"),
+                  expectedRoomRevision: joined.versions.roomRevision,
+                  payload: {},
+                },
+                acknowledge,
+              ),
+          );
+          assert.equal(start.ok, true);
+          if (!start.ok) {
+            throw new Error("Expected NUMBER_TILE Game start to succeed.");
+          }
+          const started = requireNumberTilePlayingSnapshotV2(
+            start.data.snapshot,
+          );
+          assert.equal(started.snapshotVersion, 2);
+          assert.equal(started.game.gameRevision, 0);
+          assert.equal(started.game.remainingPoolCount, 78);
+          assert.equal(started.game.privateState.rack.length, 14);
+          assert.equal(
+            started.game.turn.deadlineAt - started.game.turn.startedAt,
+            90_000,
+          );
+
+          const actorIsHost =
+            started.game.turn.activePlayerId === created.self.playerId;
+          const actor = actorIsHost ? host : guest;
+          const actorSnapshots = actorIsHost ? hostSnapshots : guestSnapshots;
+          const opponentSnapshots = actorIsHost
+            ? guestSnapshots
+            : hostSnapshots;
+          const actorPlayerId = started.game.turn.activePlayerId;
+          const opponentPlayerId = actorIsHost
+            ? joined.self.playerId
+            : created.self.playerId;
+          const actorBefore = requireNumberTilePlayingSnapshotV2(
+            (
+              await waitForValue("Number actor start snapshot", () =>
+                takeMatching(
+                  actorSnapshots,
+                  (event) =>
+                    event.versions.gameRevision === 0 &&
+                    event.payload.snapshot.room.phase === "PLAYING",
+                ),
+              )
+            ).payload.snapshot,
+          );
+          const drawCommand: NumberDrawCommand = {
+            kind: "number:draw",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: requestId("number-draw"),
+            expectedGameRevision: started.game.gameRevision,
+            turnId: started.game.turn.turnId,
+            payload: {},
+          };
+          const draw = await emitWithAck<NumberDrawWireAck>(
+            "number:draw",
+            (acknowledge) =>
+              actor.emit("number:draw", drawCommand, acknowledge),
+          );
+          assert.equal(draw.ok, true);
+          if (!draw.ok) {
+            throw new Error("Expected NUMBER_TILE Draw to succeed.");
+          }
+          const actorAfter = requireNumberTilePlayingSnapshotV2(
+            draw.data.snapshot,
+          );
+          assert.equal(actorAfter.game.gameRevision, 1);
+          assert.equal(actorAfter.game.remainingPoolCount, 77);
+          assert.equal(actorAfter.game.privateState.rack.length, 15);
+          const drawnTile = actorAfter.game.privateState.rack.find(
+            (tile) =>
+              !actorBefore.game.privateState.rack.some(
+                (beforeTile) => beforeTile.tileId === tile.tileId,
+              ),
+          );
+          assert.ok(drawnTile);
+
+          const actorEvent = await waitForValue(
+            "Number actor draw snapshot",
+            () =>
+              takeMatching(
+                actorSnapshots,
+                (event) => event.versions.gameRevision === 1,
+              ),
+          );
+          const opponentEvent = await waitForValue(
+            "Number opponent draw snapshot",
+            () =>
+              takeMatching(
+                opponentSnapshots,
+                (event) => event.versions.gameRevision === 1,
+              ),
+          );
+          const actorProjection = requireNumberTilePlayingSnapshotV2(
+            actorEvent.payload.snapshot,
+          );
+          const opponentProjection = requireNumberTilePlayingSnapshotV2(
+            opponentEvent.payload.snapshot,
+          );
+          assert.equal(actorProjection.self.playerId, actorPlayerId);
+          assert.equal(opponentProjection.self.playerId, opponentPlayerId);
+          assert.equal(
+            actorProjection.game.playerStates.find(
+              (player) => player.playerId === actorPlayerId,
+            )?.rackCount,
+            15,
+          );
+          assert.equal(
+            opponentProjection.game.playerStates.find(
+              (player) => player.playerId === actorPlayerId,
+            )?.rackCount,
+            15,
+          );
+          assert.equal(opponentProjection.game.privateState.rack.length, 14);
+          assert.equal(
+            opponentProjection.game.privateState.rack.some(
+              (tile) => tile.tileId === drawnTile?.tileId,
+            ),
+            false,
+          );
+          assert.equal(
+            JSON.stringify(opponentProjection).includes(
+              drawnTile?.tileId ?? "",
+            ),
+            false,
+          );
+          assert.equal(hostTurnAdvisories, 0);
+          assert.equal(guestTurnAdvisories, 0);
+          assert.equal(hostFinishAdvisories, 0);
+          assert.equal(guestFinishAdvisories, 0);
+
+          guest.disconnect();
+          await waitForValue("Number guest offline snapshot", () =>
+            takeMatching(hostSnapshots, (event) => {
+              const snapshot = requirePlatformSnapshotV2(
+                event.payload.snapshot,
+              );
+              return (
+                snapshot.room.gameType === "NUMBER_TILE" &&
+                snapshot.room.players.some(
+                  (player) =>
+                    player.playerId === joined.self.playerId &&
+                    player.connectionStatus === "OFFLINE",
+                )
+              );
+            }),
+          );
+
+          const resumedGuest = await connectWireClient(harness, capabilities);
+          const resumed = await emitWithAck<SessionResumeWireAck>(
+            "Number session:resume",
+            (acknowledge) =>
+              resumedGuest.emit(
+                "session:resume",
+                {
+                  kind: "session:resume",
+                  protocolVersion: PROTOCOL_VERSION,
+                  requestId: requestId("number-guest-resume"),
+                  payload: {
+                    credential: {
+                      roomCode: created.room.roomCode,
+                      sessionToken: guestToken,
+                    },
+                    lastSeenVersions: {
+                      roomRevision:
+                        opponentProjection.versions.roomRevision,
+                      gameRevision:
+                        opponentProjection.game.gameRevision,
+                      presenceVersion:
+                        opponentProjection.versions.presenceVersion,
+                    },
+                  },
+                },
+                acknowledge,
+              ),
+          );
+          assert.equal(resumed.ok, true);
+          if (!resumed.ok) {
+            throw new Error("Expected NUMBER_TILE session resume to succeed.");
+          }
+          const resumedSnapshot = requireNumberTilePlayingSnapshotV2(
+            resumed.data.snapshot,
+          );
+          assert.equal(resumedSnapshot.self.playerId, joined.self.playerId);
+          assert.equal(resumedSnapshot.room.players.length, 2);
+          assert.equal(
+            resumedSnapshot.game.privateState.rack.length,
+            actorIsHost ? 14 : 15,
           );
         } finally {
           await stopServer(harness);

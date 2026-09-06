@@ -42,6 +42,7 @@ import {
 import {
   createLegacyHangulCompatibilityRegistration,
 } from "../games/hangul-tile/compatibility/legacy-hangul-compatibility-registration.js";
+import { createNumberTileRegistration } from "../games/number-tile/number-tile-registration.js";
 import {
   type IdempotencyRecord,
   type RoomRecord,
@@ -181,9 +182,10 @@ const DEFAULT_ROOM_CODES = [
   "FGHJKM",
 ] as const;
 
-function createLegacyHangulRegistry(): GameRegistry {
+function createSupportedGameRegistry(): GameRegistry {
   return new GameRegistry([
     createLegacyHangulCompatibilityRegistration(),
+    createNumberTileRegistration(),
   ]);
 }
 
@@ -215,7 +217,7 @@ function createHarness(options: HarnessOptions = {}): Harness {
     sessionTokenIssuer: issuer,
     roomMutationExecutor: new KeyedSerialExecutor<RoomId>(),
     gameRegistrationReader:
-      options.gameRegistrationReader ?? createLegacyHangulRegistry(),
+      options.gameRegistrationReader ?? createSupportedGameRegistry(),
   });
 
   return {
@@ -322,6 +324,45 @@ async function seedRoom(
   assert.equal(created.status, "CREATED");
   if (created.status !== "CREATED") {
     throw new Error("Room fixture could not be created.");
+  }
+  return created.room;
+}
+
+async function seedNumberTileLobby(
+  persistence: InMemoryPersistence,
+  options: Pick<SeedRoomOptions, "roomId" | "roomCode" | "players"> = {},
+): Promise<RoomRecord> {
+  const seedRoomId = options.roomId ?? "number-seed-room";
+  const players = (options.players ?? [{ nickname: "Host" }]).map(
+    (player, index) => ({
+      playerId: playerId(
+        player.playerId ?? `${seedRoomId}-player-${index}`,
+      ),
+      nickname: parse(NicknameSchema, player.nickname),
+      joinOrder: index,
+    }),
+  );
+  const host = players[0];
+  if (host === undefined) {
+    throw new Error("A Number Tile Room fixture requires a Host Player.");
+  }
+
+  const candidate: RoomWriteCandidate = {
+    roomId: roomId(seedRoomId),
+    roomCode: roomCode(options.roomCode ?? "ABCDEF"),
+    gameType: "NUMBER_TILE",
+    phase: "LOBBY",
+    hostPlayerId: host.playerId,
+    players,
+    game: null,
+    roomRevision: roomRevision(0),
+    createdAt: serverTime(500),
+    updatedAt: serverTime(500),
+  };
+  const created = await persistence.createIfAbsent(candidate);
+  assert.equal(created.status, "CREATED");
+  if (created.status !== "CREATED") {
+    throw new Error("Number Tile Room fixture could not be created.");
   }
   return created.room;
 }
@@ -486,7 +527,7 @@ test("createRoom은 normalized Host와 초기 revision을 원자적으로 생성
 });
 
 test("createRoom은 explicit HANGUL_TILE을 Registry에서 확인해 canonical Room과 fingerprint에 저장한다", async () => {
-  const registry = createLegacyHangulRegistry();
+  const registry = createSupportedGameRegistry();
   const requestedGameTypes: unknown[] = [];
   const recordingRegistry: GameRegistrationReader = {
     find: (gameTypeInput) => registry.find(gameTypeInput),
@@ -522,6 +563,136 @@ test("createRoom은 explicit HANGUL_TILE을 Registry에서 확인해 canonical R
   );
 });
 
+test("createRoom은 NUMBER_TILE을 V2와 명시적 Game capability가 모두 있을 때만 생성한다", async (context) => {
+  await context.test("V2 + NUMBER_TILE capability", async () => {
+    const harness = createHarness();
+    const credential = await bootstrap(harness);
+    const created = requireSuccess(
+      await harness.service.createRoom({
+        sessionToken: credential.sessionToken,
+        requestId: requestId("create-number-capable"),
+        nickname: "NumberHost",
+        gameType: "NUMBER_TILE",
+        admissionCapabilities: {
+          selectedSnapshotVersion: 2,
+          supportedGameTypes: ["NUMBER_TILE"],
+        },
+      }),
+    );
+
+    assert.deepEqual(Object.keys(created).sort(), [
+      "playerId",
+      "roomCode",
+      "roomId",
+      "roomRevision",
+    ]);
+    const room = await harness.persistence.findById(created.roomId);
+    assert.equal(room?.gameType, "NUMBER_TILE");
+    assert.equal(room?.phase, "LOBBY");
+    assert.equal(room?.game, null);
+    assert.equal(harness.unitOfWork.changeSets.length, 1);
+  });
+
+  const incompatibleAttempts = [
+    { label: "omitted capability", admissionCapabilities: null },
+    {
+      label: "snapshot V1",
+      admissionCapabilities: {
+        selectedSnapshotVersion: 1 as const,
+        supportedGameTypes: ["HANGUL_TILE", "NUMBER_TILE"] as const,
+      },
+    },
+    {
+      label: "NUMBER_TILE not advertised",
+      admissionCapabilities: {
+        selectedSnapshotVersion: 2 as const,
+        supportedGameTypes: ["HANGUL_TILE"] as const,
+      },
+    },
+  ] as const;
+
+  for (const [index, attempt] of incompatibleAttempts.entries()) {
+    await context.test(attempt.label, async () => {
+      const harness = createHarness();
+      const credential = await bootstrap(harness);
+      const verificationData = harness.issuer.deriveVerificationData(
+        credential.sessionToken,
+      );
+      const id = requestId(`create-number-incompatible-${index}`);
+      const input = {
+        sessionToken: credential.sessionToken,
+        requestId: id,
+        nickname: "NumberHost",
+        gameType: "NUMBER_TILE",
+        ...(attempt.admissionCapabilities === null
+          ? {}
+          : { admissionCapabilities: attempt.admissionCapabilities }),
+      };
+
+      requireError(
+        await harness.service.createRoom(input),
+        "INCOMPATIBLE_GAME_CAPABILITY",
+      );
+
+      assert.equal(harness.unitOfWork.changeSets.length, 0);
+      assert.equal(harness.codeGenerator.callCount, 0);
+      assert.equal(
+        await harness.persistence.findById(roomId("test-room-1")),
+        null,
+      );
+      assert.equal(
+        (await harness.persistence.findByVerificationData(verificationData))
+          ?.state,
+        "UNBOUND",
+      );
+      assert.deepEqual(
+        await harness.persistence.classify(
+          `bootstrap:${verificationData.algorithm}:${verificationData.digestHex}`,
+          id,
+          JSON.stringify(["room:create", "NumberHost", "NUMBER_TILE"]),
+        ),
+        { status: "MISS" },
+      );
+    });
+  }
+});
+
+test("createRoom은 accepted NUMBER_TILE replay도 현재 admission capability보다 먼저 우회하지 않는다", async () => {
+  const harness = createHarness();
+  const credential = await bootstrap(harness);
+  const id = requestId("number-create-replay-capability");
+  const created = requireSuccess(
+    await harness.service.createRoom({
+      sessionToken: credential.sessionToken,
+      requestId: id,
+      nickname: "NumberHost",
+      gameType: "NUMBER_TILE",
+      admissionCapabilities: {
+        selectedSnapshotVersion: 2,
+        supportedGameTypes: ["NUMBER_TILE"],
+      },
+    }),
+  );
+  const canonicalBefore = await harness.persistence.findById(created.roomId);
+
+  requireError(
+    await harness.service.createRoom({
+      sessionToken: credential.sessionToken,
+      requestId: id,
+      nickname: "NumberHost",
+      gameType: "NUMBER_TILE",
+    }),
+    "INCOMPATIBLE_GAME_CAPABILITY",
+  );
+
+  assert.equal(harness.unitOfWork.changeSets.length, 1);
+  assert.equal(harness.codeGenerator.callCount, 1);
+  assert.deepEqual(
+    await harness.persistence.findById(created.roomId),
+    canonicalBefore,
+  );
+});
+
 test("createRoom은 invalid nickname을 shared validator의 NICKNAME_INVALID로 거절한다", async () => {
   const harness = createHarness();
   const credential = await bootstrap(harness);
@@ -543,7 +714,6 @@ test("createRoom은 invalid nickname을 shared validator의 NICKNAME_INVALID로 
 
 test("createRoom은 invalid requested gameType을 default하지 않고 모든 create mutation 전에 거절한다", async () => {
   const invalidGameTypes: readonly unknown[] = [
-    "NUMBER_TILE",
     "GEM_CARD",
     "UNKNOWN",
     "",
@@ -782,7 +952,7 @@ test("동시 동일 accepted request는 BOUND 관찰 race에서도 둘 다 같�
     roomCodeGenerator: codes,
     sessionTokenIssuer: issuer,
     roomMutationExecutor: new KeyedSerialExecutor<RoomId>(),
-    gameRegistrationReader: createLegacyHangulRegistry(),
+    gameRegistrationReader: createSupportedGameRegistry(),
   });
   const credential = requireSuccess(await service.bootstrapSession());
   const input = {
@@ -826,7 +996,7 @@ test("late idempotency lookup failure는 안전한 INTERNAL_ERROR로 변환된�
     roomCodeGenerator: new SequenceRoomCodeGenerator([roomCode("ABCDEF")]),
     sessionTokenIssuer: issuer,
     roomMutationExecutor: new KeyedSerialExecutor<RoomId>(),
-    gameRegistrationReader: createLegacyHangulRegistry(),
+    gameRegistrationReader: createSupportedGameRegistry(),
   });
   const credential = requireSuccess(await service.bootstrapSession());
   clock.set(credential.expiresAt);
@@ -890,6 +1060,134 @@ test("joinRoom은 canonical roomCode, ordered Player, revision을 원자적으�
     lastChangeSet(harness.unitOfWork).idempotency,
   );
   assertTerminalResultIsNonSecret(idempotency, joinCredential.sessionToken);
+});
+
+test("joinRoom은 canonical NUMBER_TILE Room에 V2와 명시적 Game capability를 요구한다", async (context) => {
+  await context.test("compatible client joins", async () => {
+    const harness = createHarness();
+    const original = await seedNumberTileLobby(harness.persistence);
+    const credential = await bootstrap(harness);
+
+    const joined = requireSuccess(
+      await harness.service.joinRoom({
+        sessionToken: credential.sessionToken,
+        requestId: requestId("join-number-capable"),
+        roomCode: original.roomCode,
+        nickname: "Guest",
+        admissionCapabilities: {
+          selectedSnapshotVersion: 2,
+          supportedGameTypes: ["NUMBER_TILE"],
+        },
+      }),
+    );
+
+    assert.equal(joined.roomRevision, original.roomRevision + 1);
+    const room = await harness.persistence.findById(original.roomId);
+    assert.equal(room?.gameType, "NUMBER_TILE");
+    assert.deepEqual(room?.players.map((player) => player.nickname), [
+      "Host",
+      "Guest",
+    ]);
+  });
+
+  const incompatibleAttempts = [
+    { label: "omitted capability", admissionCapabilities: null },
+    {
+      label: "snapshot V1",
+      admissionCapabilities: {
+        selectedSnapshotVersion: 1 as const,
+        supportedGameTypes: ["HANGUL_TILE", "NUMBER_TILE"] as const,
+      },
+    },
+    {
+      label: "NUMBER_TILE not advertised",
+      admissionCapabilities: {
+        selectedSnapshotVersion: 2 as const,
+        supportedGameTypes: ["HANGUL_TILE"] as const,
+      },
+    },
+  ] as const;
+
+  for (const [index, attempt] of incompatibleAttempts.entries()) {
+    await context.test(attempt.label, async () => {
+      const harness = createHarness();
+      const original = await seedNumberTileLobby(harness.persistence);
+      const credential = await bootstrap(harness);
+      const verificationData = harness.issuer.deriveVerificationData(
+        credential.sessionToken,
+      );
+      const id = requestId(`join-number-incompatible-${index}`);
+      const input = {
+        sessionToken: credential.sessionToken,
+        requestId: id,
+        roomCode: original.roomCode,
+        nickname: "Guest",
+        ...(attempt.admissionCapabilities === null
+          ? {}
+          : { admissionCapabilities: attempt.admissionCapabilities }),
+      };
+
+      requireError(
+        await harness.service.joinRoom(input),
+        "INCOMPATIBLE_GAME_CAPABILITY",
+      );
+
+      assert.equal(harness.unitOfWork.changeSets.length, 0);
+      assert.deepEqual(
+        await harness.persistence.findById(original.roomId),
+        original,
+      );
+      assert.equal(
+        (await harness.persistence.findByVerificationData(verificationData))
+          ?.state,
+        "UNBOUND",
+      );
+      assert.deepEqual(
+        await harness.persistence.classify(
+          `bootstrap:${verificationData.algorithm}:${verificationData.digestHex}`,
+          id,
+          JSON.stringify(["room:join", original.roomCode, "Guest"]),
+        ),
+        { status: "MISS" },
+      );
+    });
+  }
+});
+
+test("joinRoom은 accepted NUMBER_TILE replay도 현재 admission capability보다 먼저 우회하지 않는다", async () => {
+  const harness = createHarness();
+  const original = await seedNumberTileLobby(harness.persistence);
+  const credential = await bootstrap(harness);
+  const id = requestId("number-join-replay-capability");
+  requireSuccess(
+    await harness.service.joinRoom({
+      sessionToken: credential.sessionToken,
+      requestId: id,
+      roomCode: original.roomCode,
+      nickname: "Guest",
+      admissionCapabilities: {
+        selectedSnapshotVersion: 2,
+        supportedGameTypes: ["NUMBER_TILE"],
+      },
+    }),
+  );
+  const canonicalBefore = await harness.persistence.findById(original.roomId);
+
+  requireError(
+    await harness.service.joinRoom({
+      sessionToken: credential.sessionToken,
+      requestId: id,
+      roomCode: original.roomCode,
+      nickname: "Guest",
+    }),
+    "INCOMPATIBLE_GAME_CAPABILITY",
+  );
+
+  assert.equal(harness.unitOfWork.changeSets.length, 1);
+  assert.deepEqual(
+    await harness.persistence.findById(original.roomId),
+    canonicalBefore,
+  );
 });
 
 test("joinRoom accepted retry는 replay되고 payload 충돌은 거절되며 다음 joinOrder는 증가한다", async () => {

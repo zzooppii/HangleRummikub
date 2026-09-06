@@ -136,9 +136,18 @@ test("Number Tile domain은 runtime time/random/timer와 stable meld identity를
   assert.deepEqual(violations, []);
 });
 
-test("P7A production runtime은 Number Tile domain을 아직 import하지 않는다", () => {
+test("P7B runtime은 검증된 Number owner/seam에서만 Number Tile domain을 직접 import한다", () => {
   const numberDomainPrefix = portablePath(numberDomainRoot);
-  const importers = collectTypeScriptFiles(sourceRoot)
+  const allowedOwnerPrefixes = [
+    "games/number-tile/application/",
+    "games/number-tile/compatibility/",
+  ] as const;
+  const allowedExactSeams = new Set([
+    "application/player-lifecycle-router.ts",
+    "application/turn-transition.ts",
+    "model/persistence.ts",
+  ]);
+  const directImports = collectTypeScriptFiles(sourceRoot)
     .filter((path) => !path.endsWith(".test.ts"))
     .filter((path) => !portablePath(path).startsWith(numberDomainPrefix))
     .flatMap((path) =>
@@ -152,10 +161,30 @@ test("P7A production runtime은 Number Tile domain을 아직 import하지 않는
             target !== null &&
             portablePath(target).startsWith(numberDomainPrefix),
         )
-        .map(
-          ({ specifier }) => `${sourceRelative(path)} -> ${specifier}`,
-        ),
+        .map(({ specifier }) => ({
+          importer: sourceRelative(path),
+          edge: `${sourceRelative(path)} -> ${specifier}`,
+        })),
     );
 
-  assert.deepEqual(importers, []);
+  const violations = directImports
+    .filter(
+      ({ importer }) =>
+        !allowedExactSeams.has(importer) &&
+        !allowedOwnerPrefixes.some((prefix) => importer.startsWith(prefix)),
+    )
+    .map(({ edge }) => edge);
+  assert.deepEqual(violations, []);
+
+  // These are the only verified cross-module owners. In particular,
+  // transport, infrastructure, and Hangul code must go through their narrow
+  // routing/storage seams instead of learning the Number domain shape.
+  assert.deepEqual(
+    [...new Set(
+      directImports
+        .map(({ importer }) => importer)
+        .filter((importer) => allowedExactSeams.has(importer)),
+    )].sort(),
+    [...allowedExactSeams].sort(),
+  );
 });

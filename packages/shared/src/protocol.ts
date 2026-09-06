@@ -15,6 +15,7 @@ import {
   ProposedBoardSchema,
   TurnDrawBagKindSchema,
 } from "./games/hangul-tile/turn-command-contracts.js";
+import { NumberTileProposedTableSchema } from "./games/number-tile/turn-command-contracts.js";
 
 export {
   PROPOSED_ASSIGNED_SYMBOL_MAX_LENGTH,
@@ -33,6 +34,32 @@ export {
   type ProposedWordGroup,
   type TurnDrawBagKind,
 } from "./games/hangul-tile/turn-command-contracts.js";
+
+export {
+  NUMBER_PROPOSED_MELD_MAX_TILE_REFERENCES,
+  NUMBER_PROPOSED_TABLE_MAX_MELDS,
+  NUMBER_PROPOSED_TABLE_MAX_TILE_REFERENCES,
+  NUMBER_TILE_COLORS,
+  NUMBER_TILE_NUMBERS,
+  NumberTileColorSchema,
+  NumberTileJokerProposedPlacementSchema,
+  NumberTileNumberSchema,
+  NumberTileOrdinaryProposedPlacementSchema,
+  NumberTileProposedGroupSchema,
+  NumberTileProposedMeldSchema,
+  NumberTileProposedPlacementSchema,
+  NumberTileProposedRunSchema,
+  NumberTileProposedTableSchema,
+  type NumberTileColor,
+  type NumberTileJokerProposedPlacement,
+  type NumberTileNumber,
+  type NumberTileOrdinaryProposedPlacement,
+  type NumberTileProposedGroup,
+  type NumberTileProposedMeld,
+  type NumberTileProposedPlacement,
+  type NumberTileProposedRun,
+  type NumberTileProposedTable,
+} from "./games/number-tile/turn-command-contracts.js";
 
 export const PROTOCOL_VERSION = 1;
 export const ProtocolVersionSchema = v.literal(PROTOCOL_VERSION);
@@ -85,6 +112,7 @@ export type RoomPhase = v.InferOutput<typeof RoomPhaseSchema>;
 export const PROTOCOL_ERROR_CODES = [
   "INVALID_PAYLOAD",
   "INCOMPATIBLE_PROTOCOL",
+  "INCOMPATIBLE_GAME_CAPABILITY",
   "UNAUTHENTICATED",
   "SESSION_NOT_FOUND",
   "ROOM_NOT_FOUND",
@@ -98,6 +126,7 @@ export const PROTOCOL_ERROR_CODES = [
   "TURN_EXPIRED",
   "GAME_EXPIRED",
   "BAG_EMPTY",
+  "POOL_EMPTY",
   "PASS_NOT_ALLOWED",
   "STALE_ROOM_REVISION",
   "STALE_GAME_REVISION",
@@ -108,7 +137,15 @@ export const PROTOCOL_ERROR_CODES = [
   "ROOM_CODE_EXHAUSTED",
   "INVALID_TILE_ACCESS",
   "INVALID_BOARD",
+  "INVALID_TABLE",
+  "INVALID_MELD",
   "INVALID_HANGUL_COMPOSITION",
+  "INITIAL_MELD_REQUIRED",
+  "INITIAL_MELD_TOO_LOW",
+  "TABLE_REARRANGEMENT_NOT_ALLOWED",
+  "NO_NEW_RACK_TILE",
+  "INVALID_JOKER_ASSIGNMENT",
+  "INVALID_JOKER_RECOVERY",
   "WORD_NOT_ALLOWED",
   "RULE_VIOLATION",
   "TEMPORARILY_UNAVAILABLE",
@@ -298,6 +335,40 @@ export const TurnPassCommandSchema = v.strictObject({
 });
 export type TurnPassCommand = v.InferOutput<typeof TurnPassCommandSchema>;
 
+export const NumberSubmitCommandSchema = v.strictObject({
+  kind: v.literal("number:submit"),
+  protocolVersion: ProtocolVersionSchema,
+  requestId: RequestIdSchema,
+  expectedGameRevision: GameRevisionSchema,
+  turnId: TurnIdSchema,
+  payload: v.strictObject({
+    proposedTable: NumberTileProposedTableSchema,
+  }),
+});
+export type NumberSubmitCommand = v.InferOutput<
+  typeof NumberSubmitCommandSchema
+>;
+
+export const NumberDrawCommandSchema = v.strictObject({
+  kind: v.literal("number:draw"),
+  protocolVersion: ProtocolVersionSchema,
+  requestId: RequestIdSchema,
+  expectedGameRevision: GameRevisionSchema,
+  turnId: TurnIdSchema,
+  payload: v.strictObject({}),
+});
+export type NumberDrawCommand = v.InferOutput<typeof NumberDrawCommandSchema>;
+
+export const NumberPassCommandSchema = v.strictObject({
+  kind: v.literal("number:pass"),
+  protocolVersion: ProtocolVersionSchema,
+  requestId: RequestIdSchema,
+  expectedGameRevision: GameRevisionSchema,
+  turnId: TurnIdSchema,
+  payload: v.strictObject({}),
+});
+export type NumberPassCommand = v.InferOutput<typeof NumberPassCommandSchema>;
+
 export const Phase2ClientCommandSchema = v.variant("kind", [
   SessionBootstrapCommandSchema,
   RoomCreateCommandSchema,
@@ -320,6 +391,9 @@ export const ClientCommandSchema = v.variant("kind", [
   TurnSubmitCommandSchema,
   TurnDrawCommandSchema,
   TurnPassCommandSchema,
+  NumberSubmitCommandSchema,
+  NumberDrawCommandSchema,
+  NumberPassCommandSchema,
 ]);
 export type KnownClientCommand = v.InferOutput<typeof ClientCommandSchema>;
 

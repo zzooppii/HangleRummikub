@@ -42,6 +42,11 @@ import type {
   SessionTokenIssuer,
   SessionVerificationData,
 } from "../ports/system.js";
+import {
+  LEGACY_ROOM_ADMISSION_CAPABILITIES,
+  isRoomAdmissionCompatible,
+  type RoomAdmissionCapabilities,
+} from "./room-admission-policy.js";
 
 export const MAX_ROOM_CODE_ATTEMPTS = 10;
 export const MAX_ROOM_PLAYERS = 4;
@@ -75,6 +80,7 @@ export type CreateRoomInput = Readonly<{
   requestId: unknown;
   nickname: unknown;
   gameType?: unknown;
+  admissionCapabilities?: RoomAdmissionCapabilities;
 }>;
 
 export type JoinRoomInput = Readonly<{
@@ -82,6 +88,7 @@ export type JoinRoomInput = Readonly<{
   requestId: unknown;
   roomCode: unknown;
   nickname: unknown;
+  admissionCapabilities?: RoomAdmissionCapabilities;
 }>;
 
 export interface RoomMutationSerialExecutor {
@@ -129,6 +136,12 @@ const REQUEST_ID_REUSED_ERROR: ErrorDto = Object.freeze({
 const INVALID_GAME_TYPE_ERROR: ErrorDto = Object.freeze({
   code: "INVALID_PAYLOAD",
   message: "Game type is invalid.",
+  recoverable: false,
+});
+
+const INCOMPATIBLE_GAME_CAPABILITY_ERROR: ErrorDto = Object.freeze({
+  code: "INCOMPATIBLE_GAME_CAPABILITY",
+  message: "This client cannot enter the selected Game.",
   recoverable: false,
 });
 
@@ -303,6 +316,13 @@ export class RoomSessionApplicationService {
         return failed(INVALID_GAME_TYPE_ERROR);
       }
 
+      const admissionCapabilities =
+        input.admissionCapabilities ?? LEGACY_ROOM_ADMISSION_CAPABILITIES;
+      if (!isRoomAdmissionCompatible(gameType.value, admissionCapabilities)) {
+        return failed(INCOMPATIBLE_GAME_CAPABILITY_ERROR);
+      }
+      this.#gameRegistrationReader.getRequired(gameType.value);
+
       const prepared = this.#prepareMutation(input.sessionToken, input.requestId);
       if (!prepared.ok) {
         return prepared.result;
@@ -327,10 +347,6 @@ export class RoomSessionApplicationService {
           INVALID_BOOTSTRAP_ERROR,
         );
       }
-
-      this.#gameRegistrationReader.getRequired(
-        gameType.value,
-      );
 
       return await this.#createRoom(
         prepared.value,
@@ -360,6 +376,30 @@ export class RoomSessionApplicationService {
         return prepared.result;
       }
 
+      const locatedRoom = await this.#roomRepository.findByCode(roomCode.value);
+      if (locatedRoom === null) {
+        const fingerprint = joinRoomFingerprint(
+          roomCode.value,
+          nickname.value,
+        );
+        return await this.#rejectAfterIdempotencyRecheck(
+          prepared.value,
+          fingerprint,
+          ROOM_NOT_FOUND_ERROR,
+        );
+      }
+
+      const admissionCapabilities =
+        input.admissionCapabilities ?? LEGACY_ROOM_ADMISSION_CAPABILITIES;
+      if (
+        !isRoomAdmissionCompatible(
+          locatedRoom.gameType,
+          admissionCapabilities,
+        )
+      ) {
+        return failed(INCOMPATIBLE_GAME_CAPABILITY_ERROR);
+      }
+
       const fingerprint = joinRoomFingerprint(
         roomCode.value,
         nickname.value,
@@ -380,15 +420,6 @@ export class RoomSessionApplicationService {
         );
       }
 
-      const locatedRoom = await this.#roomRepository.findByCode(roomCode.value);
-      if (locatedRoom === null) {
-        return await this.#rejectAfterIdempotencyRecheck(
-          prepared.value,
-          fingerprint,
-          ROOM_NOT_FOUND_ERROR,
-        );
-      }
-
       return await this.#roomMutationExecutor.run(locatedRoom.roomId, () =>
         this.#joinRoomInSerializationBoundary(
           prepared.value,
@@ -396,6 +427,7 @@ export class RoomSessionApplicationService {
           nickname.value,
           fingerprint,
           locatedRoom.roomId,
+          admissionCapabilities,
         ),
       );
     } catch {
@@ -514,21 +546,36 @@ export class RoomSessionApplicationService {
         roomRevision,
       };
       const now = this.#clock.now();
+      const roomCandidate: RoomWriteCandidate =
+        gameType === "HANGUL_TILE"
+          ? {
+              roomId,
+              roomCode,
+              gameType,
+              phase: "LOBBY",
+              hostPlayerId: playerId,
+              players: [{ playerId, nickname, joinOrder: 0 }],
+              game: null,
+              roomRevision,
+              createdAt,
+              updatedAt: createdAt,
+            }
+          : {
+              roomId,
+              roomCode,
+              gameType,
+              phase: "LOBBY",
+              hostPlayerId: playerId,
+              players: [{ playerId, nickname, joinOrder: 0 }],
+              game: null,
+              roomRevision,
+              createdAt,
+              updatedAt: createdAt,
+            };
       const result = await this.#roomUnitOfWork.commit({
         roomMutation: {
           kind: "CREATE",
-          candidate: {
-            roomId,
-            roomCode,
-            gameType,
-            phase: "LOBBY",
-            hostPlayerId: playerId,
-            players: [{ playerId, nickname, joinOrder: 0 }],
-            game: null,
-            roomRevision,
-            createdAt,
-            updatedAt: createdAt,
-          },
+          candidate: roomCandidate,
         },
         sessionMutation: {
           kind: "PROMOTE_UNBOUND",
@@ -572,6 +619,7 @@ export class RoomSessionApplicationService {
     nickname: Nickname,
     fingerprint: string,
     roomId: RoomId,
+    admissionCapabilities: RoomAdmissionCapabilities,
   ): Promise<RoomMutationResult> {
     const prior = await this.#idempotencyPreflight(prepared, fingerprint);
     if (prior.status === "RESULT") {
@@ -593,6 +641,9 @@ export class RoomSessionApplicationService {
         fingerprint,
         ROOM_NOT_FOUND_ERROR,
       );
+    }
+    if (!isRoomAdmissionCompatible(room.gameType, admissionCapabilities)) {
+      return failed(INCOMPATIBLE_GAME_CAPABILITY_ERROR);
     }
     if (room.phase !== "LOBBY") {
       return await this.#rejectAfterIdempotencyRecheck(
@@ -630,21 +681,24 @@ export class RoomSessionApplicationService {
       playerId,
       roomRevision,
     };
-    const candidate: RoomWriteCandidate = {
-      roomId: room.roomId,
-      roomCode: room.roomCode,
-      gameType: room.gameType,
-      phase: room.phase,
-      hostPlayerId: room.hostPlayerId,
-      players: [
-        ...room.players,
-        { playerId, nickname, joinOrder: nextJoinOrder },
-      ],
-      game: room.game,
-      roomRevision,
-      createdAt: room.createdAt,
-      updatedAt: now,
-    };
+    const nextPlayers = [
+      ...room.players,
+      { playerId, nickname, joinOrder: nextJoinOrder },
+    ];
+    const candidate: RoomWriteCandidate =
+      room.gameType === "HANGUL_TILE"
+        ? {
+            ...room,
+            players: nextPlayers,
+            roomRevision,
+            updatedAt: now,
+          }
+        : {
+            ...room,
+            players: nextPlayers,
+            roomRevision,
+            updatedAt: now,
+          };
 
     const result = await this.#roomUnitOfWork.commit({
       roomMutation: {

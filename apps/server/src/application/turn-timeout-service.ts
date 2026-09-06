@@ -26,7 +26,10 @@ import {
   isStalemateCycleComplete,
 } from "../games/hangul-tile/domain/stalemate.js";
 import type { TileSourceBag } from "../games/hangul-tile/domain/tile-inventory.js";
-import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
+import type {
+  HangulRoomRecord,
+  RoomWriteCandidate,
+} from "../model/persistence.js";
 import type { IdempotencyRepository } from "../ports/idempotency-repository.js";
 import type { PlayerPresenceLeaseReader } from "../ports/player-presence-lease.js";
 import type { RoomRepository } from "../ports/room-repository.js";
@@ -215,7 +218,7 @@ function drawPenaltyTiles(
 }
 
 function createCandidate(
-  room: RoomRecord,
+  room: HangulRoomRecord,
   game: PlayingGameState,
   committedAt: ServerTime,
   idGenerator: IdGenerator,
@@ -476,6 +479,12 @@ export class TurnTimeoutService {
     if (room === null) {
       return {
         result: { status: "NO_OP", reason: "ROOM_NOT_FOUND" },
+        committed: false,
+      };
+    }
+    if (room.gameType !== "HANGUL_TILE") {
+      return {
+        result: { status: "FAILED", reason: "INTERNAL_ERROR" },
         committed: false,
       };
     }

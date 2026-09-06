@@ -29,7 +29,11 @@ import {
 import { InMemoryPersistence } from "../infrastructure/in-memory-persistence.js";
 import { KeyedSerialExecutor } from "../infrastructure/keyed-serial-executor.js";
 import { FakeClock, FakeIdGenerator } from "../infrastructure/system.js";
-import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
+import type {
+  HangulRoomRecord,
+  RoomRecord,
+  RoomWriteCandidate,
+} from "../model/persistence.js";
 import type { PlayerPresenceReader } from "../ports/player-presence-reader.js";
 import type { RoomRepository } from "../ports/room-repository.js";
 import type { RoomUnitOfWork } from "../ports/room-unit-of-work.js";
@@ -142,7 +146,7 @@ type Harness = Readonly<{
   service: GameStartService;
   presence: MutablePresenceReader;
   clock: FakeClock;
-  room: RoomRecord;
+  room: HangulRoomRecord;
 }>;
 
 type HarnessOptions = Readonly<{
@@ -192,6 +196,7 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   if (created.status !== "CREATED") {
     throw new Error("Room fixture creation failed.");
   }
+  assert.equal(created.room.gameType, "HANGUL_TILE");
 
   const presence = new MutablePresenceReader();
   for (const player of players) {
@@ -365,6 +370,7 @@ test("accepted game:start는 first Turn과 고정 Game deadline을 모두 등록
   assert.equal(gameDeadlineScheduler.deadlines.length, 1);
   const scheduled = turnScheduler.deadlines[0];
   const room = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(room?.gameType, "HANGUL_TILE");
   assert.ok(scheduled && room?.game?.turn);
   assert.deepEqual(scheduled, {
     roomId: room.roomId,

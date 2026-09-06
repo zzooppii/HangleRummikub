@@ -41,7 +41,7 @@ function roomCandidate(
   players: readonly Readonly<{ playerId: PlayerId; nickname: string }>[] = [
     { playerId: playerId("player-host"), nickname: "Host" },
   ],
-): RoomWriteCandidate {
+): Extract<RoomWriteCandidate, Readonly<{ gameType: "HANGUL_TILE" }>> {
   const host = players[0];
   if (host === undefined) {
     throw new Error("Room fixture requires a Host.");
@@ -51,6 +51,35 @@ function roomCandidate(
     roomId: roomId("room-resume"),
     roomCode: roomCode(code),
     gameType: "HANGUL_TILE",
+    phase: "LOBBY",
+    hostPlayerId: host.playerId,
+    players: players.map((player, joinOrder) => ({
+      playerId: player.playerId,
+      nickname: parse(NicknameSchema, player.nickname),
+      joinOrder,
+    })),
+    game: null,
+    roomRevision: parse(RoomRevisionSchema, 0),
+    createdAt: parse(ServerTimeSchema, 1_000),
+    updatedAt: parse(ServerTimeSchema, 1_000),
+  };
+}
+
+function numberTileRoomCandidate(
+  code = "ABCDEF",
+  players: readonly Readonly<{ playerId: PlayerId; nickname: string }>[] = [
+    { playerId: playerId("player-host"), nickname: "Host" },
+  ],
+): Extract<RoomWriteCandidate, Readonly<{ gameType: "NUMBER_TILE" }>> {
+  const host = players[0];
+  if (host === undefined) {
+    throw new Error("Room fixture requires a Host.");
+  }
+
+  return {
+    roomId: roomId("room-resume"),
+    roomCode: roomCode(code),
+    gameType: "NUMBER_TILE",
     phase: "LOBBY",
     hostPlayerId: host.playerId,
     players: players.map((player, joinOrder) => ({
@@ -89,12 +118,15 @@ type BoundFixture = Readonly<{
 async function createBoundFixture(
   boundPlayerId = playerId("player-host"),
   players?: readonly Readonly<{ playerId: PlayerId; nickname: string }>[],
+  gameType: "HANGUL_TILE" | "NUMBER_TILE" = "HANGUL_TILE",
 ): Promise<BoundFixture> {
   const persistence = new InMemoryPersistence();
   const issuer = new NodeCryptoSessionTokenIssuer();
   const room = await createRoomFixture(
     persistence,
-    roomCandidate("ABCDEF", players),
+    gameType === "HANGUL_TILE"
+      ? roomCandidate("ABCDEF", players)
+      : numberTileRoomCandidate("ABCDEF", players),
   );
   const issued = issuer.issue();
   const unbound = createUnboundSessionRecord(
@@ -166,6 +198,91 @@ test("resumeSession은 lowercase Room code를 normalize하고 BOUND Player를 �
       ),
       false,
     );
+  }
+});
+
+test("resumeSession은 canonical NUMBER_TILE Room에 V2와 명시적 Game capability를 요구한다", async (context) => {
+  await context.test("compatible client resumes the same Player", async () => {
+    const fixture = await createBoundFixture(
+      playerId("player-host"),
+      undefined,
+      "NUMBER_TILE",
+    );
+    const result = await fixture.service.resumeSession({
+      sessionToken: fixture.sessionToken,
+      roomCode: fixture.room.roomCode,
+      admissionCapabilities: {
+        selectedSnapshotVersion: 2,
+        supportedGameTypes: ["NUMBER_TILE"],
+      },
+    });
+
+    assert.equal(result.ok, true);
+    if (!result.ok) {
+      throw new Error("Expected compatible Number Tile session resume.");
+    }
+    assert.equal(result.data.playerId, fixture.playerId);
+    assert.equal(result.data.room.gameType, "NUMBER_TILE");
+    assert.deepEqual(result.data.room, fixture.room);
+  });
+
+  const incompatibleAttempts = [
+    { label: "omitted capability", admissionCapabilities: null },
+    {
+      label: "snapshot V1",
+      admissionCapabilities: {
+        selectedSnapshotVersion: 1 as const,
+        supportedGameTypes: ["HANGUL_TILE", "NUMBER_TILE"] as const,
+      },
+    },
+    {
+      label: "NUMBER_TILE not advertised",
+      admissionCapabilities: {
+        selectedSnapshotVersion: 2 as const,
+        supportedGameTypes: ["HANGUL_TILE"] as const,
+      },
+    },
+  ] as const;
+
+  for (const attempt of incompatibleAttempts) {
+    await context.test(attempt.label, async () => {
+      const fixture = await createBoundFixture(
+        playerId("player-host"),
+        undefined,
+        "NUMBER_TILE",
+      );
+      const canonicalBefore = await fixture.persistence.findById(
+        fixture.room.roomId,
+      );
+      const input = {
+        sessionToken: fixture.sessionToken,
+        roomCode: fixture.room.roomCode,
+        ...(attempt.admissionCapabilities === null
+          ? {}
+          : { admissionCapabilities: attempt.admissionCapabilities }),
+      };
+      const result = await fixture.service.resumeSession(input);
+
+      assert.equal(result.ok, false);
+      if (!result.ok) {
+        assert.equal(result.error.code, "INCOMPATIBLE_GAME_CAPABILITY");
+      }
+      assert.deepEqual(
+        await fixture.persistence.findById(fixture.room.roomId),
+        canonicalBefore,
+      );
+      const verificationData = fixture.issuer.deriveVerificationData(
+        fixture.sessionToken,
+      );
+      const session = await fixture.persistence.findByVerificationData(
+        verificationData,
+      );
+      assert.equal(session?.state, "BOUND");
+      if (session?.state === "BOUND") {
+        assert.equal(session.roomId, fixture.room.roomId);
+        assert.equal(session.playerId, fixture.playerId);
+      }
+    });
   }
 });
 
@@ -284,11 +401,15 @@ test("resumeSession은 Room에 없는 stale bound Player를 SESSION_NOT_FOUND로
     { playerId: hostId, nickname: "Host" },
     { playerId: staleId, nickname: "Stale" },
   ]);
+  assert.equal(fixture.room.gameType, "HANGUL_TILE");
+  if (fixture.room.gameType !== "HANGUL_TILE") {
+    throw new Error("Expected a Hangul Room fixture.");
+  }
   const replaced = await fixture.persistence.replace({
     candidate: {
       roomId: fixture.room.roomId,
       roomCode: fixture.room.roomCode,
-      gameType: fixture.room.gameType,
+      gameType: "HANGUL_TILE",
       phase: fixture.room.phase,
       hostPlayerId: hostId,
       players: [fixture.room.players[0]].flatMap((player) =>

@@ -186,13 +186,13 @@ function passesPropertyToCall(
   return found;
 }
 
-test("platform Socket.IO event는 기존 service path를, snapshot sync는 canonical Room과 V1 projection을 함께 읽는다", () => {
+test("platform Socket.IO event는 platform service/router를, snapshot sync는 negotiated projector를 사용한다", () => {
   const platformRouting = [
     ["session:bootstrap", "runtime.roomSessionService.bootstrapSession"],
     ["room:create", "runtime.roomSessionService.createRoom"],
     ["room:join", "runtime.roomSessionService.joinRoom"],
     ["session:resume", "runtime.sessionResumeService.resumeSession"],
-    ["state:sync", "loadLegacySnapshot"],
+    ["state:sync", "loadSnapshotForSocket"],
     ["room:leave", "runtime.roomLeaveService.leave"],
   ] as const;
 
@@ -207,7 +207,7 @@ test("platform Socket.IO event는 기존 service path를, snapshot sync는 canon
   const legacyGameRouting = [
     [
       "game:start",
-      "runtime.legacyHangulV1CommandRouter.start",
+      "runtime.gameStartRouter.start",
       "runtime.gameStartService.start",
     ],
     [
@@ -241,6 +241,20 @@ test("platform Socket.IO event는 기존 service path를, snapshot sync는 canon
     );
   }
 
+  const numberGameRouting = [
+    ["number:submit", "runtime.numberTileCommandRouter.submit"],
+    ["number:draw", "runtime.numberTileCommandRouter.draw"],
+    ["number:pass", "runtime.numberTileCommandRouter.pass"],
+  ] as const;
+
+  for (const [eventName, routerCall] of numberGameRouting) {
+    assert.equal(
+      callsInside(eventName).has(routerCall),
+      true,
+      `${eventName} must route through ${routerCall}`,
+    );
+  }
+
   const disconnectCalls = callsInside("disconnect");
   assert.equal(
     disconnectCalls.has("runtime.connectionRegistry.disconnect"),
@@ -259,6 +273,9 @@ test("turn command receivedAt은 transport entry의 runtime clock 값과 동일�
     ["turn:submit", "runtime.legacyHangulV1CommandRouter.submit"],
     ["turn:draw", "runtime.legacyHangulV1CommandRouter.draw"],
     ["turn:pass", "runtime.legacyHangulV1CommandRouter.pass"],
+    ["number:submit", "runtime.numberTileCommandRouter.submit"],
+    ["number:draw", "runtime.numberTileCommandRouter.draw"],
+    ["number:pass", "runtime.numberTileCommandRouter.pass"],
   ] as const;
 
   for (const [eventName, routerCall] of routing) {
@@ -279,14 +296,14 @@ test("P5C room:create transport는 validated optional gameType을 application re
   );
 });
 
-test("P3C server action은 platform callback에서 canonical router로 전달되고 transport는 leave game state를 peek하지 않는다", () => {
+test("scheduled server action은 canonical game router로 전달되고 transport는 leave game state를 peek하지 않는다", () => {
   const timeoutCallback = variableInitializerText(
     "enqueueTimeout",
     compositionRootSourceFile,
   );
   assert.equal(
     timeoutCallback.includes(
-      "legacyHangulServerActionRouter.handleTurnTimeout(deadline)",
+      "scheduledTurnRouter.handleTurnTimeout(deadline)",
     ),
     true,
   );
@@ -321,6 +338,10 @@ test("P3C server action은 platform callback에서 canonical router로 전달되
   );
   assert.equal(
     socketIoSource.includes("runtime.subscribeGameDeadlineApplied"),
+    true,
+  );
+  assert.equal(
+    socketIoSource.includes("runtime.subscribeNumberTileTimeoutApplied"),
     true,
   );
 });

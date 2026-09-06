@@ -1,6 +1,10 @@
 import type { PlayerId, RoomId } from "@hangul-rummikub/shared";
 
 import { GameStartService } from "./application/game-start-service.js";
+import {
+  GameStartRouter,
+  type GameStartRouting,
+} from "./application/game-start-router.js";
 import { GameDeadlineService } from "./application/game-deadline-service.js";
 import {
   scheduleFinishedRetentionBestEffort,
@@ -8,6 +12,8 @@ import {
 } from "./application/game-finish-transition.js";
 import { LobbyDisconnectGraceService } from "./application/lobby-disconnect-grace-service.js";
 import { LobbyStateSnapshotProjector } from "./application/lobby-state-snapshot-projector.js";
+import { PlatformSnapshotV2Projector } from "./application/platform-snapshot-v2-projector.js";
+import { PlayerLifecycleRouter } from "./application/player-lifecycle-router.js";
 import { RoomCleanupService } from "./application/room-cleanup-service.js";
 import { RoomLeaveService } from "./application/room-leave-service.js";
 import {
@@ -17,6 +23,7 @@ import {
 import { RoomRetentionService } from "./application/room-retention-service.js";
 import { RoomSessionApplicationService } from "./application/room-session-service.js";
 import { SessionResumeService } from "./application/session-resume-service.js";
+import { ScheduledTurnRouter } from "./application/scheduled-turn-router.js";
 import { TurnDrawService } from "./application/turn-draw-service.js";
 import { TurnPassService } from "./application/turn-pass-service.js";
 import { TurnSubmitService } from "./application/turn-submit-service.js";
@@ -43,6 +50,19 @@ import {
   type LegacyHangulServerActionCapability,
   type LegacyHangulServerActionRouting,
 } from "./games/hangul-tile/compatibility/legacy-hangul-server-action-router.js";
+import { NumberTileCommandRouter } from "./games/number-tile/application/number-tile-command-router.js";
+import { NumberTileDrawService } from "./games/number-tile/application/number-tile-draw-service.js";
+import { NumberTilePassService } from "./games/number-tile/application/number-tile-pass-service.js";
+import { createNumberTilePlayerLifecycleActions } from "./games/number-tile/application/number-tile-player-lifecycle-actions.js";
+import { NumberTileStartService } from "./games/number-tile/application/number-tile-start-service.js";
+import { NumberTileSubmitService } from "./games/number-tile/application/number-tile-submit-service.js";
+import { NumberTileTimeoutService } from "./games/number-tile/application/number-tile-timeout-service.js";
+import { NumberTileGameStateAdapter } from "./games/number-tile/compatibility/number-tile-game-state-adapter.js";
+import { projectNumberTileV2Game } from "./games/number-tile/compatibility/number-tile-v2-game-projector.js";
+import {
+  NUMBER_TILE_GAME_TYPE,
+  createNumberTileRegistration,
+} from "./games/number-tile/number-tile-registration.js";
 import { ConnectionRegistry } from "./infrastructure/connection-registry.js";
 import { ConnectionRegistryPresenceReader } from "./infrastructure/connection-registry-presence-reader.js";
 import { InMemoryPersistence } from "./infrastructure/in-memory-persistence.js";
@@ -70,9 +90,11 @@ export type ApplicationRuntime = Readonly<{
   clock: SystemClock;
   connectionRegistry: ConnectionRegistry;
   gameRegistry: GameRegistrationReader;
+  gameStartRouter: GameStartRouting;
   gameDeadlineScheduler: InProcessGameDeadlineScheduler;
   legacyHangulServerActionRouter: LegacyHangulServerActionRouting;
   legacyHangulV1CommandRouter: LegacyHangulV1CommandRouting;
+  numberTileCommandRouter: NumberTileCommandRouter;
   overdueGameDeadlineSweeper: OverdueGameDeadlineSweeper;
   persistence: InMemoryPersistence;
   roomLeaveService: RoomLeaveService;
@@ -81,6 +103,7 @@ export type ApplicationRuntime = Readonly<{
   roomSessionService: RoomSessionApplicationService;
   sessionResumeService: SessionResumeService;
   snapshotProjector: LobbyStateSnapshotProjector;
+  platformSnapshotV2Projector: PlatformSnapshotV2Projector;
   turnScheduler: InProcessTurnScheduler;
   overdueTurnSweeper: OverdueTurnSweeper;
   subscribeGameDeadlineApplied(
@@ -88,6 +111,9 @@ export type ApplicationRuntime = Readonly<{
   ): () => void;
   subscribeTurnTimeoutApplied(
     listener: Parameters<TurnTimeoutService["subscribeApplied"]>[0],
+  ): () => void;
+  subscribeNumberTileTimeoutApplied(
+    listener: Parameters<NumberTileTimeoutService["subscribeApplied"]>[0],
   ): () => void;
   subscribeRoomClosed(listener: RoomClosedAdvisoryListener): () => void;
   subscribeRoomPlayerRemoved(
@@ -148,19 +174,29 @@ export function createApplicationRuntime(
   const gameRegistry = new GameRegistry(
     options.gameRegistrations ?? [
       createLegacyHangulCompatibilityRegistration(),
+      createNumberTileRegistration(),
     ],
   );
   gameRegistry.getRequired(LEGACY_V1_DEFAULT_GAME_TYPE);
+  gameRegistry.getRequired(NUMBER_TILE_GAME_TYPE);
 
   const legacyHangulGameStateAdapter = new LegacyHangulGameStateAdapter();
+  const numberTileGameStateAdapter = new NumberTileGameStateAdapter();
   const persistence = new InMemoryPersistence({
     legacyHangulGameStateAdapter,
+    numberTileGameStateAdapter,
   });
   const clock = new SystemClock();
   const randomSource = new CryptoRandomSource();
   const idGenerator = new NodeCryptoIdGenerator();
-  const playerLifecycleActions =
+  const legacyHangulPlayerLifecycleActions =
     createLegacyHangulPlayerLifecycleActions(idGenerator);
+  const numberTilePlayerLifecycleActions =
+    createNumberTilePlayerLifecycleActions(idGenerator);
+  const playerLifecycleActions = new PlayerLifecycleRouter({
+    hangul: legacyHangulPlayerLifecycleActions,
+    numberTile: numberTilePlayerLifecycleActions,
+  });
   const roomCodeGenerator = new RandomRoomCodeGenerator(randomSource);
   const sessionTokenIssuer = new NodeCryptoSessionTokenIssuer();
   const roomMutationExecutor = new KeyedSerialExecutor<RoomId>();
@@ -178,18 +214,18 @@ export function createApplicationRuntime(
   let legacyHangulServerActionRouter:
     | LegacyHangulServerActionRouting
     | undefined;
+  let scheduledTurnRouter: ScheduledTurnRouter | undefined;
   let roomPresencePolicyService: RoomPresencePolicyService | undefined;
   const enqueueTimeout = async (
     deadline: Parameters<TurnTimeoutService["timeout"]>[0],
   ): Promise<void> => {
     if (
       !acceptsTimeoutWork ||
-      legacyHangulServerActionRouter === undefined
+      scheduledTurnRouter === undefined
     ) {
       return;
     }
-    const result =
-      await legacyHangulServerActionRouter.handleTurnTimeout(deadline);
+    const result = await scheduledTurnRouter.handleTurnTimeout(deadline);
     if (result.status === "FAILED") {
       reportTurnTimeoutFailure();
     }
@@ -394,6 +430,19 @@ export function createApplicationRuntime(
     onGameDeadlineSchedulingFailure: reportGameDeadlineSchedulingFailure,
     gameRegistrationReader: gameRegistry,
   });
+  const numberTileStartService = new NumberTileStartService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    presenceLeaseReader: presenceReader,
+    clock,
+    idGenerator,
+    randomSource,
+    gameRegistrationReader: gameRegistry,
+    turnScheduler,
+    onTurnSchedulingFailure: reportTurnSchedulingFailure,
+  });
   const turnSubmitService = new TurnSubmitService({
     roomRepository: persistence,
     idempotencyRepository: persistence,
@@ -439,6 +488,59 @@ export function createApplicationRuntime(
     roomRepository: persistence,
     capability: legacyHangulV1CommandCapability,
   });
+  const gameStartRouter = new GameStartRouter({
+    roomRepository: persistence,
+    hangul: {
+      gameType: LEGACY_V1_DEFAULT_GAME_TYPE,
+      start: (input) => gameStartService.start(input),
+    },
+    numberTile: {
+      gameType: NUMBER_TILE_GAME_TYPE,
+      start: (input) => numberTileStartService.start(input),
+    },
+  });
+  const numberTileSubmitService = new NumberTileSubmitService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    clock,
+    idGenerator,
+    turnScheduler,
+    onTurnSchedulingFailure: reportTurnSchedulingFailure,
+    onGameFinished,
+  });
+  const numberTileDrawService = new NumberTileDrawService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    clock,
+    idGenerator,
+    randomSource,
+    turnScheduler,
+    onTurnSchedulingFailure: reportTurnSchedulingFailure,
+  });
+  const numberTilePassService = new NumberTilePassService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    clock,
+    idGenerator,
+    turnScheduler,
+    onTurnSchedulingFailure: reportTurnSchedulingFailure,
+    onGameFinished,
+  });
+  const numberTileCommandRouter = new NumberTileCommandRouter({
+    roomRepository: persistence,
+    capability: {
+      gameType: NUMBER_TILE_GAME_TYPE,
+      submit: (input) => numberTileSubmitService.submit(input),
+      draw: (input) => numberTileDrawService.draw(input),
+      pass: (input) => numberTilePassService.pass(input),
+    },
+  });
   const turnTimeoutService = new TurnTimeoutService({
     roomRepository: persistence,
     idempotencyRepository: persistence,
@@ -451,6 +553,30 @@ export function createApplicationRuntime(
     turnScheduler,
     onTurnSchedulingFailure: reportTurnSchedulingFailure,
     onGameFinished,
+  });
+  const numberTileTimeoutService = new NumberTileTimeoutService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    clock,
+    idGenerator,
+    randomSource,
+    presenceLeaseReader: presenceReader,
+    turnScheduler,
+    onTurnSchedulingFailure: reportTurnSchedulingFailure,
+    onGameFinished,
+  });
+  scheduledTurnRouter = new ScheduledTurnRouter({
+    roomRepository: persistence,
+    hangul: {
+      gameType: LEGACY_V1_DEFAULT_GAME_TYPE,
+      handleTurnTimeout: (input) => turnTimeoutService.timeout(input),
+    },
+    numberTile: {
+      gameType: NUMBER_TILE_GAME_TYPE,
+      handleTurnTimeout: (input) => numberTileTimeoutService.timeout(input),
+    },
   });
   const legacyHangulServerActionCapability: LegacyHangulServerActionCapability =
     Object.freeze({
@@ -466,6 +592,12 @@ export function createApplicationRuntime(
     clock,
     presenceReader,
     legacyHangulV1GameProjector: projectLegacyHangulV1Game,
+  });
+  const platformSnapshotV2Projector = new PlatformSnapshotV2Projector({
+    clock,
+    presenceReader,
+    legacyHangulSnapshotProjector: snapshotProjector,
+    numberTileGameProjector: projectNumberTileV2Game,
   });
   const roomLeaveService = new RoomLeaveService({
     roomRepository: persistence,
@@ -487,9 +619,11 @@ export function createApplicationRuntime(
     clock,
     connectionRegistry,
     gameRegistry,
+    gameStartRouter,
     gameDeadlineScheduler,
     legacyHangulServerActionRouter,
     legacyHangulV1CommandRouter,
+    numberTileCommandRouter,
     overdueGameDeadlineSweeper,
     persistence,
     roomLeaveService,
@@ -498,6 +632,7 @@ export function createApplicationRuntime(
     roomSessionService,
     sessionResumeService,
     snapshotProjector,
+    platformSnapshotV2Projector,
     turnScheduler,
     overdueTurnSweeper,
     subscribeGameDeadlineApplied(listener) {
@@ -505,6 +640,9 @@ export function createApplicationRuntime(
     },
     subscribeTurnTimeoutApplied(listener) {
       return turnTimeoutService.subscribeApplied(listener);
+    },
+    subscribeNumberTileTimeoutApplied(listener) {
+      return numberTileTimeoutService.subscribeApplied(listener);
     },
     subscribeRoomClosed(listener) {
       roomClosedListeners.add(listener);

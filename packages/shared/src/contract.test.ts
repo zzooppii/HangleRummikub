@@ -6,6 +6,9 @@ import {
   BOOTSTRAP_SESSION_TTL_MS,
   BROWSER_CREDENTIAL_STORAGE,
   DUPLICATE_CONNECTION_POLICY,
+  GameCapabilityMetadataSchema,
+  LEGACY_DEFAULT_SUPPORTED_GAME_TYPES,
+  NUMBER_PROPOSED_TABLE_MAX_TILE_REFERENCES,
   OPAQUE_IDENTIFIER_MAX_LENGTH,
   PLATFORM_SNAPSHOT_VERSION,
   PROPOSED_ASSIGNED_SYMBOL_MAX_LENGTH,
@@ -19,6 +22,12 @@ import {
   GameStartWireAckSchema,
   GameTypeSchema,
   GameResultSchema,
+  NumberDrawWireAckSchema,
+  NumberPassWireAckSchema,
+  NumberSubmitWireAckSchema,
+  NumberTileFinishedPlatformSnapshotV2Schema,
+  NumberTilePlayingPlatformSnapshotV2Schema,
+  NumberTileProposedTableSchema,
   PlatformSnapshotV2Schema,
   ProposedWordGroupSchema,
   ROOM_CODE_ALPHABET,
@@ -28,6 +37,7 @@ import {
   SESSION_TOKEN_MAX_LENGTH,
   SessionResumeWireAckSchema,
   SnapshotCapabilityMetadataSchema,
+  SupportedGameTypesSchema,
   StateSnapshotWireEventSchema,
   StateSnapshotWirePayloadSchema,
   StateSyncWireAckSchema,
@@ -46,6 +56,7 @@ import {
   RoomPhaseSchema,
   SessionReplacedNotificationSchema,
   type ServerToClientEvents,
+  type SnapshotWireClientToServerEvents,
   validateBootstrapCredential,
   validateBootstrapSessionAck,
   validateBoundPlayerCredential,
@@ -58,6 +69,9 @@ import {
   validateGameStartCommand,
   validateLobbyStateSnapshot,
   validateNickname,
+  validateNumberDrawCommand,
+  validateNumberPassCommand,
+  validateNumberSubmitCommand,
   validateProtocolVersion,
   validatePlayingStateSnapshot,
   validateRevision,
@@ -89,6 +103,7 @@ import {
   validateTurnSubmitAck,
   validateTurnSubmitCommand,
   validateUnscopedAck,
+  resolveSupportedGameTypesCapability,
 } from "./index.js";
 
 const sessionToken = "opaque_session_token_for_contract_tests";
@@ -408,6 +423,160 @@ function createFinishedPlatformSnapshotV2() {
         forfeited: player.forfeited,
       })),
       privateState: { rack: legacy.self.rack },
+    },
+  };
+}
+
+function createNumberPrivateRack(prefix: string, count = 14) {
+  return Array.from({ length: count }, (_, index) => ({
+    tileId: `${prefix}_${index + 1}`,
+    kind: "ORDINARY" as const,
+    number: ((index % 13) + 1) as
+      | 1
+      | 2
+      | 3
+      | 4
+      | 5
+      | 6
+      | 7
+      | 8
+      | 9
+      | 10
+      | 11
+      | 12
+      | 13,
+    color: "RED" as const,
+  }));
+}
+
+function createNumberLobbyPlatformSnapshotV2() {
+  return {
+    snapshotVersion: PLATFORM_SNAPSHOT_VERSION,
+    versions: { roomRevision: 2, presenceVersion: 2 },
+    serverTime: 1_750_000_000_000,
+    room: {
+      roomId: "room_number_123",
+      roomCode: "NUMB23",
+      phase: "LOBBY" as const,
+      gameType: "NUMBER_TILE" as const,
+      players: [
+        {
+          playerId: "player_number_a",
+          nickname: "NumberA",
+          isHost: true,
+          connectionStatus: "CONNECTED" as const,
+        },
+        {
+          playerId: "player_number_b",
+          nickname: "NumberB",
+          isHost: false,
+          connectionStatus: "CONNECTED" as const,
+        },
+      ],
+    },
+    self: { playerId: "player_number_a" },
+    game: null,
+  };
+}
+
+function createNumberPlayingPlatformSnapshotV2() {
+  const lobby = createNumberLobbyPlatformSnapshotV2();
+  return {
+    ...lobby,
+    room: { ...lobby.room, phase: "PLAYING" as const },
+    game: {
+      gameType: "NUMBER_TILE" as const,
+      gameId: "game_number_123",
+      gameRevision: 0,
+      remainingPoolCount: 78,
+      table: { melds: [] },
+      playerStates: [
+        {
+          playerId: "player_number_a",
+          rackCount: 14,
+          initialMeldCompleted: false,
+          forfeited: false,
+        },
+        {
+          playerId: "player_number_b",
+          rackCount: 14,
+          initialMeldCompleted: false,
+          forfeited: false,
+        },
+      ],
+      turn: {
+        turnId: "turn_number_1",
+        turnNumber: 1,
+        activePlayerId: "player_number_a",
+        startedAt: 1_750_000_000_000,
+        deadlineAt: 1_750_000_090_000,
+      },
+      privateState: {
+        rack: createNumberPrivateRack("tile_number_a"),
+      },
+    },
+  };
+}
+
+function createNumberFinishedPlatformSnapshotV2() {
+  const playing = createNumberPlayingPlatformSnapshotV2();
+  const table = {
+    melds: [
+      {
+        kind: "RUN" as const,
+        tiles: Array.from({ length: 7 }, (_, index) => ({
+          tileId: `tile_number_table_red_${index + 1}`,
+          kind: "ORDINARY" as const,
+          number: (index + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7,
+          color: "RED" as const,
+        })),
+      },
+      {
+        kind: "RUN" as const,
+        tiles: Array.from({ length: 7 }, (_, index) => ({
+          tileId: `tile_number_table_blue_${index + 1}`,
+          kind: "ORDINARY" as const,
+          number: (index + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7,
+          color: "BLUE" as const,
+        })),
+      },
+    ],
+  };
+  return {
+    ...playing,
+    room: { ...playing.room, phase: "FINISHED" as const },
+    game: {
+      gameType: "NUMBER_TILE" as const,
+      gameId: playing.game.gameId,
+      gameRevision: 1,
+      remainingPoolCount: 78,
+      table,
+      playerStates: [
+        { ...playing.game.playerStates[0]!, rackCount: 0 },
+        playing.game.playerStates[1]!,
+      ],
+      privateState: { rack: [] },
+      result: {
+        reason: "RACK_EMPTY" as const,
+        finishedAt: 1_750_000_030_000,
+        winnerPlayerIds: ["player_number_a"],
+        playerResults: [
+          {
+            playerId: "player_number_a",
+            score: 91,
+            remainingRackCount: 0,
+            penaltyCost: 0,
+            forfeited: false,
+          },
+          {
+            playerId: "player_number_b",
+            score: -91,
+            remainingRackCount: 14,
+            penaltyCost: 91,
+            forfeited: false,
+          },
+        ],
+      },
     },
   };
 }
@@ -1048,22 +1217,24 @@ test("Room phase와 session replacement notification은 exhaustive shape를 가�
   );
 });
 
-test("GameType runtime contract는 현재 HANGUL_TILE 하나만 지원한다", () => {
-  assert.deepEqual(SUPPORTED_GAME_TYPES, ["HANGUL_TILE"]);
+test("GameType runtime contract는 HANGUL_TILE과 NUMBER_TILE만 지원한다", () => {
+  assert.deepEqual(SUPPORTED_GAME_TYPES, ["HANGUL_TILE", "NUMBER_TILE"]);
   assert.equal(Object.isFrozen(SUPPORTED_GAME_TYPES), true);
 
-  const supported = v.safeParse(GameTypeSchema, "HANGUL_TILE");
+  const hangul = v.safeParse(GameTypeSchema, "HANGUL_TILE");
+  const number = v.safeParse(GameTypeSchema, "NUMBER_TILE");
   const unknown = v.safeParse(GameTypeSchema, "UNKNOWN_GAME");
-  const futureNumberTile = v.safeParse(GameTypeSchema, "NUMBER_TILE");
   const futureGemCard = v.safeParse(GameTypeSchema, "GEM_CARD");
 
-  assert.equal(supported.success, true);
-  if (supported.success) {
-    const gameType: GameType = supported.output;
+  assert.equal(hangul.success, true);
+  assert.equal(number.success, true);
+  if (hangul.success && number.success) {
+    const gameType: GameType = hangul.output;
     assert.equal(gameType, "HANGUL_TILE");
+    const numberGameType: GameType = number.output;
+    assert.equal(numberGameType, "NUMBER_TILE");
   }
   assert.equal(unknown.success, false);
-  assert.equal(futureNumberTile.success, false);
   assert.equal(futureGemCard.success, false);
 });
 
@@ -3558,7 +3729,7 @@ test("Legacy Hangul v1 Socket.IO event inventory와 strict command/event envelop
   }
 });
 
-test("P5C room:create wire는 legacy omission과 explicit HANGUL_TILE을 허용하며 나머지는 strict하게 거절한다", () => {
+test("room:create wire는 legacy omission과 두 supported gameType을 허용하며 나머지는 strict하게 거절한다", () => {
   const command = {
     kind: "room:create",
     protocolVersion: PROTOCOL_VERSION,
@@ -3583,14 +3754,18 @@ test("P5C room:create wire는 legacy omission과 explicit HANGUL_TILE을 허용�
   if (explicit.ok) {
     assert.equal(explicit.value.payload.gameType, "HANGUL_TILE");
   }
+  const explicitNumber = validateRoomCreateCommand({
+    ...command,
+    payload: { ...command.payload, gameType: "NUMBER_TILE" },
+  });
+  assert.equal(explicitNumber.ok, true);
+  if (explicitNumber.ok) {
+    assert.equal(explicitNumber.value.payload.gameType, "NUMBER_TILE");
+  }
   assert.equal(PROTOCOL_VERSION, 1);
 
   for (const input of [
     { ...command, gameType: "HANGUL_TILE" },
-    {
-      ...command,
-      payload: { ...command.payload, gameType: "NUMBER_TILE" },
-    },
     {
       ...command,
       payload: { ...command.payload, gameType: "GEM_CARD" },
@@ -3908,7 +4083,6 @@ test("PlatformSnapshot V2는 구현되지 않은 future game type을 fail-closed
   const playing = createPlayingPlatformSnapshotV2();
 
   for (const futureGameType of [
-    "NUMBER_TILE",
     "GEM_CARD",
     "UNKNOWN",
   ] as const) {
@@ -4134,4 +4308,349 @@ test("P5B game success ack contract는 command별 PLAYING/FINISHED phase 제한�
       false,
     );
   }
+});
+
+test("supportedGameTypes capability는 legacy Hangul default와 exact explicit set을 구분한다", () => {
+  assert.deepEqual(LEGACY_DEFAULT_SUPPORTED_GAME_TYPES, ["HANGUL_TILE"]);
+  assert.equal(Object.isFrozen(LEGACY_DEFAULT_SUPPORTED_GAME_TYPES), true);
+  assert.equal(
+    v.safeParse(SupportedGameTypesSchema, ["HANGUL_TILE"]).success,
+    true,
+  );
+  assert.equal(
+    v.safeParse(SupportedGameTypesSchema, [
+      "HANGUL_TILE",
+      "NUMBER_TILE",
+    ]).success,
+    true,
+  );
+  assert.equal(
+    v.safeParse(GameCapabilityMetadataSchema, {
+      supportedGameTypes: ["NUMBER_TILE"],
+    }).success,
+    true,
+  );
+
+  const legacy = resolveSupportedGameTypesCapability({
+    supportedSnapshotVersions: [2, 1],
+  });
+  assert.deepEqual(legacy, {
+    ok: true,
+    mode: "LEGACY_DEFAULT",
+    supportedGameTypes: ["HANGUL_TILE"],
+  });
+  assert.equal(
+    legacy.ok && Object.isFrozen(legacy.supportedGameTypes),
+    true,
+  );
+
+  const explicit = resolveSupportedGameTypesCapability({
+    supportedGameTypes: ["HANGUL_TILE", "NUMBER_TILE"],
+  });
+  assert.deepEqual(explicit, {
+    ok: true,
+    mode: "EXPLICIT",
+    supportedGameTypes: ["HANGUL_TILE", "NUMBER_TILE"],
+  });
+  assert.equal(
+    explicit.ok && Object.isFrozen(explicit.supportedGameTypes),
+    true,
+  );
+
+  for (const malformed of [
+    null,
+    [],
+    { supportedGameTypes: [] },
+    { supportedGameTypes: ["HANGUL_TILE", "HANGUL_TILE"] },
+    { supportedGameTypes: ["GEM_CARD"] },
+    { supportedGameTypes: ["UNKNOWN"] },
+    { supportedGameTypes: "HANGUL_TILE" },
+  ]) {
+    assert.deepEqual(resolveSupportedGameTypesCapability(malformed), {
+      ok: false,
+    });
+  }
+  assert.equal(
+    v.safeParse(GameCapabilityMetadataSchema, {
+      supportedGameTypes: ["HANGUL_TILE"],
+      extra: true,
+    }).success,
+    false,
+  );
+});
+
+test("Number Tile protocol v1 command는 strict complete Table과 concurrency identity만 받는다", () => {
+  const proposedTable = {
+    melds: [
+      {
+        kind: "RUN" as const,
+        tiles: [
+          { tileId: "number_proposed_1", kind: "ORDINARY" as const },
+          { tileId: "number_proposed_2", kind: "ORDINARY" as const },
+          {
+            tileId: "number_proposed_joker",
+            kind: "JOKER" as const,
+            assignedNumber: 3 as const,
+            assignedColor: "RED" as const,
+          },
+        ],
+      },
+    ],
+  };
+  const submit = {
+    kind: "number:submit",
+    protocolVersion: PROTOCOL_VERSION,
+    requestId: "request_number_submit",
+    expectedGameRevision: 0,
+    turnId: "turn_number_1",
+    payload: { proposedTable },
+  } as const;
+  const draw = {
+    kind: "number:draw",
+    protocolVersion: PROTOCOL_VERSION,
+    requestId: "request_number_draw",
+    expectedGameRevision: 0,
+    turnId: "turn_number_1",
+    payload: {},
+  } as const;
+  const pass = {
+    ...draw,
+    kind: "number:pass" as const,
+    requestId: "request_number_pass",
+  };
+
+  assert.equal(validateNumberSubmitCommand(submit).ok, true);
+  assert.equal(validateNumberDrawCommand(draw).ok, true);
+  assert.equal(validateNumberPassCommand(pass).ok, true);
+  assert.equal(v.safeParse(NumberTileProposedTableSchema, proposedTable).success, true);
+
+  for (const invalid of [
+    { ...submit, gameType: "NUMBER_TILE" },
+    { ...submit, payload: { ...submit.payload, extra: true } },
+    {
+      ...submit,
+      payload: {
+        proposedTable: {
+          melds: [
+            {
+              kind: "RUN",
+              tiles: [
+                {
+                  tileId: "number_claimed_face",
+                  kind: "ORDINARY",
+                  number: 13,
+                  color: "RED",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    {
+      ...submit,
+      payload: {
+        proposedTable: {
+          melds: [
+            {
+              kind: "GROUP",
+              tiles: [
+                {
+                  tileId: "number_bad_joker",
+                  kind: "JOKER",
+                  assignedNumber: 14,
+                  assignedColor: "PURPLE",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  ]) {
+    assert.equal(validateNumberSubmitCommand(invalid).ok, false);
+  }
+  assert.equal(
+    validateNumberDrawCommand({ ...draw, payload: { tileId: "probe" } }).ok,
+    false,
+  );
+  assert.equal(
+    validateNumberPassCommand({ ...pass, payload: { pass: true } }).ok,
+    false,
+  );
+
+  const oversizedTable = {
+    melds: [
+      {
+        kind: "RUN" as const,
+        tiles: Array.from(
+          { length: NUMBER_PROPOSED_TABLE_MAX_TILE_REFERENCES + 1 },
+          (_, index) => ({
+            tileId: `number_oversized_${index}`,
+            kind: "ORDINARY" as const,
+          }),
+        ),
+      },
+    ],
+  };
+  assert.equal(
+    v.safeParse(NumberTileProposedTableSchema, oversizedTable).success,
+    false,
+  );
+});
+
+test("runtime Socket.IO map은 Number events를 additive하게 제공하고 legacy map은 Characterization 그대로다", () => {
+  const runtimeEventNamesAreExact: SameUnion<
+    keyof SnapshotWireClientToServerEvents,
+    | (typeof LEGACY_HANGUL_V1_CLIENT_EVENT_NAMES)[number]
+    | "number:submit"
+    | "number:draw"
+    | "number:pass"
+  > = true;
+  const legacyEventNamesRemainExact: SameUnion<
+    keyof ClientToServerEvents,
+    (typeof LEGACY_HANGUL_V1_CLIENT_EVENT_NAMES)[number]
+  > = true;
+
+  assert.equal(runtimeEventNamesAreExact, true);
+  assert.equal(legacyEventNamesRemainExact, true);
+});
+
+test("PlatformSnapshot V2는 Number LOBBY/PLAYING/FINISHED를 exact correlated branches로 검증한다", () => {
+  const lobby = createNumberLobbyPlatformSnapshotV2();
+  const playing = createNumberPlayingPlatformSnapshotV2();
+  const finished = createNumberFinishedPlatformSnapshotV2();
+
+  assert.equal(v.safeParse(PlatformSnapshotV2Schema, lobby).success, true);
+  assert.equal(
+    v.safeParse(NumberTilePlayingPlatformSnapshotV2Schema, playing).success,
+    true,
+  );
+  assert.equal(
+    v.safeParse(NumberTileFinishedPlatformSnapshotV2Schema, finished).success,
+    true,
+  );
+  assert.equal(v.safeParse(PlatformSnapshotV2Schema, playing).success, true);
+  assert.equal(v.safeParse(PlatformSnapshotV2Schema, finished).success, true);
+  assert.equal(validateStateSnapshot(lobby).ok, false);
+  assert.equal(validateStateSnapshot(playing).ok, false);
+  assert.equal(validateStateSnapshot(finished).ok, false);
+
+  const hangulPlaying = createPlayingPlatformSnapshotV2();
+  for (const mismatch of [
+    { ...playing, room: { ...playing.room, gameType: "HANGUL_TILE" } },
+    { ...hangulPlaying, room: { ...hangulPlaying.room, gameType: "NUMBER_TILE" } },
+    { ...playing, game: null },
+    { ...finished, game: playing.game },
+    { ...playing, game: { ...playing.game, gameType: "HANGUL_TILE" } },
+  ]) {
+    assert.equal(v.safeParse(PlatformSnapshotV2Schema, mismatch).success, false);
+  }
+});
+
+test("Number V2 projection은 pool/opponent private state를 노출하지 않고 inventory coherence를 강제한다", () => {
+  const playing = createNumberPlayingPlatformSnapshotV2();
+  assert.deepEqual(Object.keys(playing.game.privateState), ["rack"]);
+  assert.equal("rack" in playing.game.playerStates[1]!, false);
+  assert.equal("pool" in playing.game, false);
+
+  for (const leaking of [
+    { ...playing, game: { ...playing.game, pool: ["secret_pool_tile"] } },
+    {
+      ...playing,
+      game: {
+        ...playing.game,
+        playerStates: playing.game.playerStates.map((player, index) =>
+          index === 1 ? { ...player, rack: ["secret_opponent_tile"] } : player,
+        ),
+      },
+    },
+    {
+      ...playing,
+      game: {
+        ...playing.game,
+        privateState: {
+          rack: [
+            ...playing.game.privateState.rack,
+            playing.game.privateState.rack[0],
+          ],
+        },
+      },
+    },
+    {
+      ...playing,
+      game: { ...playing.game, remainingPoolCount: 77 },
+    },
+  ]) {
+    assert.equal(v.safeParse(PlatformSnapshotV2Schema, leaking).success, false);
+  }
+});
+
+test("Number command ack는 V2 Number snapshot만 받고 Number advisory는 추가하지 않는다", () => {
+  const playing = createNumberPlayingPlatformSnapshotV2();
+  const finished = createNumberFinishedPlatformSnapshotV2();
+  const lobby = createNumberLobbyPlatformSnapshotV2();
+  const hangulPlaying = createPlayingPlatformSnapshotV2();
+
+  assert.equal(
+    v.safeParse(GameStartWireAckSchema, createSnapshotWireAck(playing, 0))
+      .success,
+    true,
+    "platform game:start accepts the registered Number playing projection",
+  );
+
+  assert.equal(
+    v.safeParse(NumberDrawWireAckSchema, createSnapshotWireAck(playing, 0))
+      .success,
+    true,
+  );
+  for (const schema of [NumberSubmitWireAckSchema, NumberPassWireAckSchema]) {
+    assert.equal(
+      v.safeParse(schema, createSnapshotWireAck(playing, 0)).success,
+      true,
+    );
+    assert.equal(
+      v.safeParse(schema, createSnapshotWireAck(finished, 1)).success,
+      true,
+    );
+  }
+  for (const schema of [
+    NumberSubmitWireAckSchema,
+    NumberDrawWireAckSchema,
+    NumberPassWireAckSchema,
+  ]) {
+    assert.equal(
+      v.safeParse(schema, createSnapshotWireAck(lobby, null)).success,
+      false,
+    );
+    assert.equal(
+      v.safeParse(schema, createSnapshotWireAck(hangulPlaying, 0)).success,
+      false,
+    );
+  }
+  assert.equal(
+    v.safeParse(
+      NumberDrawWireAckSchema,
+      createSnapshotWireAck(finished, 1),
+    ).success,
+    false,
+  );
+  for (const schema of [
+    TurnSubmitWireAckSchema,
+    TurnDrawWireAckSchema,
+    TurnPassWireAckSchema,
+  ]) {
+    assert.equal(
+      v.safeParse(schema, createSnapshotWireAck(playing, 0)).success,
+      false,
+      "legacy Hangul turn acks must fail closed for Number projections",
+    );
+  }
+  assert.deepEqual(LEGACY_HANGUL_V1_SERVER_EVENT_NAMES, [
+    "state:snapshot",
+    "turn:started",
+    "game:finished",
+    "room:closed",
+    "session:replaced",
+  ]);
 });

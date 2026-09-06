@@ -18,6 +18,10 @@ import {
 } from "./projections.js";
 import {
   FinishedPlatformSnapshotV2Schema,
+  HangulTileFinishedPlatformSnapshotV2Schema,
+  HangulTilePlayingPlatformSnapshotV2Schema,
+  NumberTileFinishedPlatformSnapshotV2Schema,
+  NumberTilePlayingPlatformSnapshotV2Schema,
   PlatformSnapshotV2Schema,
   PlayingPlatformSnapshotV2Schema,
 } from "./platform/platform-snapshot-v2.js";
@@ -33,6 +37,9 @@ import {
 } from "./protocol.js";
 import type {
   GameStartCommand,
+  NumberDrawCommand,
+  NumberPassCommand,
+  NumberSubmitCommand,
   RoomCreateCommand,
   RoomJoinCommand,
   RoomLeaveCommand,
@@ -230,8 +237,19 @@ export type StateSyncWireAck = v.InferOutput<typeof StateSyncWireAckSchema>;
 const PlayingSnapshotWireDeliveryDataSchema = v.strictObject({
   snapshot: PlayingSnapshotWirePayloadSchema,
 });
-const PlayingOrFinishedSnapshotWireDeliveryDataSchema = v.strictObject({
-  snapshot: PlayingOrFinishedSnapshotWirePayloadSchema,
+const HangulPlayingSnapshotWireDeliveryDataSchema = v.strictObject({
+  snapshot: v.union([
+    PlayingStateSnapshotSchema,
+    HangulTilePlayingPlatformSnapshotV2Schema,
+  ]),
+});
+const HangulPlayingOrFinishedSnapshotWireDeliveryDataSchema = v.strictObject({
+  snapshot: v.union([
+    PlayingStateSnapshotSchema,
+    FinishedStateSnapshotSchema,
+    HangulTilePlayingPlatformSnapshotV2Schema,
+    HangulTileFinishedPlatformSnapshotV2Schema,
+  ]),
 });
 
 export const GameStartWireAckSchema = v.union([
@@ -246,7 +264,9 @@ export type GameStartWireAck = v.InferOutput<
 export const TurnSubmitWireAckSchema = v.union([
   UncorrelatedFailureAckSchema,
   UnscopedAckFailureSchema,
-  createRoomScopedAckSchema(PlayingOrFinishedSnapshotWireDeliveryDataSchema),
+  createRoomScopedAckSchema(
+    HangulPlayingOrFinishedSnapshotWireDeliveryDataSchema,
+  ),
 ]);
 export type TurnSubmitWireAck = v.InferOutput<
   typeof TurnSubmitWireAckSchema
@@ -255,16 +275,59 @@ export type TurnSubmitWireAck = v.InferOutput<
 export const TurnDrawWireAckSchema = v.union([
   UncorrelatedFailureAckSchema,
   UnscopedAckFailureSchema,
-  createRoomScopedAckSchema(PlayingSnapshotWireDeliveryDataSchema),
+  createRoomScopedAckSchema(HangulPlayingSnapshotWireDeliveryDataSchema),
 ]);
 export type TurnDrawWireAck = v.InferOutput<typeof TurnDrawWireAckSchema>;
 
 export const TurnPassWireAckSchema = v.union([
   UncorrelatedFailureAckSchema,
   UnscopedAckFailureSchema,
-  createRoomScopedAckSchema(PlayingOrFinishedSnapshotWireDeliveryDataSchema),
+  createRoomScopedAckSchema(
+    HangulPlayingOrFinishedSnapshotWireDeliveryDataSchema,
+  ),
 ]);
 export type TurnPassWireAck = v.InferOutput<typeof TurnPassWireAckSchema>;
+
+const NumberTilePlayingSnapshotDeliveryDataSchema = v.strictObject({
+  snapshot: NumberTilePlayingPlatformSnapshotV2Schema,
+});
+const NumberTilePlayingOrFinishedSnapshotDeliveryDataSchema = v.strictObject({
+  snapshot: v.union([
+    NumberTilePlayingPlatformSnapshotV2Schema,
+    NumberTileFinishedPlatformSnapshotV2Schema,
+  ]),
+});
+
+export const NumberSubmitWireAckSchema = v.union([
+  UncorrelatedFailureAckSchema,
+  UnscopedAckFailureSchema,
+  createRoomScopedAckSchema(
+    NumberTilePlayingOrFinishedSnapshotDeliveryDataSchema,
+  ),
+]);
+export type NumberSubmitWireAck = v.InferOutput<
+  typeof NumberSubmitWireAckSchema
+>;
+
+export const NumberDrawWireAckSchema = v.union([
+  UncorrelatedFailureAckSchema,
+  UnscopedAckFailureSchema,
+  createRoomScopedAckSchema(NumberTilePlayingSnapshotDeliveryDataSchema),
+]);
+export type NumberDrawWireAck = v.InferOutput<
+  typeof NumberDrawWireAckSchema
+>;
+
+export const NumberPassWireAckSchema = v.union([
+  UncorrelatedFailureAckSchema,
+  UnscopedAckFailureSchema,
+  createRoomScopedAckSchema(
+    NumberTilePlayingOrFinishedSnapshotDeliveryDataSchema,
+  ),
+]);
+export type NumberPassWireAck = v.InferOutput<
+  typeof NumberPassWireAckSchema
+>;
 
 export const StateSnapshotEventSchema = v.strictObject({
   kind: v.literal("state:snapshot"),
@@ -473,6 +536,18 @@ export interface SnapshotWireClientToServerEvents {
   "turn:pass": (
     command: TurnPassCommand,
     acknowledge: SocketAcknowledgement<TurnPassWireAck>,
+  ) => void;
+  "number:submit": (
+    command: NumberSubmitCommand,
+    acknowledge: SocketAcknowledgement<NumberSubmitWireAck>,
+  ) => void;
+  "number:draw": (
+    command: NumberDrawCommand,
+    acknowledge: SocketAcknowledgement<NumberDrawWireAck>,
+  ) => void;
+  "number:pass": (
+    command: NumberPassCommand,
+    acknowledge: SocketAcknowledgement<NumberPassWireAck>,
   ) => void;
 }
 

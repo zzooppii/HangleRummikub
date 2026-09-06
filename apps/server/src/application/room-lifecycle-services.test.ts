@@ -9,7 +9,6 @@ import {
   RoomIdSchema,
   RoomRevisionSchema,
   ServerTimeSchema,
-  type GameType,
   type PlayerId,
   type RoomId,
 } from "@hangul-rummikub/shared";
@@ -19,7 +18,7 @@ import { createInitialGameState } from "../games/hangul-tile/domain/game-state.j
 import { createRackEmptyResult } from "../games/hangul-tile/domain/result-engine.js";
 import {
   createUnboundSessionRecord,
-  type RoomRecord,
+  type HangulRoomRecord,
 } from "../model/persistence.js";
 import type {
   RoomPolicyDeadline,
@@ -41,10 +40,14 @@ import { RoomLifecycleResources } from "../infrastructure/room-lifecycle-resourc
 import { FakeClock, FakeIdGenerator } from "../infrastructure/system.js";
 import {
   createLegacyHangulPlayerLifecycleActions,
-  type LegacyHangulPlayerLifecycleActionRouting,
 } from "../games/hangul-tile/compatibility/legacy-hangul-player-lifecycle-actions.js";
 import { LegacyHangulServerActionRouter } from "../games/hangul-tile/compatibility/legacy-hangul-server-action-router.js";
+import { createNumberTilePlayerLifecycleActions } from "../games/number-tile/application/number-tile-player-lifecycle-actions.js";
 import { LobbyDisconnectGraceService } from "./lobby-disconnect-grace-service.js";
+import {
+  PlayerLifecycleRouter,
+  type PlayerLifecycleActionRouting,
+} from "./player-lifecycle-router.js";
 import { RoomCleanupService } from "./room-cleanup-service.js";
 import { RoomLeaveService } from "./room-leave-service.js";
 import {
@@ -108,7 +111,7 @@ type LifecycleHarness = Readonly<{
   graceService: LobbyDisconnectGraceService;
   policyService: RoomPresencePolicyService;
   retentionService: RoomRetentionService;
-  room: RoomRecord;
+  room: HangulRoomRecord;
   sessionVerifications: readonly { algorithm: "SHA-256"; digestHex: string }[];
 }>;
 
@@ -119,8 +122,7 @@ async function createHarness(playerCount = 2): Promise<LifecycleHarness> {
   const clock = new FakeClock(1_000);
   const scheduler = new RecordingPolicyScheduler();
   const executor = new KeyedSerialExecutor<RoomId>();
-  const playerLifecycleActions =
-    createLegacyHangulPlayerLifecycleActions(new FakeIdGenerator());
+  const playerLifecycleActions = createPlayerLifecycleActions();
   const players = Array.from({ length: playerCount }, (_, index) => ({
     playerId: playerId(`lifecycle-player-${index}`),
     nickname: parse(NicknameSchema, `Player${index}`),
@@ -141,6 +143,7 @@ async function createHarness(playerCount = 2): Promise<LifecycleHarness> {
     updatedAt: clock.now(),
   });
   if (created.status !== "CREATED") throw new Error("Room fixture failed.");
+  assert.equal(created.room.gameType, "HANGUL_TILE");
 
   const sessionVerifications = [];
   const bindings = [];
@@ -230,6 +233,14 @@ async function createHarness(playerCount = 2): Promise<LifecycleHarness> {
     room: created.room,
     sessionVerifications,
   };
+}
+
+function createPlayerLifecycleActions(): PlayerLifecycleActionRouting {
+  const idGenerator = new FakeIdGenerator();
+  return new PlayerLifecycleRouter({
+    hangul: createLegacyHangulPlayerLifecycleActions(idGenerator),
+    numberTile: createNumberTilePlayerLifecycleActions(idGenerator),
+  });
 }
 
 test("Lobby disconnect grace는 60초 전 보존하고 만료 시 Host를 lowest connected joinOrder로 이전한다", async () => {
@@ -343,9 +354,7 @@ test("Room 조회 중 resume된 stale Lobby disconnect callback은 grace를 뒤�
     scheduler: harness.scheduler,
     roomPresenceReader: presenceReader,
     playerPresenceLeaseReader: presenceReader,
-    playerLifecycleActions: createLegacyHangulPlayerLifecycleActions(
-      new FakeIdGenerator(),
-    ),
+    playerLifecycleActions: createPlayerLifecycleActions(),
     clock: harness.clock,
     lobbyGraceService: harness.graceService,
     retentionService: harness.retentionService,
@@ -497,9 +506,7 @@ test("Lobby leave 중 successor presence lease 경합은 UNAUTHENTICATED가 아�
     roomCleanupUnitOfWork: harness.persistence,
     roomMutationExecutor: new KeyedSerialExecutor<RoomId>(),
     presenceReader: racingPresenceReader,
-    playerLifecycleActions: createLegacyHangulPlayerLifecycleActions(
-      new FakeIdGenerator(),
-    ),
+    playerLifecycleActions: createPlayerLifecycleActions(),
     clock: harness.clock,
   });
   const input = {
@@ -535,6 +542,7 @@ test("current Player explicit leave는 penalty 없이 forfeit하고 next eligibl
   const harness = await createHarness(3);
   const initial = await harness.persistence.findById(harness.room.roomId);
   assert.ok(initial);
+  assert.equal(initial.gameType, "HANGUL_TILE");
   const game = createInitialGameState({
     playerIds: initial.players.map((player) => player.playerId),
     startedAt: harness.clock.now(),
@@ -578,6 +586,7 @@ test("non-current Playing leave는 current Turn/deadline을 보존하고 새 gam
   const harness = await createHarness(3);
   const initial = await harness.persistence.findById(harness.room.roomId);
   assert.ok(initial);
+  assert.equal(initial.gameType, "HANGUL_TILE");
   const game = createInitialGameState({
     playerIds: initial.players.map((player) => player.playerId),
     startedAt: harness.clock.now(),
@@ -628,6 +637,7 @@ test("이미 forfeited인 Playing Player leave는 session만 정리하고 gamepl
   const harness = await createHarness(3);
   const initial = await harness.persistence.findById(harness.room.roomId);
   assert.ok(initial);
+  assert.equal(initial.gameType, "HANGUL_TILE");
   const game = createInitialGameState({
     playerIds: initial.players.map((player) => player.playerId),
     startedAt: harness.clock.now(),
@@ -689,6 +699,7 @@ test("마지막 non-forfeit Playing Player leave는 ALL_PLAYERS_FORFEITED로 원
   const harness = await createHarness(2);
   const initial = await harness.persistence.findById(harness.room.roomId);
   assert.ok(initial);
+  assert.equal(initial.gameType, "HANGUL_TILE");
   const game = createInitialGameState({
     playerIds: initial.players.map((player) => player.playerId),
     startedAt: harness.clock.now(),
@@ -747,6 +758,7 @@ test("last connected Playing leave 후 onPlayerRemoved는 새 30분 all-offline 
   const harness = await createHarness(2);
   const initial = await harness.persistence.findById(harness.room.roomId);
   assert.ok(initial);
+  assert.equal(initial.gameType, "HANGUL_TILE");
   const game = createInitialGameState({
     playerIds: initial.players.map((player) => player.playerId),
     startedAt: harness.clock.now(),
@@ -809,6 +821,7 @@ test("resume은 PLAYING offline timeout streak만 storage-only reset하고 publi
   const harness = await createHarness(2);
   const initial = await harness.persistence.findById(harness.room.roomId);
   assert.ok(initial);
+  assert.equal(initial.gameType, "HANGUL_TILE");
   const baseGame = createInitialGameState({
     playerIds: initial.players.map((player) => player.playerId),
     startedAt: harness.clock.now(),
@@ -843,10 +856,11 @@ test("resume은 PLAYING offline timeout streak만 storage-only reset하고 publi
   assert.equal(after.storageRevision, before.storageRevision + 1);
 });
 
-test("corrupt PLAYING gameType은 leave와 presence-restored Hangul action을 UoW 전에 차단한다", async () => {
+test("corrupt PLAYING gameType은 leave와 presence-restored concrete game action을 UoW 전에 차단한다", async () => {
   const harness = await createHarness(2);
   const initial = await harness.persistence.findById(harness.room.roomId);
   assert.ok(initial);
+  assert.equal(initial.gameType, "HANGUL_TILE");
   const game = createInitialGameState({
     playerIds: initial.players.map((player) => player.playerId),
     startedAt: harness.clock.now(),
@@ -868,15 +882,15 @@ test("corrupt PLAYING gameType은 leave와 presence-restored Hangul action을 Uo
   });
   assert.equal(started.status, "REPLACED");
   if (started.status !== "REPLACED" || started.room.game === null) return;
+  assert.equal(started.room.gameType, "HANGUL_TILE");
 
   const before = started.room;
   const beforeGame = started.room.game;
-  const corruptRoom = Object.freeze({
-    ...before,
-    // This repository wrapper models corrupt persisted metadata without
-    // weakening the production GameType or persistence validation paths.
-    gameType: "UNKNOWN_GAME" as GameType,
-  });
+  const corruptRoom: HangulRoomRecord = { ...before };
+  // Model corrupt persisted metadata at runtime without weakening the
+  // production GameType or RoomRecord type correlation.
+  Reflect.set(corruptRoom, "gameType", "UNKNOWN_GAME");
+  Object.freeze(corruptRoom);
   const corruptRoomRepository: RoomRepository = {
     findById: async (roomId) =>
       roomId === before.roomId ? corruptRoom : null,
@@ -894,19 +908,39 @@ test("corrupt PLAYING gameType은 leave와 presence-restored Hangul action을 Uo
       return harness.persistence.commit(changeSet, precondition);
     },
   };
-  const actionCalls = { leave: 0, presenceRestored: 0 };
-  const playerLifecycleActions: LegacyHangulPlayerLifecycleActionRouting =
-    Object.freeze({
-      gameType: "HANGUL_TILE",
-      applyPlayingLeave: () => {
-        actionCalls.leave += 1;
-        throw new Error("Unsupported gameType must not reach Hangul leave.");
+  const actionCalls = {
+    hangulLeave: 0,
+    hangulPresenceRestored: 0,
+    numberLeave: 0,
+    numberPresenceRestored: 0,
+  };
+  const playerLifecycleActions: PlayerLifecycleActionRouting =
+    new PlayerLifecycleRouter({
+      hangul: {
+        gameType: "HANGUL_TILE",
+        applyPlayingLeave: () => {
+          actionCalls.hangulLeave += 1;
+          throw new Error("Corrupt gameType reached the Hangul leave action.");
+        },
+        planPresenceRestored: () => {
+          actionCalls.hangulPresenceRestored += 1;
+          throw new Error(
+            "Corrupt gameType reached the Hangul presence-restored action.",
+          );
+        },
       },
-      planPresenceRestored: () => {
-        actionCalls.presenceRestored += 1;
-        throw new Error(
-          "Unsupported gameType must not reach Hangul presence restore.",
-        );
+      numberTile: {
+        gameType: "NUMBER_TILE",
+        applyPlayingLeave: () => {
+          actionCalls.numberLeave += 1;
+          throw new Error("Corrupt gameType reached the Number leave action.");
+        },
+        planPresenceRestored: () => {
+          actionCalls.numberPresenceRestored += 1;
+          throw new Error(
+            "Corrupt gameType reached the Number presence-restored action.",
+          );
+        },
       },
     });
   const presenceReader = new ConnectionRegistryPresenceReader(
@@ -958,15 +992,19 @@ test("corrupt PLAYING gameType은 leave와 presence-restored Hangul action을 Uo
   if (!leave.ok) {
     assert.equal(leave.error.code, "INTERNAL_ERROR");
   }
-  assert.equal(
-    await policyService.resetOfflineTimeoutStreak(
+  await assert.rejects(() =>
+    policyService.resetOfflineTimeoutStreak(
       before.roomId,
       actorPlayerId,
     ),
-    false,
   );
 
-  assert.deepEqual(actionCalls, { leave: 0, presenceRestored: 0 });
+  assert.deepEqual(actionCalls, {
+    hangulLeave: 0,
+    hangulPresenceRestored: 0,
+    numberLeave: 0,
+    numberPresenceRestored: 0,
+  });
   assert.equal(commitCalls, 0);
   assert.deepEqual(await harness.persistence.findById(before.roomId), before);
   assert.deepEqual(
@@ -979,6 +1017,7 @@ test("resume streak reset 뒤 다음 offline timeout은 다시 첫 streak로 처
   const harness = await createHarness(2);
   const initial = await harness.persistence.findById(harness.room.roomId);
   assert.ok(initial);
+  assert.equal(initial.gameType, "HANGUL_TILE");
   const game = createInitialGameState({
     playerIds: initial.players.map((player) => player.playerId),
     startedAt: harness.clock.now(),
@@ -1000,6 +1039,7 @@ test("resume streak reset 뒤 다음 offline timeout은 다시 첫 streak로 처
   });
   assert.equal(started.status, "REPLACED");
   if (started.status !== "REPLACED" || started.room.game === null) return;
+  assert.equal(started.room.gameType, "HANGUL_TILE");
   const beforeReset = started.room;
   const beforeResetGame = started.room.game;
   const presenceVersionBeforeReset = harness.registry.getPresenceVersion(
@@ -1008,6 +1048,7 @@ test("resume streak reset 뒤 다음 offline timeout은 다시 첫 streak로 처
 
   await harness.policyService.onResume(beforeReset.roomId, resumedPlayerId);
   const afterReset = await harness.persistence.findById(beforeReset.roomId);
+  assert.equal(afterReset?.gameType, "HANGUL_TILE");
   assert.ok(afterReset?.game?.turn && beforeResetGame.turn);
   assert.equal(
     afterReset.game.offlineTimeoutStreakByPlayerId.get(resumedPlayerId),
@@ -1098,6 +1139,7 @@ test("PLAYING all-offline retention은 exact 30분에 Room을 cleanup하고 resu
   const harness = await createHarness(2);
   const initial = await harness.persistence.findById(harness.room.roomId);
   assert.ok(initial);
+  assert.equal(initial.gameType, "HANGUL_TILE");
   const game = createInitialGameState({
     playerIds: initial.players.map((player) => player.playerId),
     startedAt: harness.clock.now(),
@@ -1150,6 +1192,7 @@ test("지연된 첫 PLAYING disconnect callback은 마지막 disconnect의 30분
   const harness = await createHarness(2);
   const initial = await harness.persistence.findById(harness.room.roomId);
   assert.ok(initial);
+  assert.equal(initial.gameType, "HANGUL_TILE");
   const game = createInitialGameState({
     playerIds: initial.players.map((player) => player.playerId),
     startedAt: harness.clock.now(),
@@ -1223,6 +1266,7 @@ test("PLAYING resume은 all-offline window를 취소하고 다시 전원 OFFLINE
   const harness = await createHarness(2);
   const initial = await harness.persistence.findById(harness.room.roomId);
   assert.ok(initial);
+  assert.equal(initial.gameType, "HANGUL_TILE");
   const game = createInitialGameState({
     playerIds: initial.players.map((player) => player.playerId),
     startedAt: harness.clock.now(),
@@ -1298,6 +1342,7 @@ test("FINISHED retention은 connected resume에도 finishedAt 기준 deadline을
   const harness = await createHarness(2);
   const initial = await harness.persistence.findById(harness.room.roomId);
   assert.ok(initial);
+  assert.equal(initial.gameType, "HANGUL_TILE");
   const playingGame = createInitialGameState({
     playerIds: initial.players.map((player) => player.playerId),
     startedAt: harness.clock.now(),
@@ -1360,6 +1405,7 @@ test("stale resume은 concurrent leave가 새로 등록한 PLAYING all-offline r
   const harness = await createHarness(2);
   const initial = await harness.persistence.findById(harness.room.roomId);
   assert.ok(initial);
+  assert.equal(initial.gameType, "HANGUL_TILE");
   const game = createInitialGameState({
     playerIds: initial.players.map((player) => player.playerId),
     startedAt: harness.clock.now(),
@@ -1416,9 +1462,7 @@ test("stale resume은 concurrent leave가 새로 등록한 PLAYING all-offline r
     scheduler: harness.scheduler,
     roomPresenceReader: presenceReader,
     playerPresenceLeaseReader: presenceReader,
-    playerLifecycleActions: createLegacyHangulPlayerLifecycleActions(
-      new FakeIdGenerator(),
-    ),
+    playerLifecycleActions: createPlayerLifecycleActions(),
     clock: harness.clock,
     lobbyGraceService: harness.graceService,
     retentionService: harness.retentionService,

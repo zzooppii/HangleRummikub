@@ -10,10 +10,16 @@ import type { RoomRecord } from "../model/persistence.js";
 import type { RoomRepository } from "../ports/room-repository.js";
 import type { SessionRepository } from "../ports/session-repository.js";
 import type { SessionTokenIssuer } from "../ports/system.js";
+import {
+  LEGACY_ROOM_ADMISSION_CAPABILITIES,
+  isRoomAdmissionCompatible,
+  type RoomAdmissionCapabilities,
+} from "./room-admission-policy.js";
 
 export type ResumeSessionInput = Readonly<{
   sessionToken: unknown;
   roomCode: unknown;
+  admissionCapabilities?: RoomAdmissionCapabilities;
 }>;
 
 export type ResumeSessionContext = Readonly<{
@@ -43,6 +49,12 @@ const SESSION_NOT_FOUND_ERROR: ErrorDto = Object.freeze({
 const ROOM_NOT_FOUND_ERROR: ErrorDto = Object.freeze({
   code: "ROOM_NOT_FOUND",
   message: "Room was not found.",
+  recoverable: false,
+});
+
+const INCOMPATIBLE_GAME_CAPABILITY_ERROR: ErrorDto = Object.freeze({
+  code: "INCOMPATIBLE_GAME_CAPABILITY",
+  message: "This client cannot resume the Room's Game.",
   recoverable: false,
 });
 
@@ -101,6 +113,11 @@ export class SessionResumeService {
       if (!room.players.some((player) => player.playerId === session.playerId)) {
         return { ok: false, error: SESSION_NOT_FOUND_ERROR };
       }
+      const admissionCapabilities =
+        input.admissionCapabilities ?? LEGACY_ROOM_ADMISSION_CAPABILITIES;
+      if (!isRoomAdmissionCompatible(room.gameType, admissionCapabilities)) {
+        return { ok: false, error: INCOMPATIBLE_GAME_CAPABILITY_ERROR };
+      }
 
       return {
         ok: true,
@@ -116,4 +133,3 @@ export class SessionResumeService {
     }
   }
 }
-

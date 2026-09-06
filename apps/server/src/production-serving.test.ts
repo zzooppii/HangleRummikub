@@ -476,6 +476,9 @@ test("production-serving Socket.IO는 V2 explicit create, legacy join, start, Dr
       PlayingPlatformSnapshotV2Schema,
       startAck.data.snapshot,
     );
+    if (started.game.gameType !== "HANGUL_TILE") {
+      throw new Error("Production V2 start returned a non-Hangul game.");
+    }
     assert.equal(started.room.gameType, "HANGUL_TILE");
     assert.equal(started.game.gameRevision, 0);
     assert.equal(started.game.privateState.rack.length, 14);
@@ -566,6 +569,9 @@ test("production-serving Socket.IO는 V2 explicit create, legacy join, start, Dr
       PlayingPlatformSnapshotV2Schema,
       resumeAck.data.snapshot,
     );
+    if (resumed.game.gameType !== "HANGUL_TILE") {
+      throw new Error("Production V2 resume returned a non-Hangul game.");
+    }
     assert.equal(resumed.self.playerId, created.self.playerId);
     assert.equal(resumed.room.gameType, "HANGUL_TILE");
     assert.equal(resumed.game.gameRevision, 1);

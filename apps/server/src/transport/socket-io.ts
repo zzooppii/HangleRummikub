@@ -1,5 +1,8 @@
 import {
   PROTOCOL_VERSION,
+  validateNumberDrawCommand,
+  validateNumberPassCommand,
+  validateNumberSubmitCommand,
   validateGameStartCommand,
   validateRequestId,
   validateRoomCreateCommand,
@@ -15,8 +18,15 @@ import {
   type FinishedStateSnapshot,
   type GameFinishedEvent,
   type GameStartWireAck,
+  type GameType,
+  type HangulTileFinishedPlatformSnapshotV2,
+  type HangulTilePlayingPlatformSnapshotV2,
+  type NumberDrawWireAck,
+  type NumberPassWireAck,
+  type NumberSubmitWireAck,
+  type NumberTileFinishedPlatformSnapshotV2,
+  type NumberTilePlayingPlatformSnapshotV2,
   type PlayerId,
-  type PlayingOrFinishedSnapshotWirePayload,
   type PlayingSnapshotWirePayload,
   type PlayingStateSnapshot,
   type RequestId,
@@ -38,6 +48,7 @@ import {
   type StateSnapshotWireDeliveryData,
   type StateSnapshotWireEvent,
   type StateSnapshotWirePayload,
+  type StateVersions,
   type StateSyncWireAck,
   type TurnStartedEvent,
   type TurnDrawWireAck,
@@ -56,16 +67,25 @@ import {
   type SocketId,
 } from "../infrastructure/connection-registry.js";
 import { KeyedSerialExecutor } from "../infrastructure/keyed-serial-executor.js";
-import type { RoomRecord } from "../model/persistence.js";
+import type {
+  HangulRoomRecord,
+  RoomRecord,
+} from "../model/persistence.js";
 import {
   negotiateSnapshotVersion,
   SNAPSHOT_NEGOTIATION_ERROR_MESSAGES,
 } from "./snapshot-version-negotiation.js";
+import {
+  GAME_TYPE_CAPABILITY_ERROR_MESSAGE,
+  negotiateGameTypeCapability,
+} from "./game-type-capability.js";
+import { isRoomAdmissionCompatible } from "../application/room-admission-policy.js";
 import { selectSnapshotWirePayload } from "./snapshot-wire-selector.js";
 
 type EmptyEvents = Record<never, never>;
 export type RealtimeSocketData = {
   selectedSnapshotVersion: SnapshotWireVersion;
+  supportedGameTypes: readonly GameType[];
 };
 
 export type RealtimeServer = SocketIOServer<
@@ -87,9 +107,21 @@ type CorrelatableFailureAck =
   | UnscopedAckFailure;
 type TurnCommandFailureAck = CorrelatableFailureAck | RoomScopedAckFailure;
 
+type SnapshotMetadata = Readonly<{
+  serverTime: ServerTime;
+  versions: StateVersions;
+}>;
+
+type HangulPlayingOrFinishedWirePayload =
+  | PlayingStateSnapshot
+  | FinishedStateSnapshot
+  | HangulTilePlayingPlatformSnapshotV2
+  | HangulTileFinishedPlatformSnapshotV2;
+
 type SocketAuthenticationExecutor = KeyedSerialExecutor<SocketId>;
 
 class RoomMembershipEndedError extends Error {}
+class IncompatibleGameCapabilityError extends Error {}
 
 const INVALID_PAYLOAD_ERROR = Object.freeze({
   code: "INVALID_PAYLOAD",
@@ -161,60 +193,132 @@ function failureAck(
 
 function snapshotSuccessAck(
   requestId: RequestId,
-  legacySnapshot: StateSnapshot,
+  metadata: SnapshotMetadata,
   wireSnapshot: StateSnapshotWirePayload,
 ): RoomScopedAck<StateSnapshotWireDeliveryData> {
   return {
     scope: "ROOM",
     requestId,
     ok: true,
-    serverTime: legacySnapshot.serverTime,
-    versions: legacySnapshot.versions,
+    serverTime: metadata.serverTime,
+    versions: metadata.versions,
     data: { snapshot: wireSnapshot },
   };
 }
 
 function gameStartSuccessAck(
   requestId: RequestId,
-  legacySnapshot: PlayingStateSnapshot,
+  metadata: SnapshotMetadata,
   wireSnapshot: PlayingSnapshotWirePayload,
 ): GameStartWireAck {
   return {
     scope: "ROOM",
     requestId,
     ok: true,
-    serverTime: legacySnapshot.serverTime,
-    versions: legacySnapshot.versions,
+    serverTime: metadata.serverTime,
+    versions: metadata.versions,
     data: { snapshot: wireSnapshot },
   };
 }
 
 function turnSubmitSuccessAck(
   requestId: RequestId,
-  legacySnapshot: PlayingStateSnapshot | FinishedStateSnapshot,
-  wireSnapshot: PlayingOrFinishedSnapshotWirePayload,
+  metadata: SnapshotMetadata,
+  wireSnapshot:
+    | PlayingStateSnapshot
+    | FinishedStateSnapshot
+    | HangulTilePlayingPlatformSnapshotV2
+    | HangulTileFinishedPlatformSnapshotV2,
 ): TurnSubmitWireAck {
   return {
     scope: "ROOM",
     requestId,
     ok: true,
-    serverTime: legacySnapshot.serverTime,
-    versions: legacySnapshot.versions,
+    serverTime: metadata.serverTime,
+    versions: metadata.versions,
     data: { snapshot: wireSnapshot },
   };
 }
 
-function turnActionSuccessAck(
+function turnDrawSuccessAck(
   requestId: RequestId,
-  legacySnapshot: PlayingStateSnapshot | FinishedStateSnapshot,
-  wireSnapshot: PlayingOrFinishedSnapshotWirePayload,
-): TurnDrawWireAck | TurnPassWireAck {
+  metadata: SnapshotMetadata,
+  wireSnapshot: PlayingStateSnapshot | HangulTilePlayingPlatformSnapshotV2,
+): TurnDrawWireAck {
   return {
     scope: "ROOM",
     requestId,
     ok: true,
-    serverTime: legacySnapshot.serverTime,
-    versions: legacySnapshot.versions,
+    serverTime: metadata.serverTime,
+    versions: metadata.versions,
+    data: { snapshot: wireSnapshot },
+  };
+}
+
+function turnPassSuccessAck(
+  requestId: RequestId,
+  metadata: SnapshotMetadata,
+  wireSnapshot:
+    | PlayingStateSnapshot
+    | FinishedStateSnapshot
+    | HangulTilePlayingPlatformSnapshotV2
+    | HangulTileFinishedPlatformSnapshotV2,
+): TurnPassWireAck {
+  return {
+    scope: "ROOM",
+    requestId,
+    ok: true,
+    serverTime: metadata.serverTime,
+    versions: metadata.versions,
+    data: { snapshot: wireSnapshot },
+  };
+}
+
+function numberSubmitSuccessAck(
+  requestId: RequestId,
+  metadata: SnapshotMetadata,
+  wireSnapshot:
+    | NumberTilePlayingPlatformSnapshotV2
+    | NumberTileFinishedPlatformSnapshotV2,
+): NumberSubmitWireAck {
+  return {
+    scope: "ROOM",
+    requestId,
+    ok: true,
+    serverTime: metadata.serverTime,
+    versions: metadata.versions,
+    data: { snapshot: wireSnapshot },
+  };
+}
+
+function numberDrawSuccessAck(
+  requestId: RequestId,
+  metadata: SnapshotMetadata,
+  wireSnapshot: NumberTilePlayingPlatformSnapshotV2,
+): NumberDrawWireAck {
+  return {
+    scope: "ROOM",
+    requestId,
+    ok: true,
+    serverTime: metadata.serverTime,
+    versions: metadata.versions,
+    data: { snapshot: wireSnapshot },
+  };
+}
+
+function numberPassSuccessAck(
+  requestId: RequestId,
+  metadata: SnapshotMetadata,
+  wireSnapshot:
+    | NumberTilePlayingPlatformSnapshotV2
+    | NumberTileFinishedPlatformSnapshotV2,
+): NumberPassWireAck {
+  return {
+    scope: "ROOM",
+    requestId,
+    ok: true,
+    serverTime: metadata.serverTime,
+    versions: metadata.versions,
     data: { snapshot: wireSnapshot },
   };
 }
@@ -234,6 +338,7 @@ function roomClosedEvent(
 
 async function turnSubmitFailureAck(
   runtime: ApplicationRuntime,
+  socket: RealtimeSocket,
   binding: AuthenticatedSocketBinding,
   requestId: RequestId,
   error: ErrorDto,
@@ -247,18 +352,19 @@ async function turnSubmitFailureAck(
     );
   }
 
-  let snapshot: StateSnapshot | null;
+  let metadata: SnapshotMetadata | null;
   try {
-    const loaded = await loadLegacySnapshot(
+    const loaded = await loadSnapshotForSocket(
       runtime,
+      socket,
       binding.roomId,
       binding.playerId,
     );
-    snapshot = loaded?.snapshot ?? null;
+    metadata = loaded?.metadata ?? null;
   } catch {
     return failureAck({ requestId }, error, fallbackServerTime);
   }
-  if (snapshot === null) {
+  if (metadata === null) {
     return failureAck({ requestId }, error, fallbackServerTime);
   }
   if (!isCurrentBinding(runtime, binding)) {
@@ -273,14 +379,15 @@ async function turnSubmitFailureAck(
     scope: "ROOM",
     requestId,
     ok: false,
-    serverTime: snapshot.serverTime,
-    versions: snapshot.versions,
+    serverTime: metadata.serverTime,
+    versions: metadata.versions,
     error,
   } satisfies RoomScopedAckFailure;
 }
 
 async function turnActionFailureAck(
   runtime: ApplicationRuntime,
+  socket: RealtimeSocket,
   binding: AuthenticatedSocketBinding,
   requestId: RequestId,
   error: ErrorDto,
@@ -288,6 +395,7 @@ async function turnActionFailureAck(
 ): Promise<TurnCommandFailureAck> {
   return turnSubmitFailureAck(
     runtime,
+    socket,
     binding,
     requestId,
     error,
@@ -307,6 +415,32 @@ function isFinishedSnapshot(
   return snapshot.room.phase === "FINISHED" && "game" in snapshot;
 }
 
+function isPlayingWireSnapshot(
+  snapshot: StateSnapshotWirePayload,
+): snapshot is PlayingSnapshotWirePayload {
+  return snapshot.room.phase === "PLAYING";
+}
+
+function isNumberTilePlayingWireSnapshot(
+  snapshot: StateSnapshotWirePayload,
+): snapshot is NumberTilePlayingPlatformSnapshotV2 {
+  return (
+    "snapshotVersion" in snapshot &&
+    snapshot.room.gameType === "NUMBER_TILE" &&
+    snapshot.room.phase === "PLAYING"
+  );
+}
+
+function isNumberTileFinishedWireSnapshot(
+  snapshot: StateSnapshotWirePayload,
+): snapshot is NumberTileFinishedPlatformSnapshotV2 {
+  return (
+    "snapshotVersion" in snapshot &&
+    snapshot.room.gameType === "NUMBER_TILE" &&
+    snapshot.room.phase === "FINISHED"
+  );
+}
+
 function isCurrentBinding(
   runtime: ApplicationRuntime,
   expected: AuthenticatedSocketBinding,
@@ -324,14 +458,14 @@ function isCurrentBinding(
 }
 
 function snapshotEvent(
-  legacySnapshot: StateSnapshot,
+  metadata: SnapshotMetadata,
   wireSnapshot: StateSnapshotWirePayload,
 ): StateSnapshotWireEvent {
   return {
     kind: "state:snapshot",
     protocolVersion: PROTOCOL_VERSION,
-    versions: legacySnapshot.versions,
-    serverTime: legacySnapshot.serverTime,
+    versions: metadata.versions,
+    serverTime: metadata.serverTime,
     payload: { snapshot: wireSnapshot },
   };
 }
@@ -395,9 +529,44 @@ function reportRoomPolicyOrchestrationFailure(): void {
 }
 
 type LoadedLegacySnapshot = Readonly<{
-  room: RoomRecord;
+  room: HangulRoomRecord;
   snapshot: StateSnapshot;
 }>;
+
+type LoadedWireSnapshot = Readonly<{
+  room: RoomRecord;
+  wireSnapshot: StateSnapshotWirePayload;
+  metadata: SnapshotMetadata;
+  legacySnapshot: StateSnapshot | null;
+}>;
+
+function socketAdmissionCapabilities(
+  socket: RealtimeSocket,
+): import("../application/room-admission-policy.js").RoomAdmissionCapabilities {
+  return {
+    selectedSnapshotVersion: socket.data.selectedSnapshotVersion,
+    supportedGameTypes: socket.data.supportedGameTypes,
+  };
+}
+
+function metadataFromWireSnapshot(
+  snapshot: StateSnapshotWirePayload,
+): SnapshotMetadata {
+  if ("protocolVersion" in snapshot) {
+    return {
+      serverTime: snapshot.serverTime,
+      versions: snapshot.versions,
+    };
+  }
+  return {
+    serverTime: snapshot.serverTime,
+    versions: {
+      roomRevision: snapshot.versions.roomRevision,
+      gameRevision: snapshot.game?.gameRevision ?? null,
+      presenceVersion: snapshot.versions.presenceVersion,
+    },
+  };
+}
 
 async function loadLegacySnapshot(
   runtime: ApplicationRuntime,
@@ -407,6 +576,9 @@ async function loadLegacySnapshot(
   const room = await runtime.persistence.findById(roomId);
   if (room === null) {
     return null;
+  }
+  if (room.gameType !== "HANGUL_TILE") {
+    throw new Error("Legacy Hangul snapshot requested for another gameType.");
   }
 
   return {
@@ -420,7 +592,27 @@ async function loadLegacySnapshot(
 
 function selectSnapshotForSocket(
   socket: RealtimeSocket,
-  room: RoomRecord,
+  room: HangulRoomRecord,
+  legacySnapshot: PlayingStateSnapshot,
+): PlayingStateSnapshot | HangulTilePlayingPlatformSnapshotV2;
+function selectSnapshotForSocket(
+  socket: RealtimeSocket,
+  room: HangulRoomRecord,
+  legacySnapshot: FinishedStateSnapshot,
+): FinishedStateSnapshot | HangulTileFinishedPlatformSnapshotV2;
+function selectSnapshotForSocket(
+  socket: RealtimeSocket,
+  room: HangulRoomRecord,
+  legacySnapshot: PlayingStateSnapshot | FinishedStateSnapshot,
+): HangulPlayingOrFinishedWirePayload;
+function selectSnapshotForSocket(
+  socket: RealtimeSocket,
+  room: HangulRoomRecord,
+  legacySnapshot: StateSnapshot,
+): StateSnapshotWirePayload;
+function selectSnapshotForSocket(
+  socket: RealtimeSocket,
+  room: HangulRoomRecord,
   legacySnapshot: StateSnapshot,
 ): StateSnapshotWirePayload {
   return selectSnapshotWirePayload({
@@ -428,6 +620,65 @@ function selectSnapshotForSocket(
     canonicalGameType: room.gameType,
     legacySnapshot,
   });
+}
+
+async function projectSnapshotForSocket(
+  runtime: ApplicationRuntime,
+  socket: RealtimeSocket,
+  room: RoomRecord,
+  selfPlayerId: PlayerId,
+): Promise<LoadedWireSnapshot> {
+  if (
+    !isRoomAdmissionCompatible(
+      room.gameType,
+      socketAdmissionCapabilities(socket),
+    )
+  ) {
+    throw new IncompatibleGameCapabilityError(
+      "Socket cannot represent the canonical Room game.",
+    );
+  }
+
+  if (room.gameType === "HANGUL_TILE") {
+    const legacySnapshot = await runtime.snapshotProjector.project({
+      room,
+      selfPlayerId,
+    });
+    const wireSnapshot = selectSnapshotForSocket(
+      socket,
+      room,
+      legacySnapshot,
+    );
+    return {
+      room,
+      wireSnapshot,
+      metadata: metadataFromWireSnapshot(wireSnapshot),
+      legacySnapshot,
+    };
+  }
+
+  const wireSnapshot = await runtime.platformSnapshotV2Projector.project({
+    room,
+    selfPlayerId,
+  });
+  return {
+    room,
+    wireSnapshot,
+    metadata: metadataFromWireSnapshot(wireSnapshot),
+    legacySnapshot: null,
+  };
+}
+
+async function loadSnapshotForSocket(
+  runtime: ApplicationRuntime,
+  socket: RealtimeSocket,
+  roomId: RoomId,
+  playerId: PlayerId,
+): Promise<LoadedWireSnapshot | null> {
+  const room = await runtime.persistence.findById(roomId);
+  return room === null
+    ? null
+    : projectSnapshotForSocket(runtime, socket, room, playerId);
 }
 
 async function fanOutRoomSnapshots(
@@ -445,25 +696,22 @@ async function fanOutRoomSnapshots(
       continue;
     }
 
-    const legacySnapshot = await runtime.snapshotProjector.project({
-      room,
-      selfPlayerId: binding.playerId,
-    });
-    if (!isCurrentBinding(runtime, binding)) {
-      continue;
-    }
     const connectedSocket = io.sockets.sockets.get(binding.socketId);
     if (connectedSocket === undefined) {
       continue;
     }
-    const wireSnapshot = selectSnapshotForSocket(
+    const loaded = await projectSnapshotForSocket(
+      runtime,
       connectedSocket,
       room,
-      legacySnapshot,
+      binding.playerId,
     );
+    if (!isCurrentBinding(runtime, binding)) {
+      continue;
+    }
     connectedSocket.emit(
       "state:snapshot",
-      snapshotEvent(legacySnapshot, wireSnapshot),
+      snapshotEvent(loaded.metadata, loaded.wireSnapshot),
     );
   }
 }
@@ -474,7 +722,7 @@ async function emitCurrentGameAdvisory(
   roomId: RoomId,
 ): Promise<void> {
   const room = await runtime.persistence.findById(roomId);
-  if (room === null) {
+  if (room === null || room.gameType !== "HANGUL_TILE") {
     return;
   }
   for (const binding of runtime.connectionRegistry.listActiveBindings(roomId)) {
@@ -556,6 +804,26 @@ async function bindPrimarySocket(
     throw new Error("Socket is already bound to a different Player.");
   }
 
+  const admissionRoom = await runtime.persistence.findById(roomId);
+  if (
+    admissionRoom === null ||
+    !admissionRoom.players.some((player) => player.playerId === playerId)
+  ) {
+    throw new RoomMembershipEndedError(
+      "Room membership ended before the socket could be bound.",
+    );
+  }
+  if (
+    !isRoomAdmissionCompatible(
+      admissionRoom.gameType,
+      socketAdmissionCapabilities(socket),
+    )
+  ) {
+    throw new IncompatibleGameCapabilityError(
+      "Socket cannot bind to an unsupported Room game.",
+    );
+  }
+
   await socket.join(roomChannel);
   if (!socket.connected) {
     await socket.leave(roomChannel);
@@ -581,6 +849,17 @@ async function bindPrimarySocket(
     await socket.leave(roomChannel);
     throw new RoomMembershipEndedError(
       "Room membership ended before the socket could be bound.",
+    );
+  }
+  if (
+    !isRoomAdmissionCompatible(
+      currentRoom.gameType,
+      socketAdmissionCapabilities(socket),
+    )
+  ) {
+    await socket.leave(roomChannel);
+    throw new IncompatibleGameCapabilityError(
+      "Socket cannot bind to an unsupported Room game.",
     );
   }
 
@@ -622,6 +901,7 @@ async function authenticatedEntryRetryAllowed(
   const resumed = await runtime.sessionResumeService.resumeSession({
     sessionToken,
     roomCode: room.roomCode,
+    admissionCapabilities: socketAdmissionCapabilities(socket),
   });
 
   return (
@@ -721,6 +1001,7 @@ function registerCreateRoomHandler(
         requestId: command.value.requestId,
         nickname: command.value.payload.nickname,
         gameType: command.value.payload.gameType,
+        admissionCapabilities: socketAdmissionCapabilities(socket),
       });
       if (!result.ok) {
         acknowledgeIfPresent(
@@ -738,8 +1019,9 @@ function registerCreateRoomHandler(
           result.data.roomId,
           result.data.playerId,
         );
-        const loaded = await loadLegacySnapshot(
+        const loaded = await loadSnapshotForSocket(
           runtime,
+          socket,
           result.data.roomId,
           result.data.playerId,
         );
@@ -751,15 +1033,10 @@ function registerCreateRoomHandler(
           return;
         }
 
-        const wireSnapshot = selectSnapshotForSocket(
-          socket,
-          loaded.room,
-          loaded.snapshot,
-        );
         const ack: RoomCreateWireAck = snapshotSuccessAck(
           command.value.requestId,
-          loaded.snapshot,
-          wireSnapshot,
+          loaded.metadata,
+          loaded.wireSnapshot,
         );
         acknowledgeIfPresent(acknowledge, ack);
         void fanOutRoomSnapshots(io, runtime, result.data.roomId).catch(
@@ -816,6 +1093,7 @@ function registerJoinRoomHandler(
         requestId: command.value.requestId,
         roomCode: command.value.payload.roomCode,
         nickname: command.value.payload.nickname,
+        admissionCapabilities: socketAdmissionCapabilities(socket),
       });
       if (!result.ok) {
         acknowledgeIfPresent(
@@ -840,8 +1118,9 @@ function registerJoinRoomHandler(
         } catch {
           reportRoomPolicyOrchestrationFailure();
         }
-        const loaded = await loadLegacySnapshot(
+        const loaded = await loadSnapshotForSocket(
           runtime,
+          socket,
           result.data.roomId,
           result.data.playerId,
         );
@@ -853,15 +1132,10 @@ function registerJoinRoomHandler(
           return;
         }
 
-        const wireSnapshot = selectSnapshotForSocket(
-          socket,
-          loaded.room,
-          loaded.snapshot,
-        );
         const ack: RoomJoinWireAck = snapshotSuccessAck(
           command.value.requestId,
-          loaded.snapshot,
-          wireSnapshot,
+          loaded.metadata,
+          loaded.wireSnapshot,
         );
         acknowledgeIfPresent(acknowledge, ack);
         void fanOutRoomSnapshots(io, runtime, result.data.roomId).catch(
@@ -901,6 +1175,7 @@ function registerResumeHandler(
       const result = await runtime.sessionResumeService.resumeSession({
         sessionToken: command.value.payload.credential.sessionToken,
         roomCode: command.value.payload.credential.roomCode,
+        admissionCapabilities: socketAdmissionCapabilities(socket),
       });
       if (!result.ok) {
         acknowledgeIfPresent(
@@ -938,6 +1213,7 @@ function registerResumeHandler(
             await runtime.sessionResumeService.resumeSession({
               sessionToken: command.value.payload.credential.sessionToken,
               roomCode: command.value.payload.credential.roomCode,
+              admissionCapabilities: socketAdmissionCapabilities(socket),
             });
           if (!currentSession.ok) {
             currentSessionError = currentSession.error;
@@ -982,6 +1258,7 @@ function registerResumeHandler(
         const boundSession = await runtime.sessionResumeService.resumeSession({
           sessionToken: command.value.payload.credential.sessionToken,
           roomCode: command.value.payload.credential.roomCode,
+          admissionCapabilities: socketAdmissionCapabilities(socket),
         });
         if (
           !boundSession.ok ||
@@ -1044,8 +1321,9 @@ function registerResumeHandler(
             reportRoomPolicyOrchestrationFailure();
           }
         }
-        const loaded = await loadLegacySnapshot(
+        const loaded = await loadSnapshotForSocket(
           runtime,
+          socket,
           result.data.roomId,
           result.data.playerId,
         );
@@ -1073,15 +1351,10 @@ function registerResumeHandler(
           return;
         }
 
-        const wireSnapshot = selectSnapshotForSocket(
-          socket,
-          loaded.room,
-          loaded.snapshot,
-        );
         const ack: SessionResumeWireAck = snapshotSuccessAck(
           command.value.requestId,
-          loaded.snapshot,
-          wireSnapshot,
+          loaded.metadata,
+          loaded.wireSnapshot,
         );
         acknowledgeIfPresent(acknowledge, ack);
         void fanOutRoomSnapshots(io, runtime, result.data.roomId).catch(
@@ -1140,8 +1413,9 @@ function registerStateSyncHandler(
         return;
       }
 
-      const loaded = await loadLegacySnapshot(
+      const loaded = await loadSnapshotForSocket(
         runtime,
+        socket,
         binding.roomId,
         binding.playerId,
       );
@@ -1160,20 +1434,15 @@ function registerStateSyncHandler(
         return;
       }
 
-      const wireSnapshot = selectSnapshotForSocket(
-        socket,
-        loaded.room,
-        loaded.snapshot,
-      );
       const ack: StateSyncWireAck = snapshotSuccessAck(
         command.value.requestId,
-        loaded.snapshot,
-        wireSnapshot,
+        loaded.metadata,
+        loaded.wireSnapshot,
       );
       acknowledgeIfPresent(acknowledge, ack);
       socket.emit(
         "state:snapshot",
-        snapshotEvent(loaded.snapshot, wireSnapshot),
+        snapshotEvent(loaded.metadata, loaded.wireSnapshot),
       );
     })().catch(() => {
       acknowledgeIfPresent(
@@ -1214,7 +1483,7 @@ function registerGameStartHandler(
         return;
       }
 
-      const result = await runtime.legacyHangulV1CommandRouter.start({
+      const result = await runtime.gameStartRouter.start({
         roomId: binding.roomId,
         actorPlayerId: binding.playerId,
         requestId: command.value.requestId,
@@ -1233,12 +1502,16 @@ function registerGameStartHandler(
       }
       committed = true;
 
-      const loaded = await loadLegacySnapshot(
+      const loaded = await loadSnapshotForSocket(
         runtime,
+        socket,
         binding.roomId,
         binding.playerId,
       );
-      if (loaded === null || !isPlayingSnapshot(loaded.snapshot)) {
+      if (
+        loaded === null ||
+        !isPlayingWireSnapshot(loaded.wireSnapshot)
+      ) {
         reportPostCommitDeliveryFailure();
         return;
       }
@@ -1247,19 +1520,19 @@ function registerGameStartHandler(
       }
 
       await fanOutRoomSnapshots(io, runtime, binding.roomId);
-      io.to(internalRoomChannel(binding.roomId)).emit(
-        "turn:started",
-        turnStartedEvent(loaded.snapshot),
-      );
-      const wireSnapshot = selectSnapshotWirePayload({
-        selectedVersion: socket.data.selectedSnapshotVersion,
-        canonicalGameType: loaded.room.gameType,
-        legacySnapshot: loaded.snapshot,
-      });
+      if (
+        loaded.legacySnapshot !== null &&
+        isPlayingSnapshot(loaded.legacySnapshot)
+      ) {
+        io.to(internalRoomChannel(binding.roomId)).emit(
+          "turn:started",
+          turnStartedEvent(loaded.legacySnapshot),
+        );
+      }
       const ack = gameStartSuccessAck(
         command.value.requestId,
-        loaded.snapshot,
-        wireSnapshot,
+        loaded.metadata,
+        loaded.wireSnapshot,
       );
       acknowledgeIfPresent(acknowledge, ack);
     })().catch(() => {
@@ -1325,6 +1598,7 @@ function registerTurnSubmitHandler(
           acknowledge,
           await turnSubmitFailureAck(
             runtime,
+            socket,
             binding,
             command.value.requestId,
             result.error,
@@ -1369,14 +1643,14 @@ function registerTurnSubmitHandler(
         );
       }
 
-      const wireSnapshot = selectSnapshotWirePayload({
-        selectedVersion: socket.data.selectedSnapshotVersion,
-        canonicalGameType: loaded.room.gameType,
-        legacySnapshot: loaded.snapshot,
-      });
+      const wireSnapshot = selectSnapshotForSocket(
+        socket,
+        loaded.room,
+        loaded.snapshot,
+      );
       const ack = turnSubmitSuccessAck(
         command.value.requestId,
-        loaded.snapshot,
+        metadataFromWireSnapshot(wireSnapshot),
         wireSnapshot,
       );
       acknowledgeIfPresent(acknowledge, ack);
@@ -1442,6 +1716,7 @@ function registerTurnDrawHandler(
           acknowledge,
           await turnActionFailureAck(
             runtime,
+            socket,
             binding,
             command.value.requestId,
             result.error,
@@ -1467,16 +1742,16 @@ function registerTurnDrawHandler(
 
       await fanOutRoomSnapshots(io, runtime, binding.roomId);
       await emitCurrentGameAdvisory(io, runtime, binding.roomId);
-      const wireSnapshot = selectSnapshotWirePayload({
-        selectedVersion: socket.data.selectedSnapshotVersion,
-        canonicalGameType: loaded.room.gameType,
-        legacySnapshot: loaded.snapshot,
-      });
+      const wireSnapshot = selectSnapshotForSocket(
+        socket,
+        loaded.room,
+        loaded.snapshot,
+      );
       acknowledgeIfPresent(
         acknowledge,
-        turnActionSuccessAck(
+        turnDrawSuccessAck(
           command.value.requestId,
-          loaded.snapshot,
+          metadataFromWireSnapshot(wireSnapshot),
           wireSnapshot,
         ),
       );
@@ -1541,6 +1816,7 @@ function registerTurnPassHandler(
           acknowledge,
           await turnActionFailureAck(
             runtime,
+            socket,
             binding,
             command.value.requestId,
             result.error,
@@ -1570,17 +1846,302 @@ function registerTurnPassHandler(
 
       await fanOutRoomSnapshots(io, runtime, binding.roomId);
       await emitCurrentGameAdvisory(io, runtime, binding.roomId);
-      const wireSnapshot = selectSnapshotWirePayload({
-        selectedVersion: socket.data.selectedSnapshotVersion,
-        canonicalGameType: loaded.room.gameType,
-        legacySnapshot: loaded.snapshot,
-      });
+      const wireSnapshot = selectSnapshotForSocket(
+        socket,
+        loaded.room,
+        loaded.snapshot,
+      );
       acknowledgeIfPresent(
         acknowledge,
-        turnActionSuccessAck(
+        turnPassSuccessAck(
           command.value.requestId,
-          loaded.snapshot,
+          metadataFromWireSnapshot(wireSnapshot),
           wireSnapshot,
+        ),
+      );
+    })().catch(() => {
+      if (committed) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, INTERNAL_ERROR, receivedAt),
+      );
+    });
+  });
+}
+
+function registerNumberSubmitHandler(
+  io: RealtimeServer,
+  socket: RealtimeSocket,
+  runtime: ApplicationRuntime,
+): void {
+  socket.on("number:submit", (rawCommand, acknowledge) => {
+    const receivedAt = runtime.clock.now();
+    let committed = false;
+    const commandInput: unknown = rawCommand;
+    const command = validateNumberSubmitCommand(commandInput);
+    if (!command.ok) {
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, command.error, receivedAt),
+      );
+      return;
+    }
+
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(
+        createSocketId(socket.id),
+      );
+      if (binding === null) {
+        acknowledgeIfPresent(
+          acknowledge,
+          failureAck(commandInput, UNAUTHENTICATED_ERROR, receivedAt),
+        );
+        return;
+      }
+      const result = await runtime.numberTileCommandRouter.submit({
+        roomId: binding.roomId,
+        actorPlayerId: binding.playerId,
+        requestId: command.value.requestId,
+        expectedGameRevision: command.value.expectedGameRevision,
+        turnId: command.value.turnId,
+        receivedAt,
+        proposedTable: command.value.payload.proposedTable,
+        authorization: {
+          isCurrent: () =>
+            socket.connected && isCurrentBinding(runtime, binding),
+        },
+      });
+      if (!result.ok) {
+        acknowledgeIfPresent(
+          acknowledge,
+          await turnSubmitFailureAck(
+            runtime,
+            socket,
+            binding,
+            command.value.requestId,
+            result.error,
+            receivedAt,
+          ),
+        );
+        return;
+      }
+      committed = true;
+      const loaded = await loadSnapshotForSocket(
+        runtime,
+        socket,
+        binding.roomId,
+        binding.playerId,
+      );
+      if (
+        loaded === null ||
+        (!isNumberTilePlayingWireSnapshot(loaded.wireSnapshot) &&
+          !isNumberTileFinishedWireSnapshot(loaded.wireSnapshot))
+      ) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      if (!socket.connected || !isCurrentBinding(runtime, binding)) {
+        return;
+      }
+      await fanOutRoomSnapshots(io, runtime, binding.roomId);
+      acknowledgeIfPresent(
+        acknowledge,
+        numberSubmitSuccessAck(
+          command.value.requestId,
+          loaded.metadata,
+          loaded.wireSnapshot,
+        ),
+      );
+    })().catch(() => {
+      if (committed) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, INTERNAL_ERROR, receivedAt),
+      );
+    });
+  });
+}
+
+function registerNumberDrawHandler(
+  io: RealtimeServer,
+  socket: RealtimeSocket,
+  runtime: ApplicationRuntime,
+): void {
+  socket.on("number:draw", (rawCommand, acknowledge) => {
+    const receivedAt = runtime.clock.now();
+    let committed = false;
+    const commandInput: unknown = rawCommand;
+    const command = validateNumberDrawCommand(commandInput);
+    if (!command.ok) {
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, command.error, receivedAt),
+      );
+      return;
+    }
+
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(
+        createSocketId(socket.id),
+      );
+      if (binding === null) {
+        acknowledgeIfPresent(
+          acknowledge,
+          failureAck(commandInput, UNAUTHENTICATED_ERROR, receivedAt),
+        );
+        return;
+      }
+      const result = await runtime.numberTileCommandRouter.draw({
+        roomId: binding.roomId,
+        actorPlayerId: binding.playerId,
+        requestId: command.value.requestId,
+        expectedGameRevision: command.value.expectedGameRevision,
+        turnId: command.value.turnId,
+        receivedAt,
+        authorization: {
+          isCurrent: () =>
+            socket.connected && isCurrentBinding(runtime, binding),
+        },
+      });
+      if (!result.ok) {
+        acknowledgeIfPresent(
+          acknowledge,
+          await turnActionFailureAck(
+            runtime,
+            socket,
+            binding,
+            command.value.requestId,
+            result.error,
+            receivedAt,
+          ),
+        );
+        return;
+      }
+      committed = true;
+      const loaded = await loadSnapshotForSocket(
+        runtime,
+        socket,
+        binding.roomId,
+        binding.playerId,
+      );
+      if (
+        loaded === null ||
+        !isNumberTilePlayingWireSnapshot(loaded.wireSnapshot)
+      ) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      if (!socket.connected || !isCurrentBinding(runtime, binding)) {
+        return;
+      }
+      await fanOutRoomSnapshots(io, runtime, binding.roomId);
+      acknowledgeIfPresent(
+        acknowledge,
+        numberDrawSuccessAck(
+          command.value.requestId,
+          loaded.metadata,
+          loaded.wireSnapshot,
+        ),
+      );
+    })().catch(() => {
+      if (committed) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, INTERNAL_ERROR, receivedAt),
+      );
+    });
+  });
+}
+
+function registerNumberPassHandler(
+  io: RealtimeServer,
+  socket: RealtimeSocket,
+  runtime: ApplicationRuntime,
+): void {
+  socket.on("number:pass", (rawCommand, acknowledge) => {
+    const receivedAt = runtime.clock.now();
+    let committed = false;
+    const commandInput: unknown = rawCommand;
+    const command = validateNumberPassCommand(commandInput);
+    if (!command.ok) {
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, command.error, receivedAt),
+      );
+      return;
+    }
+
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(
+        createSocketId(socket.id),
+      );
+      if (binding === null) {
+        acknowledgeIfPresent(
+          acknowledge,
+          failureAck(commandInput, UNAUTHENTICATED_ERROR, receivedAt),
+        );
+        return;
+      }
+      const result = await runtime.numberTileCommandRouter.pass({
+        roomId: binding.roomId,
+        actorPlayerId: binding.playerId,
+        requestId: command.value.requestId,
+        expectedGameRevision: command.value.expectedGameRevision,
+        turnId: command.value.turnId,
+        receivedAt,
+        authorization: {
+          isCurrent: () =>
+            socket.connected && isCurrentBinding(runtime, binding),
+        },
+      });
+      if (!result.ok) {
+        acknowledgeIfPresent(
+          acknowledge,
+          await turnActionFailureAck(
+            runtime,
+            socket,
+            binding,
+            command.value.requestId,
+            result.error,
+            receivedAt,
+          ),
+        );
+        return;
+      }
+      committed = true;
+      const loaded = await loadSnapshotForSocket(
+        runtime,
+        socket,
+        binding.roomId,
+        binding.playerId,
+      );
+      if (
+        loaded === null ||
+        (!isNumberTilePlayingWireSnapshot(loaded.wireSnapshot) &&
+          !isNumberTileFinishedWireSnapshot(loaded.wireSnapshot))
+      ) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      if (!socket.connected || !isCurrentBinding(runtime, binding)) {
+        return;
+      }
+      await fanOutRoomSnapshots(io, runtime, binding.roomId);
+      acknowledgeIfPresent(
+        acknowledge,
+        numberPassSuccessAck(
+          command.value.requestId,
+          loaded.metadata,
+          loaded.wireSnapshot,
         ),
       );
     })().catch(() => {
@@ -1710,6 +2271,7 @@ function registerRoomLeaveHandler(
           acknowledge,
           await turnSubmitFailureAck(
             runtime,
+            socket,
             binding,
             command.value.requestId,
             result.error,
@@ -1825,7 +2387,14 @@ export function registerSocketIoHandlers(
       return;
     }
 
+    const gameCapability = negotiateGameTypeCapability(socket.handshake.auth);
+    if (!gameCapability.ok) {
+      next(new Error(GAME_TYPE_CAPABILITY_ERROR_MESSAGE));
+      return;
+    }
+
     socket.data.selectedSnapshotVersion = negotiation.selectedVersion;
+    socket.data.supportedGameTypes = gameCapability.supportedGameTypes;
     next();
   });
   const unsubscribeTimeoutApplied = runtime.subscribeTurnTimeoutApplied(
@@ -1843,6 +2412,14 @@ export function registerSocketIoHandlers(
       try {
         await fanOutRoomSnapshots(io, runtime, data.roomId);
         await emitCurrentGameAdvisory(io, runtime, data.roomId);
+      } catch {
+        reportSnapshotFanOutFailure();
+      }
+    });
+  const unsubscribeNumberTileTimeoutApplied =
+    runtime.subscribeNumberTileTimeoutApplied(async (data) => {
+      try {
+        await fanOutRoomSnapshots(io, runtime, data.roomId);
       } catch {
         reportSnapshotFanOutFailure();
       }
@@ -1884,6 +2461,9 @@ export function registerSocketIoHandlers(
     registerTurnSubmitHandler(io, socket, runtime);
     registerTurnDrawHandler(io, socket, runtime);
     registerTurnPassHandler(io, socket, runtime);
+    registerNumberSubmitHandler(io, socket, runtime);
+    registerNumberDrawHandler(io, socket, runtime);
+    registerNumberPassHandler(io, socket, runtime);
     registerRoomLeaveHandler(io, socket, runtime, authenticationExecutor);
     registerDisconnectHandler(io, socket, runtime);
   });
@@ -1892,6 +2472,7 @@ export function registerSocketIoHandlers(
     unsubscribeRoomClosed();
     unsubscribeRoomPlayerRemoved();
     unsubscribeTimeoutApplied();
+    unsubscribeNumberTileTimeoutApplied();
     unsubscribeGameDeadlineApplied();
   };
 }

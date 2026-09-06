@@ -1,6 +1,6 @@
 # Multi-game Platform Architecture
 
-> 상태: P0~P7A COMPLETE / P7B READY
+> 상태: P0~P7B COMPLETE / P7C READY
 > 작성일: 2026-09-06
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
@@ -26,21 +26,21 @@
 
 ## 2. 현재 architecture 요약
 
-현재 코드는 단일 한글 게임의 완성된 vertical slice에 최적화되어 있다.
+P0 당시 코드는 단일 한글 게임의 완성된 vertical slice에 최적화되어 있었다. P7B 현재 구조는 그 legacy surface를 보존하면서 두 concrete server game을 지원한다.
 
 ```text
-Web App / useLobbyApp
+Current Web App / useLobbyApp (Hangul only)
   -> shared StateSnapshot, command, realtime contract
   -> Socket.IO transport
-  -> platform room/session service 또는 LegacyHangulV1CommandRouter
-  -> existing Hangul start/submit/draw/pass service
-  -> RoomRecord { immutable gameType + platform fields + concrete GameState }
+  -> platform room/session/admission + canonical game routers
+     -> Hangul compatibility/application
+     -> Number Tile application/domain
+  -> RoomRecord exact { Hangul state | Number state }
   -> in-memory repositories / deadline schedulers
 
-concrete GameState
-  -> Hangul tile inventory, rack, Board/WordGroup
-  -> Hangul composition + dictionary
-  -> turn/deadline/stalemate/result
+Game-specific state
+  -> Hangul inventory/Board/composition/dictionary/result
+  -> Number inventory/Table/meld/Joker/stalemate/result
 ```
 
 이 구조는 한 게임에는 명료한 end-to-end type safety를 제공한다. 문제는 이름이 `game`, `StateSnapshot`, `Playing`처럼 일반적이어도 실제 shape와 validator가 한글 타일 의미를 포함한다는 점이다. 따라서 이름만 보고 core로 승격하면 coupling을 숨긴 채 고정하게 된다.
@@ -1112,3 +1112,50 @@ production Room/Registry/Socket/Web
 - Import-boundary test는 Hangul/platform runtime 역의존, direct clock/random/timer, stable `meldId`를 거절한다. Production source가 Number domain을 import하지 않는 inertness도 고정했다.
 
 P7A는 shared protocol, `GameType`, GameRegistry, catalog, PlatformSnapshot, Socket.IO, Web와 production composition을 변경하지 않는다. 따라서 runtime 지원 game은 계속 `HANGUL_TILE` 하나다. Concrete model과 P7B handoff는 [NUMBER_TILE_DOMAIN_DESIGN.md](./NUMBER_TILE_DOMAIN_DESIGN.md)에 기록한다.
+
+## 32. P7B two-game server/shared integration
+
+P7B는 실제 두 concrete game을 연결하기 위해 필요한 좁은 dispatch만 추가했다. Final `GameModule`이나 generic state/result/command contract는 없다.
+
+```text
+Socket.IO transport
+  -> Room/session admission (selected snapshot + supported game set)
+  -> platform dispatch by canonical Room.gameType
+     -> Hangul compatibility/application -> Hangul domain
+     -> Number application/compatibility -> Number domain
+
+InMemoryPersistence
+  -> exact Hangul state adapter
+  -> exact Number state adapter
+
+PlatformSnapshotV2 projector
+  -> frozen Hangul V1 mapper path
+  -> direct Number V2 game projector
+```
+
+### 32.1 Stored state와 persistence
+
+`RoomRecord`는 `gameType`이 discriminator인 `HangulRoomRecord | NumberTileRoomRecord`다. `RoomWriteCandidate`는 distributive union으로 correlation을 유지하며 unknown/opaque JSON/base state는 사용하지 않는다. Persistence switch만 두 concrete adapter를 알고 각 module adapter가 nested clone, structural invariant와 lifecycle inspection을 소유한다. CAS, `storageRevision`, gameType immutability, Room phase/player coherence와 UoW rollback은 platform responsibility로 남는다.
+
+Number lifecycle inspection은 RUNNING의 game/revision/current Turn deadline과 FINISHED의 game/finishedAt만 제공한다. Common Turn recovery는 두 game을 읽고, overall Game deadline recovery는 Hangul inspection만 사용한다.
+
+### 32.2 Admission과 connection state
+
+Handshake의 `supportedGameTypes`는 strict known-type array이며 omission은 frozen `[HANGUL_TILE]` legacy default다. Socket data에 negotiated result를 connection lifetime 동안 보관하지만 Room/Player/session record에는 저장하지 않는다. Number admission은 exact capability와 selected V2를 모두 요구한다. Create는 ID/code/session/idempotency 전, join은 canonical Room lookup 뒤 Player/session mutation 전, resume은 primary replacement와 presence mutation 전 검사한다. Socket bind 직전에도 immutable canonical Room을 다시 읽어 cleanup/admission race를 닫는다.
+
+### 32.3 Commands와 scheduled actions
+
+`GameStartRouter`만 shared `game:start`를 두 concrete start service로 보낸다. Legacy `turn:*` router는 Hangul exact surface로 남고 `NumberTileCommandRouter`는 `number:*`만 맡는다. Both routers trust only stored Room type. Transport owns validation, one-time `receivedAt`, current-primary binding, ack/fan-out; service owns idempotency and candidate/UoW commit; domain owns rules. Number start는 CONNECTED presence lease와 actor authorization을 candidate 생성 뒤 UoW precondition에서 함께 재검증해 presence 경합을 atomic하게 차단한다.
+
+Common Turn scheduler callback은 `ScheduledTurnRouter`로 Hangul/Number timeout을 고른다. Player leave/presence reset도 `PlayerLifecycleRouter`가 two concrete action interfaces만 선택한다. Game deadline scheduler/router는 Hangul-only다. Number timeout, result와 lifecycle action은 Number module에 남고 GameRegistry는 여전히 `{ gameType }` identity-only다.
+
+### 32.4 Projection과 privacy
+
+`PlatformSnapshotV2Schema`는 phase와 game type이 상관된 six-branch union이다. Number projection은 public Table, remaining pool count, Turn과 player summaries를 만들고 viewer own rack만 private state에 둔다. FINISHED도 opponent rack detail을 공개하지 않는다. Number는 V1 intermediate/down-conversion과 advisory를 만들지 않는다. Hangul V1/V2 selector와 `turn:started`/`game:finished` ordering은 기존 경로를 유지한다.
+
+### 32.5 남은 의도적 경계
+
+- Current Web catalog/connection/decoder/renderer는 Hangul-only이며 P7C가 Number capability와 UI를 소유한다.
+- Start, command, timeout, lifecycle과 projection은 두 concrete implementation으로 유지한다. 유사 부분의 platform 승격 여부는 P9에서 실제 호출을 비교한 뒤 결정한다.
+- In-memory single-process storage, one replica와 `test-dictionary-v1` 제약은 해결하지 않았다.
+- 상세 contract와 rollout gate는 [NUMBER_TILE_SERVER_INTEGRATION.md](./NUMBER_TILE_SERVER_INTEGRATION.md)를 따른다.

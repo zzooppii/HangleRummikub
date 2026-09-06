@@ -43,7 +43,10 @@ import { KeyedSerialExecutor } from "../infrastructure/keyed-serial-executor.js"
 import { OverdueTurnSweeper } from "../infrastructure/overdue-turn-sweeper.js";
 import { FakeClock, FakeIdGenerator } from "../infrastructure/system.js";
 import { TestDictionaryProvider } from "../games/hangul-tile/infrastructure/test-dictionary-provider.js";
-import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
+import type {
+  HangulRoomRecord,
+  RoomWriteCandidate,
+} from "../model/persistence.js";
 import type {
   RandomSource,
   ScheduledTurnDeadline,
@@ -181,7 +184,7 @@ type Harness = Readonly<{
   scheduler: RecordingScheduler;
   authorization: MutableAuthorization;
   presenceLeaseReader: MutablePresenceLeaseReader;
-  room: RoomRecord;
+  room: HangulRoomRecord;
   drawService: TurnDrawService;
   passService: TurnPassService;
   timeoutService: TurnTimeoutService;
@@ -291,6 +294,7 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   if (created.status !== "CREATED") {
     throw new Error("Turn end fixture Room creation failed.");
   }
+  assert.equal(created.room.gameType, "HANGUL_TILE");
 
   const executor = new KeyedSerialExecutor<RoomId>();
   const clock = new FakeClock(options.clockNow ?? 10_000);
@@ -369,7 +373,7 @@ function passInput(
   };
 }
 
-function deadline(room: RoomRecord): ScheduledTurnDeadline {
+function deadline(room: HangulRoomRecord): ScheduledTurnDeadline {
   const game = room.game;
   if (game?.turn === null || game === null) {
     throw new Error("Harness requires a playing Game.");
@@ -399,6 +403,7 @@ test("turn:draw removes one server-selected Tile, appends it to rack, and advanc
     await context.test(bagKind, async () => {
       const harness = await createHarness();
       const before = await harness.persistence.findById(harness.room.roomId);
+      assert.equal(before?.gameType, "HANGUL_TILE");
       assert.ok(before?.game?.turn);
       const selectedBefore =
         bagKind === "CONSONANT"
@@ -420,6 +425,7 @@ test("turn:draw removes one server-selected Tile, appends it to rack, and advanc
       assert.equal(result.data.drawnTileId, expectedTile);
 
       const after = await harness.persistence.findById(harness.room.roomId);
+      assert.equal(after?.gameType, "HANGUL_TILE");
       assert.ok(after?.game?.turn);
       assert.equal(after.gameType, "HANGUL_TILE");
       assert.equal(after.roomRevision, before.roomRevision);
@@ -570,11 +576,13 @@ test("Draw/Pass reject stale primary and UoW failure without partial state", asy
 test("turn:pass succeeds only with both bags empty and preserves rack/Board", async () => {
   const harness = await createHarness({ consonantCount: 0, vowelCount: 0 });
   const before = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(before?.gameType, "HANGUL_TILE");
   assert.ok(before?.game?.turn);
   const result = await harness.passService.pass(passInput(harness));
   assert.equal(result.ok, true);
 
   const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
   assert.ok(after?.game?.turn);
   assert.equal(after.gameType, "HANGUL_TILE");
   assert.equal(after.roomRevision, before.roomRevision);
@@ -660,6 +668,7 @@ test("timeout is Clock-authoritative at the exact deadline and draws three deter
   const harness = await createHarness({ clockNow: 60_999, randomSequence: [0, 1, 0] });
   const identity = deadline(harness.room);
   const before = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(before?.gameType, "HANGUL_TILE");
   assert.equal((await harness.timeoutService.timeout(identity)).status, "NO_OP");
   assert.deepEqual(
     await harness.persistence.findById(harness.room.roomId),
@@ -677,6 +686,7 @@ test("timeout is Clock-authoritative at the exact deadline and draws three deter
   assert.deepEqual(harness.randomSource.calls, [2, 2, 2]);
 
   const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
   assert.ok(after?.game?.turn && before?.game?.turn);
   assert.equal(after.gameType, "HANGUL_TILE");
   assert.equal(after.game.racks.get(PLAYER_A)?.length, 4);
@@ -949,6 +959,7 @@ test("vowel-only timeout penalty never consumes RandomSource", async () => {
   assert.equal(result.data.penaltyTileIds.length, 3);
   assert.deepEqual(harness.randomSource.calls, []);
   const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
   assert.equal(after?.game?.vowelBag.length, 0);
 });
 
@@ -1101,6 +1112,7 @@ test("timeout queued first in the shared Room lane wins an expired Submit with o
   const game = harness.room.game;
   assert.ok(game?.turn);
   const before = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(before?.gameType, "HANGUL_TILE");
   assert.ok(before?.game?.turn);
   const beforeBagTileCount =
     before.game.consonantBag.length + before.game.vowelBag.length;
@@ -1172,6 +1184,7 @@ test("timeout queued first in the shared Room lane wins an expired Submit with o
   );
 
   const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
   assert.ok(after?.game?.turn);
   assert.equal(after.game.gameRevision, before.game.gameRevision + 1);
   assert.equal(after.storageRevision, before.storageRevision + 1);

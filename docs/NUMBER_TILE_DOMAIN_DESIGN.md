@@ -1,12 +1,12 @@
 # Number Tile Domain Design
 
-> 상태: P7A IMPLEMENTED / production UNSUPPORTED
+> 상태: P7A DOMAIN COMPLETE / P7B SERVER INTEGRATED / P7C WEB PENDING
 > Canonical ruleset: `number-tile-rules-v1`
 > 기준 문서: [NUMBER_TILE_GAME_RULES.md](./NUMBER_TILE_GAME_RULES.md)
 
 ## 1. 범위
 
-P7A는 `apps/server/src/games/number-tile/domain/`에 framework-independent Number Tile domain만 추가한다. 이 코드는 Room, persistence, registry, Socket.IO, shared realtime schema, PlatformSnapshot, Web 또는 production composition에 연결되지 않는다. 따라서 domain source가 존재해도 `NUMBER_TILE`은 아직 지원 game type이 아니다.
+P7A는 `apps/server/src/games/number-tile/domain/`에 framework-independent Number Tile domain만 추가했다. P7B는 이 domain을 game-owned application/compatibility boundary를 통해 Room, persistence, registry, Socket.IO와 PlatformSnapshotV2에 연결했다. Domain 자체는 여전히 transport, persistence implementation, composition root와 Web을 import하지 않는다.
 
 Hangul의 Board, WordGroup, RuleEngine, inventory, Joker recovery와 result를 import하거나 상속하지 않는다. 현재 두 구현 사이의 유사성은 P9 전까지 platform abstraction으로 승격하지 않는다.
 
@@ -125,9 +125,9 @@ Ordinary penalty는 face number, Joker는 30이다. Single-winner score는 winne
 
 ## 8. Purity와 P7B seam
 
-Import-boundary regression은 static import/export와 string-literal dynamic import를 모두 추적해 Number domain의 Hangul, application, persistence implementation, transport, composition root, Express, Socket.IO, React 의존과 직접 `Date.now`/`Math.random`/timer 사용, stable `meldId`를 금지한다. 별도 inertness 검사로 production source가 P7A Number domain을 import하지 않음을 고정한다.
+Import-boundary regression은 static import/export와 string-literal dynamic import를 모두 추적해 Number domain의 Hangul, application, persistence implementation, transport, composition root, Express, Socket.IO, React 의존과 직접 `Date.now`/`Math.random`/timer 사용, stable `meldId`를 금지한다. P7A의 production inertness 검사는 P7B에서 의도적으로 종료되고, 대신 platform dispatcher와 Number-owned application/compatibility만 domain을 import하는 방향을 검증한다.
 
-P7B가 연결해야 할 항목은 다음뿐이다.
+P7B가 연결한 항목은 다음뿐이다.
 
 - shared strict Number command/projection/error schemas
 - RoomRecord state ownership과 clone/validation/projector capability
@@ -135,4 +135,4 @@ P7B가 연결해야 할 항목은 다음뿐이다.
 - injected random draw와 90초 Turn scheduler/recovery
 - viewer별 rack/pool privacy와 `supportedGameTypes` admission
 
-P7A 시점에는 `GameType`, GameRegistry, catalog, PlatformSnapshot union, Socket.IO events, Web와 production composition이 모두 Hangul-only 그대로다.
+P7B 뒤 `GameType`, GameRegistry, exact Room state, PlatformSnapshotV2, Socket.IO events와 production composition은 Number를 지원한다. Web catalog/renderer와 Web의 `NUMBER_TILE` capability advertisement는 여전히 없으며 P7C로 남긴다. Concrete runtime 경계는 [NUMBER_TILE_SERVER_INTEGRATION.md](./NUMBER_TILE_SERVER_INTEGRATION.md)에 기록한다.

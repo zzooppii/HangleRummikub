@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0~P7A COMPLETE / P7B READY
+> 상태: P0~P7B COMPLETE / P7C READY
 > 작성일: 2026-09-06
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -759,7 +759,7 @@ P7A는 `COMPLETE`, P7B는 `READY`다. P7B 완료 전에는 `NUMBER_TILE`을 runt
 Multi-game Platform P7A만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 docs/NUMBER_TILE_GAME_RULES.md의 `number-tile-rules-v1`만 사용해 framework-independent NUMBER_TILE state, inventory, RuleEngine, result를 구현하라. Hangul Board/RuleEngine을 import하거나 GenericTile을 만들지 말고 ID/random/Clock을 주입해 90초 turn deadline을 구현하되 overall game deadline capability는 만들지 마라. shared wire, persistence, transport, web, catalog는 건드리지 말고 table-driven domain tests와 전체 typecheck/test/build/diff-check를 통과시켜라.
 ```
 
-### 10.2 P7B — Number Tile server/shared integration (`READY`)
+### 10.2 P7B — Number Tile server/shared integration (`COMPLETE`)
 
 #### 목표
 
@@ -773,7 +773,7 @@ NUMBER_TILE의 닫힌 command/projection contract와 server application을 regis
 - server auth, canonical gameType, scoped revision, idempotency, Room serialization
 - candidate validation 후 atomic commit과 private projection
 - 90초 Turn timeout server action/recovery; overall Game deadline capability 없음
-- Number registration은 test/injected composition에서만 연결하고 default production registration/public create는 `HANGUL_TILE` only로 유지
+- production identity Registry와 server create path에 Number를 연결하되 current Web catalog/capability는 `HANGUL_TILE` only로 유지
 
 #### 금지사항
 
@@ -798,6 +798,21 @@ NUMBER_TILE의 닫힌 command/projection contract와 server application을 regis
 - player projection secrecy
 - Turn scheduler stale/duplicate/deadline race cases
 - 기존 Hangul/NUMBER domain 전체 tests, typecheck/build/diff-check
+
+#### 완료 기록 (2026-09-06)
+
+- Shared `GameType`과 identity-only Registry는 exact `HANGUL_TILE | NUMBER_TILE` 두 값/registration만 지원한다. `GEM_CARD`와 future placeholder는 없다.
+- Canonical Room은 gameType과 concrete state가 상관된 exact Hangul/Number union이고, in-memory persistence는 각 module의 clone/validation/lifecycle adapter를 사용한다. Game type mutation과 cross-game state mismatch는 atomic fail-closed다.
+- Independent `supportedGameTypes` handshake capability를 추가했다. Omission은 Hangul-only이며 Number create/join/resume은 advertised Number와 selected snapshot V2를 membership/session/presence mutation 전에 모두 요구한다.
+- Existing `game:start`는 canonical Room type으로 Hangul/Number start path를 정확히 하나 선택한다. Protocol v1 strict `number:submit`/`number:draw`/`number:pass`는 Room lane, current actor, receivedAt, revision, request ID/idempotency와 UoW 원칙을 따른다.
+- Number start는 2~4명 rack 14장과 pool 78/64/50장, revision 0, shuffled immutable order와 90초 Turn을 만든다. Number overall game deadline은 없다.
+- Number timeout, offline streak/resume reset, explicit leave/forfeit와 terminal result를 Number-owned service/action으로 연결하고 common Turn scheduler/recovery 및 platform retention을 재사용했다.
+- `PlatformSnapshotV2`는 Hangul/Number 각각의 LOBBY/PLAYING/FINISHED strict branch를 지원한다. Number pool은 count만, 상대 rack은 count만 공개하고 FINISHED privacy도 유지하며 V1/down-conversion과 Number advisory는 없다.
+- Current Web source는 Number capability, catalog item, decoder/renderer/editor를 추가하지 않았다. Number Web gameplay는 P7C로 남긴다.
+- P7A 기준 784 tests를 유지하고 P7B 신규 94 tests를 더해 shared 75, web 109, server 694, 총 878 tests를 통과했다. Production-serving 5/5와 실제 build의 local raw A/B Number create/join/start/Draw/privacy/resume smoke도 통과했다.
+- 상세 architecture와 contract는 [NUMBER_TILE_SERVER_INTEGRATION.md](./NUMBER_TILE_SERVER_INTEGRATION.md)에 기록했다.
+
+P7B는 `COMPLETE`, P7C는 `READY`다. P7C/P8 gate 전에는 public Home catalog에 `NUMBER_TILE`을 노출하지 않는다.
 
 #### Codex 실행 명령
 

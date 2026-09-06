@@ -4,6 +4,8 @@ const USER_ERROR_MESSAGES = {
   INVALID_PAYLOAD: "요청 형식이 올바르지 않습니다. 다시 시도해주세요.",
   INCOMPATIBLE_PROTOCOL:
     "앱 버전이 서버와 맞지 않습니다. 페이지를 새로고침해주세요.",
+  INCOMPATIBLE_GAME_CAPABILITY:
+    "이 앱 버전에서는 선택한 게임을 이용할 수 없습니다.",
   UNAUTHENTICATED: "현재 연결로 요청할 수 없습니다. 다시 연결해주세요.",
   SESSION_NOT_FOUND:
     "이 방의 연결 정보가 더 이상 유효하지 않습니다. 새 방을 만들거나 다시 참가해주세요.",
@@ -18,6 +20,7 @@ const USER_ERROR_MESSAGES = {
   TURN_EXPIRED: "이 턴의 제한 시간이 지났습니다. 최신 상태를 불러옵니다.",
   GAME_EXPIRED: "게임 제한 시간이 끝났습니다. 종료 상태를 불러옵니다.",
   BAG_EMPTY: "선택한 타일 주머니가 비어 있습니다.",
+  POOL_EMPTY: "가져올 수 있는 숫자 타일이 없습니다.",
   PASS_NOT_ALLOWED: "타일이 남아 있어 아직 턴을 넘길 수 없습니다.",
   INVALID_PHASE: "현재 방 상태에서는 실행할 수 없습니다.",
   STALE_ROOM_REVISION: "방 상태가 변경되었습니다. 최신 상태를 불러옵니다.",
@@ -32,7 +35,16 @@ const USER_ERROR_MESSAGES = {
   INVALID_TILE_ACCESS:
     "게임 상태와 타일 정보가 달라졌습니다. 최신 상태를 불러옵니다.",
   INVALID_BOARD: "완성되지 않았거나 허용되지 않는 보드 배치입니다.",
+  INVALID_TABLE: "숫자 타일 테이블 배치를 다시 확인해주세요.",
+  INVALID_MELD: "유효하지 않은 숫자 타일 조합입니다.",
   INVALID_HANGUL_COMPOSITION: "한글 음절 구성을 다시 확인해주세요.",
+  INITIAL_MELD_REQUIRED: "첫 등록은 내 숫자 타일만 사용해야 합니다.",
+  INITIAL_MELD_TOO_LOW: "첫 등록의 숫자 합은 30 이상이어야 합니다.",
+  TABLE_REARRANGEMENT_NOT_ALLOWED:
+    "첫 등록을 마치기 전에는 기존 테이블을 바꿀 수 없습니다.",
+  NO_NEW_RACK_TILE: "내 숫자 타일을 한 개 이상 새로 사용해야 합니다.",
+  INVALID_JOKER_ASSIGNMENT: "조커가 나타내는 숫자와 색상을 확인해주세요.",
+  INVALID_JOKER_RECOVERY: "조커 회수와 같은 턴 재사용 조건을 확인해주세요.",
   WORD_NOT_ALLOWED: "허용된 단어가 아닙니다.",
   RULE_VIOLATION: "현재 게임 규칙에 맞지 않는 배치입니다.",
   TEMPORARILY_UNAVAILABLE:

@@ -15,6 +15,7 @@ import {
   pruneNoMoveTurnEnds,
 } from "../domain/stalemate.js";
 import type {
+  HangulRoomRecord,
   RoomRecord,
   RoomWriteCandidate,
 } from "../../../model/persistence.js";
@@ -67,7 +68,9 @@ export interface LegacyHangulPlayerLifecycleActionRouting {
   ): LegacyHangulPresenceRestoredPlan;
 }
 
-function requireLegacyHangulGameType(room: RoomRecord): void {
+function requireLegacyHangulGameType(
+  room: RoomRecord,
+): asserts room is Extract<RoomRecord, Readonly<{ gameType: "HANGUL_TILE" }>> {
   if (room.gameType !== LEGACY_V1_DEFAULT_GAME_TYPE) {
     throw new TypeError(
       "Legacy Hangul player lifecycle action received an unsupported gameType.",
@@ -75,7 +78,7 @@ function requireLegacyHangulGameType(room: RoomRecord): void {
   }
 }
 
-function requirePlayingGame(room: RoomRecord): PlayingGameState {
+function requirePlayingGame(room: HangulRoomRecord): PlayingGameState {
   if (
     room.phase !== "PLAYING" ||
     room.game === null ||

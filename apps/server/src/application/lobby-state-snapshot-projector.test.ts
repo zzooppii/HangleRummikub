@@ -28,6 +28,7 @@ import { JOKER_ALLOWED_SYMBOLS } from "../games/hangul-tile/domain/tile-inventor
 import { projectLegacyHangulV1Game } from "../games/hangul-tile/compatibility/legacy-hangul-v1-game-projector.js";
 import {
   createStorageRevision,
+  type HangulRoomRecord,
   type RoomRecord,
 } from "../model/persistence.js";
 import { FakeClock, FakeIdGenerator } from "../infrastructure/system.js";
@@ -40,7 +41,7 @@ function playerId(value: string): PlayerId {
   return parse(PlayerIdSchema, value);
 }
 
-function roomFixture(): RoomRecord & Readonly<{ hostPlayerId: PlayerId }> {
+function roomFixture(): HangulRoomRecord & Readonly<{ hostPlayerId: PlayerId }> {
   const hostId = playerId("player-host");
   const guestId = playerId("player-guest");
   return {
@@ -69,7 +70,7 @@ function roomFixture(): RoomRecord & Readonly<{ hostPlayerId: PlayerId }> {
   };
 }
 
-function playingRoomFixture(): RoomRecord & Readonly<{ hostPlayerId: PlayerId }> {
+function playingRoomFixture(): HangulRoomRecord & Readonly<{ hostPlayerId: PlayerId }> {
   const lobby = roomFixture();
   return {
     ...lobby,

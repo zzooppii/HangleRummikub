@@ -1,5 +1,11 @@
 import * as v from "valibot";
 
+import {
+  GameTypeSchema,
+  SUPPORTED_GAME_TYPES,
+  type GameType,
+} from "./game-type.js";
+
 /** Server preference order for the currently supported snapshot wire formats. */
 export const SERVER_SUPPORTED_SNAPSHOT_VERSIONS = [2, 1] as const;
 export type SnapshotWireVersion =
@@ -39,3 +45,79 @@ export const SnapshotCapabilityMetadataSchema = v.strictObject({
 export type SnapshotCapabilityMetadata = v.InferOutput<
   typeof SnapshotCapabilityMetadataSchema
 >;
+
+/** Missing game capability metadata is the deliberate Hangul-only legacy mode. */
+export const LEGACY_DEFAULT_SUPPORTED_GAME_TYPES = Object.freeze([
+  "HANGUL_TILE",
+] as const satisfies readonly GameType[]);
+
+export const SupportedGameTypesSchema = v.pipe(
+  v.array(GameTypeSchema),
+  v.minLength(1, "At least one game type must be advertised."),
+  v.maxLength(
+    SUPPORTED_GAME_TYPES.length,
+    "Too many game types were advertised.",
+  ),
+  v.check(
+    (gameTypes) => new Set(gameTypes).size === gameTypes.length,
+    "Game type capabilities must not contain duplicates.",
+  ),
+);
+export type SupportedGameTypes = v.InferOutput<
+  typeof SupportedGameTypesSchema
+>;
+
+export const GameCapabilityMetadataSchema = v.strictObject({
+  supportedGameTypes: SupportedGameTypesSchema,
+});
+export type GameCapabilityMetadata = v.InferOutput<
+  typeof GameCapabilityMetadataSchema
+>;
+
+export type SupportedGameTypesCapabilityResolution =
+  | Readonly<{
+      ok: true;
+      mode: "LEGACY_DEFAULT" | "EXPLICIT";
+      supportedGameTypes: readonly GameType[];
+    }>
+  | Readonly<{ ok: false }>;
+
+function isRecord(input: unknown): input is Record<string, unknown> {
+  return typeof input === "object" && input !== null && !Array.isArray(input);
+}
+
+/**
+ * Parses only connection representation metadata. It grants no Room, session,
+ * Host, or command authority and never changes the canonical Room game type.
+ */
+export function resolveSupportedGameTypesCapability(
+  handshakeAuth: unknown,
+): SupportedGameTypesCapabilityResolution {
+  if (!isRecord(handshakeAuth)) {
+    return Object.freeze({ ok: false });
+  }
+
+  if (
+    !Object.prototype.hasOwnProperty.call(handshakeAuth, "supportedGameTypes")
+  ) {
+    return Object.freeze({
+      ok: true,
+      mode: "LEGACY_DEFAULT",
+      supportedGameTypes: LEGACY_DEFAULT_SUPPORTED_GAME_TYPES,
+    });
+  }
+
+  const parsed = v.safeParse(
+    SupportedGameTypesSchema,
+    handshakeAuth.supportedGameTypes,
+  );
+  if (!parsed.success) {
+    return Object.freeze({ ok: false });
+  }
+
+  return Object.freeze({
+    ok: true,
+    mode: "EXPLICIT",
+    supportedGameTypes: Object.freeze([...parsed.output]),
+  });
+}

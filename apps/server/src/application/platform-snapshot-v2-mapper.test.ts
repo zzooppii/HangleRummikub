@@ -212,7 +212,10 @@ test("V1→V2 mapper는 PLAYING A/B semantics와 rack privacy를 그대로 재�
     snapshot: legacyB,
   });
 
-  if (snapshotA.game === null || snapshotB.game === null) {
+  if (
+    snapshotA.game?.gameType !== "HANGUL_TILE" ||
+    snapshotB.game?.gameType !== "HANGUL_TILE"
+  ) {
     throw new Error("PLAYING fixtures must contain a Hangul projection.");
   }
   assert.deepEqual(snapshotA.game.publicState, legacyA.game);
@@ -276,7 +279,10 @@ test("V1→V2 mapper는 FINISHED Hangul result와 private rack semantics를 보�
     snapshot: legacyB,
   });
 
-  if (snapshotA.game === null || snapshotB.game === null) {
+  if (
+    snapshotA.game?.gameType !== "HANGUL_TILE" ||
+    snapshotB.game?.gameType !== "HANGUL_TILE"
+  ) {
     throw new Error("FINISHED fixture must contain a Hangul projection.");
   }
   assert.equal(snapshotA.room.phase, "FINISHED");

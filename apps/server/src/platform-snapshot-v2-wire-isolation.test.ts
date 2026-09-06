@@ -45,6 +45,21 @@ function functionSource(source: string, functionName: string): string {
   return source.slice(start, end);
 }
 
+function lastFunctionSource(source: string, functionName: string): string {
+  const marker = `function ${functionName}(`;
+  const start = source.lastIndexOf(marker);
+  assert.notEqual(start, -1, `${functionName} implementation must exist`);
+
+  const remainder = source.slice(start + marker.length);
+  const nextFunction = /\n(?:export\s+)?(?:async\s+)?function\s+\w+\s*\(/u.exec(
+    remainder,
+  );
+  const end = nextFunction === null
+    ? source.length
+    : start + marker.length + nextFunction.index;
+  return source.slice(start, end);
+}
+
 test("legacy StateSnapshot V1은 exact schema로 남고 별도 wire union이 같은 state:snapshot 이름을 사용한다", () => {
   const projectionsSource = readFileSync(
     resolve(sharedSourceRoot, "projections.ts"),
@@ -97,10 +112,14 @@ test("legacy StateSnapshot V1은 exact schema로 남고 별도 wire union이 같
   );
 });
 
-test("production V2 mapping은 단일 selector를 통해 Socket.IO delivery path에 연결된다", () => {
+test("Hangul mapper와 unified V2 projector의 production ownership은 exact하다", () => {
   const mapperPath = resolve(
     serverSourceRoot,
     "application/platform-snapshot-v2-mapper.ts",
+  );
+  const projectorPath = resolve(
+    serverSourceRoot,
+    "application/platform-snapshot-v2-projector.ts",
   );
   const selectorPath = resolve(
     serverSourceRoot,
@@ -116,13 +135,24 @@ test("production V2 mapping은 단일 selector를 통해 Socket.IO delivery path
       );
     })
     .map((path) => portableRelative(serverSourceRoot, path));
+  const projectorImporters = collectProductionTypeScriptFiles(serverSourceRoot)
+    .filter((path) => path !== projectorPath)
+    .filter((path) =>
+      readFileSync(path, "utf8").includes("platform-snapshot-v2-projector")
+    )
+    .map((path) => portableRelative(serverSourceRoot, path));
   const selectorSource = readFileSync(selectorPath, "utf8");
+  const projectorSource = readFileSync(projectorPath, "utf8");
   const socketIoSource = readFileSync(
     resolve(serverSourceRoot, "transport/socket-io.ts"),
     "utf8",
   );
 
-  assert.deepEqual(importers, ["transport/snapshot-wire-selector.ts"]);
+  assert.deepEqual(importers, [
+    "application/platform-snapshot-v2-projector.ts",
+    "transport/snapshot-wire-selector.ts",
+  ]);
+  assert.deepEqual(projectorImporters, ["composition-root.ts"]);
   assert.match(
     selectorSource,
     /mapLegacyStateSnapshotV1ToPlatformSnapshotV2\(\{/u,
@@ -130,57 +160,98 @@ test("production V2 mapping은 단일 selector를 통해 Socket.IO delivery path
   assert.match(selectorSource, /v\.parse\(GameTypeSchema,/u);
   assert.match(selectorSource, /input\.selectedVersion\s*===\s*1/u);
   assert.match(
+    projectorSource,
+    /if\s*\(input\.room\.gameType\s*===\s*"HANGUL_TILE"\)[\s\S]*?mapLegacyStateSnapshotV1ToPlatformSnapshotV2\(\{/u,
+  );
+  assert.match(
+    projectorSource,
+    /this\.#numberTileGameProjector\(\{[\s\S]*?selfPlayerId:\s*input\.selfPlayerId/u,
+  );
+  assert.match(
     socketIoSource,
     /import\s+\{\s*selectSnapshotWirePayload\s*\}\s+from\s+"\.\/snapshot-wire-selector\.js"/u,
   );
   assert.doesNotMatch(socketIoSource, /platform-snapshot-v2-mapper/u);
+  assert.match(
+    socketIoSource,
+    /const wireSnapshot = await runtime\.platformSnapshotV2Projector\.project\(\{/u,
+  );
 });
 
-test("모든 snapshot success ack와 delivery path는 socket별 selector를 통과한다", () => {
+test("모든 snapshot success ack와 delivery path는 socket별 negotiated projection을 통과한다", () => {
   const socketIoSource = readFileSync(
     resolve(serverSourceRoot, "transport/socket-io.ts"),
     "utf8",
   );
   const handlerExpectations = [
-    ["registerCreateRoomHandler", "selectSnapshotForSocket(", "snapshotSuccessAck("],
-    ["registerJoinRoomHandler", "selectSnapshotForSocket(", "snapshotSuccessAck("],
-    ["registerResumeHandler", "selectSnapshotForSocket(", "snapshotSuccessAck("],
-    ["registerStateSyncHandler", "selectSnapshotForSocket(", "snapshotSuccessAck("],
-    ["registerGameStartHandler", "selectSnapshotWirePayload({", "gameStartSuccessAck("],
-    ["registerTurnSubmitHandler", "selectSnapshotWirePayload({", "turnSubmitSuccessAck("],
-    ["registerTurnDrawHandler", "selectSnapshotWirePayload({", "turnActionSuccessAck("],
-    ["registerTurnPassHandler", "selectSnapshotWirePayload({", "turnActionSuccessAck("],
+    ["registerCreateRoomHandler", "loadSnapshotForSocket(", "snapshotSuccessAck("],
+    ["registerJoinRoomHandler", "loadSnapshotForSocket(", "snapshotSuccessAck("],
+    ["registerResumeHandler", "loadSnapshotForSocket(", "snapshotSuccessAck("],
+    ["registerStateSyncHandler", "loadSnapshotForSocket(", "snapshotSuccessAck("],
+    ["registerGameStartHandler", "loadSnapshotForSocket(", "gameStartSuccessAck("],
+    ["registerTurnSubmitHandler", "selectSnapshotForSocket(", "turnSubmitSuccessAck("],
+    ["registerTurnDrawHandler", "selectSnapshotForSocket(", "turnDrawSuccessAck("],
+    ["registerTurnPassHandler", "selectSnapshotForSocket(", "turnPassSuccessAck("],
+    ["registerNumberSubmitHandler", "loadSnapshotForSocket(", "numberSubmitSuccessAck("],
+    ["registerNumberDrawHandler", "loadSnapshotForSocket(", "numberDrawSuccessAck("],
+    ["registerNumberPassHandler", "loadSnapshotForSocket(", "numberPassSuccessAck("],
   ] as const;
 
-  for (const [handlerName, selectorCall, successAckCall] of handlerExpectations) {
+  for (const [handlerName, projectionCall, successAckCall] of handlerExpectations) {
     const handler = functionSource(socketIoSource, handlerName);
-    const selectorIndex = handler.indexOf(selectorCall);
+    const projectionIndex = handler.indexOf(projectionCall);
     const ackIndex = handler.indexOf(successAckCall);
-    assert.notEqual(selectorIndex, -1, `${handlerName} must select wire version`);
+    assert.notEqual(
+      projectionIndex,
+      -1,
+      `${handlerName} must load or select its negotiated wire projection`,
+    );
     assert.notEqual(ackIndex, -1, `${handlerName} must build its success ack`);
     assert.ok(
-      selectorIndex < ackIndex,
-      `${handlerName} must select before success acknowledgement delivery`,
+      projectionIndex < ackIndex,
+      `${handlerName} must project before success acknowledgement delivery`,
     );
   }
 
-  const selectorHelper = functionSource(socketIoSource, "selectSnapshotForSocket");
+  const selectorHelper = lastFunctionSource(
+    socketIoSource,
+    "selectSnapshotForSocket",
+  );
   assert.match(
     selectorHelper,
     /selectedVersion:\s*socket\.data\.selectedSnapshotVersion/u,
   );
   assert.match(selectorHelper, /canonicalGameType:\s*room\.gameType/u);
 
+  const negotiatedProjector = functionSource(
+    socketIoSource,
+    "projectSnapshotForSocket",
+  );
+  assert.match(
+    negotiatedProjector,
+    /isRoomAdmissionCompatible\(\s*room\.gameType,\s*socketAdmissionCapabilities\(socket\)/u,
+  );
+  assert.match(
+    negotiatedProjector,
+    /if\s*\(room\.gameType\s*===\s*"HANGUL_TILE"\)[\s\S]*?selectSnapshotForSocket\(/u,
+  );
+  assert.match(
+    negotiatedProjector,
+    /runtime\.platformSnapshotV2Projector\.project\(\{/u,
+  );
+  const snapshotLoader = functionSource(socketIoSource, "loadSnapshotForSocket");
+  assert.match(snapshotLoader, /projectSnapshotForSocket\(/u);
+
   const fanOut = functionSource(socketIoSource, "fanOutRoomSnapshots");
-  assert.match(fanOut, /selectSnapshotForSocket\(/u);
+  assert.match(fanOut, /projectSnapshotForSocket\(/u);
   assert.match(
     fanOut,
-    /connectedSocket\.emit\(\s*"state:snapshot",\s*snapshotEvent\(legacySnapshot,\s*wireSnapshot\)/u,
+    /connectedSocket\.emit\(\s*"state:snapshot",\s*snapshotEvent\(loaded\.metadata,\s*loaded\.wireSnapshot\)/u,
   );
   const stateSync = functionSource(socketIoSource, "registerStateSyncHandler");
   assert.match(
     stateSync,
-    /socket\.emit\(\s*"state:snapshot",\s*snapshotEvent\(loaded\.snapshot,\s*wireSnapshot\)/u,
+    /socket\.emit\(\s*"state:snapshot",\s*snapshotEvent\(loaded\.metadata,\s*loaded\.wireSnapshot\)/u,
   );
   assert.equal(
     socketIoSource.match(/\.emit\(\s*"state:snapshot"/gu)?.length ?? 0,
@@ -189,48 +260,90 @@ test("모든 snapshot success ack와 delivery path는 socket별 selector를 통�
   );
 });
 
-test("negotiated snapshot capability는 socket.data에만 존재하고 canonical state에 저장되지 않는다", () => {
+test("snapshot/game capability는 connection/admission metadata이며 canonical state에 저장되지 않는다", () => {
   const selectedVersionOwners = collectProductionTypeScriptFiles(serverSourceRoot)
     .filter((path) => readFileSync(path, "utf8").includes("selectedSnapshotVersion"))
-    .map((path) => portableRelative(serverSourceRoot, path));
-  const advertisedCapabilityOwners = collectProductionTypeScriptFiles(
+    .map((path) => portableRelative(serverSourceRoot, path))
+    .sort();
+  const snapshotCapabilityOwners = collectProductionTypeScriptFiles(
     serverSourceRoot,
   )
     .filter((path) => readFileSync(path, "utf8").includes("supportedSnapshotVersions"))
-    .map((path) => portableRelative(serverSourceRoot, path));
+    .map((path) => portableRelative(serverSourceRoot, path))
+    .sort();
+  const gameCapabilityOwners = collectProductionTypeScriptFiles(serverSourceRoot)
+    .filter((path) => readFileSync(path, "utf8").includes("supportedGameTypes"))
+    .map((path) => portableRelative(serverSourceRoot, path))
+    .sort();
+  const admissionPolicySource = readFileSync(
+    resolve(serverSourceRoot, "application/room-admission-policy.ts"),
+    "utf8",
+  );
   const socketIoSource = readFileSync(
     resolve(serverSourceRoot, "transport/socket-io.ts"),
     "utf8",
   );
-  const canonicalRoots = [
-    "application",
+  const canonicalStateRoots = [
     "games",
     "infrastructure",
     "model",
     "ports",
   ];
-  const canonicalCapabilityLeaks = canonicalRoots.flatMap((directory) =>
+  const canonicalCapabilityLeaks = canonicalStateRoots.flatMap((directory) =>
     collectProductionTypeScriptFiles(resolve(serverSourceRoot, directory))
       .filter((path) => {
         const source = readFileSync(path, "utf8");
         return source.includes("selectedSnapshotVersion") ||
-          source.includes("supportedSnapshotVersions");
+          source.includes("supportedSnapshotVersions") ||
+          source.includes("supportedGameTypes");
       })
       .map((path) => portableRelative(serverSourceRoot, path))
   );
 
-  assert.deepEqual(selectedVersionOwners, ["transport/socket-io.ts"]);
-  assert.deepEqual(advertisedCapabilityOwners, [
+  assert.deepEqual(selectedVersionOwners, [
+    "application/room-admission-policy.ts",
+    "transport/socket-io.ts",
+  ]);
+  assert.deepEqual(snapshotCapabilityOwners, [
     "transport/snapshot-version-negotiation.ts",
+  ]);
+  assert.deepEqual(gameCapabilityOwners, [
+    "application/room-admission-policy.ts",
+    "transport/game-type-capability.ts",
+    "transport/socket-io.ts",
   ]);
   assert.deepEqual(canonicalCapabilityLeaks, []);
   assert.match(
+    admissionPolicySource,
+    /RoomAdmissionCapabilities\s*=\s*Readonly<\{\s*selectedSnapshotVersion:\s*SnapshotWireVersion;\s*supportedGameTypes:\s*readonly GameType\[\];\s*\}>/u,
+  );
+  assert.match(
+    admissionPolicySource,
+    /deliberately not persisted as Room, Player, or Session authority/u,
+  );
+  assert.match(
     socketIoSource,
-    /RealtimeSocketData\s*=\s*\{\s*selectedSnapshotVersion:\s*SnapshotWireVersion;/u,
+    /RealtimeSocketData\s*=\s*\{\s*selectedSnapshotVersion:\s*SnapshotWireVersion;\s*supportedGameTypes:\s*readonly GameType\[\];\s*\}/u,
   );
   assert.match(
     socketIoSource,
     /socket\.data\.selectedSnapshotVersion\s*=\s*negotiation\.selectedVersion/u,
+  );
+  assert.match(
+    socketIoSource,
+    /socket\.data\.supportedGameTypes\s*=\s*gameCapability\.supportedGameTypes/u,
+  );
+  const socketCapabilities = functionSource(
+    socketIoSource,
+    "socketAdmissionCapabilities",
+  );
+  assert.match(
+    socketCapabilities,
+    /selectedSnapshotVersion:\s*socket\.data\.selectedSnapshotVersion/u,
+  );
+  assert.match(
+    socketCapabilities,
+    /supportedGameTypes:\s*socket\.data\.supportedGameTypes/u,
   );
 });
 

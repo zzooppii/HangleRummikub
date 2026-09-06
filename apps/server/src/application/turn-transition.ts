@@ -15,6 +15,7 @@ import type {
   GameTurn,
   PlayingGameState,
 } from "../games/hangul-tile/domain/game-state.js";
+import type { PlayingNumberTileGameState } from "../games/number-tile/domain/game-state.js";
 import type { RoomRepository } from "../ports/room-repository.js";
 import type {
   IdGenerator,
@@ -71,7 +72,7 @@ export function createNextTurn(
 
 export function toScheduledTurnDeadline(
   roomId: RoomId,
-  game: PlayingGameState,
+  game: PlayingGameState | PlayingNumberTileGameState,
 ): ScheduledTurnDeadline {
   return Object.freeze({
     roomId,

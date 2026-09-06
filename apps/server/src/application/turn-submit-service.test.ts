@@ -54,7 +54,10 @@ import {
 import { KeyedSerialExecutor } from "../infrastructure/keyed-serial-executor.js";
 import { FakeClock, FakeIdGenerator } from "../infrastructure/system.js";
 import { TestDictionaryProvider } from "../games/hangul-tile/infrastructure/test-dictionary-provider.js";
-import type { RoomRecord, RoomWriteCandidate } from "../model/persistence.js";
+import type {
+  HangulRoomRecord,
+  RoomWriteCandidate,
+} from "../model/persistence.js";
 import type { RoomUnitOfWork } from "../ports/room-unit-of-work.js";
 import type {
   ScheduledTurnDeadline,
@@ -180,7 +183,7 @@ class RecordingTurnScheduler implements TurnScheduler {
 type Harness = Readonly<{
   persistence: InMemoryPersistence;
   service: TurnSubmitService;
-  room: RoomRecord;
+  room: HangulRoomRecord;
   clock: FakeClock;
   authorization: MutableAuthorization;
   proposedBoard: ProposedBoard;
@@ -306,6 +309,7 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   if (created.status !== "CREATED") {
     throw new Error("Submit fixture Room creation failed.");
   }
+  assert.equal(created.room.gameType, "HANGUL_TILE");
 
   const clock = options.clock ?? new FakeClock(70_000);
   const authorization = options.authorization ?? new MutableAuthorization();
@@ -1115,6 +1119,7 @@ test("normal rearrangement은 existing Board를 보존하며 rack Tile 하나를
   );
   assert.equal(success.outcome, "ADVANCED");
   const persisted = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(persisted?.gameType, "HANGUL_TILE");
   assert.deepEqual(persisted?.game?.board, proposedBoard);
   assert.deepEqual(persisted?.game?.racks.get(PLAYER_A), [extra.tileId]);
 });
@@ -1214,8 +1219,9 @@ test("2-player rack-empty score도 ordinary/Joker penalty를 계산한다", asyn
     otherRacks: new Map([[PLAYER_B, loserTiles]]),
   });
   requireSuccess(await harness.service.submit(submitInput(harness)));
-  const result = (await harness.persistence.findById(harness.room.roomId))?.game
-    ?.result;
+  const room = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(room?.gameType, "HANGUL_TILE");
+  const result = room?.game?.result;
   assert.deepEqual(result?.rankings, [
     {
       playerId: PLAYER_A,

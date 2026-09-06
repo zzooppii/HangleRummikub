@@ -5,6 +5,10 @@ import {
   HangulTilePlayingProjectionV2Schema,
 } from "../games/hangul-tile/v2-projection-contracts.js";
 import {
+  NumberTileFinishedProjectionV2Schema,
+  NumberTilePlayingProjectionV2Schema,
+} from "../games/number-tile/v2-projection-contracts.js";
+import {
   NicknameSchema,
   PlayerIdSchema,
   RoomCodeSchema,
@@ -47,35 +51,16 @@ const PlatformSelfViewV2Schema = v.strictObject({
   playerId: PlayerIdSchema,
 });
 
-const LobbyPlatformRoomViewV2Schema = v.strictObject({
-  roomId: RoomIdSchema,
-  roomCode: RoomCodeSchema,
-  phase: v.literal("LOBBY"),
-  gameType: v.literal("HANGUL_TILE"),
-  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(4)),
-});
+const LobbyPlatformPlayersV2Schema = v.pipe(
+  v.array(PlatformPlayerViewV2Schema),
+  v.maxLength(4),
+);
 
 const ActivePlatformPlayersV2Schema = v.pipe(
   v.array(PlatformPlayerViewV2Schema),
   v.minLength(2),
   v.maxLength(4),
 );
-
-const PlayingPlatformRoomViewV2Schema = v.strictObject({
-  roomId: RoomIdSchema,
-  roomCode: RoomCodeSchema,
-  phase: v.literal("PLAYING"),
-  gameType: v.literal("HANGUL_TILE"),
-  players: ActivePlatformPlayersV2Schema,
-});
-
-const FinishedPlatformRoomViewV2Schema = v.strictObject({
-  roomId: RoomIdSchema,
-  roomCode: RoomCodeSchema,
-  phase: v.literal("FINISHED"),
-  gameType: v.literal("HANGUL_TILE"),
-  players: ActivePlatformPlayersV2Schema,
-});
 
 function hasUniqueRoomPlayers(snapshot: {
   room: { players: readonly { playerId: string }[] };
@@ -130,17 +115,33 @@ function privateRackMatchesSelfCount(snapshot: {
   );
 }
 
-const LobbyPlatformSnapshotV2ObjectSchema = v.strictObject({
+const HangulTileLobbyPlatformRoomViewV2Schema = v.strictObject({
+  roomId: RoomIdSchema,
+  roomCode: RoomCodeSchema,
+  phase: v.literal("LOBBY"),
+  gameType: v.literal("HANGUL_TILE"),
+  players: LobbyPlatformPlayersV2Schema,
+});
+
+const NumberTileLobbyPlatformRoomViewV2Schema = v.strictObject({
+  roomId: RoomIdSchema,
+  roomCode: RoomCodeSchema,
+  phase: v.literal("LOBBY"),
+  gameType: v.literal("NUMBER_TILE"),
+  players: LobbyPlatformPlayersV2Schema,
+});
+
+const HangulTileLobbyPlatformSnapshotV2ObjectSchema = v.strictObject({
   snapshotVersion: PlatformSnapshotVersionSchema,
   versions: PlatformSnapshotVersionsV2Schema,
   serverTime: ServerTimeSchema,
-  room: LobbyPlatformRoomViewV2Schema,
+  room: HangulTileLobbyPlatformRoomViewV2Schema,
   self: PlatformSelfViewV2Schema,
   game: v.null(),
 });
 
-export const LobbyPlatformSnapshotV2Schema = v.pipe(
-  LobbyPlatformSnapshotV2ObjectSchema,
+export const HangulTileLobbyPlatformSnapshotV2Schema = v.pipe(
+  HangulTileLobbyPlatformSnapshotV2ObjectSchema,
   v.check(
     (snapshot) => hasUniqueRoomPlayers(snapshot),
     "Room players must not contain duplicates.",
@@ -154,21 +155,73 @@ export const LobbyPlatformSnapshotV2Schema = v.pipe(
     "A Room may expose at most one Host.",
   ),
 );
+export type HangulTileLobbyPlatformSnapshotV2 = v.InferOutput<
+  typeof HangulTileLobbyPlatformSnapshotV2Schema
+>;
+
+const NumberTileLobbyPlatformSnapshotV2ObjectSchema = v.strictObject({
+  snapshotVersion: PlatformSnapshotVersionSchema,
+  versions: PlatformSnapshotVersionsV2Schema,
+  serverTime: ServerTimeSchema,
+  room: NumberTileLobbyPlatformRoomViewV2Schema,
+  self: PlatformSelfViewV2Schema,
+  game: v.null(),
+});
+
+export const NumberTileLobbyPlatformSnapshotV2Schema = v.pipe(
+  NumberTileLobbyPlatformSnapshotV2ObjectSchema,
+  v.check(
+    (snapshot) => hasUniqueRoomPlayers(snapshot),
+    "Room players must not contain duplicates.",
+  ),
+  v.check(
+    (snapshot) => containsSelfPlayer(snapshot),
+    "Snapshot self Player must belong to the Room.",
+  ),
+  v.check(
+    (snapshot) => hasAtMostOneHost(snapshot),
+    "A Room may expose at most one Host.",
+  ),
+);
+export type NumberTileLobbyPlatformSnapshotV2 = v.InferOutput<
+  typeof NumberTileLobbyPlatformSnapshotV2Schema
+>;
+
+export const LobbyPlatformSnapshotV2Schema = v.union([
+  HangulTileLobbyPlatformSnapshotV2Schema,
+  NumberTileLobbyPlatformSnapshotV2Schema,
+]);
 export type LobbyPlatformSnapshotV2 = v.InferOutput<
   typeof LobbyPlatformSnapshotV2Schema
 >;
 
-const PlayingPlatformSnapshotV2ObjectSchema = v.strictObject({
+const HangulTilePlayingPlatformRoomViewV2Schema = v.strictObject({
+  roomId: RoomIdSchema,
+  roomCode: RoomCodeSchema,
+  phase: v.literal("PLAYING"),
+  gameType: v.literal("HANGUL_TILE"),
+  players: ActivePlatformPlayersV2Schema,
+});
+
+const NumberTilePlayingPlatformRoomViewV2Schema = v.strictObject({
+  roomId: RoomIdSchema,
+  roomCode: RoomCodeSchema,
+  phase: v.literal("PLAYING"),
+  gameType: v.literal("NUMBER_TILE"),
+  players: ActivePlatformPlayersV2Schema,
+});
+
+const HangulTilePlayingPlatformSnapshotV2ObjectSchema = v.strictObject({
   snapshotVersion: PlatformSnapshotVersionSchema,
   versions: PlatformSnapshotVersionsV2Schema,
   serverTime: ServerTimeSchema,
-  room: PlayingPlatformRoomViewV2Schema,
+  room: HangulTilePlayingPlatformRoomViewV2Schema,
   self: PlatformSelfViewV2Schema,
   game: HangulTilePlayingProjectionV2Schema,
 });
 
-export const PlayingPlatformSnapshotV2Schema = v.pipe(
-  PlayingPlatformSnapshotV2ObjectSchema,
+export const HangulTilePlayingPlatformSnapshotV2Schema = v.pipe(
+  HangulTilePlayingPlatformSnapshotV2ObjectSchema,
   v.check(
     (snapshot) => hasUniqueRoomPlayers(snapshot),
     "Room players must not contain duplicates.",
@@ -182,33 +235,89 @@ export const PlayingPlatformSnapshotV2Schema = v.pipe(
     "A Room may expose at most one Host.",
   ),
   v.check(
-    (snapshot) => snapshot.room.gameType === snapshot.game.gameType,
-    "Room gameType and game projection discriminator must match.",
-  ),
-  v.check(
     (snapshot) => hasMatchingGamePlayers(snapshot),
-    "Hangul player states must match the Room player identities.",
+    "Game player states must match the Room player identities.",
   ),
   v.check(
     (snapshot) => privateRackMatchesSelfCount(snapshot),
-    "The private Hangul rack must match the self player rack count.",
+    "The private game rack must match the self player rack count.",
   ),
 );
+export type HangulTilePlayingPlatformSnapshotV2 = v.InferOutput<
+  typeof HangulTilePlayingPlatformSnapshotV2Schema
+>;
+
+const NumberTilePlayingPlatformSnapshotV2ObjectSchema = v.strictObject({
+  snapshotVersion: PlatformSnapshotVersionSchema,
+  versions: PlatformSnapshotVersionsV2Schema,
+  serverTime: ServerTimeSchema,
+  room: NumberTilePlayingPlatformRoomViewV2Schema,
+  self: PlatformSelfViewV2Schema,
+  game: NumberTilePlayingProjectionV2Schema,
+});
+
+export const NumberTilePlayingPlatformSnapshotV2Schema = v.pipe(
+  NumberTilePlayingPlatformSnapshotV2ObjectSchema,
+  v.check(
+    (snapshot) => hasUniqueRoomPlayers(snapshot),
+    "Room players must not contain duplicates.",
+  ),
+  v.check(
+    (snapshot) => containsSelfPlayer(snapshot),
+    "Snapshot self Player must belong to the Room.",
+  ),
+  v.check(
+    (snapshot) => hasAtMostOneHost(snapshot),
+    "A Room may expose at most one Host.",
+  ),
+  v.check(
+    (snapshot) => hasMatchingGamePlayers(snapshot),
+    "Game player states must match the Room player identities.",
+  ),
+  v.check(
+    (snapshot) => privateRackMatchesSelfCount(snapshot),
+    "The private game rack must match the self player rack count.",
+  ),
+);
+export type NumberTilePlayingPlatformSnapshotV2 = v.InferOutput<
+  typeof NumberTilePlayingPlatformSnapshotV2Schema
+>;
+
+export const PlayingPlatformSnapshotV2Schema = v.union([
+  HangulTilePlayingPlatformSnapshotV2Schema,
+  NumberTilePlayingPlatformSnapshotV2Schema,
+]);
 export type PlayingPlatformSnapshotV2 = v.InferOutput<
   typeof PlayingPlatformSnapshotV2Schema
 >;
 
-const FinishedPlatformSnapshotV2ObjectSchema = v.strictObject({
+const HangulTileFinishedPlatformRoomViewV2Schema = v.strictObject({
+  roomId: RoomIdSchema,
+  roomCode: RoomCodeSchema,
+  phase: v.literal("FINISHED"),
+  gameType: v.literal("HANGUL_TILE"),
+  players: ActivePlatformPlayersV2Schema,
+});
+
+const NumberTileFinishedPlatformRoomViewV2Schema = v.strictObject({
+  roomId: RoomIdSchema,
+  roomCode: RoomCodeSchema,
+  phase: v.literal("FINISHED"),
+  gameType: v.literal("NUMBER_TILE"),
+  players: ActivePlatformPlayersV2Schema,
+});
+
+const HangulTileFinishedPlatformSnapshotV2ObjectSchema = v.strictObject({
   snapshotVersion: PlatformSnapshotVersionSchema,
   versions: PlatformSnapshotVersionsV2Schema,
   serverTime: ServerTimeSchema,
-  room: FinishedPlatformRoomViewV2Schema,
+  room: HangulTileFinishedPlatformRoomViewV2Schema,
   self: PlatformSelfViewV2Schema,
   game: HangulTileFinishedProjectionV2Schema,
 });
 
-export const FinishedPlatformSnapshotV2Schema = v.pipe(
-  FinishedPlatformSnapshotV2ObjectSchema,
+export const HangulTileFinishedPlatformSnapshotV2Schema = v.pipe(
+  HangulTileFinishedPlatformSnapshotV2ObjectSchema,
   v.check(
     (snapshot) => hasUniqueRoomPlayers(snapshot),
     "Room players must not contain duplicates.",
@@ -222,18 +331,58 @@ export const FinishedPlatformSnapshotV2Schema = v.pipe(
     "A Room may expose at most one Host.",
   ),
   v.check(
-    (snapshot) => snapshot.room.gameType === snapshot.game.gameType,
-    "Room gameType and game projection discriminator must match.",
-  ),
-  v.check(
     (snapshot) => hasMatchingGamePlayers(snapshot),
-    "Hangul player states must match the Room player identities.",
+    "Game player states must match the Room player identities.",
   ),
   v.check(
     (snapshot) => privateRackMatchesSelfCount(snapshot),
-    "The private Hangul rack must match the self player rack count.",
+    "The private game rack must match the self player rack count.",
   ),
 );
+export type HangulTileFinishedPlatformSnapshotV2 = v.InferOutput<
+  typeof HangulTileFinishedPlatformSnapshotV2Schema
+>;
+
+const NumberTileFinishedPlatformSnapshotV2ObjectSchema = v.strictObject({
+  snapshotVersion: PlatformSnapshotVersionSchema,
+  versions: PlatformSnapshotVersionsV2Schema,
+  serverTime: ServerTimeSchema,
+  room: NumberTileFinishedPlatformRoomViewV2Schema,
+  self: PlatformSelfViewV2Schema,
+  game: NumberTileFinishedProjectionV2Schema,
+});
+
+export const NumberTileFinishedPlatformSnapshotV2Schema = v.pipe(
+  NumberTileFinishedPlatformSnapshotV2ObjectSchema,
+  v.check(
+    (snapshot) => hasUniqueRoomPlayers(snapshot),
+    "Room players must not contain duplicates.",
+  ),
+  v.check(
+    (snapshot) => containsSelfPlayer(snapshot),
+    "Snapshot self Player must belong to the Room.",
+  ),
+  v.check(
+    (snapshot) => hasAtMostOneHost(snapshot),
+    "A Room may expose at most one Host.",
+  ),
+  v.check(
+    (snapshot) => hasMatchingGamePlayers(snapshot),
+    "Game player states must match the Room player identities.",
+  ),
+  v.check(
+    (snapshot) => privateRackMatchesSelfCount(snapshot),
+    "The private game rack must match the self player rack count.",
+  ),
+);
+export type NumberTileFinishedPlatformSnapshotV2 = v.InferOutput<
+  typeof NumberTileFinishedPlatformSnapshotV2Schema
+>;
+
+export const FinishedPlatformSnapshotV2Schema = v.union([
+  HangulTileFinishedPlatformSnapshotV2Schema,
+  NumberTileFinishedPlatformSnapshotV2Schema,
+]);
 export type FinishedPlatformSnapshotV2 = v.InferOutput<
   typeof FinishedPlatformSnapshotV2Schema
 >;

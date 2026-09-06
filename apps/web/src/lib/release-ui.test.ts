@@ -120,6 +120,14 @@ test("P5B legacy pending create는 현재 기본 gameType과 같은 요청으로
   );
 });
 
+test("P7B current Web은 snapshot V2를 유지하되 Number game capability를 광고하지 않는다", () => {
+  assert.match(
+    realtimeClientSource,
+    /supportedSnapshotVersions:\s*\[\.\.\.WEB_SUPPORTED_SNAPSHOT_VERSIONS\]/u,
+  );
+  assert.doesNotMatch(realtimeClientSource, /supportedGameTypes/u);
+});
+
 test("dirty draw confirmation은 keyboard focus를 확인 동작으로 옮기고 취소 시 복원한다", () => {
   assert.match(editorSource, /drawConfirmationButtonRef\.current\?\.focus\(\)/u);
   assert.match(editorSource, /drawTriggerRefs\[cancelledBagKind\]\.current\?\.focus\(\)/u);
