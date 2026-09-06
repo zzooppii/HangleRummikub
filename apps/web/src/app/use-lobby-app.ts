@@ -5,6 +5,7 @@ import {
   type BrowserStoredPlayerSession,
   type ErrorDto,
   type GameStartCommand,
+  type GameType,
   type Nickname,
   type RoomCode,
   type RoomCreateWireAck,
@@ -20,6 +21,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 
 import { getUserErrorMessage } from "../lib/error-messages.js";
+import { DEFAULT_SELECTED_GAME_TYPE } from "../features/game-catalog/game-catalog.js";
 import {
   createOrReuseGameStartCommand,
   getGameStartControl,
@@ -122,7 +124,7 @@ export type LobbyAppState = Readonly<{
   turnDraftResetGeneration: number;
   setNickname: (value: string) => void;
   setRoomCodeInput: (value: string) => void;
-  createRoom: () => void;
+  createRoom: (gameType: GameType) => void;
   joinRoom: () => void;
   startGame: () => void;
   submitTurn: (draft: TurnDraft) => void;
@@ -1172,11 +1174,15 @@ export function useLobbyApp(): LobbyAppState {
     }
   }
 
-  async function startCreateRoom(normalizedNickname: Nickname): Promise<void> {
+  async function startCreateRoom(
+    normalizedNickname: Nickname,
+    gameType: GameType,
+  ): Promise<void> {
     const pending = readPendingRoomOperation(window.sessionStorage);
     if (
       pending?.kind === "room:create" &&
-      pending.payload.nickname === normalizedNickname
+      pending.payload.nickname === normalizedNickname &&
+      (pending.payload.gameType ?? DEFAULT_SELECTED_GAME_TYPE) === gameType
     ) {
       await executePendingOperation(pending);
       return;
@@ -1197,6 +1203,7 @@ export function useLobbyApp(): LobbyAppState {
       requestId: createRequestId(),
       sessionToken: bootstrap.sessionToken,
       nickname: normalizedNickname,
+      gameType,
     });
     if (!writePendingRoomOperation(window.sessionStorage, operation)) {
       setOperationLabel(null);
@@ -1500,7 +1507,7 @@ export function useLobbyApp(): LobbyAppState {
     })();
   }
 
-  function createRoom(): void {
+  function createRoom(gameType: GameType): void {
     if (
       entryActionActiveRef.current ||
       entryFlightRef.current !== null ||
@@ -1519,7 +1526,7 @@ export function useLobbyApp(): LobbyAppState {
     }
 
     setNicknameState(nicknameResult.value);
-    runEntryAction(() => startCreateRoom(nicknameResult.value));
+    runEntryAction(() => startCreateRoom(nicknameResult.value, gameType));
   }
 
   function joinRoom(): void {

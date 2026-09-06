@@ -247,6 +247,79 @@ h3 {
   background: #f5ead5;
 }
 
+.game-selection {
+  display: grid;
+  min-width: 0;
+  gap: 9px;
+}
+
+.game-selection-label {
+  margin: 0;
+  color: #303b46;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.game-option-list {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.game-option {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 7px;
+  border: 1px solid #cfc5b3;
+  border-radius: 13px;
+  padding: 13px 14px;
+  background: rgb(255 255 255 / 76%);
+  color: #172533;
+  text-align: left;
+}
+
+.game-option:hover:not(:disabled) {
+  border-color: #8d7241;
+  background: #fff;
+}
+
+.game-option.selected {
+  border-color: #805a16;
+  box-shadow: inset 4px 0 #d6a43e;
+  background: #fff;
+}
+
+.game-option-heading {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+}
+
+.game-option-heading strong,
+.game-option-description {
+  overflow-wrap: anywhere;
+}
+
+.game-option-status {
+  flex: none;
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: #f0ddb6;
+  color: #684a16;
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.game-option-description {
+  color: #5c6672;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
 .action-number {
   display: block;
   margin-bottom: 12px;

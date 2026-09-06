@@ -6,20 +6,29 @@ import { once } from "node:events";
 import test from "node:test";
 
 import {
+  LobbyPlatformSnapshotV2Schema,
   NicknameSchema,
+  PLATFORM_SNAPSHOT_VERSION,
+  PlayingPlatformSnapshotV2Schema,
   PlayingStateSnapshotSchema,
   PROTOCOL_VERSION,
   RequestIdSchema,
   type ClientToServerEvents,
+  type GameStartWireAck,
   type GameStartAck,
   type PlayingStateSnapshot,
   type RoomCreateAck,
+  type RoomCreateWireAck,
   type RoomJoinAck,
   type ServerToClientEvents,
   type SessionBootstrapAck,
   type SessionResumeAck,
+  type SessionResumeWireAck,
+  type SnapshotWireClientToServerEvents,
+  type SnapshotWireServerToClientEvents,
   type StateSyncAck,
   type TurnDrawAck,
+  type TurnDrawWireAck,
 } from "@hangul-rummikub/shared";
 import {
   io as createSocketClient,
@@ -36,6 +45,11 @@ const NETWORK_TIMEOUT_MS = 2_000;
 type ProductionClient = SocketIoClient<
   ServerToClientEvents,
   ClientToServerEvents
+>;
+
+type ProductionWireClient = SocketIoClient<
+  SnapshotWireServerToClientEvents,
+  SnapshotWireClientToServerEvents
 >;
 
 function createWebBuildFixture(): string {
@@ -133,6 +147,43 @@ async function connectProductionClient(
 ): Promise<ProductionClient> {
   const socket = createProductionClient(origin, requestOrigin);
   const connected = waitForSocketConnection(socket);
+  socket.connect();
+  await connected;
+  return socket;
+}
+
+async function connectNegotiatedProductionClient(
+  origin: string,
+): Promise<ProductionWireClient> {
+  // Keep this separate from the legacy helper so its callback types cannot
+  // accidentally hide a V2 wire acknowledgement behind a V1-only type.
+  const socket = createSocketClient(origin, {
+    auth: { supportedSnapshotVersions: [PLATFORM_SNAPSHOT_VERSION, 1] },
+    extraHeaders: { Origin: origin },
+    autoConnect: false,
+    forceNew: true,
+    reconnection: false,
+    transports: ["websocket"],
+  }) as ProductionWireClient;
+  const connected = new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      socket.off("connect", handleConnect);
+      socket.off("connect_error", handleConnectError);
+      reject(new Error("Timed out connecting negotiated production client."));
+    }, NETWORK_TIMEOUT_MS);
+    const handleConnect = (): void => {
+      clearTimeout(timeout);
+      socket.off("connect_error", handleConnectError);
+      resolve();
+    };
+    const handleConnectError = (error: Error): void => {
+      clearTimeout(timeout);
+      socket.off("connect", handleConnect);
+      reject(error);
+    };
+    socket.once("connect", handleConnect);
+    socket.once("connect_error", handleConnectError);
+  });
   socket.connect();
   await connected;
   return socket;
@@ -282,6 +333,254 @@ test("production server는 health, SPA routes, hashed assets와 Socket.IO를 한
   }
 });
 
+test("production-serving Socket.IO는 V2 explicit create, legacy join, start, Draw, V2 resume을 함께 제공한다", async () => {
+  const webDistPath = createWebBuildFixture();
+  const server = createHttpServer({ serveWeb: true, webDistPath });
+  let v2Host: ProductionWireClient | undefined;
+  let legacyGuest: ProductionClient | undefined;
+
+  try {
+    const origin = await listen(server);
+    v2Host = await connectNegotiatedProductionClient(origin);
+    legacyGuest = await connectProductionClient(origin);
+
+    const hostBootstrap = await emitWithAck<SessionBootstrapAck>(
+      "production V2 host bootstrap",
+      (acknowledge) => {
+        v2Host?.emit(
+          "session:bootstrap",
+          {
+            kind: "session:bootstrap",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: parse(RequestIdSchema, "production-v2-bootstrap"),
+            payload: {},
+          },
+          acknowledge,
+        );
+      },
+    );
+    assert.equal(hostBootstrap.ok, true);
+    if (!hostBootstrap.ok) {
+      throw new Error("Production V2 host bootstrap unexpectedly failed.");
+    }
+
+    const createAck = await emitWithAck<RoomCreateWireAck>(
+      "production V2 explicit room:create",
+      (acknowledge) => {
+        v2Host?.emit(
+          "room:create",
+          {
+            kind: "room:create",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: parse(RequestIdSchema, "production-v2-create"),
+            payload: {
+              bootstrapCredential: hostBootstrap.data.credential,
+              nickname: parse(NicknameSchema, "V2호스트"),
+              gameType: "HANGUL_TILE",
+            },
+          },
+          acknowledge,
+        );
+      },
+    );
+    assert.equal(createAck.ok, true);
+    if (!createAck.ok || createAck.scope !== "ROOM") {
+      throw new Error("Production V2 Room create unexpectedly failed.");
+    }
+    const created = parse(
+      LobbyPlatformSnapshotV2Schema,
+      createAck.data.snapshot,
+    );
+    assert.equal(created.snapshotVersion, PLATFORM_SNAPSHOT_VERSION);
+    assert.equal(created.room.gameType, "HANGUL_TILE");
+    assert.equal(created.game, null);
+    assert.equal(
+      (await server.runtime.persistence.findById(created.room.roomId))?.gameType,
+      "HANGUL_TILE",
+    );
+
+    const guestBootstrap = await emitWithAck<SessionBootstrapAck>(
+      "production legacy guest bootstrap",
+      (acknowledge) => {
+        legacyGuest?.emit(
+          "session:bootstrap",
+          {
+            kind: "session:bootstrap",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: parse(RequestIdSchema, "production-legacy-bootstrap"),
+            payload: {},
+          },
+          acknowledge,
+        );
+      },
+    );
+    assert.equal(guestBootstrap.ok, true);
+    if (!guestBootstrap.ok) {
+      throw new Error("Production legacy guest bootstrap unexpectedly failed.");
+    }
+
+    const joinAck = await emitWithAck<RoomJoinAck>(
+      "production legacy room:join",
+      (acknowledge) => {
+        legacyGuest?.emit(
+          "room:join",
+          {
+            kind: "room:join",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: parse(RequestIdSchema, "production-legacy-join"),
+            payload: {
+              bootstrapCredential: guestBootstrap.data.credential,
+              nickname: parse(NicknameSchema, "레거시게스트"),
+              roomCode: created.room.roomCode,
+            },
+          },
+          acknowledge,
+        );
+      },
+    );
+    assert.equal(joinAck.ok, true);
+    if (!joinAck.ok || joinAck.scope !== "ROOM") {
+      throw new Error("Production legacy Room join unexpectedly failed.");
+    }
+    assert.equal(joinAck.data.snapshot.room.players.length, 2);
+    assert.equal("snapshotVersion" in joinAck.data.snapshot, false);
+    assert.equal("gameType" in joinAck.data.snapshot.room, false);
+
+    if (v2Host === undefined || legacyGuest === undefined) {
+      throw new Error("Production mixed clients unexpectedly disappeared.");
+    }
+    const hostSocket = v2Host;
+    const guestSocket = legacyGuest;
+    const startAck = await emitWithAck<GameStartWireAck>(
+      "production V2 game:start",
+      (acknowledge) => {
+        hostSocket.emit(
+          "game:start",
+          {
+            kind: "game:start",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: parse(RequestIdSchema, "production-v2-start"),
+            expectedRoomRevision:
+              joinAck.data.snapshot.versions.roomRevision,
+            payload: {},
+          },
+          acknowledge,
+        );
+      },
+    );
+    assert.equal(startAck.ok, true);
+    if (!startAck.ok || startAck.scope !== "ROOM") {
+      throw new Error("Production V2 Game start unexpectedly failed.");
+    }
+    const started = parse(
+      PlayingPlatformSnapshotV2Schema,
+      startAck.data.snapshot,
+    );
+    assert.equal(started.room.gameType, "HANGUL_TILE");
+    assert.equal(started.game.gameRevision, 0);
+    assert.equal(started.game.privateState.rack.length, 14);
+
+    const turn = started.game.publicState.turn;
+    if (turn.activePlayerId === started.self.playerId) {
+      const drawAck = await emitWithAck<TurnDrawWireAck>(
+        "production V2 host turn:draw",
+        (acknowledge) => {
+          hostSocket.emit(
+            "turn:draw",
+            {
+              kind: "turn:draw",
+              protocolVersion: PROTOCOL_VERSION,
+              requestId: parse(RequestIdSchema, "production-v2-host-draw"),
+              expectedGameRevision: started.game.gameRevision,
+              turnId: turn.turnId,
+              payload: { bagKind: "CONSONANT" },
+            },
+            acknowledge,
+          );
+        },
+      );
+      assert.equal(drawAck.ok, true);
+      if (!drawAck.ok || drawAck.scope !== "ROOM") {
+        throw new Error("Production V2 host Draw unexpectedly failed.");
+      }
+      assert.equal(
+        parse(PlayingPlatformSnapshotV2Schema, drawAck.data.snapshot).game
+          .gameRevision,
+        1,
+      );
+    } else {
+      assert.equal(turn.activePlayerId, joinAck.data.snapshot.self.playerId);
+      const drawAck = await emitWithAck<TurnDrawAck>(
+        "production legacy guest turn:draw",
+        (acknowledge) => {
+          guestSocket.emit(
+            "turn:draw",
+            {
+              kind: "turn:draw",
+              protocolVersion: PROTOCOL_VERSION,
+              requestId: parse(RequestIdSchema, "production-legacy-draw"),
+              expectedGameRevision: started.game.gameRevision,
+              turnId: turn.turnId,
+              payload: { bagKind: "CONSONANT" },
+            },
+            acknowledge,
+          );
+        },
+      );
+      assert.equal(drawAck.ok, true);
+      if (!drawAck.ok || drawAck.scope !== "ROOM") {
+        throw new Error("Production legacy guest Draw unexpectedly failed.");
+      }
+      assert.equal(drawAck.data.snapshot.versions.gameRevision, 1);
+      assert.equal("snapshotVersion" in drawAck.data.snapshot, false);
+    }
+
+    hostSocket.disconnect();
+    v2Host = await connectNegotiatedProductionClient(origin);
+    const resumeAck = await emitWithAck<SessionResumeWireAck>(
+      "production V2 session:resume",
+      (acknowledge) => {
+        v2Host?.emit(
+          "session:resume",
+          {
+            kind: "session:resume",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: parse(RequestIdSchema, "production-v2-resume"),
+            payload: {
+              credential: {
+                roomCode: created.room.roomCode,
+                sessionToken: hostBootstrap.data.credential.sessionToken,
+              },
+              lastSeenVersions: null,
+            },
+          },
+          acknowledge,
+        );
+      },
+    );
+    assert.equal(resumeAck.ok, true);
+    if (!resumeAck.ok || resumeAck.scope !== "ROOM") {
+      throw new Error("Production V2 resume unexpectedly failed.");
+    }
+    const resumed = parse(
+      PlayingPlatformSnapshotV2Schema,
+      resumeAck.data.snapshot,
+    );
+    assert.equal(resumed.self.playerId, created.self.playerId);
+    assert.equal(resumed.room.gameType, "HANGUL_TILE");
+    assert.equal(resumed.game.gameRevision, 1);
+    assert.equal(
+      resumed.game.publicState.gameId,
+      started.game.publicState.gameId,
+    );
+  } finally {
+    v2Host?.disconnect();
+    legacyGuest?.disconnect();
+    await server.shutdown();
+    rmSync(webDistPath, { recursive: true, force: true });
+  }
+});
+
 test("production same-origin Socket.IO에서 A/B create, join, start, Draw, privacy와 resume가 동작한다", async () => {
   const webDistPath = createWebBuildFixture();
   const server = createHttpServer({ serveWeb: true, webDistPath });
@@ -324,6 +623,7 @@ test("production same-origin Socket.IO에서 A/B create, join, start, Draw, priv
             payload: {
               bootstrapCredential: hostBootstrap.data.credential,
               nickname: parse(NicknameSchema, "배포호스트"),
+              gameType: "HANGUL_TILE",
             },
           },
           acknowledge,

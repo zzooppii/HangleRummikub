@@ -10,6 +10,7 @@ import {
   type RequestId,
   type TurnId,
 } from "./identifiers.js";
+import { GameTypeSchema } from "./game-type.js";
 import {
   ProposedBoardSchema,
   TurnDrawBagKindSchema,
@@ -206,6 +207,7 @@ export const RoomCreateCommandSchema = v.strictObject({
   payload: v.strictObject({
     bootstrapCredential: BootstrapCredentialSchema,
     nickname: NicknameSchema,
+    gameType: v.optional(GameTypeSchema),
   }),
 });
 export type RoomCreateCommand = v.InferOutput<typeof RoomCreateCommandSchema>;

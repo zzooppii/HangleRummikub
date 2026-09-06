@@ -3558,7 +3558,7 @@ test("Legacy Hangul v1 Socket.IO event inventory와 strict command/event envelop
   }
 });
 
-test("Legacy Hangul v1 room:create wire는 gameType field를 허용하지 않는다", () => {
+test("P5C room:create wire는 legacy omission과 explicit HANGUL_TILE을 허용하며 나머지는 strict하게 거절한다", () => {
   const command = {
     kind: "room:create",
     protocolVersion: PROTOCOL_VERSION,
@@ -3569,13 +3569,51 @@ test("Legacy Hangul v1 room:create wire는 gameType field를 허용하지 않는
     },
   } as const;
 
-  assert.equal(validateRoomCreateCommand(command).ok, true);
+  const legacy = validateRoomCreateCommand(command);
+  assert.equal(legacy.ok, true);
+  if (legacy.ok) {
+    assert.equal(legacy.value.payload.gameType, undefined);
+  }
+
+  const explicit = validateRoomCreateCommand({
+    ...command,
+    payload: { ...command.payload, gameType: "HANGUL_TILE" },
+  });
+  assert.equal(explicit.ok, true);
+  if (explicit.ok) {
+    assert.equal(explicit.value.payload.gameType, "HANGUL_TILE");
+  }
+  assert.equal(PROTOCOL_VERSION, 1);
 
   for (const input of [
     { ...command, gameType: "HANGUL_TILE" },
     {
       ...command,
-      payload: { ...command.payload, gameType: "HANGUL_TILE" },
+      payload: { ...command.payload, gameType: "NUMBER_TILE" },
+    },
+    {
+      ...command,
+      payload: { ...command.payload, gameType: "GEM_CARD" },
+    },
+    {
+      ...command,
+      payload: { ...command.payload, gameType: "UNKNOWN" },
+    },
+    {
+      ...command,
+      payload: { ...command.payload, gameType: "" },
+    },
+    {
+      ...command,
+      payload: { ...command.payload, gameType: 1 },
+    },
+    {
+      ...command,
+      payload: { ...command.payload, gameType: {} },
+    },
+    {
+      ...command,
+      payload: { ...command.payload, unrelatedField: true },
     },
   ]) {
     const result = validateRoomCreateCommand(input);

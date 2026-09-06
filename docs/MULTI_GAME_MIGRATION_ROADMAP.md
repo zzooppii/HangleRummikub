@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0~P5B COMPLETE / P5C READY
+> 상태: P0~P5C COMPLETE / P6 READY
 > 작성일: 2026-09-06
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -25,7 +25,7 @@
 
 production 기준선 573 tests는 shared 55, web 87, server 431로 구성됐다. 이후 추가된 test를 포함한 수는 이유 없이 감소하면 해당 Phase는 완료가 아니다.
 
-P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A checkpoint `a215eaa`는 이 tests를 삭제·skip하지 않고 신규 boundary 6개를 더해 shared 59, web 91, server 453으로 총 603 tests를 통과했다. P3B checkpoint `bc4a62a`는 기존 603개와 신규 command-routing 9개를 포함해 총 612 tests를 통과했다. P3C checkpoint `d21eaad`는 신규 server-action regression 16개를 더해 shared 59, web 91, server 478로 총 628 tests를 통과했다. P3D checkpoint `cedda1a`는 import-boundary regression 3개를 더해 shared 59, web 91, server 481로 총 631 tests를 통과했다. P4 checkpoint `60eb77e`는 새 case 수를 늘리지 않고 production A/B smoke의 behavioral assertions를 강화하며 이 631-test 기준선을 두 번 검증했다. P5A checkpoint `05cac94`는 shared contract 6개와 server mapper/wire-isolation 8개를 더해 shared 65, web 91, server 489로 총 645 tests를 기준선으로 만들었다. P5B는 negotiation/wire contract 4개, Web decode·routing·storage regression 14개, server negotiation·selector·mixed-version regression 14개를 더해 shared 69, web 105, server 503으로 총 677 tests를 통과했다.
+P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A checkpoint `a215eaa`는 이 tests를 삭제·skip하지 않고 신규 boundary 6개를 더해 shared 59, web 91, server 453으로 총 603 tests를 통과했다. P3B checkpoint `bc4a62a`는 기존 603개와 신규 command-routing 9개를 포함해 총 612 tests를 통과했다. P3C checkpoint `d21eaad`는 신규 server-action regression 16개를 더해 shared 59, web 91, server 478로 총 628 tests를 통과했다. P3D checkpoint `cedda1a`는 import-boundary regression 3개를 더해 shared 59, web 91, server 481로 총 631 tests를 통과했다. P4 checkpoint `60eb77e`는 새 case 수를 늘리지 않고 production A/B smoke의 behavioral assertions를 강화하며 이 631-test 기준선을 두 번 검증했다. P5A checkpoint `05cac94`는 shared contract 6개와 server mapper/wire-isolation 8개를 더해 shared 65, web 91, server 489로 총 645 tests를 기준선으로 만들었다. P5B checkpoint `e9211bc`는 negotiation/wire contract 4개, Web decode·routing·storage regression 14개, server negotiation·selector·mixed-version regression 14개를 더해 shared 69, web 105, server 503으로 총 677 tests를 통과했다. P5C는 additive create contract, requested-type resolution/atomicity, Web catalog/selection/retry와 mixed legacy/V2 create/join 회귀 8개를 더해 shared 69, web 108, server 508로 총 685 tests를 통과했다.
 
 ## 2. Phase 개요
 
@@ -588,46 +588,57 @@ Multi-game Platform P5B만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의
 
 ### 8.3 P5C — Game catalog and create selection
 
+> 완료: 2026-09-06. Web-owned static catalog에 실제 지원되는 `HANGUL_TILE` 한 항목만 공개하고, 같은 `room:create`/`protocolVersion = 1` payload에 optional `gameType`을 additive하게 연결했다. Legacy omission, canonical Room authority, V1/V2 negotiation과 invitation URL은 유지했으며 **P5C COMPLETE / P6 READY**다.
+
 #### 목표
 
-Home에 game catalog와 explicit create selection을 추가하되 `HANGUL_TILE`만 enabled로 공개한다.
+Home에 game catalog와 explicit create selection을 추가하되 실제 지원되는 `HANGUL_TILE` 한 항목만 공개한다.
 
 #### Scope
 
-- server-owned 또는 validated catalog DTO/policy
-- Home의 게임 선택 → 방 만들기 흐름
-- create v2 gameType과 pending create의 동일 requestId/type retry
-- invitation direct entry의 generic UI
-- create ack snapshot으로 최종 renderer/type 확인
-- NUMBER_TILE/GEM_CARD의 disabled/coming-later 표현은 구현을 암시하지 않는 metadata만 사용
+- UI copy와 최소 product metadata를 소유하는 static Web catalog
+- catalog의 유일한 `HANGUL_TILE` item과 semantic/keyboard-accessible 선택 → 방 만들기 흐름
+- 기존 `room:create` payload의 optional `gameType`; omitted legacy input은 compatibility default, current Web은 explicit `HANGUL_TILE`
+- resolved effective type의 strict validation, identity-only `GameRegistry` 확인과 canonical `RoomRecord.gameType` 저장
+- normalized nickname과 effective gameType을 포함하는 create idempotency fingerprint
+- pending create의 동일 requestId/effective type retry; selection preference와 bound credential은 비영속
+- invitation direct entry의 generic join UI와 create ack/server snapshot 기반 renderer/type 확인
+- V1/V2 mixed client create/join/start/Draw/resume 및 production-serving 회귀
 
 #### 금지사항
 
-- disabled game의 Room 생성 또는 dummy module
+- `NUMBER_TILE`, `GEM_CARD`, `UNKNOWN` catalog/schema/registry placeholder와 disabled/준비 중 card
+- server catalog DTO, `/games`, `game:catalog` 또는 catalog snapshot endpoint
+- `room:create:v2`, global `protocolVersion` 증가 또는 create ack 확장
 - client catalog metadata를 start/player-count 권위로 사용
 - invitation URL에 gameType/session credential 추가
-- 기존 storage key의 무계획 폐기
+- join/turn command에 gameType 추가
+- existing storage key 변경, dependency 추가와 registry metadata 확장
 
 #### Definition of Done
 
 - 선택 → create → common Lobby → Hangul renderer 흐름이 동작한다.
 - `/room/{ROOM_CODE}`는 그대로이며 invitation join은 선택을 요구하지 않는다.
-- create retry는 동일 gameType/requestId를 보존하고 ack snapshot과 불일치는 거부한다.
-- 미구현 game은 접근 가능하지 않고 catalog가 accessible하다.
+- new Web은 explicit `HANGUL_TILE`, legacy client는 omitted payload로 같은 canonical Room type을 만든다.
+- create retry는 동일 effective gameType/requestId를 보존하고 canonical ack snapshot과 불일치는 거부한다.
+- invalid/unsupported type과 missing registration은 Room/Player/session/idempotency mutation 전에 fail-closed한다.
+- V1 snapshot에는 gameType/version field가 추가되지 않고 V2는 canonical `room.gameType`을 전달한다.
+- Home selection은 native semantics, selected state, focus-visible, 48px touch target과 390/320px layout을 만족한다.
+- 미구현 game은 source/catalog에 존재하지 않고 GameRegistry는 identity-only다.
 
 #### Required tests
 
-- catalog enabled/disabled and accessibility
-- explicit Hangul create와 same-ID retry
-- create request vs authoritative ack mismatch
-- invitation URL에 game authority/credential 없음
-- legacy/default create compatibility 정책
-- 기존 전체 tests, typecheck/build/diff-check
+- shared optional-create matrix: omitted/explicit Hangul success, unsupported/malformed/extra reject, event/version 및 V1 snapshot 불변
+- server requested-type resolver, exact registry lookup, canonical persistence, effective fingerprint replay/conflict와 invalid atomicity
+- Web one-item catalog, selected-state/accessibility/responsive, explicit pending create retry와 omitted legacy pending-create read
+- `room:join`/invitation URL/local selection 비권위와 V2 canonical renderer routing
+- V2 explicit create + V1 join, V1 omitted create + V2 join, start/Draw/resume와 per-viewer privacy
+- production-serving, 기존 전체 tests, typecheck/build/diff-check와 source/wire audit
 
 #### Codex 실행 명령
 
 ```text
-Multi-game Platform P5C만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 P5A/P5B를 전제로 Home game catalog, explicit create gameType, pending-create 동일 requestId/type retry를 구현하라. HANGUL_TILE만 enabled로 하고 NUMBER_TILE/GEM_CARD는 실행 불가능한 metadata로만 표시하라. /room/{ROOM_CODE}와 generic invitation join을 유지하며 create 후에도 server ack snapshot을 권위로 사용하고 URL/client metadata에 권한을 주지 마라. accessibility·compatibility·전체 typecheck/test/build/diff-check를 통과시켜라.
+Multi-game Platform P5C만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 P5A/P5B를 전제로 Web-owned static game catalog, explicit create gameType, pending-create 동일 requestId/effective-type retry를 구현하라. Catalog에는 HANGUL_TILE 한 항목만 두고 NUMBER_TILE/GEM_CARD placeholder나 disabled card를 추가하지 마라. 기존 room:create와 protocolVersion 1을 유지한 optional payload field로 old omitted client를 지원하며, resolved type을 registry로 확인한 뒤 canonical Room에 원자적으로 저장하라. Join에는 gameType을 요구하지 말고 /room/{ROOM_CODE}와 generic invitation flow를 유지하며 Room 진입 뒤에는 server snapshot만 권위로 사용하라. accessibility·responsive·mixed V1/V2·production-serving·전체 typecheck/test/build/diff-check와 source audit를 통과시켜라.
 ```
 
 ## 9. P6 — Number Tile rules gate

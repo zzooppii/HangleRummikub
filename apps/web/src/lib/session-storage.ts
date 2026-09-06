@@ -1,6 +1,7 @@
 import {
   PROTOCOL_VERSION,
   type BrowserStoredPlayerSession,
+  type GameType,
   type Nickname,
   type RequestId,
   type RoomCode,
@@ -129,6 +130,7 @@ export function createPendingRoomCreateOperation(input: {
   requestId: RequestId;
   sessionToken: SessionToken;
   nickname: Nickname;
+  gameType: GameType;
 }): RoomCreateCommand {
   return {
     kind: "room:create",
@@ -137,6 +139,7 @@ export function createPendingRoomCreateOperation(input: {
     payload: {
       bootstrapCredential: { sessionToken: input.sessionToken },
       nickname: input.nickname,
+      gameType: input.gameType,
     },
   };
 }

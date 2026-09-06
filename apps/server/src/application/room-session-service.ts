@@ -1,4 +1,5 @@
 import {
+  GameTypeSchema,
   PlayerIdSchema,
   RoomCodeSchema,
   RoomIdSchema,
@@ -8,6 +9,7 @@ import {
   validateRequestId,
   validateRoomCode,
   type ErrorDto,
+  type GameType,
   type Nickname,
   type RequestId,
   type RoomCode,
@@ -72,6 +74,7 @@ export type CreateRoomInput = Readonly<{
   sessionToken: unknown;
   requestId: unknown;
   nickname: unknown;
+  gameType?: unknown;
 }>;
 
 export type JoinRoomInput = Readonly<{
@@ -120,6 +123,12 @@ const INVALID_BOOTSTRAP_ERROR: ErrorDto = Object.freeze({
 const REQUEST_ID_REUSED_ERROR: ErrorDto = Object.freeze({
   code: "REQUEST_ID_REUSED",
   message: "Request ID was already used for a different command payload.",
+  recoverable: false,
+});
+
+const INVALID_GAME_TYPE_ERROR: ErrorDto = Object.freeze({
+  code: "INVALID_PAYLOAD",
+  message: "Game type is invalid.",
   recoverable: false,
 });
 
@@ -179,8 +188,24 @@ function bootstrapScopeKey(
   return `bootstrap:${verificationData.algorithm}:${verificationData.digestHex}`;
 }
 
-function createRoomFingerprint(nickname: Nickname): string {
-  return JSON.stringify(["room:create", nickname]);
+function resolveRequestedGameType(
+  gameTypeInput: unknown,
+): Readonly<{ ok: true; value: GameType }> | Readonly<{ ok: false }> {
+  if (gameTypeInput === undefined) {
+    return { ok: true, value: LEGACY_V1_DEFAULT_GAME_TYPE };
+  }
+
+  const parsed = v.safeParse(GameTypeSchema, gameTypeInput);
+  return parsed.success
+    ? { ok: true, value: parsed.output }
+    : { ok: false };
+}
+
+function createRoomFingerprint(
+  nickname: Nickname,
+  gameType: GameType,
+): string {
+  return JSON.stringify(["room:create", nickname, gameType]);
 }
 
 function joinRoomFingerprint(
@@ -273,12 +298,20 @@ export class RoomSessionApplicationService {
         return failed(nickname.error);
       }
 
+      const gameType = resolveRequestedGameType(input.gameType);
+      if (!gameType.ok) {
+        return failed(INVALID_GAME_TYPE_ERROR);
+      }
+
       const prepared = this.#prepareMutation(input.sessionToken, input.requestId);
       if (!prepared.ok) {
         return prepared.result;
       }
 
-      const fingerprint = createRoomFingerprint(nickname.value);
+      const fingerprint = createRoomFingerprint(
+        nickname.value,
+        gameType.value,
+      );
       const prior = await this.#idempotencyPreflight(
         prepared.value,
         fingerprint,
@@ -296,12 +329,13 @@ export class RoomSessionApplicationService {
       }
 
       this.#gameRegistrationReader.getRequired(
-        LEGACY_V1_DEFAULT_GAME_TYPE,
+        gameType.value,
       );
 
       return await this.#createRoom(
         prepared.value,
         nickname.value,
+        gameType.value,
         fingerprint,
       );
     } catch {
@@ -459,6 +493,7 @@ export class RoomSessionApplicationService {
   async #createRoom(
     prepared: PreparedMutation,
     nickname: Nickname,
+    gameType: GameType,
     fingerprint: string,
   ): Promise<RoomMutationResult> {
     const roomId = this.#idGenerator.generateRoomId();
@@ -485,7 +520,7 @@ export class RoomSessionApplicationService {
           candidate: {
             roomId,
             roomCode,
-            gameType: LEGACY_V1_DEFAULT_GAME_TYPE,
+            gameType,
             phase: "LOBBY",
             hostPlayerId: playerId,
             players: [{ playerId, nickname, joinOrder: 0 }],

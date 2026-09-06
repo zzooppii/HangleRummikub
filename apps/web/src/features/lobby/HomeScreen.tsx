@@ -1,10 +1,15 @@
 import {
   NICKNAME_MAX_CODE_POINTS,
+  type GameType,
   type RoomCode,
 } from "@hangul-rummikub/shared";
-import type { FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 
 import { limitNicknameInput } from "../../lib/nickname-input.js";
+import {
+  DEFAULT_SELECTED_GAME_TYPE,
+  GAME_CATALOG,
+} from "../game-catalog/game-catalog.js";
 
 export type HomeScreenProps = Readonly<{
   nickname: string;
@@ -17,18 +22,21 @@ export type HomeScreenProps = Readonly<{
   errorMessage: string | null;
   onNicknameChange: (value: string) => void;
   onRoomCodeChange: (value: string) => void;
-  onCreateRoom: () => void;
+  onCreateRoom: (gameType: GameType) => void;
   onJoinRoom: () => void;
   onGoHome: () => void;
 }>;
 
 export function HomeScreen(props: HomeScreenProps) {
+  const [selectedGameType, setSelectedGameType] = useState<GameType>(
+    DEFAULT_SELECTED_GAME_TYPE,
+  );
   const isBusy = props.busyLabel !== null;
   const joinRoomCode = props.invitationRoomCode ?? props.roomCodeInput;
 
   function submitCreate(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    props.onCreateRoom();
+    props.onCreateRoom(selectedGameType);
   }
 
   function submitJoin(event: FormEvent<HTMLFormElement>): void {
@@ -117,12 +125,57 @@ export function HomeScreen(props: HomeScreenProps) {
                     <h3>새 방 만들기</h3>
                     <p>내가 방장이 되어 초대 코드를 발급합니다.</p>
                   </div>
+                  <div
+                    className="game-selection"
+                    role="group"
+                    aria-labelledby="game-selection-label"
+                  >
+                    <p
+                      className="game-selection-label"
+                      id="game-selection-label"
+                    >
+                      플레이할 게임 선택
+                    </p>
+                    <div className="game-option-list">
+                      {GAME_CATALOG.map((game) => {
+                        const isSelected = game.gameType === selectedGameType;
+
+                        return (
+                          <button
+                            key={game.gameType}
+                            className={`game-option${
+                              isSelected ? " selected" : ""
+                            }`}
+                            type="button"
+                            aria-pressed={isSelected}
+                            disabled={isBusy}
+                            onClick={() => setSelectedGameType(game.gameType)}
+                          >
+                            <span className="game-option-heading">
+                              <strong>{game.displayName}</strong>
+                              {isSelected ? (
+                                <span
+                                  className="game-option-status"
+                                  aria-hidden="true"
+                                >
+                                  선택됨
+                                </span>
+                              ) : null}
+                            </span>
+                            <span className="game-option-description">
+                              {game.description}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                   <button
                     className="primary-button"
                     type="submit"
                     disabled={isBusy}
                   >
-                    {props.busyLabel ?? "방 만들기"}
+                    {props.busyLabel ?? "선택한 게임으로 방 만들기"}
                   </button>
                 </form>
 

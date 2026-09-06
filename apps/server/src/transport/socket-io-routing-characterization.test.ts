@@ -155,6 +155,37 @@ function passesReceivedAtToRouter(
   return found;
 }
 
+function passesPropertyToCall(
+  eventName: string,
+  callName: string,
+  propertyName: string,
+  initializerText: string,
+): boolean {
+  let found = false;
+
+  function visit(node: ts.Node): void {
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.getText(sourceFile).replaceAll(/\s/gu, "") === callName
+    ) {
+      const input = node.arguments[0];
+      if (input !== undefined && ts.isObjectLiteralExpression(input)) {
+        found = input.properties.some(
+          (property) =>
+            ts.isPropertyAssignment(property) &&
+            property.name.getText(sourceFile) === propertyName &&
+            property.initializer.getText(sourceFile).replaceAll(/\s/gu, "") ===
+              initializerText,
+        );
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(handlerFor(eventName));
+  return found;
+}
+
 test("platform Socket.IO event는 기존 service path를, snapshot sync는 canonical Room과 V1 projection을 함께 읽는다", () => {
   const platformRouting = [
     ["session:bootstrap", "runtime.roomSessionService.bootstrapSession"],
@@ -234,6 +265,18 @@ test("turn command receivedAt은 transport entry의 runtime clock 값과 동일�
     assert.equal(initializesReceivedAtFromRuntimeClock(eventName), true);
     assert.equal(passesReceivedAtToRouter(eventName, routerCall), true);
   }
+});
+
+test("P5C room:create transport는 validated optional gameType을 application resolver에 그대로 전달한다", () => {
+  assert.equal(
+    passesPropertyToCall(
+      "room:create",
+      "runtime.roomSessionService.createRoom",
+      "gameType",
+      "command.value.payload.gameType",
+    ),
+    true,
+  );
 });
 
 test("P3C server action은 platform callback에서 canonical router로 전달되고 transport는 leave game state를 peek하지 않는다", () => {

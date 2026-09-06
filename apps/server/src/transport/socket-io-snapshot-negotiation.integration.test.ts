@@ -380,7 +380,7 @@ function collectStrings(input: unknown, output = new Set<string>()): Set<string>
   return output;
 }
 
-test("legacy V1과 negotiated V2 socket은 같은 Room의 ack/fan-out/sync에서 format과 semantic privacy를 유지한다", async (t) => {
+test("explicit game을 고른 negotiated V2 host와 legacy V1 guest는 같은 Room의 ack/fan-out/sync에서 format과 semantic privacy를 유지한다", async (t) => {
   const harness = await startHarness();
   t.after(() => stopHarness(harness));
 
@@ -394,17 +394,18 @@ test("legacy V1과 negotiated V2 socket은 같은 Room의 ack/fan-out/sync에서
   const v2Token = await bootstrap(v2Client, "mixed-v2");
 
   const createAck = await emitWithAck<RoomCreateWireAck>(
-    "legacy room:create",
+    "V2 explicit room:create",
     (acknowledge) => {
-      legacyClient.emit(
+      v2Client.emit(
         "room:create",
         {
           kind: "room:create",
           protocolVersion: PROTOCOL_VERSION,
           requestId: requestId("mixed-create"),
           payload: {
-            bootstrapCredential: { sessionToken: legacyToken },
-            nickname: v.parse(NicknameSchema, "LegacyA"),
+            bootstrapCredential: { sessionToken: v2Token },
+            nickname: v.parse(NicknameSchema, "PlatformA"),
+            gameType: "HANGUL_TILE",
           },
         },
         acknowledge,
@@ -413,28 +414,36 @@ test("legacy V1과 negotiated V2 socket은 같은 Room의 ack/fan-out/sync에서
   );
   assert.equal(createAck.ok, true);
   if (!createAck.ok) {
-    throw new Error("Legacy room create failed.");
+    throw new Error("V2 explicit Room create failed.");
   }
-  const created = requireV1(createAck.data.snapshot);
+  const created = parseV2(createAck.data.snapshot);
+  assert.equal(created.room.phase, "LOBBY");
+  assert.equal(created.room.gameType, "HANGUL_TILE");
+  assert.equal(created.game, null);
+  assert.equal(
+    (await harness.server.runtime.persistence.findById(created.room.roomId))
+      ?.gameType,
+    "HANGUL_TILE",
+  );
   await waitForSnapshot(
-    legacyObserver,
+    v2Observer,
     (event) => event.payload.snapshot.room.roomId === created.room.roomId,
   );
 
   legacyObserver.snapshots.length = 0;
   v2Observer.snapshots.length = 0;
   const joinAck = await emitWithAck<RoomJoinWireAck>(
-    "V2 room:join",
+    "legacy room:join",
     (acknowledge) => {
-      v2Client.emit(
+      legacyClient.emit(
         "room:join",
         {
           kind: "room:join",
           protocolVersion: PROTOCOL_VERSION,
           requestId: requestId("mixed-join"),
           payload: {
-            bootstrapCredential: { sessionToken: v2Token },
-            nickname: v.parse(NicknameSchema, "PlatformB"),
+            bootstrapCredential: { sessionToken: legacyToken },
+            nickname: v.parse(NicknameSchema, "LegacyB"),
             roomCode: created.room.roomCode,
           },
         },
@@ -444,12 +453,10 @@ test("legacy V1과 negotiated V2 socket은 같은 Room의 ack/fan-out/sync에서
   );
   assert.equal(joinAck.ok, true);
   if (!joinAck.ok) {
-    throw new Error("V2 room join failed.");
+    throw new Error("Legacy Room join failed.");
   }
-  const joined = parseV2(joinAck.data.snapshot);
+  const joined = requireV1(joinAck.data.snapshot);
   assert.equal(joined.room.phase, "LOBBY");
-  assert.equal(joined.game, null);
-  assert.equal(joined.room.gameType, "HANGUL_TILE");
 
   const lobbyV1Event = await waitForSnapshot(
     legacyObserver,
@@ -475,9 +482,9 @@ test("legacy V1과 negotiated V2 socket은 같은 Room의 ack/fan-out/sync에서
   legacyObserver.snapshots.length = 0;
   v2Observer.snapshots.length = 0;
   const startAck = await emitWithAck<GameStartWireAck>(
-    "legacy game:start",
+    "V2 game:start",
     (acknowledge) => {
-      legacyClient.emit(
+      v2Client.emit(
         "game:start",
         {
           kind: "game:start",
@@ -494,8 +501,8 @@ test("legacy V1과 negotiated V2 socket은 같은 Room의 ack/fan-out/sync에서
   if (!startAck.ok) {
     throw new Error("Mixed Room game start failed.");
   }
-  const startAckSnapshot = requireV1Playing(startAck.data.snapshot);
-  assert.equal(startAckSnapshot.versions.gameRevision, 0);
+  const startAckSnapshot = requireV2Playing(startAck.data.snapshot);
+  assert.equal(startAckSnapshot.game.gameRevision, 0);
 
   const playingV1Event = await waitForSnapshot(
     legacyObserver,

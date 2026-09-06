@@ -155,6 +155,7 @@ test("pending create는 logical retry에서 같은 requestId와 payload를 유�
     requestId: requestId("request_pending_create"),
     sessionToken: sessionToken(),
     nickname: nickname("  혁상  "),
+    gameType: "HANGUL_TILE",
   });
 
   assert.equal(writePendingRoomOperation(storage, operation), true);
@@ -163,9 +164,40 @@ test("pending create는 logical retry에서 같은 requestId와 payload를 유�
   assert.deepEqual(retryOperation, operation);
   assert.equal(retryOperation?.requestId, operation.requestId);
   assert.equal(retryOperation?.kind, "room:create");
+  if (retryOperation?.kind === "room:create") {
+    assert.equal(retryOperation.payload.gameType, "HANGUL_TILE");
+  }
 
   clearPendingRoomOperation(storage);
   assert.equal(readPendingRoomOperation(storage), null);
+});
+
+test("배포 전에 저장된 gameType 없는 pending create도 같은 legacy payload로 복원한다", () => {
+  const storage = new MemoryStorage();
+  const legacyOperation = {
+    kind: "room:create",
+    protocolVersion: PROTOCOL_VERSION,
+    requestId: requestId("request_legacy_pending_create"),
+    payload: {
+      bootstrapCredential: { sessionToken: sessionToken() },
+      nickname: nickname("Harvey"),
+    },
+  } as const;
+  storage.setItem(
+    PENDING_ROOM_OPERATION_STORAGE_KEY,
+    JSON.stringify(legacyOperation),
+  );
+
+  const restored = readPendingRoomOperation(storage);
+
+  assert.deepEqual(restored, legacyOperation);
+  assert.equal(
+    storage.getItem(PENDING_ROOM_OPERATION_STORAGE_KEY),
+    JSON.stringify(legacyOperation),
+  );
+  if (restored?.kind === "room:create") {
+    assert.equal("gameType" in restored.payload, false);
+  }
 });
 
 test("pending join은 canonical input과 같은 requestId를 유지한다", () => {
@@ -261,7 +293,7 @@ test("pending turn:draw/pass와 room:leave는 sessionStorage가 아닌 page memo
   }
 });
 
-test("snapshot version/gameType capability는 sessionStorage credential이나 pending operation에 저장하지 않는다", () => {
+test("snapshot capability와 gameType은 bound credential이나 pending join에 저장하지 않는다", () => {
   const storage = new MemoryStorage();
   const session = storedPlayerSession();
   const pending = createPendingRoomJoinOperation({

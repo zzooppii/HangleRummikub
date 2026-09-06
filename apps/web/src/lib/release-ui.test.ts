@@ -56,6 +56,12 @@ test("320px mobile layout과 핵심 touch target 제약이 명시되어 있다",
   assert.match(styles, /html\s*\{[^}]*min-width:\s*320px/su);
   assert.match(styles, /@media \(max-width:\s*480px\)/u);
   assert.match(ruleFor("button"), /min-height:\s*48px/u);
+  assert.match(ruleFor(".game-option"), /width:\s*100%/u);
+  assert.match(ruleFor(".game-option"), /min-width:\s*0/u);
+  assert.match(
+    styles,
+    /\.game-option-heading strong,\s*\.game-option-description\s*\{[^}]*overflow-wrap:\s*anywhere/su,
+  );
   assert.match(ruleFor(".text-button"), /min-height:\s*44px/u);
   assert.match(ruleFor(".game-tile"), /min-height:\s*52px/u);
   assert.match(ruleFor(".symbol-picker button"), /min-height:\s*46px/u);
@@ -72,11 +78,24 @@ test("TurnDraft에는 drag 외에 native button 기반 tap/keyboard placement �
 test("keyboard focus는 제거되지 않고 명시적인 focus-visible 표시가 있다", () => {
   assert.match(styles, /button:focus-visible[\s\S]*outline:\s*3px solid/u);
   assert.doesNotMatch(styles, /outline:\s*none/u);
+  assert.match(homeSource, /className="game-selection"[\s\S]*role="group"/u);
+  assert.match(homeSource, /className=\{`game-option[\s\S]*type="button"/u);
+  assert.match(homeSource, /aria-pressed=\{isSelected\}/u);
+  assert.match(
+    homeSource,
+    /onClick=\{\(\) => setSelectedGameType\(game\.gameType\)\}/u,
+  );
+  assert.match(homeSource, /props\.onCreateRoom\(selectedGameType\)/u);
+  assert.doesNotMatch(homeSource, /onCreateRoom\("HANGUL_TILE"\)/u);
 });
 
 test("form help와 동적 confirmation은 control에서 접근 가능한 설명으로 연결된다", () => {
   assert.match(homeSource, /aria-describedby="nickname-help"/u);
   assert.match(homeSource, /className="field-help" id="nickname-help"/u);
+  assert.match(
+    homeSource,
+    /role="group"\s+aria-labelledby="game-selection-label"/u,
+  );
   assert.match(homeSource, /limitNicknameInput\(event\.target\.value\)/u);
   assert.match(
     homeSource,
@@ -87,6 +106,17 @@ test("form help와 동적 confirmation은 control에서 접근 가능한 설명�
   assert.doesNotMatch(
     editorSource,
     /className="draw-confirmation" role="status"/u,
+  );
+});
+
+test("P5B legacy pending create는 현재 기본 gameType과 같은 요청으로 그대로 재시도한다", () => {
+  assert.match(
+    appControllerSource,
+    /\(pending\.payload\.gameType \?\? DEFAULT_SELECTED_GAME_TYPE\) === gameType/u,
+  );
+  assert.match(
+    appControllerSource,
+    /await executePendingOperation\(pending\);\s*return;/u,
   );
 });
 

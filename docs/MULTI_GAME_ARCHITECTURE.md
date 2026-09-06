@@ -1,6 +1,6 @@
 # Multi-game Platform Architecture
 
-> 상태: P0~P5B checkpoint 완료 / P5C READY
+> 상태: P0~P5C checkpoint 완료 / P6 READY
 > 작성일: 2026-09-06
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
@@ -71,7 +71,7 @@ P3D는 위 경계에서 소유권이 검증된 domain, dictionary와 Legacy comp
 | Session/Room repository 역할 | `apps/server/src/ports/session-repository.ts`, `room-repository.ts`, `room-unit-of-work.ts`의 책임 | 현재 `RoomRecord` type이 concrete Hangul state를 포함하므로 type 경계는 coupled다. |
 | Room cleanup 기반 | room/session cleanup service, retention sweeper와 lifecycle resource | finished 판별을 concrete result에서 떼어내야 한다. |
 | 공통 server shell | Express server, health/static serving, Socket.IO connection setup, graceful shutdown | transport handler body는 별도 분리 대상이다. |
-| Web URL·session plumbing | `apps/web/src/lib/room-url.ts`, `request-id.ts`, `ack-correlation.ts`, `session-storage.ts`의 credential 처리 | pending create payload와 storage migration은 gameType 추가 시 조정한다. |
+| Web URL·session plumbing | `apps/web/src/lib/room-url.ts`, `request-id.ts`, `ack-correlation.ts`, `session-storage.ts`의 credential 처리 | P5C pending create는 optional gameType을 보존하되 storage key, bound credential, join과 URL shape는 유지한다. |
 | Web 공통 화면 shell | Home의 entry shell, Lobby의 Room code/invite/Host/presence/leave, connection/session 상태 | 현재 branding, 2~4명, start eligibility는 분리 대상이다. |
 
 플랫폼 core로 분류됐더라도 현재 concrete type에 의존하는 import는 migration에서 adapter를 거쳐 제거해야 한다.
@@ -321,7 +321,7 @@ catalog metadata와 executable registry의 책임은 분리한다. production en
 
 P2의 registry에는 `HANGUL_TILE` identity 하나만 등록되어 있다. `GameRegistration`의 실제 surface는 `{ gameType }`뿐이고 `find`/`getRequired`는 runtime-validated exact lookup만 수행한다. 입력 목록과 entry는 private registry state로 복사되고 저장 entry와 registry object는 freeze된다. unknown lookup, 필수 registration 누락, duplicate registration은 fallback 없이 실패한다.
 
-composition root는 legacy Hangul registration 하나를 기본 등록하고 필수 default가 없으면 startup에서 fail-fast한다. `RoomSessionApplicationService.createRoom`은 canonical state를 만들기 전에 legacy default registration을 확인하고, `GameStartService`는 초기 한글 state를 만들기 전에 저장된 `RoomRecord.gameType` registration을 확인한다. P3A에서도 이 registry는 service callback, state adapter/projector, command adapter 또는 server action을 소유하지 않는다. storage와 projection collaborator는 exact `HANGUL_TILE`을 독립적으로 fail-closed하고 composition root에서 주입된다. `NUMBER_TILE`/`GEM_CARD` placeholder와 final `GameModule`도 없다.
+composition root는 legacy Hangul registration 하나를 기본 등록하고 필수 default가 없으면 startup에서 fail-fast한다. P5C의 `RoomSessionApplicationService.createRoom`은 omitted field를 legacy default로, explicit field를 strict `GameType`으로 resolve한 뒤 canonical state를 만들기 전에 그 exact registration을 확인한다. `GameStartService`는 초기 한글 state를 만들기 전에 저장된 `RoomRecord.gameType` registration을 확인한다. P3A에서도 이 registry는 service callback, state adapter/projector, command adapter 또는 server action을 소유하지 않는다. storage와 projection collaborator는 exact `HANGUL_TILE`을 독립적으로 fail-closed하고 composition root에서 주입된다. `NUMBER_TILE`/`GEM_CARD` placeholder와 final `GameModule`도 없다.
 
 P3B와 P3C에서도 `GameRegistration`은 `{ gameType }` identity-only surface 그대로다. v1의 `turn:*`와 current timeout/deadline/player-lifecycle action은 아직 여러 game에서 공통성이 입증된 registration capability가 아니므로 registry에 optional method를 붙이지 않았다. 별도 frozen command capability, player-lifecycle action과 immutable scheduled server-action router가 각 사용처에서 canonical `gameType`을 확인한다. 이들은 identity registry와 catalog를 중복하는 mutable global registry가 아니라 composition root가 한 번 구성하는 single-game compatibility boundary다.
 
@@ -754,13 +754,16 @@ TurnDraft, Submit, Draw, Pass, timer, rack method를 web registry interface에 �
 
 ### 15.2 catalog와 invitation
 
-- Home의 선택은 create 요청에만 사용한다.
-- ack loss retry를 위해 pending create record에 동일한 gameType과 requestId를 보존한다.
-- create 성공 후에도 local 선택값이 아니라 server ack snapshot의 gameType을 사용한다.
+- P5C catalog는 `apps/web`이 소유하는 static browser-safe product metadata다. server `GameRegistry`를 import하거나 runtime availability endpoint를 추가하지 않는다.
+- 현재 catalog에는 실제 생성 가능한 `HANGUL_TILE` 한 항목만 있고 `NUMBER_TILE`/`GEM_CARD` disabled 또는 준비 중 placeholder는 없다.
+- Home의 semantic selection은 create 요청에만 사용하며 create handler는 선택된 `GameType`을 명시적으로 전달한다.
+- ack loss retry를 위해 pending create command에 동일한 effective `gameType`과 `requestId`를 보존한다. selection preference 자체를 별도 storage에 영구 저장하지 않고 bound credential과 pending join에는 `gameType`을 넣지 않는다.
+- create 성공 후에도 local 선택값이 아니라 server ack snapshot의 canonical gameType을 사용한다.
 - `/room/{ROOM_CODE}`는 그대로 유지한다.
+- `room:join`은 `gameType`을 받지 않는다. Home에서 무엇을 선택했든 invitation/direct Room은 Room code로 참가한 뒤 snapshot을 따른다.
 - join/resume/sync는 snapshot의 gameType으로 renderer를 선택한다.
 - unsupported game은 Hangul/Lobby로 fallback하지 않고 안전한 incompatible 화면에서 command를 차단한다.
-- 기존 `hangul-rummikub.*.v1` storage key 변경은 session 손실을 일으킬 수 있으므로 dual-read migration 또는 유지 전략을 별도 설계한다.
+- 기존 `hangul-rummikub.*.v1` storage key는 유지한다. P5C create command의 optional field는 같은 strict validator로 읽으며 key migration이나 credential shape 변경이 필요하지 않다.
 
 ## 16. Production compatibility seam
 
@@ -770,7 +773,9 @@ TurnDraft, Submit, Draw, Pass, timer, rack method를 web registry interface에 �
 | P2 gameType/registry | `HANGUL_TILE` identity-only registration, v1 create 내부 default, Room lifetime immutability와 create/start availability check; 외부 wire·snapshot·web 유지 |
 | P3A~P3D Hangul extraction | state/projection/persistence, command, server action, 물리 이동을 별도 stop gate로 수행; rule/state semantics 불변 |
 | P4 regression | 573 tests + 새 characterization/E2E + production-like smoke; 기능 추가 없음 |
-| P5A~P5C catalog/protocol | versioned snapshot, web routing/storage, catalog/create를 별도 stop gate로 수행; invitation URL 유지 |
+| P5A snapshot contract | 기존 V1과 분리된 `PlatformSnapshotV2`를 additive하게 정의 |
+| P5B negotiation/routing | socket별 V1/V2 선택과 canonical snapshot gameType 기반 Web routing |
+| P5C catalog/create | Web-owned HANGUL-only catalog와 같은 `room:create`의 optional gameType; legacy omission과 invitation URL 유지 |
 | P6 이후 | disabled game을 production에 노출하지 않고 rules/implementation/E2E gate 순서 준수 |
 
 strict old client가 unknown snapshot field를 거부할 수 있으므로 wire에 단순 field 하나를 추가하는 것도 무조건 backward-compatible하다고 가정하지 않는다. protocol version, full-stack 동시 배포, 필요 시 legacy Hangul adapter 기간을 명시한다.
@@ -991,3 +996,48 @@ Web realtime boundary는 wire union을 검증한 뒤 V1/V2를 구분한다. V1�
 Exact `HANGUL_TILE` V2만 pure V2→Legacy Hangul adapter를 통과한다. Adapter는 server projection을 현재 `use-lobby-app`, Hangul screens와 TurnDraft가 쓰는 V1-shaped view로 재배치할 뿐 privacy/rule/Tile/revision을 계산하지 않는다. App route는 LOBBY를 common Lobby, PLAYING/FINISHED를 current Hangul renderer로 고른다. V1의 characterized malformed PLAYING/FINISHED→Lobby behavior는 유지한다.
 
 Normalized V1-shaped state를 유지하는 것은 임시 migration debt다. Adapter가 `gameId`, `gameRevision`, `turnId`와 rack identity를 그대로 보존하므로 presence-only/equal snapshot은 dirty draft를 유지하고 canonical gameplay identity 변경만 reset한다. Reconnect에서 revision이 같아도 새 representation의 routing metadata는 갱신한다. 상세 결정과 rollback 경계는 [MULTI_GAME_P5B_SNAPSHOT_MIGRATION.md](./MULTI_GAME_P5B_SNAPSHOT_MIGRATION.md)에 기록한다.
+
+## 29. P5C Game Catalog와 create selection
+
+P5C는 snapshot negotiation이나 server registry를 다시 설계하지 않고 Home의 생성 선택과 기존 create application 경계만 연결한다.
+
+### 29.1 Catalog ownership과 Home state
+
+```text
+Web static catalog [HANGUL_TILE]
+  -> Home selectedGameType
+  -> pending room:create command
+  -> acknowledgement의 negotiated canonical snapshot
+  -> room.gameType 기반 existing renderer route
+```
+
+`apps/web/src/features/game-catalog/game-catalog.ts`의 frozen `GAME_CATALOG`는 `{ gameType, displayName, description }` item과 첫 실제 item에서 파생한 `DEFAULT_SELECTED_GAME_TYPE`을 제공한다. Catalog item은 browser-visible copy와 `GameType` identity만 가진 Web product metadata다. 실제 server availability는 identity-only `GameRegistry`, canonical state는 `RoomRecord`, renderer 선택은 negotiated snapshot이 각각 소유한다. 이 세 object를 하나의 mutable registry로 합치지 않는다. 현재 실제 지원 game이 하나이므로 runtime catalog endpoint, availability flag, future URL/settings와 disabled `NUMBER_TILE`/`GEM_CARD` item을 만들지 않는다.
+
+`selectedGameType`은 Home/create flow state일 뿐 Room authority가 아니다. 한 항목을 기본 선택해도 create handler는 `HANGUL_TILE` literal을 다시 주입하지 않고 state의 선택값을 사용한다. Native button/radio semantics, selected state, focus-visible과 48px touch target을 유지한다. 선택 preference는 refresh 뒤 기본값으로 돌아가도 되며 credential storage와 섞지 않는다.
+
+### 29.2 Additive create resolution과 atomicity
+
+```text
+room:create (protocolVersion 1)
+  -> strict shared command validation
+     -> gameType omitted: legacy-compatible input
+     -> gameType HANGUL_TILE: current Web input
+     -> unsupported/malformed/extra: INVALID_PAYLOAD
+  -> one requested-game resolver
+     -> omitted: LEGACY_V1_DEFAULT_GAME_TYPE
+     -> explicit: validated GameType
+  -> GameRegistry.getRequired(resolved gameType)
+  -> RoomUnitOfWork CREATE { gameType: resolved gameType }
+```
+
+Event 이름은 `room:create`이고 outer `protocolVersion`도 `1`이다. 기존 payload가 계속 valid한 additive server extension이고 snapshot representation은 별도 `snapshotVersion`으로 협상하므로 command protocol을 전역 증가시키지 않는다. Ack shape에 별도 `gameType`을 추가하지 않는다. Registry lookup은 Room code/Player/session promotion/idempotency acceptance가 commit되기 전에 끝나며 invalid type 또는 missing registration은 partial Room, ghost Player, bound session, accepted record와 Room code를 남기지 않는다.
+
+Create fingerprint는 `["room:create", normalized nickname, resolved gameType]` 의미를 가진다. Omitted legacy input과 explicit `HANGUL_TILE`은 effective type이 같으므로 같은 request ID에서 replay되고, 다른 normalized payload 또는 향후 다른 supported effective type은 conflict다. 현재 미지원 type은 unsafe fixture로 정상 흐름을 만들지 않고 validation에서 먼저 차단한다. Browser pending create에는 ack loss retry를 위해 explicit type과 request ID를 함께 보존하지만 bound credential, pending join과 long-lived selection preference에는 저장하지 않는다.
+
+### 29.3 Join, snapshot과 compatibility
+
+`room:join`은 Room code와 nickname만 받고 `gameType`을 받지 않는다. `/room/{ROOM_CODE}` path에도 game identifier나 query를 추가하지 않는다. Invitation/direct Room, refresh와 resume은 모두 server가 찾은 canonical Room과 negotiated snapshot으로 game을 결정한다.
+
+Capability가 없는 legacy socket은 explicit `HANGUL_TILE`로 생성된 Room에서도 exact `StateSnapshot` V1을 받으며 V1 shape에는 `snapshotVersion`과 `gameType`이 없다. `[2, 1]` Web socket은 omitted legacy create Room에서도 `PlatformSnapshotV2`의 `room.gameType = HANGUL_TILE`을 받는다. Per-socket selector, `state:snapshot` event, V2 Hangul adapter와 unsupported/incompatible fail-closed route는 P5B 그대로다. Game start, Submit, Draw, Pass, timeout, finish와 leave command/advisory에는 `gameType`을 추가하지 않고 lifetime 동안 stored Room value를 보존한다.
+
+P5C 뒤에도 구현된 game은 `HANGUL_TILE` 하나다. 다음 stop gate는 catalog placeholder나 schema를 먼저 추가하는 단계가 아니라 `NUMBER_TILE` 규칙·protocol 결정을 문서로 확정하는 P6다.

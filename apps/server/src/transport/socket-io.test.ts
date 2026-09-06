@@ -157,6 +157,10 @@ interface RawClientToServerEvents {
     command: unknown,
     acknowledge: (ack: SessionBootstrapAck) => void,
   ) => void;
+  "room:create": (
+    command: unknown,
+    acknowledge: (ack: RoomCreateAck) => void,
+  ) => void;
   "game:start": (
     command: unknown,
     acknowledge: (ack: GameStartAck) => void,
@@ -2212,6 +2216,108 @@ test(
         if (!incompatible.ok) {
           assert.equal(incompatible.requestId, "incompatible-request");
         }
+      } finally {
+        await stopServer(harness);
+      }
+    });
+
+    await context.test("room:create의 unsupported gameType은 bootstrap, Room, idempotency를 변경하지 않는다", async () => {
+      const deterministic = createDeterministicRuntime();
+      const harness = await startServer(deterministic.runtime);
+      try {
+        const socket = await connectRawClient(harness);
+        const bootstrapAck = await emitWithAck<SessionBootstrapAck>(
+          "unsupported gameType bootstrap",
+          (acknowledge) => {
+            socket.emit(
+              "session:bootstrap",
+              bootstrapCommand("unsupported-game-bootstrap"),
+              acknowledge,
+            );
+          },
+        );
+        const token = requireBootstrapSuccess(bootstrapAck);
+        const createRequestId = requestId("unsupported-game-create");
+        const invalidCreate = await emitWithAck<RoomCreateAck>(
+          "unsupported gameType room:create",
+          (acknowledge) => {
+            socket.emit(
+              "room:create",
+              {
+                kind: "room:create",
+                protocolVersion: PROTOCOL_VERSION,
+                requestId: createRequestId,
+                payload: {
+                  bootstrapCredential: { sessionToken: token },
+                  nickname: "Host",
+                  gameType: "NUMBER_TILE",
+                },
+              },
+              acknowledge,
+            );
+          },
+        );
+        assert.equal(validateRoomCreateAck(invalidCreate).ok, true);
+        requireFailureCode(invalidCreate, "INVALID_PAYLOAD");
+
+        const verificationData =
+          deterministic.tokenIssuer.deriveVerificationData(token);
+        assert.equal(deterministic.roomCodeGenerator.callCount, 0);
+        assert.equal(
+          await deterministic.runtime.persistence.findByCode(
+            roomCode("ABCDEF"),
+          ),
+          null,
+        );
+        assert.equal(
+          (
+            await deterministic.runtime.persistence.findByVerificationData(
+              verificationData,
+            )
+          )?.state,
+          "UNBOUND",
+        );
+        assert.deepEqual(
+          await deterministic.runtime.persistence.classify(
+            `bootstrap:${verificationData.algorithm}:${verificationData.digestHex}`,
+            createRequestId,
+            "unsupported-game-probe",
+          ),
+          { status: "MISS" },
+        );
+
+        const validCreate = await emitWithAck<RoomCreateAck>(
+          "explicit HANGUL_TILE room:create after rejection",
+          (acknowledge) => {
+            socket.emit(
+              "room:create",
+              {
+                kind: "room:create",
+                protocolVersion: PROTOCOL_VERSION,
+                requestId: createRequestId,
+                payload: {
+                  bootstrapCredential: { sessionToken: token },
+                  nickname: "Host",
+                  gameType: "HANGUL_TILE",
+                },
+              },
+              acknowledge,
+            );
+          },
+        );
+        assert.equal(validateRoomCreateAck(validCreate).ok, true);
+        assert.equal(validCreate.ok, true);
+        if (!validCreate.ok) {
+          throw new Error("Explicit HANGUL_TILE Room create unexpectedly failed.");
+        }
+        assert.equal("snapshotVersion" in validCreate.data.snapshot, false);
+        assert.equal("gameType" in validCreate.data.snapshot.room, false);
+        assert.equal(deterministic.roomCodeGenerator.callCount, 1);
+        assert.equal(
+          (await deterministic.runtime.persistence.findByCode(roomCode("ABCDEF")))
+            ?.gameType,
+          "HANGUL_TILE",
+        );
       } finally {
         await stopServer(harness);
       }

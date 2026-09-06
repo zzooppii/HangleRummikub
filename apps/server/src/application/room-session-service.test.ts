@@ -485,6 +485,43 @@ test("createRoom은 normalized Host와 초기 revision을 원자적으로 생성
   );
 });
 
+test("createRoom은 explicit HANGUL_TILE을 Registry에서 확인해 canonical Room과 fingerprint에 저장한다", async () => {
+  const registry = createLegacyHangulRegistry();
+  const requestedGameTypes: unknown[] = [];
+  const recordingRegistry: GameRegistrationReader = {
+    find: (gameTypeInput) => registry.find(gameTypeInput),
+    getRequired: (gameTypeInput) => {
+      requestedGameTypes.push(gameTypeInput);
+      return registry.getRequired(gameTypeInput);
+    },
+  };
+  const harness = createHarness({ gameRegistrationReader: recordingRegistry });
+  const credential = await bootstrap(harness);
+  const created = requireSuccess(
+    await harness.service.createRoom({
+      sessionToken: credential.sessionToken,
+      requestId: requestId("create-explicit-hangul"),
+      nickname: "Harvey",
+      gameType: "HANGUL_TILE",
+    }),
+  );
+
+  assert.deepEqual(requestedGameTypes, ["HANGUL_TILE"]);
+  assert.equal(
+    (await harness.persistence.findById(created.roomId))?.gameType,
+    "HANGUL_TILE",
+  );
+  const changeSet = lastChangeSet(harness.unitOfWork);
+  assert.equal(changeSet.roomMutation.kind, "CREATE");
+  if (changeSet.roomMutation.kind === "CREATE") {
+    assert.equal(changeSet.roomMutation.candidate.gameType, "HANGUL_TILE");
+  }
+  assert.equal(
+    changeSet.idempotency.payloadFingerprint,
+    JSON.stringify(["room:create", "Harvey", "HANGUL_TILE"]),
+  );
+});
+
 test("createRoom은 invalid nickname을 shared validator의 NICKNAME_INVALID로 거절한다", async () => {
   const harness = createHarness();
   const credential = await bootstrap(harness);
@@ -502,6 +539,54 @@ test("createRoom은 invalid nickname을 shared validator의 NICKNAME_INVALID로 
     harness.issuer.deriveVerificationData(credential.sessionToken),
   );
   assert.equal(session?.state, "UNBOUND");
+});
+
+test("createRoom은 invalid requested gameType을 default하지 않고 모든 create mutation 전에 거절한다", async () => {
+  const invalidGameTypes: readonly unknown[] = [
+    "NUMBER_TILE",
+    "GEM_CARD",
+    "UNKNOWN",
+    "",
+    1,
+    {},
+    null,
+  ];
+
+  for (const [index, gameType] of invalidGameTypes.entries()) {
+    const harness = createHarness();
+    const credential = await bootstrap(harness);
+    const verificationData = harness.issuer.deriveVerificationData(
+      credential.sessionToken,
+    );
+    const id = requestId(`invalid-game-type-${index}`);
+
+    requireError(
+      await harness.service.createRoom({
+        sessionToken: credential.sessionToken,
+        requestId: id,
+        nickname: "Harvey",
+        gameType,
+      }),
+      "INVALID_PAYLOAD",
+    );
+
+    assert.equal(harness.unitOfWork.changeSets.length, 0);
+    assert.equal(harness.codeGenerator.callCount, 0);
+    assert.equal(await harness.persistence.findByCode(roomCode("ABCDEF")), null);
+    assert.equal(await harness.persistence.findById(roomId("test-room-1")), null);
+    assert.equal(
+      (await harness.persistence.findByVerificationData(verificationData))?.state,
+      "UNBOUND",
+    );
+    assert.deepEqual(
+      await harness.persistence.classify(
+        `bootstrap:${verificationData.algorithm}:${verificationData.digestHex}`,
+        id,
+        "invalid-game-type-probe",
+      ),
+      { status: "MISS" },
+    );
+  }
 });
 
 test("createRoom은 roomCode collision 후 다음 candidate로 재시도한다", async () => {
@@ -574,7 +659,7 @@ test("createRoom은 정확히 10회 collision 후 ROOM_CODE_EXHAUSTED이며 ghos
   );
 });
 
-test("createRoom accepted retry는 ack loss 뒤 같은 결과를 replay하고 다른 payload를 거절한다", async () => {
+test("createRoom accepted retry는 omitted/explicit 동일 effective gameType을 replay하고 다른 payload를 거절한다", async () => {
   const harness = createHarness();
   const credential = await bootstrap(harness);
   const id = requestId("idempotent-create");
@@ -590,6 +675,7 @@ test("createRoom accepted retry는 ack loss 뒤 같은 결과를 replay하고 �
       sessionToken: credential.sessionToken,
       requestId: id,
       nickname: "Harvey",
+      gameType: "HANGUL_TILE",
     }),
   );
 
@@ -600,11 +686,16 @@ test("createRoom accepted retry는 ack loss 뒤 같은 결과를 replay하고 �
   );
   assert.equal(harness.codeGenerator.callCount, 1);
   assert.equal(harness.unitOfWork.changeSets.length, 1);
+  assert.equal(
+    lastChangeSet(harness.unitOfWork).idempotency.payloadFingerprint,
+    JSON.stringify(["room:create", "Harvey", "HANGUL_TILE"]),
+  );
   requireError(
     await harness.service.createRoom({
       sessionToken: credential.sessionToken,
       requestId: id,
       nickname: "Different",
+      gameType: "HANGUL_TILE",
     }),
     "REQUEST_ID_REUSED",
   );
@@ -641,7 +732,7 @@ test("legacy v1 default registration이 없으면 createRoom은 어떤 canonical
     await harness.persistence.classify(
       `bootstrap:${verificationData.algorithm}:${verificationData.digestHex}`,
       id,
-      JSON.stringify(["room:create", "Harvey"]),
+      JSON.stringify(["room:create", "Harvey", "HANGUL_TILE"]),
     ),
     { status: "MISS" },
   );

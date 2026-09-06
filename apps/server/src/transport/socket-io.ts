@@ -720,6 +720,7 @@ function registerCreateRoomHandler(
           command.value.payload.bootstrapCredential.sessionToken,
         requestId: command.value.requestId,
         nickname: command.value.payload.nickname,
+        gameType: command.value.payload.gameType,
       });
       if (!result.ok) {
         acknowledgeIfPresent(
