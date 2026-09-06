@@ -1,6 +1,6 @@
 # Multi-game Platform Architecture
 
-> 상태: P0~P3C checkpoint 완료 + P3D verified Hangul physical extraction 구현 완료(최종 quality gate와 checkpoint/push 조건부)
+> 상태: P0~P3D checkpoint 완료 + P4 Hangul production regression evidence 완료(checkpoint/push 조건부)
 > 작성일: 2026-09-06
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
@@ -910,4 +910,16 @@ P3D는 behavior를 재작성하지 않고 다음 소유권만 물리적으로 �
 
 의도적으로 남긴 direct coupling은 concrete `RoomRecord.game: GameState | null`, mixed start/turn/deadline/finish application service, Turn/Game-shaped recovery port, flat v1 realtime/validation/Web renderer다. compatibility router가 mixed service type을 알고 player-lifecycle action이 기존 turn/finish transition을 사용하는 transitional edge도 남는다. 이 반대 방향 dependency는 type-only이며 현재 runtime circular dependency는 없다.
 
-세부 이동 inventory와 P4 stop gate는 [MULTI_GAME_P3D_MODULE_EXTRACTION.md](./MULTI_GAME_P3D_MODULE_EXTRACTION.md)에 기록한다. P3D의 COMPLETE 판정은 628-test 기준선을 삭제·skip하지 않은 신규 boundary test 포함 전체 quality gate, clean build output 확인, checkpoint commit과 일반 `origin/master` push가 모두 성공한 경우에만 유효하다.
+세부 이동 inventory와 P4 stop gate는 [MULTI_GAME_P3D_MODULE_EXTRACTION.md](./MULTI_GAME_P3D_MODULE_EXTRACTION.md)에 기록한다. P3D는 shared 59, web 91, server 481로 총 631 tests와 clean build output, checkpoint `cedda1a` 및 일반 `origin/master` push를 통과했다.
+
+## 26. P4 Hangul production regression gate
+
+P4는 architecture나 production behavior를 바꾸지 않고 `hangul-game-v1`과 P1 characterization을 기준으로 extracted Hangul vertical slice를 다시 검증했다.
+
+- old protocol 43개와 projection 60개 declaration, realtime event inventory와 `protocolVersion = 1`이 현재 compatibility composition에 보존됐다. `room:create`와 flat v1 snapshot에는 `gameType`이 없다.
+- 전체 631 tests가 wire, 2~4 Player Room/session, inventory/composition/rules/dictionary, Submit/Draw/Pass/timeout, reconnect/leave/result/deadline/retention, P2~P3D boundary와 Web behavior를 포괄한다.
+- 기존 production-serving A/B smoke는 start에서 멈추지 않고 Draw revision/rack/bag, drawn Tile privacy, token 비노출과 disconnect/resume 연속성까지 검증하도록 강화했다. 새 test case나 production code는 추가하지 않았다.
+- fresh build의 실제 `npm start` dist와 public Railway에서 A/B create/join/start/Draw/privacy/resume를 확인했다. public deployed commit/replica identity는 dashboard 증거가 없으면 behavior verification과 분리한다.
+- unresolved regression은 발견되지 않았다. process-memory restart loss와 `test-dictionary-v1`, 브라우저/device 한계는 그대로다.
+
+상세 범위와 evidence는 [MULTI_GAME_P4_REGRESSION_GATE.md](./MULTI_GAME_P4_REGRESSION_GATE.md)에 기록한다. root final gate, checkpoint commit, 일반 push와 post-push public smoke가 모두 통과하면 P4를 COMPLETE로 판정하고 P5A만 READY로 연다.

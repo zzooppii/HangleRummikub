@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0~P3C COMPLETE, P3D 구현 완료 / COMPLETE 판정은 최종 quality gate와 checkpoint/push 조건부
+> 상태: P0~P3D COMPLETE, P4 regression evidence 완료 / COMPLETE 판정은 checkpoint/push와 post-push public smoke 조건부
 > 작성일: 2026-09-06
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -25,7 +25,7 @@
 
 production 기준선 573 tests는 shared 55, web 87, server 431로 구성됐다. 이후 추가된 test를 포함한 수는 이유 없이 감소하면 해당 Phase는 완료가 아니다.
 
-P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A checkpoint `a215eaa`는 이 tests를 삭제·skip하지 않고 신규 boundary 6개를 더해 shared 59, web 91, server 453으로 총 603 tests를 통과했다. P3B checkpoint `bc4a62a`는 기존 603개와 신규 command-routing 9개를 포함해 총 612 tests를 통과했다. P3C checkpoint `d21eaad`는 신규 server-action regression 16개를 더해 shared 59, web 91, server 478로 총 628 tests를 통과했다. P3D는 이 628-test 기준선을 삭제·skip하지 않고 import-boundary regression을 추가한다.
+P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A checkpoint `a215eaa`는 이 tests를 삭제·skip하지 않고 신규 boundary 6개를 더해 shared 59, web 91, server 453으로 총 603 tests를 통과했다. P3B checkpoint `bc4a62a`는 기존 603개와 신규 command-routing 9개를 포함해 총 612 tests를 통과했다. P3C checkpoint `d21eaad`는 신규 server-action regression 16개를 더해 shared 59, web 91, server 478로 총 628 tests를 통과했다. P3D checkpoint `cedda1a`는 import-boundary regression 3개를 더해 shared 59, web 91, server 481로 총 631 tests를 통과했다. P4는 새 case 수를 늘리지 않고 production A/B smoke의 behavioral assertions를 강화하며 이 631-test 기준선을 두 번 검증한다.
 
 ## 2. Phase 개요
 
@@ -384,7 +384,7 @@ Multi-game Platform P3C만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의
 
 ### 6.4 P3D — Hangul physical module move
 
-> 구현 완료(조건부): 2026-09-06. P3C checkpoint `d21eaad`와 628-test 기준선 위에서 verified Hangul server domain/dictionary/P3A~P3C seam과 shared Hangul command/projection internals를 `games/hangul-tile` namespace로 이동했다. **P3D COMPLETE / P4 READY** 표기는 신규 boundary regression을 포함한 root quality gate, clean build-output 검사, checkpoint commit과 일반 `origin/master` push가 모두 성공한 경우에만 유효하다.
+> 완료: 2026-09-06, checkpoint `cedda1a`. P3C checkpoint `d21eaad`와 628-test 기준선 위에서 verified Hangul server domain/dictionary/P3A~P3C seam과 shared Hangul command/projection internals를 `games/hangul-tile` namespace로 이동했다. 신규 boundary regression을 포함한 root quality gate, 총 631 tests, clean build-output 검사, checkpoint commit과 일반 `origin/master` push를 통과했다. **P3D COMPLETE / P4 READY**.
 
 #### 목표
 
@@ -440,6 +440,8 @@ Multi-game Platform P3D만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의
 ```
 
 ## 7. P4 — Hangul production regression gate
+
+> 검증 완료(조건부): 2026-09-06. `hangul-game-v1` 및 P1 contract를 기준으로 631-test vertical slice, 실제 production dist A/B smoke, public Railway behavior와 module/security boundary를 재검증했다. **P4 COMPLETE / P5A READY** 표기는 최종 root gate 2회, checkpoint commit/일반 push와 post-push public smoke가 모두 성공한 경우에만 유효하다. 상세 evidence는 [MULTI_GAME_P4_REGRESSION_GATE.md](./MULTI_GAME_P4_REGRESSION_GATE.md)에 있다.
 
 ### 목표
 

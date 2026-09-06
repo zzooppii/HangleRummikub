@@ -7,15 +7,19 @@ import test from "node:test";
 
 import {
   NicknameSchema,
+  PlayingStateSnapshotSchema,
   PROTOCOL_VERSION,
   RequestIdSchema,
   type ClientToServerEvents,
   type GameStartAck,
+  type PlayingStateSnapshot,
   type RoomCreateAck,
   type RoomJoinAck,
   type ServerToClientEvents,
   type SessionBootstrapAck,
   type SessionResumeAck,
+  type StateSyncAck,
+  type TurnDrawAck,
 } from "@hangul-rummikub/shared";
 import {
   io as createSocketClient,
@@ -151,6 +155,49 @@ function emitWithAck<TAcknowledgement>(
   });
 }
 
+async function syncPlayingSnapshot(
+  socket: ProductionClient,
+  label: string,
+  requestId: string,
+): Promise<PlayingStateSnapshot> {
+  const acknowledgement = await emitWithAck<StateSyncAck>(
+    label,
+    (acknowledge) => {
+      socket.emit(
+        "state:sync",
+        {
+          kind: "state:sync",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: parse(RequestIdSchema, requestId),
+          payload: {},
+        },
+        acknowledge,
+      );
+    },
+  );
+  assert.equal(acknowledgement.ok, true);
+  if (!acknowledgement.ok || acknowledgement.scope !== "ROOM") {
+    throw new Error(`Production ${label} unexpectedly failed.`);
+  }
+  if (acknowledgement.data.snapshot.room.phase !== "PLAYING") {
+    throw new Error(`Production ${label} did not return a PLAYING snapshot.`);
+  }
+  return parse(PlayingStateSnapshotSchema, acknowledgement.data.snapshot);
+}
+
+function collectStringValues(value: unknown): readonly string[] {
+  if (typeof value === "string") {
+    return [value];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap(collectStringValues);
+  }
+  if (value === null || typeof value !== "object") {
+    return [];
+  }
+  return Object.values(value).flatMap(collectStringValues);
+}
+
 test("production server는 health, SPA routes, hashed assets와 Socket.IO를 한 origin에서 제공한다", async () => {
   const webDistPath = createWebBuildFixture();
   const server = createHttpServer({ serveWeb: true, webDistPath });
@@ -235,7 +282,7 @@ test("production server는 health, SPA routes, hashed assets와 Socket.IO를 한
   }
 });
 
-test("production same-origin Socket.IO에서 bootstrap, create, join과 start가 동작한다", async () => {
+test("production same-origin Socket.IO에서 A/B create, join, start, Draw, privacy와 resume가 동작한다", async () => {
   const webDistPath = createWebBuildFixture();
   const server = createHttpServer({ serveWeb: true, webDistPath });
   let host: ProductionClient | undefined;
@@ -363,13 +410,118 @@ test("production same-origin Socket.IO에서 bootstrap, create, join과 start가
     assert.equal(startAck.data.snapshot.game.bagCounts.consonant, 81);
     assert.equal(startAck.data.snapshot.game.bagCounts.vowel, 47);
 
+    if (host === undefined || guest === undefined) {
+      throw new Error("Production A/B clients unexpectedly disappeared.");
+    }
+    const hostPlayerId = createAck.data.snapshot.self.playerId;
+    const guestPlayerId = joinAck.data.snapshot.self.playerId;
+    const activePlayerId = startAck.data.snapshot.game.turn.activePlayerId;
+    const actorSocket =
+      activePlayerId === hostPlayerId
+        ? host
+        : activePlayerId === guestPlayerId
+          ? guest
+          : undefined;
+    if (actorSocket === undefined) {
+      throw new Error("Production Game selected an unknown active Player.");
+    }
+    const actorBeforeDraw = await syncPlayingSnapshot(
+      actorSocket,
+      "active Player state:sync before Draw",
+      "production-draw-actor-before",
+    );
+    const drawAck = await emitWithAck<TurnDrawAck>(
+      "turn:draw",
+      (acknowledge) => {
+        actorSocket.emit(
+          "turn:draw",
+          {
+            kind: "turn:draw",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: parse(RequestIdSchema, "production-turn-draw"),
+            expectedGameRevision: actorBeforeDraw.versions.gameRevision,
+            turnId: actorBeforeDraw.game.turn.turnId,
+            payload: { bagKind: "CONSONANT" },
+          },
+          acknowledge,
+        );
+      },
+    );
+    assert.equal(drawAck.ok, true);
+    if (!drawAck.ok || drawAck.scope !== "ROOM") {
+      throw new Error("Production Draw unexpectedly failed.");
+    }
+    assert.equal(drawAck.data.snapshot.versions.gameRevision, 1);
+    assert.equal(drawAck.data.snapshot.self.playerId, activePlayerId);
+    assert.equal(drawAck.data.snapshot.self.rack.length, 15);
+    assert.equal(drawAck.data.snapshot.game.bagCounts.consonant, 80);
+    assert.equal(drawAck.data.snapshot.game.bagCounts.vowel, 47);
+    assert.notEqual(
+      drawAck.data.snapshot.game.turn.activePlayerId,
+      activePlayerId,
+    );
+
+    const [hostAfterDraw, guestAfterDraw] = await Promise.all([
+      syncPlayingSnapshot(
+        host,
+        "Host state:sync after Draw",
+        "production-host-after-draw",
+      ),
+      syncPlayingSnapshot(
+        guest,
+        "Guest state:sync after Draw",
+        "production-guest-after-draw",
+      ),
+    ]);
+    for (const snapshot of [hostAfterDraw, guestAfterDraw]) {
+      assert.equal(snapshot.versions.gameRevision, 1);
+      assert.equal(snapshot.game.bagCounts.consonant, 80);
+      assert.equal(snapshot.game.bagCounts.vowel, 47);
+      assert.equal(snapshot.room.players.length, 2);
+      assert.equal(
+        snapshot.room.players.find(
+          (player) => player.playerId === snapshot.self.playerId,
+        )?.rackCount,
+        snapshot.self.rack.length,
+      );
+    }
+    const actorAfterDraw =
+      activePlayerId === hostPlayerId ? hostAfterDraw : guestAfterDraw;
+    const opponentAfterDraw =
+      activePlayerId === hostPlayerId ? guestAfterDraw : hostAfterDraw;
+    assert.equal(actorAfterDraw.self.rack.length, 15);
+    assert.equal(opponentAfterDraw.self.rack.length, 14);
+    const drawnTiles = actorAfterDraw.self.rack.filter(
+      (tile) =>
+        !actorBeforeDraw.self.rack.some(
+          (beforeTile) => beforeTile.tileId === tile.tileId,
+        ),
+    );
+    assert.equal(drawnTiles.length, 1);
+    const drawnTile = drawnTiles[0];
+    assert.ok(drawnTile);
+    assert.equal(
+      new Set(collectStringValues(opponentAfterDraw)).has(drawnTile.tileId),
+      false,
+    );
+    const projectedStrings = new Set(
+      [hostAfterDraw, guestAfterDraw].flatMap(collectStringValues),
+    );
+    assert.equal(
+      projectedStrings.has(hostBootstrap.data.credential.sessionToken),
+      false,
+    );
+    assert.equal(
+      projectedStrings.has(guestBootstrap.data.credential.sessionToken),
+      false,
+    );
+
     const directRoomResponse = await fetch(
       `${origin}/room/${createAck.data.snapshot.room.roomCode}`,
     );
     assert.equal(directRoomResponse.status, 200);
     assert.match(await directRoomResponse.text(), new RegExp(INDEX_MARKER));
 
-    const guestPlayerId = joinAck.data.snapshot.self.playerId;
     const gameId = startAck.data.snapshot.game.gameId;
     guest.disconnect();
     guest = await connectProductionClient(origin);
@@ -405,7 +557,12 @@ test("production same-origin Socket.IO에서 bootstrap, create, join과 start가
     }
     assert.equal(resumedSnapshot.self.playerId, guestPlayerId);
     assert.equal(resumedSnapshot.game.gameId, gameId);
-    assert.equal(resumedSnapshot.self.rack.length, 14);
+    assert.equal(resumedSnapshot.versions.gameRevision, 1);
+    assert.deepEqual(resumedSnapshot.self.rack, guestAfterDraw.self.rack);
+    assert.deepEqual(
+      resumedSnapshot.game.bagCounts,
+      guestAfterDraw.game.bagCounts,
+    );
     assert.equal(resumedSnapshot.room.players.length, 2);
   } finally {
     host?.disconnect();
