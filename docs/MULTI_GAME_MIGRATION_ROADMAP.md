@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0~P5C COMPLETE / P6 first pass `AWAITING_RULE_DECISIONS` / P7 NOT READY
+> 상태: P0~P6 COMPLETE / P7A READY
 > 작성일: 2026-09-06
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -44,7 +44,7 @@ P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3
 | P5A | Versioned platform snapshot contract | authoritative gameType을 가진 v2/dual-version snapshot envelope를 정의한다. |
 | P5B | Snapshot v2 negotiation and Web routing | connection별 V1/V2 협상, decoding, canonical gameType routing을 연결한다. |
 | P5C | Game catalog and create selection | Home catalog와 HANGUL_TILE create 선택을 공개한다. |
-| P6 | Number Tile rules gate | 구현 전 NUMBER_TILE 규칙·state·privacy·command 후보를 문서화하고 사용자 결정으로 확정한다. |
+| P6 | Number Tile rules gate | 구현 전 NUMBER_TILE 규칙·state·privacy·command를 `number-tile-rules-v1`로 확정한다. |
 | P7A | Number Tile domain implementation | 확정된 규칙으로 독립 state와 RuleEngine을 구현한다. |
 | P7B | Number Tile server/shared integration | command, projection, persistence, registry를 platform 경계에 연결한다. |
 | P7C | Number Tile web implementation | server projection만 소비하는 독립 game renderer를 구현한다. |
@@ -655,10 +655,10 @@ Multi-game Platform P5C만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의
 - draw/pass/turn/timer와 disconnect/forfeit 정책
 - finish/result/ranking/score
 - player count와 catalog availability 조건
-- authoritative command DTO와 player projection 초안
-- `TO_BE_CONFIRMED`를 명시한 rules decision log
+- authoritative command DTO와 player projection direction
+- `NT-001`~`NT-044` stable rules decision log
 - 새 규칙은 `docs/NUMBER_TILE_GAME_RULES.md`에만 기록하고 기존 `docs/GAME_RULES.md`는 Hangul canonical 문서로 유지
-- 확정된 command set을 근거로 namespaced event와 closed `game:command`를 비교해 protocol/version/compatibility 결정을 기록하고 사용자 승인 gate로 표시; 기존 Hangul v1 `turn:*` adapter 유지
+- Namespaced event와 closed `game:command`를 비교해 protocol/version/compatibility 결정을 기록하고 사용자 승인으로 확정; 기존 Hangul v1 `turn:*` adapter 유지
 
 ### 금지사항
 
@@ -670,11 +670,11 @@ Multi-game Platform P5C만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의
 
 ### Definition of Done
 
-- 구현에 필요한 모든 규칙이 confirmed 또는 명시적 blocker로 분류된다.
+- 구현에 필요한 모든 규칙이 confirmed되고 blocker가 없다.
 - state/command/projection privacy와 conservation invariant가 예제로 검증된다.
 - Hangul과 같아 보이는 개념도 독립 rule 근거와 ownership을 가진다.
-- 미확정 핵심 규칙이 있으면 P7은 시작하지 않는다.
-- NUMBER_TILE command routing/version decision이 기록되고 사용자 승인을 얻지 못하면 P7B를 시작하지 않는다.
+- `NT-001`~`NT-044`와 consistency clarification이 canonical ruleset에 기록된다.
+- NUMBER_TILE command routing/version/capability/advisory decision이 확정된다.
 
 ### Required tests
 
@@ -688,22 +688,24 @@ Multi-game Platform P5C만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의
 Multi-game Platform P6 NUMBER_TILE rules gate만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙을 지키고 구현 코드는 작성하지 말며, neutral naming 아래 inventory, unique tile identity, Joker, rack/board group, initial meld, rearrangement, draw/pass/turn/optional timer, disconnect/forfeit, finish/score/ranking, player count, command/projection privacy를 docs/NUMBER_TILE_GAME_RULES.md에 근거와 함께 기록하라. 확정 command set으로 namespaced event와 closed game:command를 비교해 protocol/version/compatibility decision 및 사용자 승인 gate를 기록하고 기존 Hangul v1 turn:* adapter 유지를 명시하라. 기존 docs/GAME_RULES.md에는 링크 외 NUMBER_TILE 규칙을 섞지 말고 미확정 항목은 blocker로 남겨 P7 test matrix와 전체 문서 검증 결과를 제출하라.
 ```
 
-### P6 first-pass 기록 (2026-09-06)
+### P6 완료 기록 (2026-09-06)
 
-- [NUMBER_TILE_GAME_RULES.md](./NUMBER_TILE_GAME_RULES.md)에 confirmed safety invariant, proposed baseline, examples와 `NT-001`~`NT-044` decision matrix를 작성했다.
-- [NUMBER_TILE_PROTOCOL_GATE.md](./NUMBER_TILE_PROTOCOL_GATE.md)에 existing platform command reuse, Number-specific proposed command, atomic whole-table submit, V2 projection/privacy, revision/idempotency와 server-action 요구를 기록했다.
+- [NUMBER_TILE_GAME_RULES.md](./NUMBER_TILE_GAME_RULES.md)의 A안 전체와 blocker clarification A/A/A를 승인해 `NT-001`~`NT-044`를 `CONFIRMED`로 만들고 `number-tile-rules-v1`을 기록했다.
+- [NUMBER_TILE_PROTOCOL_GATE.md](./NUMBER_TILE_PROTOCOL_GATE.md)에 existing platform command reuse, strict protocol v1 `number:*`, atomic whole-table submit, V2-only projection/privacy, revision/idempotency, no Number advisory와 exact client game capability를 확정했다.
 - current implementation을 조사한 결과 `RoomRecord.game`, in-memory state adapter, start/command/server-action paths, PlatformSnapshot V2와 Web decoder/renderer가 각각 Hangul compatibility에 결합되어 있어 registration 하나만 추가하는 rollout은 불가능함을 명시했다.
-- `supportedSnapshotVersions`만으로는 Number-capable client를 판별할 수 없으므로 create/join/resume mutation 전 exact game capability admission을 별도 decision으로 뒀다.
+- `supportedSnapshotVersions`만으로는 Number-capable client를 판별할 수 없으므로 create/join/resume mutation 전 `selectedSnapshotVersion === 2`와 exact `supportedGameTypes`의 `NUMBER_TILE` 포함을 함께 요구하도록 확정했다.
+- Number finish reason은 `RACK_EMPTY`, `STALEMATE`, `LAST_PLAYER_STANDING`이며 `ALL_PLAYERS_FORFEITED`와 `TIME_LIMIT`은 없다. Joker recovery는 stable meld identity 없이 exact replacement와 same-Submit final Table reuse로 검증한다.
+- STALEMATE는 eligible/non-forfeited full no-play cycle로 판정하고 forfeited result entries는 non-forfeited 뒤에서 별도 competition ranking하며 모두 `score = -penalty`를 사용한다.
 - `NUMBER_TILE`은 `GameType`, registry, catalog, shared protocol/schema 또는 production에 추가하지 않았다. `docs/GAME_RULES.md`, runtime source와 dependency도 변경하지 않았다.
 - 기존 P5C 685-test 기준선을 유지해야 하며 docs-only 작업이라 Number runtime test는 추가하지 않는다.
 
-사용자 결정이 남아 있어 P6는 `COMPLETE`가 아니라 `AWAITING_RULE_DECISIONS`다. P7A, P7B와 P7C는 모두 `NOT_READY`다. 후속 작업은 이 decision table의 선택을 받아 문서를 `CONFIRMED`로 갱신하는 **P6 rule decisions 확정** 하나뿐이다.
+P6 consistency audit에 blocker가 없으므로 P6는 `COMPLETE`, P7A는 `READY`다. P7B는 P7A 완료 뒤, P7C는 P7B 완료 뒤 시작한다.
 
 ## 10. P7 — Number Tile implementation
 
 P7은 domain, server/shared integration, web 구현을 각각 독립 stop gate로 나눈다. P7A~P7C 중 하나라도 미완료면 production catalog에서 `NUMBER_TILE`을 enable하지 않는다.
 
-### 10.1 P7A — Number Tile domain implementation
+### 10.1 P7A — Number Tile domain implementation (`READY`)
 
 #### 목표
 
@@ -711,16 +713,16 @@ P6에서 confirmed된 규칙만으로 framework-independent NUMBER_TILE state와
 
 #### Scope
 
-- 독립 inventory, unique tile instance, board/group/rack state
+- 독립 inventory, unique tile instance, Table/Meld/rack state
 - deterministic initial state와 legal-action/result 판정
-- 주입된 ID/random 및 P6에서 timer가 confirmed된 경우에만 Clock/deadline rule
+- 주입된 ID/random/Clock과 확정된 90초 turn deadline rule
 - Joker, initial meld, rearrangement, conservation invariant
 - module-owned structured domain failure
 
 #### 금지사항
 
 - shared wire, server repository/transport, React UI 연결
-- P6 `TO_BE_CONFIRMED` 구현
+- `number-tile-rules-v1`에 없는 규칙 추측·추가
 - Hangul Board/RuleEngine type 변환 또는 GenericTile 추출
 - system clock/random 직접 사용
 
@@ -729,20 +731,20 @@ P6에서 confirmed된 규칙만으로 framework-independent NUMBER_TILE state와
 - P6 rule matrix가 UI/Socket 없이 deterministic하게 통과한다.
 - candidate failure가 original state를 변경하지 않는다.
 - Hangul domain import 없이 독립적으로 compile한다.
-- timer 미채택 규칙이면 deadline capability가 전혀 필요하지 않다.
+- 90초 turn deadline은 포함하고 overall game deadline capability는 만들지 않는다.
 
 #### Required tests
 
 - inventory uniqueness/conservation
 - group/Joker/initial meld/rearrangement legal and illegal cases
 - finish/score/ranking/tie cases
-- deterministic ID/random 및 조건부 deadline boundary
+- deterministic ID/random/Clock 및 90초 deadline boundary
 - 기존 Hangul 전체 tests, typecheck/build/diff-check
 
 #### Codex 실행 명령
 
 ```text
-Multi-game Platform P7A만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 docs/NUMBER_TILE_GAME_RULES.md의 CONFIRMED 항목만 사용해 framework-independent NUMBER_TILE state, inventory, RuleEngine, result를 구현하라. Hangul Board/RuleEngine을 import하거나 GenericTile을 만들지 말고 ID/random을 주입하며 timer가 P6에서 확정된 경우에만 Clock/deadline을 사용하라. shared wire, persistence, transport, web, catalog는 건드리지 말고 table-driven domain tests와 전체 typecheck/test/build/diff-check를 통과시켜라.
+Multi-game Platform P7A만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 docs/NUMBER_TILE_GAME_RULES.md의 `number-tile-rules-v1`만 사용해 framework-independent NUMBER_TILE state, inventory, RuleEngine, result를 구현하라. Hangul Board/RuleEngine을 import하거나 GenericTile을 만들지 말고 ID/random/Clock을 주입해 90초 turn deadline을 구현하되 overall game deadline capability는 만들지 마라. shared wire, persistence, transport, web, catalog는 건드리지 말고 table-driven domain tests와 전체 typecheck/test/build/diff-check를 통과시켜라.
 ```
 
 ### 10.2 P7B — Number Tile server/shared integration
@@ -754,12 +756,12 @@ NUMBER_TILE의 닫힌 command/projection contract와 server application을 regis
 #### Scope
 
 - shared command, failure, player-specific projection runtime schemas
-- P6에서 사용자가 승인한 NUMBER_TILE routing/version decision만 구현하고 기존 Hangul v1 `turn:*` compatibility adapter 유지
+- 확정된 protocol v1 `number:submit`/`number:draw`/`number:pass`만 구현하고 기존 Hangul v1 `turn:*` compatibility adapter 유지
 - module state codec/lifecycle/projector registration
 - server auth, canonical gameType, scoped revision, idempotency, Room serialization
 - candidate validation 후 atomic commit과 private projection
-- P6에서 필요한 경우에만 optional scheduled server action
-- catalog engine registration은 disabled/controlled 상태 유지
+- 90초 Turn timeout server action/recovery; overall Game deadline capability 없음
+- Number registration은 test/injected composition에서만 연결하고 default production registration/public create는 `HANGUL_TILE` only로 유지
 
 #### 금지사항
 
@@ -774,21 +776,21 @@ NUMBER_TILE의 닫힌 command/projection contract와 server application을 regis
 - wrong actor/type/revision와 unauthorized tile reference가 정보 누설 없이 reject된다.
 - failure는 state/revision을 유지하고 replay/serialization이 안전하다.
 - HANGUL_TILE v1/v2 behavior가 변하지 않는다.
-- P6 routing/version decision과 다른 구현을 임의 선택하지 않으며 승인 기록이 없으면 `BLOCKED`다.
+- `number-tile-rules-v1`의 routing/version/capability/advisory 결정을 임의로 바꾸지 않는다.
 
 #### Required tests
 
 - command/runtime-schema positive and negative cases
 - atomicity, idempotency, same-Room concurrency
-- codec/clone/lifecycle과 gameType mismatch; scheduled action이 있으면 recovery, 없으면 recovery capability 부재
+- codec/clone/lifecycle과 gameType mismatch; Turn timeout recovery 및 Game deadline capability 부재
 - player projection secrecy
-- 조건부 scheduler stale/deadline cases
+- Turn scheduler stale/duplicate/deadline race cases
 - 기존 Hangul/NUMBER domain 전체 tests, typecheck/build/diff-check
 
 #### Codex 실행 명령
 
 ```text
-Multi-game Platform P7B만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 P7A를 기준으로 NUMBER_TILE의 닫힌 shared command/failure/projection schema, state codec/lifecycle/projector, server application을 canonical registry와 Room UoW에 연결하라. P6에서 사용자가 승인한 routing/version decision만 구현하고 승인 기록이 없으면 BLOCKED로 보고하며 기존 Hangul v1 turn:* adapter를 유지하고 unchecked envelope를 금지하라. actor/scoped revision/idempotency/serialization/privacy/atomic commit을 지키고 timer가 확정된 경우에만 scheduled action/recovery를 연결하며 React와 production enablement 없이 전체 typecheck/test/build/diff-check를 통과시켜라.
+Multi-game Platform P7B만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 P7A를 기준으로 NUMBER_TILE의 닫힌 shared command/failure/projection schema, state codec/lifecycle/projector, server application을 canonical registry와 Room UoW에 연결하라. `number-tile-rules-v1`의 protocol v1 `number:*`, V2-only projection, selected snapshot V2 + exact supportedGameTypes admission과 no-advisory 결정을 그대로 구현하고 기존 Hangul v1 turn:* adapter를 유지하며 unchecked envelope를 금지하라. actor/scoped revision/idempotency/serialization/privacy/atomic commit과 90초 Turn timeout scheduling/recovery를 지키되 overall Game deadline capability는 만들지 말고 React와 production enablement 없이 전체 typecheck/test/build/diff-check를 통과시켜라.
 ```
 
 ### 10.3 P7C — Number Tile web implementation
@@ -1200,7 +1202,7 @@ Multi-game Platform P12 배포 gate만 수행하라. docs/MULTI_GAME_MIGRATION_R
 ## 16. Phase 간 의사결정 규칙
 
 - Phase가 `BLOCKED`이면 다음 Phase를 시작하지 않는다.
-- rules gate(P6, P10)의 핵심 `TO_BE_CONFIRMED`는 구현 Phase(P7A, P11A)로 넘기지 않는다.
+- Rules gate의 unresolved decision은 구현 Phase로 넘기지 않는다. P6는 모두 확정됐고 P10은 향후 같은 gate를 따라야 한다.
 - P3에서 module surface가 부족하더라도 NUMBER_TILE 요구를 추측해 확장하지 않는다.
 - P9A/P9B는 실제 두 game 근거가 있는 유일한 abstraction 승격 gate다.
 - GEM_CARD가 current interface에 맞지 않으면 game을 왜곡하지 않고 P9B contract를 더 작게 만드는 별도 변경을 제안한다.

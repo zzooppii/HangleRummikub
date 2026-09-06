@@ -1,6 +1,6 @@
 # Multi-game Platform Architecture
 
-> 상태: P0~P5C checkpoint 완료 / P6 first pass `AWAITING_RULE_DECISIONS` / P7 NOT READY
+> 상태: P0~P6 COMPLETE / P7A READY
 > 작성일: 2026-09-06
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
@@ -102,8 +102,8 @@ P3D 전의 일반 이름 `domain/game`은 분류 근거가 아니었다. 해당 
 | `gameRevision` | game state의 optimistic concurrency와 event ordering에 유용 | 모든 game의 mutation/version 범위가 동일한지 아직 모른다. |
 | `GameId` | Room 재경기나 instance 식별에 유용 | Room당 instance 수명주기와 재경기 정책이 아직 하나뿐이다. |
 | game start orchestration | Host가 Lobby에서 module을 시작한다는 흐름은 공통 가능 | player 수, readiness, 초기화 입력은 game policy다. |
-| Turn scheduler | NUMBER_TILE에도 turn timer가 있을 가능성 | 모든 game에 turn, 단일 active player, `TurnId`가 있는 것은 아니다. |
-| Game deadline scheduler | optional 전체 제한 시간에 재사용 가능 | 현재 Hangul이 가진 두 deadline 중 하나일 뿐이고 GEM_CARD 요구가 미정이다. |
+| Turn scheduler | NUMBER_TILE도 확정된 90초 turn timer를 사용 | 두 game의 concrete reuse는 검증할 수 있지만 모든 game에 turn, 단일 active player, `TurnId`가 있는 것은 아니다. |
+| Game deadline scheduler | optional 전체 제한 시간에 재사용 가능 | Number v1은 사용하지 않으며 현재 Hangul이 가진 capability일 뿐이고 GEM_CARD 요구가 미정이다. |
 | result summary | winner IDs와 finished 시점은 공통 가능성이 높음 | numeric score, rank, penalty, forfeit 의미는 다르다. |
 | player projection | 공통 identity/presence와 game progress를 조합할 수 있음 | 현재 `rackCount`, `initialMeldCompleted`, `forfeited`가 섞여 있다. |
 | Room capacity/start capability | catalog UX와 서버 gate에 필요 | 현재 2~4가 Room service, start service, Hangul rules에 중복된다. |
@@ -389,9 +389,9 @@ public v1에서는 platform과 game command가 한 Socket.IO event map에 그대
 
 1. P1~P4에서는 기존 `turn:*` wire event를 그대로 유지한다.
 2. P3B에서 server 내부 router가 이 event를 canonical `HANGUL_TILE` compatibility capability로 연결했다.
-3. `NUMBER_TILE` command set이 rules gate에서 구체화된 뒤 두 선택지를 다시 비교한다.
-4. 현재 handler의 반복을 고려하면 장기적으로는 안정된 outer `game:command`와 registry-owned game별 discriminated command schema를 우선 후보로 둔다.
-5. 이를 도입하면 protocol version을 올리고 기존 Hangul `turn:*` adapter의 지원 기간을 명시한다.
+3. P6는 protocol v1의 additive `number:submit`/`number:draw`/`number:pass`를 선택하고 generic `game:command`를 선택하지 않았다.
+4. P7B는 이 exact namespaced command set과 기존 Hangul `turn:*` adapter를 함께 유지한다.
+5. Generic command surface는 두 실제 game router를 비교하는 P9 전에는 다시 제안하거나 도입하지 않는다.
 6. 어느 방식이든 Room의 stored `gameType`, actor, phase, revision을 서버가 먼저 확인한다.
 
 P3B도 공개 command 이름이나 envelope를 변경하지 않는다.
@@ -423,7 +423,7 @@ Socket.IO v1 handler
 
 ### 8.6 Error contract 경계
 
-현재 한 배열에 섞인 `PROTOCOL_ERROR_CODES`도 outer platform failure와 game-specific failure catalog로 논리 분리할 후보다. transport는 malformed envelope, authentication, Room, phase, version 같은 platform error를 소유한다. module은 tile/board/word/bag 또는 card/resource 같은 error를 구조화해 반환하고, compatibility composition이 이를 v1 `ErrorDto` code로 번역한다. public error namespace와 versioning 방식은 P5A와 P6에서 실제 두 command set을 본 뒤 결정하며, 내부 detail이나 private resource 존재 여부를 노출하지 않는다.
+현재 한 배열에 섞인 `PROTOCOL_ERROR_CODES`도 outer platform failure와 game-specific failure catalog로 논리 분리할 후보다. transport는 malformed envelope, authentication, Room, phase, version 같은 platform error를 소유한다. module은 tile/board/word/bag 또는 card/resource 같은 error를 구조화해 반환하고, compatibility composition이 이를 v1 `ErrorDto` code로 번역한다. P6는 Number commands도 protocol v1에 additive하게 두기로 했지만 exact Number error code와 safe mapping은 P7B의 closed schema에서 정한다. 내부 detail이나 private resource 존재 여부는 노출하지 않는다.
 
 ## 9. Shared protocol 분리 방향
 
@@ -638,7 +638,7 @@ ScheduledGameAction
 
 timer가 없는 module은 scheduled action을 반환하지 않는다. deadline은 client 시간이 아니라 module state와 서버 Clock을 기준으로 판정한다.
 
-이 generic mechanism은 당장 구현하지 않는다. P3C 구현은 기존 `TurnScheduler`, `GameDeadlineScheduler`, timer registration/cancellation과 overdue sweeper를 그대로 두고, 양쪽 callback만 `LegacyHangulServerActionRouter`의 `handleTurnTimeout`/`handleGameDeadline`으로 연결했다. router는 exact scheduled identity를 보존해 기존 service에 전달하며 timer가 없는 future module을 위한 필수 hook이나 generic descriptor를 만들지 않았다. `NUMBER_TILE` 요구가 나온 뒤 descriptor surface를 검증한다.
+이 generic mechanism은 당장 구현하지 않는다. P3C 구현은 기존 `TurnScheduler`, `GameDeadlineScheduler`, timer registration/cancellation과 overdue sweeper를 그대로 두고, 양쪽 callback만 `LegacyHangulServerActionRouter`의 `handleTurnTimeout`/`handleGameDeadline`으로 연결했다. Router는 exact scheduled identity를 보존해 기존 service에 전달하며 timer가 없는 future module을 위한 필수 hook이나 generic descriptor를 만들지 않았다. P7B는 Number의 90초 Turn scheduler/recovery만 concrete하게 연결하고 Number Game deadline capability는 등록하지 않는다.
 
 operation이 반환한 일회성 effect만으로는 scheduler registration 실패나 scheduler 재생성 뒤 overdue action을 복구할 수 없다. 현 process-memory 단계의 recovery는 같은 process/repository가 살아 있는 범위에 한정된다. 실제 process restart recovery는 durable persistence가 도입된 뒤에만 가능하다. 후속 decision gate에서는 (a) scheduled descriptor를 Room state/UoW와 함께 atomic하게 저장하는 방식과 (b) module-owned recovery adapter가 persisted state에서 pending action을 결정론적으로 재산출하는 방식을 비교한다. 어느 쪽이든 schedule 등록과 state commit 사이의 crash window, 중복 실행, stale instance/revision을 test해야 하며, P0/P3에서 하나의 generic contract로 확정하지 않는다.
 
@@ -1044,7 +1044,7 @@ P5C 뒤에도 구현된 game은 `HANGUL_TILE` 하나다. 다음 stop gate는 cat
 
 ## 30. P6 Number Tile rules/protocol gate
 
-P6 first pass는 application/runtime source를 바꾸지 않고 [NUMBER_TILE_GAME_RULES.md](./NUMBER_TILE_GAME_RULES.md)와 [NUMBER_TILE_PROTOCOL_GATE.md](./NUMBER_TILE_PROTOCOL_GATE.md)를 만들었다. 모든 제품 규칙과 wire 선택은 `NT-001`~`NT-044` stable decision ID로 남겼으며, 사용자 승인 전에는 proposed default일 뿐이다.
+P6는 application/runtime source를 바꾸지 않고 [NUMBER_TILE_GAME_RULES.md](./NUMBER_TILE_GAME_RULES.md)의 `NT-001`~`NT-044`와 [NUMBER_TILE_PROTOCOL_GATE.md](./NUMBER_TILE_PROTOCOL_GATE.md)의 conceptual wire direction을 확정했다. Canonical ruleset은 `number-tile-rules-v1`이다.
 
 ### 30.1 현재 두 번째 game을 막는 concrete coupling
 
@@ -1074,14 +1074,16 @@ Platform Room/session/realtime mechanisms
         -> Number-owned state / Table / Meld / RuleEngine
 ```
 
-재사용이 검증된 것은 Room/session/presence/Host/invitation/reconnect, Room lane/UoW/CAS, idempotency storage, snapshot negotiation mechanism과 cleanup mechanism이다. Start orchestration, game revision, turn order와 scheduler는 rules 승인 후 검증할 `CROSS_GAME_CANDIDATE`다. Inventory, pool/rack, `GROUP`/`RUN`, Joker, initial meld, rearrangement, timeout, stalemate, result와 private game projection은 `NUMBER_TILE` 소유다.
+재사용이 검증된 것은 Room/session/presence/Host/invitation/reconnect, Room lane/UoW/CAS, idempotency storage, snapshot negotiation mechanism과 cleanup mechanism이다. Start orchestration, game revision, turn order와 Turn scheduler mechanism은 P7에서 concrete reuse를 검증할 `CROSS_GAME_CANDIDATE`다. Number v1에는 overall game deadline capability가 없다. Inventory, pool/rack, `GROUP`/`RUN`, Joker, initial meld, rearrangement, timeout, stalemate, result와 private game projection은 `NUMBER_TILE` 소유다.
 
 P6는 `GenericTile`, `GenericMeld`, `GenericRack`, `GenericGameState`, giant `GameModule`을 제안하거나 구현하지 않는다. Hangul composer, dictionary, WordGroup, Board, RuleEngine과 TurnDraft도 Number module dependency가 될 수 없다.
 
-### 30.3 Protocol와 compatibility decision gate
+### 30.3 Confirmed protocol와 compatibility direction
 
-현재 권고는 existing platform command와 `game:start` outer surface는 유지하되 Hangul `turn:*`를 재해석하지 않고 additive `number:submit`/`number:draw`/조건부 `number:pass`를 두는 것이다. 이것은 `NT-038`·`NT-039` 승인 전 확정 contract가 아니며 `game:command`도 구현하지 않는다.
+Existing platform command와 `game:start` outer surface를 유지하고 Hangul `turn:*`를 재해석하지 않는다. Protocol v1에 strict `number:submit`/`number:draw`/`number:pass`를 additive하게 추가하는 방향이 확정됐으며 generic `game:command`와 `number:command`는 선택하지 않았다.
 
-Snapshot V2 outer shell은 재사용 후보지만 current union은 Hangul only다. Number에는 독립 PLAYING/FINISHED projection과 own-rack privacy validator가 필요하며 V1 down-conversion은 만들지 않는다. 또한 `supportedSnapshotVersions`만으로는 P5B-era Hangul-only V2 client와 Number renderer를 가진 client를 구분할 수 없다. `NT-042`는 connection-scoped `supportedGameTypes` 같은 exact capability를 사용해 Number create/join/resume를 membership/session/idempotency mutation 전에 차단하는 방안을 권고한다.
+Snapshot V2 outer shell을 사용하되 Number에는 독립 PLAYING/FINISHED projection과 own-rack privacy validator가 필요하고 V1 down-conversion은 만들지 않는다. Number-specific advisory도 만들지 않으며 snapshot-bearing ack와 viewer별 authoritative V2 `state:snapshot`을 사용한다.
 
-현재 상태는 `AWAITING_RULE_DECISIONS`이다. P7A/P7B/P7C는 각각 core rules, projection privacy·protocol/capability, Web draft decision gate를 통과할 때까지 `NOT_READY`이며 production catalog와 registry는 계속 `HANGUL_TILE` 하나다.
+`supportedSnapshotVersions`만으로는 P5B-era Hangul-only V2 client와 Number renderer를 가진 client를 구분할 수 없다. Number admission은 negotiated `selectedSnapshotVersion === 2`와 connection-scoped exact `supportedGameTypes`의 `NUMBER_TILE` 포함을 모두 요구하며 create/join/resume를 Room/Player/session/idempotency/binding/presence mutation 전에 fail-closed한다. Payload와 URL의 game type은 dispatch authority가 아니며 canonical Room만 신뢰한다.
+
+P6 consistency audit은 `LAST_PLAYER_STANDING` 즉시 종료와 `ALL_PLAYERS_FORFEITED` 제거, stable meld identity 없는 exact Joker replacement/same-Submit reuse, forfeited STALEMATE ranking을 포함해 blocker 없이 완료됐다. P6는 `COMPLETE`, P7A는 `READY`다. P7B는 P7A 완료 뒤, P7C는 P7B 완료 뒤 시작하며 production catalog와 registry는 계속 `HANGUL_TILE` 하나다.

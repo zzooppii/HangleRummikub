@@ -1,8 +1,9 @@
 # Number Tile Protocol Gate
 
-> 상태: `AWAITING_RULE_DECISIONS`
-> 작성일: 2026-09-06
-> 범위: `NUMBER_TILE`의 conceptual wire·projection·compatibility contract
+> 상태: `CONFIRMED` — P6 COMPLETE / P7A READY
+> 확정일: 2026-09-06
+> 사용자 결정: `ALL:A` + consistency blocker clarification A/A/A
+> 범위: `NUMBER_TILE`의 confirmed conceptual wire·projection·compatibility contract
 > 주의: 이 문서는 TypeScript schema, Socket.IO event 또는 runtime registration을 추가하지 않는다.
 
 ## 1. 목적과 현재 기준선
@@ -18,7 +19,7 @@ P5C 현재 runtime은 다음 상태다.
 - existing `turn:submit`, `turn:draw`, `turn:pass`, `turn:started`, `game:finished`는 Hangul-specific payload 또는 result에 결합
 - `RoomRecord.game`과 in-memory state adapter도 concrete Hangul `GameState`에 결합
 
-따라서 `NUMBER_TILE`은 registry 값 하나를 추가해서 활성화할 수 없다. 규칙 승인 뒤 domain(P7A), shared/server integration(P7B), Web(P7C)을 모두 통과하기 전 catalog에 노출해서는 안 된다.
+따라서 `NUMBER_TILE`은 registry 값 하나를 추가해서 활성화할 수 없다. 확정 규칙으로 domain(P7A), shared/server integration(P7B), Web(P7C)을 모두 통과하기 전 catalog에 노출해서는 안 된다.
 
 ## 2. Platform commands reused
 
@@ -26,43 +27,42 @@ P5C 현재 runtime은 다음 상태다.
 
 | Command | 재사용 방향 | Number-specific 주의점 |
 | --- | --- | --- |
-| `session:bootstrap` | 그대로 유지 | handshake game capability 결정(`NT-042`)과 별개로 credential은 platform-owned |
+| `session:bootstrap` | 그대로 유지 | 확정된 handshake game capability와 별개로 credential은 platform-owned |
 | `room:create` | existing optional `gameType` 사용 가능 | `NUMBER_TILE` schema/registration 이후에만 허용; exact client capability를 mutation 전에 검사 |
 | `room:join` | payload에 gameType을 추가하지 않음 | canonical Room을 조회해 Number capability를 참가자 생성 전에 확인 |
 | `session:resume` | same player/session mechanism 유지 | target Room이 Number이면 새 socket의 exact capability를 re-check |
 | `state:sync` | snapshot re-delivery mechanism 유지 | socket에 negotiated된 compatible projection만 반환 |
-| `room:leave` | platform envelope 유지 | PLAYING forfeit/result는 `NT-033`·`NT-034` Number lifecycle 규칙에 위임 |
-| `game:start` | empty payload와 expected Room revision 재사용 가능성이 높음 | 현재 `GameStartService`는 Hangul state/timer/deal에 결합되어 있어 Number start implementation은 별도 |
+| `room:leave` | platform envelope 유지 | PLAYING explicit leave 즉시 forfeit와 last-standing 판정은 Number lifecycle 규칙에 위임 |
+| `game:start` | empty payload와 expected Room revision 재사용 | 현재 `GameStartService`는 Hangul state/timer/deal에 결합되어 있어 Number start implementation은 별도 |
 
 Invitation URL은 계속 Room code만 포함한다. URL query/path, Home의 과거 선택 또는 join payload는 canonical game type의 권위가 아니다.
 
-## 3. Conceptual Number commands
+## 3. Confirmed conceptual Number commands
 
-현재 권고안은 `NT-038` Option A다.
+`NT-038` Option A가 확정됐다.
 
-| Conceptual event | 역할 | 존재 조건 |
-| --- | --- | --- |
-| `number:submit` | Number 전용 complete proposed table 제출 | 항상 필요 |
-| `number:draw` | single pool에서 server-selected draw | `NT-020`~`NT-022` 승인 시 |
-| `number:pass` | explicit no-play action | `NT-023`에서 command를 채택할 때 |
+| Conceptual event | 역할 |
+| --- | --- |
+| `number:submit` | Number 전용 complete proposed table 제출 |
+| `number:draw` | single pool에서 server-selected 1장 Draw 후 turn 종료 |
+| `number:pass` | pool이 empty일 때만 허용되는 explicit no-play action |
 
 기존 `turn:submit`은 `proposedBoard`, `turn:draw`는 consonant/vowel `bagKind`를 요구하므로 Number command로 재해석하지 않는다. 현재 Hangul events와 adapters는 그대로 유지한다.
 
-## 4. Proposed payloads
+## 4. Conceptual payloads
 
-다음은 wire 설계를 검토하기 위한 pseudotype이다. 필드명·normalization·size limit은 P7B schema가 아니며 관련 decision 승인 전 확정되지 않는다.
+다음은 확정된 conceptual direction을 나타내는 pseudotype이다. 실제 필드명·normalization·size limit과 TypeScript/Zod 표현은 P7B에서 확정한다.
 
 ```ts
 type NumberSubmitCommandCandidate = {
   kind: "number:submit";
-  protocolVersion: 1; // NT-039 Option A를 승인한 경우
+  protocolVersion: 1;
   requestId: RequestId;
   expectedGameRevision: GameRevision;
   turnId: TurnId;
   payload: {
     proposedTable: {
       melds: Array<{
-        meldId: string;
         kind: "GROUP" | "RUN";
         tiles: Array<
           | { tileId: TileId; kind: "NUMBER" }
@@ -80,7 +80,7 @@ type NumberSubmitCommandCandidate = {
 
 type NumberDrawCommandCandidate = {
   kind: "number:draw";
-  protocolVersion: 1; // NT-039 Option A를 승인한 경우
+  protocolVersion: 1;
   requestId: RequestId;
   expectedGameRevision: GameRevision;
   turnId: TurnId;
@@ -89,7 +89,7 @@ type NumberDrawCommandCandidate = {
 
 type NumberPassCommandCandidate = {
   kind: "number:pass";
-  protocolVersion: 1; // NT-039 Option A를 승인한 경우
+  protocolVersion: 1;
   requestId: RequestId;
   expectedGameRevision: GameRevision;
   turnId: TurnId;
@@ -97,11 +97,11 @@ type NumberPassCommandCandidate = {
 };
 ```
 
-`meldId`가 canonical identity인지 client-local ordering key인지, GROUP ordering을 fingerprint에서 canonicalize할지, Joker assignment를 placement에 둘지는 P7A domain shape를 본 뒤 P7B에서 결정한다. client가 tile face value를 별도로 보내고 서버가 믿는 구조는 금지한다. 서버는 `tileId`로 canonical tile을 찾는다.
+Stable meld identity는 도입하지 않는다. Array ordering과 GROUP fingerprint canonicalization, Joker assignment의 concrete representation은 P7A domain shape를 본 뒤 P7B에서 정하되 gameplay rule을 바꾸지 않는다. Client가 ordinary tile face value를 보내고 서버가 믿는 구조는 금지한다. 서버는 `tileId`로 canonical tile을 찾고 Joker의 claimed number/color assignment를 meld context와 함께 검증한다.
 
 ## 5. Atomic Submit direction
 
-Number rearrangement에는 operation-by-operation mutation보다 Number-owned whole `ProposedTable`이 적합한 후보로 보인다.
+Number rearrangement는 operation-by-operation server mutation이 아니라 Number-owned whole `ProposedTable`로 처리한다.
 
 ```text
 wire strict validation
@@ -123,7 +123,7 @@ wire strict validation
 
 ## 6. Revision and idempotency
 
-`NT-040` 제안은 Number game이 자기 canonical gameplay revision과 immutable turn identity를 갖는 것이다.
+`NT-040`에 따라 Number game은 자기 canonical gameplay revision과 immutable turn identity를 갖는다.
 
 - game start snapshot의 Number revision은 0
 - successful submit/draw/pass/timeout/forfeit처럼 canonical game state를 바꾼 commit마다 1 증가
@@ -131,7 +131,7 @@ wire strict validation
 - 모든 Number player action은 `expectedGameRevision`, `turnId`, `requestId`를 전달
 - router는 revision을 변경하지 않고 Number application/domain path가 Room lane 안에서 검사·commit
 
-Idempotency fingerprint 후보:
+Idempotency fingerprint direction:
 
 | Command | fingerprint input |
 | --- | --- |
@@ -165,7 +165,7 @@ type NumberTilePlayingProjectionCandidate = {
   turn: null | {
     turnId: TurnId;
     activePlayerId: PlayerId;
-    deadlineAt?: ServerTime;
+    deadlineAt: ServerTime;
   };
   privateState: {
     rack: readonly NumberTileView[];
@@ -173,13 +173,13 @@ type NumberTilePlayingProjectionCandidate = {
 };
 ```
 
-Conceptual FINISHED projection은 terminal table과 Number-specific result를 포함하고 turn은 없다. 상대 rack 공개 범위는 `NT-035` 결정에 따른다. LOBBY는 Number state가 없더라도 canonical `room.gameType = NUMBER_TILE`을 전달해야 한다.
+Conceptual FINISHED projection은 terminal table과 Number-specific discriminated result를 포함하고 turn은 없다. `RACK_EMPTY`와 `LAST_PLAYER_STANDING`은 exact winner IDs와 player별 penalty/score/forfeited를, `STALEMATE`는 그 정보에 confirmed competition ranking을 함께 제공한다. 상대 rack detail은 공개하지 않고 count/value/result summary만 제공한다. Number result reason은 이 세 가지뿐이며 `TIME_LIMIT`과 `ALL_PLAYERS_FORFEITED`는 포함하지 않는다. LOBBY는 Number state가 없더라도 canonical `room.gameType = NUMBER_TILE`을 전달해야 한다.
 
 ## 8. PlatformSnapshot V2 integration
 
 현재 `PlatformSnapshotV2Schema`는 Room의 세 phase와 game projection 모두 literal `HANGUL_TILE`이다. P6에서는 union을 수정하지 않는다.
 
-P7B 이후 필요한 방향:
+P7B에서 구현할 확정 방향:
 
 ```text
 PlatformSnapshotV2
@@ -205,7 +205,7 @@ PlatformSnapshotV2
 
 현재 Socket.IO handshake의 `supportedSnapshotVersions: [2,1]`은 wire version만 말한다. P5B Web도 V2를 이해하지만 decoder와 renderer는 `HANGUL_TILE`만 이해하므로 “V2 지원”은 “NUMBER_TILE 지원”과 동치가 아니다.
 
-`NT-042` 권고:
+`NT-042` 확정 requirement:
 
 ```ts
 // conceptual only
@@ -215,44 +215,48 @@ auth: {
 }
 ```
 
+- Number admission은 `selectedSnapshotVersion === 2`와 exact `supportedGameTypes`의 `NUMBER_TILE` 포함을 모두 요구한다. 어느 하나만 만족하면 incompatible이다.
 - metadata가 없으면 legacy `HANGUL_TILE` only로 해석
 - malformed/unknown entry는 handshake 또는 exact use 지점에서 fail-closed
-- Number create는 Room/player/session/idempotency mutation 전에 capability 확인
-- Number join은 canonical Room lookup 뒤 player/session mutation 전에 capability 확인
-- Number resume과 primary replacement는 새 socket capability를 다시 확인
+- Number create는 Room/Player/session promotion/idempotency acceptance 전에 두 조건을 확인
+- Number join은 canonical Room lookup 뒤 Player/session/idempotency mutation 전에 두 조건을 확인
+- Number resume과 primary replacement는 connection binding과 presence transition 전에 새 socket의 두 조건을 다시 확인
+- Number state sync와 command도 stored Room type과 connection capability를 대조
 - capability는 connection metadata이지 Room/session credential이나 persistence state가 아님
 
-권고하지 않는 대안:
+Rejected alternatives:
 
 - selected snapshot version 2만 확인: 기존 Hangul-only V2 Web을 구분하지 못함
 - join/bind 뒤 incompatible UI 표시: ghost membership, Host/capacity side effect와 session ambiguity를 이미 만듦
 
-실패에는 existing `INCOMPATIBLE_PROTOCOL`을 재사용할 수 있는지 P7B에서 wire compatibility를 검토한다. P6에서는 error enum을 수정하지 않는다.
+실패에 existing `INCOMPATIBLE_PROTOCOL`을 재사용할지 Number-capability-specific safe error를 둘지는 P7B에서 wire compatibility를 검토한다. P6에서는 error enum을 수정하지 않는다.
 
 ## 10. Privacy
 
 Projection과 command error 모두 private tile 존재를 누설하지 않아야 한다.
 
 - own rack: exact tile ID와 face/Joker detail
-- other racks: count only; FINISHED policy는 `NT-035`
+- other racks in PLAYING: `rackCount` only
+- other racks in FINISHED: rack tile detail 없이 `remainingRackCount`, `remainingRackValue`, score 같은 result summary only
 - table: placed physical tile과 public Joker assignment
 - pool: count only
-- forbidden: pool order/IDs, opponent rack IDs, RNG state, credential/token hash, socket ID, connection generation, storage revision, idempotency data, scheduler descriptors
+- forbidden: pool order/IDs, opponent rack IDs, RNG state, credential/token hash, socket ID, connection generation, storage revision, idempotency data, scheduler descriptors, offline-timeout streak, full-no-play tracker internals
 - unauthorized tile reference는 “그 tile이 존재하지만 네 것이 아님”을 구별하지 않는 normalized gameplay error로 반환
 
 `INVALID_TILE_ACCESS` 같은 existing normalized category를 재사용할지 Number-specific code를 둘지는 P7B error taxonomy에서 결정한다.
 
 ## 11. Server actions
 
-Rule decisions에 따른 optional server action은 다음과 같다.
+확정 규칙에 필요한 server action은 다음과 같다.
 
-| Action | 필요 조건 | Platform mechanism | Number-owned decision |
+| Action | 필요 조건 | Platform mechanism | Number-owned rule |
 | --- | --- | --- | --- |
-| Turn timeout | `NT-025` timer 채택 | Clock, scheduler registration/cancellation, overdue safe delivery | `NT-026` action과 `NT-034` offline streak |
-| Game deadline | `NT-027` deadline 채택 | game deadline scheduler/recovery | finish reason, ordering, score |
-| Explicit leave | 항상 platform command 존재 | Room lane, session removal, cleanup | PLAYING forfeit·result candidate |
-| Presence restored | reconnect mechanism 재사용 | connection lease/presence version | offline streak reset 여부 |
+| Turn timeout | 90초 turn deadline | Clock, scheduler registration/cancellation, overdue safe delivery | pool draw/no-tile turn, offline streak와 second-timeout forfeit |
+| Explicit leave | 항상 platform command 존재 | Room lane, session removal, cleanup | PLAYING 즉시 forfeit, last-standing/result |
+| Presence restored | reconnect mechanism 재사용 | connection lease/presence version | successful resume의 offline streak reset |
 | Retention/cleanup | Room lifecycle mechanism 재사용 | finishedAt 기반 cleanup | Number lifecycle inspection seam |
+
+Number Tile v1에는 overall game deadline, `TIME_LIMIT` finish reason과 GameDeadlineScheduler capability가 없다.
 
 현재 `LegacyHangulServerActionRouter`와 `LegacyHangulPlayerLifecycleActions`는 exact Hangul capability다. 이를 이름만 generic하게 바꾸지 않고 Number 규칙에 맞는 별도 implementation과 최소 dispatch seam을 P7B에서 설계한다.
 
@@ -270,17 +274,17 @@ Conceptual 분류이며 shared error code 추가가 아니다.
 | incompatible client capability | invalid proposed table / conservation |
 | internal/configuration failure | pool empty / pass not allowed |
 
-Error naming과 protocolVersion 정책은 `NT-038`·`NT-039` 선택과 함께 결정한다. 내부 detail, tile ownership과 solver 정보는 public message에 노출하지 않는다.
+Error naming은 P7B의 closed schema 작업에서 정한다. `protocolVersion = 1` additive direction은 확정됐으며 내부 detail, tile ownership과 solver 정보는 public message에 노출하지 않는다.
 
-## 13. Command protocol options
+## 13. Command protocol decision record
 
-### Option A — additive game-specific events (`PROPOSED_DEFAULT`)
+### Selected Option A — additive game-specific events (`CONFIRMED`)
 
 ```text
 game:start
 number:submit
 number:draw
-number:pass   # only if rule exists
+number:pass
 ```
 
 장점:
@@ -295,7 +299,7 @@ number:pass   # only if rule exists
 - game 수가 늘 때 event map이 늘어남
 - 일부 transport helper 중복이 생길 수 있음
 
-### Option B — generic closed `game:command`
+### Rejected Option B — generic closed `game:command`
 
 ```ts
 { command: { kind, payload } }
@@ -313,28 +317,28 @@ number:pass   # only if rule exists
 - 두 번째 game 전부터 generic command bus를 고정할 위험
 - 현재 Hangul v1 adapters와 migration surface가 커짐
 
-### Option C — `number:command` + closed Number action union
+### Rejected Option C — `number:command` + closed Number action union
 
 Number 내부 event 수는 줄지만 submit/draw/pass ack가 union이 되고 handler가 먼저 action kind를 분기한다. A보다 이점이 작고 B보다 범위가 좁다.
 
-어느 option에서도 client payload의 `gameType`은 dispatch authority가 아니다. Room-authenticated scope로 canonical Room을 읽어 exact game capability와 schema를 선택한다. 현재 권고는 Option A이며, P9 abstraction review에서 두 실제 game router를 비교한 뒤 공통 transport surface를 다시 판단한다.
+Client payload의 `gameType`은 dispatch authority가 아니다. Room-authenticated scope로 canonical Room을 읽어 exact game capability와 schema를 선택한다. P9 abstraction review에서 두 실제 game router를 비교할 수 있지만 P7 구현은 확정된 Option A를 따른다.
 
 ### Command protocol version (`NT-039`)
 
-- A (`PROPOSED_DEFAULT`): outer `protocolVersion = 1`을 유지하고 `number:*`를 additive strict events로 추가한다. Number capability가 없는 client는 Number Room mutation 전에 차단하며 existing Hangul command/event schema는 그대로다.
-- B: `protocolVersion = 2` client만 Number commands를 사용할 수 있게 하고 v1은 Hangul compatibility surface로 유지한다. handshake, ack/error versioning과 dual runtime cost가 커진다.
+- Selected A (`CONFIRMED`): outer `protocolVersion = 1`을 유지하고 `number:*`를 additive strict events로 추가한다. Number capability가 없는 client는 Number Room mutation 전에 차단하며 existing Hangul command/event schema는 그대로다.
+- Rejected B: `protocolVersion = 2` client만 Number commands를 사용할 수 있게 하고 v1은 Hangul compatibility surface로 유지한다.
 
 Snapshot의 `snapshotVersion = 2`와 realtime command `protocolVersion`은 서로 다른 축이다. `NT-039=A`도 Number client capability와 Number V2 projection을 요구하며, V2 snapshot 지원만으로 Number command 지원을 추론하지 않는다.
 
-## 14. Advisory options
+## 14. Advisory decision record
 
 현재 `turn:started`는 deadline을 필수로 하고 `game:finished`는 Hangul finish reason에 결합되어 있어 Number에 그대로 재사용할 수 없다.
 
-- A (`PROPOSED_DEFAULT`): Number 첫 구현은 snapshot-bearing ack와 player별 `state:snapshot` V2만 authoritative delivery로 사용. 별도 Number advisory 없음.
-- B: secret-free `number:turn-started`, `number:finished`를 추가하고 event gap은 state sync만 유발.
-- C: 새 versioned generic advisory를 설계하되 Hangul v1 events는 유지.
+- Selected A (`CONFIRMED`): Number는 snapshot-bearing ack와 player별 `state:snapshot` V2만 authoritative delivery로 사용한다. `turn:started`, `game:finished`, Number-specific advisory를 emit하지 않는다.
+- Rejected B: secret-free `number:turn-started`, `number:finished` 추가.
+- Rejected C: 새 versioned generic advisory 추가.
 
-어느 선택에서도 advisory는 권위 상태가 아니며 snapshot fan-out 뒤/기존 ordering policy에 맞춰 중복에 안전해야 한다.
+Existing Hangul advisory behavior는 그대로 유지한다. Number의 authoritative UI 전이는 ack와 viewer별 V2 snapshot으로만 결정한다.
 
 ## 15. Platform reuse matrix
 
@@ -347,47 +351,46 @@ Snapshot의 `snapshotVersion = 2`와 realtime command `protocolVersion`은 서�
 | `REUSE_AS_IS` | requestId/idempotency storage, snapshot negotiation mechanism, fan-out | command fingerprint와 projection은 Number-owned |
 | `REUSE_AS_IS` | identity-only GameRegistry semantics | P6에서 capability를 추가하지 않음 |
 | `LIKELY_REUSE` | `game:start` outer event와 Host/Room checks | existing service는 Hangul deal/timer에 결합 |
-| `LIKELY_REUSE` | game revision, turn ID/order, Clock, RandomSource, ID source | `NT-025`, `NT-037`, `NT-040` 승인 후 검증 |
-| `LIKELY_REUSE` | Turn/Game scheduler mechanisms, recovery, retention | timer/deadline/lifecycle decisions 후 adapter 필요 |
+| `LIKELY_REUSE` | game revision, turn ID/order, Clock, RandomSource, ID source | 확정 Number semantics로 concrete reuse 검증 필요 |
+| `LIKELY_REUSE` | Turn scheduler/recovery mechanism과 retention | 90초 timer/lifecycle에 맞는 adapter 필요; Game deadline capability는 없음 |
 | `LIKELY_REUSE` | PlatformSnapshot V2 outer shell | current concrete schema/mapper/Web decoder는 Hangul-only |
 | `GAME_SPECIFIC` | inventory, pool, rack, Table/Meld, Joker | Number domain owns all semantics |
 | `GAME_SPECIFIC` | initial meld, rearrangement, draw/pass, timeout/stalemate | Number RuleEngine and application actions |
 | `GAME_SPECIFIC` | score/result, private projection, error detail | Hangul format을 공통화하지 않음 |
 | `GAME_SPECIFIC` | Number commands/router, state clone/inspection, Web draft/renderer | P7A~P7C에서 각각 구현 |
 
-## 16. Current implementation blockers
+## 16. Current implementation prerequisites
 
-| Blocker | 현재 사실 | 해소 Phase |
+| Prerequisite | 현재 사실 | 해소 Phase |
 | --- | --- | --- |
-| Rules | `NT-001`~`NT-037`, `NT-043`, `NT-044` 미승인 | P6 decision follow-up |
 | Game type | `SUPPORTED_GAME_TYPES`가 `HANGUL_TILE` only | P7B, domain 완료 후 |
 | Persistence state | `RoomRecord.game: GameState | null`; in-memory adapter가 LOBBY에도 exact Hangul type 요구 | P7B의 typed multi-game state/storage seam |
 | Snapshot schema | V2 Room/game union literal `HANGUL_TILE` only | P7B |
 | Projection mapper | current V1→V2 mapper/projector가 Hangul only | P7B |
 | Start | current service가 Hangul initial deal/turn/deadline 생성 | P7B Number start path |
-| Commands | `turn:*` payload와 router가 Hangul only | `NT-038`·`NT-039`, P7B |
-| Server actions | timeout/deadline/lifecycle capabilities가 Hangul only | rule decisions, P7B |
-| Client admission | snapshot version metadata만 있고 supported game metadata 없음 | `NT-042`, P7B/P7C coordinated rollout |
+| Commands | `turn:*` payload와 router가 Hangul only | 확정 `number:*`/protocol v1 direction으로 P7B 구현 |
+| Server actions | timeout/lifecycle capabilities가 Hangul only | P7B Number turn-timeout/lifecycle path; game deadline 없음 |
+| Client admission | snapshot version metadata만 있고 supported game metadata 없음 | 확정 `supportedGameTypes` direction으로 P7B/P7C coordinated rollout |
 | Web | catalog, decoder, view/controller/editor가 Hangul only | P7C, server/domain complete 후 |
 | Result/error | current event/error set에 Hangul concepts 혼재 | P7B, Number-specific contract only |
 
-이 blocker를 해결하기 전에 catalog에 Number card를 추가하면 안 된다. 특히 membership mutation 뒤 snapshot projection에 실패하는 구조를 만들지 않는다.
+이 prerequisite를 완료하기 전에 catalog에 Number card를 추가하면 안 된다. 특히 membership mutation 뒤 snapshot projection에 실패하는 구조를 만들지 않는다.
 
-## 17. Unresolved rule dependencies
+## 17. Confirmed implementation consequences
 
-- inventory/rack/player decisions은 initial deal과 start projection을 결정한다.
-- GROUP/RUN/Joker/initial meld/rearrangement는 `ProposedTable` validation과 error categories를 결정한다.
-- Draw/Pass는 command set과 idempotency fingerprint를 결정한다.
-- timer/timeout/deadline은 turn projection, scheduler capability와 race semantics를 결정한다.
-- forfeit/stalemate/score는 FINISHED projection과 result schema를 결정한다.
-- privacy는 projection validator와 Web rendering을 결정한다.
-- protocol/advisory/client capability decisions은 P7B/P7C rollout 순서를 결정한다.
+- 확정 inventory/rack/player rules가 initial deal과 start projection을 결정한다.
+- GROUP/RUN/Joker/initial meld/rearrangement rules가 whole `ProposedTable` validation과 error categories를 결정한다.
+- Draw/Pass rules가 exact command set과 idempotency fingerprint를 결정한다.
+- 90초 timer와 timeout rules가 turn projection, Turn scheduler capability와 race semantics를 결정한다. Overall game deadline은 없다.
+- Leave/forfeit/stalemate/score rules가 FINISHED projection과 Number-specific result schema를 결정한다.
+- FINISHED privacy와 draft rules가 projection validator와 Web rendering을 결정한다.
+- Protocol v1 `number:*`, no-advisory, V2-only, exact game capability decisions이 P7B/P7C rollout 순서를 결정한다.
 
 ## 18. Implementation gate
 
-- 현재 상태는 `AWAITING_RULE_DECISIONS`다.
-- P7A는 core rule IDs 승인과 그 결과의 canonical `number-tile-rules-v1` 기록 전 `NOT_READY`다.
-- P7B는 domain 완료와 `NT-035`, `NT-038`~`NT-042` 승인 전 `NOT_READY`다.
-- P7C는 server/shared contract 완료와 `NT-036` 승인 전 `NOT_READY`다.
+- P6는 `COMPLETE`이며 canonical ruleset은 `number-tile-rules-v1`이다.
+- P7A는 `READY`다.
+- P7B는 protocol decisions가 확정됐지만 P7A domain 완료 전 시작하지 않는다.
+- P7C는 draft decision이 확정됐지만 P7B server/shared contract 완료 전 시작하지 않는다.
 - P7A~P7C 전체가 통과할 때까지 `NUMBER_TILE` registration/catalog/public create를 enable하지 않는다.
 - P6에서는 `GameType`, registry, protocol, snapshot schema, Web 또는 server source를 변경하지 않는다.
