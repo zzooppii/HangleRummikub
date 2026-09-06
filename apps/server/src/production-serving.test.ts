@@ -8,6 +8,7 @@ import test from "node:test";
 import {
   LobbyPlatformSnapshotV2Schema,
   NicknameSchema,
+  NumberTilePlayingPlatformSnapshotV2Schema,
   PLATFORM_SNAPSHOT_VERSION,
   PlayingPlatformSnapshotV2Schema,
   PlayingStateSnapshotSchema,
@@ -16,10 +17,14 @@ import {
   type ClientToServerEvents,
   type GameStartWireAck,
   type GameStartAck,
+  type NumberDrawCommand,
+  type NumberDrawWireAck,
   type PlayingStateSnapshot,
   type RoomCreateAck,
   type RoomCreateWireAck,
   type RoomJoinAck,
+  type RoomJoinCommand,
+  type RoomJoinWireAck,
   type ServerToClientEvents,
   type SessionBootstrapAck,
   type SessionResumeAck,
@@ -27,6 +32,7 @@ import {
   type SnapshotWireClientToServerEvents,
   type SnapshotWireServerToClientEvents,
   type StateSyncAck,
+  type StateSyncWireAck,
   type TurnDrawAck,
   type TurnDrawWireAck,
 } from "@hangul-rummikub/shared";
@@ -189,6 +195,44 @@ async function connectNegotiatedProductionClient(
   return socket;
 }
 
+async function connectTwoGameProductionClient(
+  origin: string,
+): Promise<ProductionWireClient> {
+  const socket = createSocketClient(origin, {
+    auth: {
+      supportedSnapshotVersions: [PLATFORM_SNAPSHOT_VERSION, 1],
+      supportedGameTypes: ["HANGUL_TILE", "NUMBER_TILE"],
+    },
+    extraHeaders: { Origin: origin },
+    autoConnect: false,
+    forceNew: true,
+    reconnection: false,
+    transports: ["websocket"],
+  }) as ProductionWireClient;
+  const connected = new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      socket.off("connect", handleConnect);
+      socket.off("connect_error", handleConnectError);
+      reject(new Error("Timed out connecting two-game production client."));
+    }, NETWORK_TIMEOUT_MS);
+    const handleConnect = (): void => {
+      clearTimeout(timeout);
+      socket.off("connect_error", handleConnectError);
+      resolve();
+    };
+    const handleConnectError = (error: Error): void => {
+      clearTimeout(timeout);
+      socket.off("connect", handleConnect);
+      reject(error);
+    };
+    socket.once("connect", handleConnect);
+    socket.once("connect_error", handleConnectError);
+  });
+  socket.connect();
+  await connected;
+  return socket;
+}
+
 function emitWithAck<TAcknowledgement>(
   label: string,
   emit: (
@@ -234,6 +278,36 @@ async function syncPlayingSnapshot(
     throw new Error(`Production ${label} did not return a PLAYING snapshot.`);
   }
   return parse(PlayingStateSnapshotSchema, acknowledgement.data.snapshot);
+}
+
+async function syncNumberPlayingSnapshot(
+  socket: ProductionWireClient,
+  label: string,
+  requestId: string,
+) {
+  const acknowledgement = await emitWithAck<StateSyncWireAck>(
+    label,
+    (acknowledge) => {
+      socket.emit(
+        "state:sync",
+        {
+          kind: "state:sync",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: parse(RequestIdSchema, requestId),
+          payload: {},
+        },
+        acknowledge,
+      );
+    },
+  );
+  assert.equal(acknowledgement.ok, true);
+  if (!acknowledgement.ok || acknowledgement.scope !== "ROOM") {
+    throw new Error(`Production ${label} unexpectedly failed.`);
+  }
+  return parse(
+    NumberTilePlayingPlatformSnapshotV2Schema,
+    acknowledgement.data.snapshot,
+  );
 }
 
 function collectStringValues(value: unknown): readonly string[] {
@@ -582,6 +656,380 @@ test("production-serving Socket.IO는 V2 explicit create, legacy join, start, Dr
   } finally {
     v2Host?.disconnect();
     legacyGuest?.disconnect();
+    await server.shutdown();
+    rmSync(webDistPath, { recursive: true, force: true });
+  }
+});
+
+test("production-serving Socket.IO는 capable A/B Number create, join, start, idempotent Draw, privacy와 resume을 제공한다", async () => {
+  const webDistPath = createWebBuildFixture();
+  const server = createHttpServer({ serveWeb: true, webDistPath });
+  let host: ProductionWireClient | undefined;
+  let guest: ProductionWireClient | undefined;
+  let hostTurnAdvisories = 0;
+  let guestTurnAdvisories = 0;
+  let hostFinishAdvisories = 0;
+  let guestFinishAdvisories = 0;
+
+  const observeUnexpectedAdvisories = (
+    socket: ProductionWireClient,
+    viewer: "HOST" | "GUEST",
+  ): void => {
+    socket.on("turn:started", () => {
+      if (viewer === "HOST") {
+        hostTurnAdvisories += 1;
+      } else {
+        guestTurnAdvisories += 1;
+      }
+    });
+    socket.on("game:finished", () => {
+      if (viewer === "HOST") {
+        hostFinishAdvisories += 1;
+      } else {
+        guestFinishAdvisories += 1;
+      }
+    });
+  };
+
+  try {
+    const origin = await listen(server);
+    host = await connectTwoGameProductionClient(origin);
+    guest = await connectTwoGameProductionClient(origin);
+    observeUnexpectedAdvisories(host, "HOST");
+    observeUnexpectedAdvisories(guest, "GUEST");
+
+    const hostBootstrap = await emitWithAck<SessionBootstrapAck>(
+      "production Number host bootstrap",
+      (acknowledge) => {
+        host?.emit(
+          "session:bootstrap",
+          {
+            kind: "session:bootstrap",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: parse(
+              RequestIdSchema,
+              "production-number-host-bootstrap",
+            ),
+            payload: {},
+          },
+          acknowledge,
+        );
+      },
+    );
+    assert.equal(hostBootstrap.ok, true);
+    if (!hostBootstrap.ok) {
+      throw new Error("Production Number host bootstrap unexpectedly failed.");
+    }
+
+    const createAck = await emitWithAck<RoomCreateWireAck>(
+      "production Number room:create",
+      (acknowledge) => {
+        host?.emit(
+          "room:create",
+          {
+            kind: "room:create",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: parse(RequestIdSchema, "production-number-create"),
+            payload: {
+              bootstrapCredential: hostBootstrap.data.credential,
+              nickname: parse(NicknameSchema, "숫자호스트"),
+              gameType: "NUMBER_TILE",
+            },
+          },
+          acknowledge,
+        );
+      },
+    );
+    assert.equal(createAck.ok, true);
+    if (!createAck.ok || createAck.scope !== "ROOM") {
+      throw new Error("Production Number Room create unexpectedly failed.");
+    }
+    const created = parse(LobbyPlatformSnapshotV2Schema, createAck.data.snapshot);
+    assert.equal(created.snapshotVersion, PLATFORM_SNAPSHOT_VERSION);
+    assert.equal(created.room.gameType, "NUMBER_TILE");
+    assert.equal(created.room.players.length, 1);
+    assert.equal(created.game, null);
+    assert.equal(
+      (await server.runtime.persistence.findById(created.room.roomId))?.gameType,
+      "NUMBER_TILE",
+    );
+
+    const guestBootstrap = await emitWithAck<SessionBootstrapAck>(
+      "production Number guest bootstrap",
+      (acknowledge) => {
+        guest?.emit(
+          "session:bootstrap",
+          {
+            kind: "session:bootstrap",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: parse(
+              RequestIdSchema,
+              "production-number-guest-bootstrap",
+            ),
+            payload: {},
+          },
+          acknowledge,
+        );
+      },
+    );
+    assert.equal(guestBootstrap.ok, true);
+    if (!guestBootstrap.ok) {
+      throw new Error("Production Number guest bootstrap unexpectedly failed.");
+    }
+
+    const joinCommand: RoomJoinCommand = {
+      kind: "room:join",
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: parse(RequestIdSchema, "production-number-join"),
+      payload: {
+        bootstrapCredential: guestBootstrap.data.credential,
+        nickname: parse(NicknameSchema, "숫자게스트"),
+        roomCode: created.room.roomCode,
+      },
+    };
+    assert.equal("gameType" in joinCommand.payload, false);
+    const joinAck = await emitWithAck<RoomJoinWireAck>(
+      "production Number room:join",
+      (acknowledge) => {
+        guest?.emit("room:join", joinCommand, acknowledge);
+      },
+    );
+    assert.equal(joinAck.ok, true);
+    if (!joinAck.ok || joinAck.scope !== "ROOM") {
+      throw new Error("Production Number Room join unexpectedly failed.");
+    }
+    const joined = parse(LobbyPlatformSnapshotV2Schema, joinAck.data.snapshot);
+    assert.equal(joined.room.gameType, "NUMBER_TILE");
+    assert.equal(joined.room.players.length, 2);
+
+    if (host === undefined || guest === undefined) {
+      throw new Error("Production Number A/B clients unexpectedly disappeared.");
+    }
+    const hostSocket = host;
+    const guestSocket = guest;
+    const startAck = await emitWithAck<GameStartWireAck>(
+      "production Number game:start",
+      (acknowledge) => {
+        hostSocket.emit(
+          "game:start",
+          {
+            kind: "game:start",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: parse(RequestIdSchema, "production-number-start"),
+            expectedRoomRevision: joined.versions.roomRevision,
+            payload: {},
+          },
+          acknowledge,
+        );
+      },
+    );
+    assert.equal(startAck.ok, true);
+    if (!startAck.ok || startAck.scope !== "ROOM") {
+      throw new Error("Production Number Game start unexpectedly failed.");
+    }
+    const started = parse(
+      NumberTilePlayingPlatformSnapshotV2Schema,
+      startAck.data.snapshot,
+    );
+    assert.equal(started.snapshotVersion, PLATFORM_SNAPSHOT_VERSION);
+    assert.equal(started.room.gameType, "NUMBER_TILE");
+    assert.equal(started.game.gameType, "NUMBER_TILE");
+    assert.equal(started.room.players.length, 2);
+    assert.equal(started.game.gameRevision, 0);
+    assert.equal(started.game.remainingPoolCount, 78);
+    assert.equal(started.game.table.melds.length, 0);
+    assert.equal(started.game.privateState.rack.length, 14);
+    assert.equal(started.game.playerStates.length, 2);
+    assert.equal(
+      started.game.playerStates.every(
+        (player) =>
+          player.rackCount === 14 && !player.initialMeldCompleted,
+      ),
+      true,
+    );
+    assert.equal(
+      started.game.turn.deadlineAt - started.game.turn.startedAt,
+      90_000,
+    );
+    assert.equal("gameDeadlineAt" in started.game, false);
+
+    const hostPlayerId = created.self.playerId;
+    const guestPlayerId = joined.self.playerId;
+    const activePlayerId = started.game.turn.activePlayerId;
+    const actorSocket =
+      activePlayerId === hostPlayerId
+        ? hostSocket
+        : activePlayerId === guestPlayerId
+          ? guestSocket
+          : undefined;
+    if (actorSocket === undefined) {
+      throw new Error("Production Number selected an unknown active Player.");
+    }
+    const actorBeforeDraw = await syncNumberPlayingSnapshot(
+      actorSocket,
+      "Number active Player state:sync before Draw",
+      "production-number-actor-before-draw",
+    );
+    const drawCommand: NumberDrawCommand = {
+      kind: "number:draw",
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: parse(RequestIdSchema, "production-number-draw"),
+      expectedGameRevision: actorBeforeDraw.game.gameRevision,
+      turnId: actorBeforeDraw.game.turn.turnId,
+      payload: {},
+    };
+    const drawAck = await emitWithAck<NumberDrawWireAck>(
+      "production number:draw",
+      (acknowledge) => {
+        actorSocket.emit("number:draw", drawCommand, acknowledge);
+      },
+    );
+    assert.equal(drawAck.ok, true);
+    if (!drawAck.ok || drawAck.scope !== "ROOM") {
+      throw new Error("Production Number Draw unexpectedly failed.");
+    }
+    const actorDraw = parse(
+      NumberTilePlayingPlatformSnapshotV2Schema,
+      drawAck.data.snapshot,
+    );
+    assert.equal(drawAck.requestId, drawCommand.requestId);
+    assert.equal(actorDraw.game.gameRevision, 1);
+    assert.equal(actorDraw.game.remainingPoolCount, 77);
+    assert.equal(actorDraw.game.privateState.rack.length, 15);
+    assert.notEqual(actorDraw.game.turn.activePlayerId, activePlayerId);
+
+    const replayAck = await emitWithAck<NumberDrawWireAck>(
+      "production duplicate number:draw",
+      (acknowledge) => {
+        actorSocket.emit("number:draw", drawCommand, acknowledge);
+      },
+    );
+    assert.equal(replayAck.ok, true);
+    if (!replayAck.ok || replayAck.scope !== "ROOM") {
+      throw new Error("Production Number Draw replay unexpectedly failed.");
+    }
+    const replayed = parse(
+      NumberTilePlayingPlatformSnapshotV2Schema,
+      replayAck.data.snapshot,
+    );
+    assert.equal(replayAck.requestId, drawCommand.requestId);
+    assert.equal(replayed.game.gameRevision, 1);
+    assert.equal(replayed.game.remainingPoolCount, 77);
+    assert.equal(replayed.game.privateState.rack.length, 15);
+
+    const [hostAfterDraw, guestAfterDraw] = await Promise.all([
+      syncNumberPlayingSnapshot(
+        hostSocket,
+        "Number Host state:sync after Draw replay",
+        "production-number-host-after-draw",
+      ),
+      syncNumberPlayingSnapshot(
+        guestSocket,
+        "Number Guest state:sync after Draw replay",
+        "production-number-guest-after-draw",
+      ),
+    ]);
+    for (const snapshot of [hostAfterDraw, guestAfterDraw]) {
+      assert.equal(snapshot.room.gameType, "NUMBER_TILE");
+      assert.equal(snapshot.game.gameRevision, 1);
+      assert.equal(snapshot.game.remainingPoolCount, 77);
+      assert.equal(snapshot.room.players.length, 2);
+      assert.equal("pool" in snapshot.game, false);
+      assert.equal("tilesById" in snapshot.game, false);
+    }
+    const actorAfterDraw =
+      activePlayerId === hostPlayerId ? hostAfterDraw : guestAfterDraw;
+    const opponentAfterDraw =
+      activePlayerId === hostPlayerId ? guestAfterDraw : hostAfterDraw;
+    const drawnTiles = actorAfterDraw.game.privateState.rack.filter(
+      (tile) =>
+        !actorBeforeDraw.game.privateState.rack.some(
+          (beforeTile) => beforeTile.tileId === tile.tileId,
+        ),
+    );
+    assert.equal(drawnTiles.length, 1);
+    const drawnTile = drawnTiles[0];
+    assert.ok(drawnTile);
+    assert.equal(
+      opponentAfterDraw.game.playerStates.find(
+        (player) => player.playerId === activePlayerId,
+      )?.rackCount,
+      15,
+    );
+    assert.equal(
+      collectStringValues(opponentAfterDraw).includes(drawnTile.tileId),
+      false,
+    );
+    const projectedStrings = new Set(
+      [hostAfterDraw, guestAfterDraw].flatMap(collectStringValues),
+    );
+    assert.equal(
+      projectedStrings.has(hostBootstrap.data.credential.sessionToken),
+      false,
+    );
+    assert.equal(
+      projectedStrings.has(guestBootstrap.data.credential.sessionToken),
+      false,
+    );
+    assert.equal(hostTurnAdvisories, 0);
+    assert.equal(guestTurnAdvisories, 0);
+    assert.equal(hostFinishAdvisories, 0);
+    assert.equal(guestFinishAdvisories, 0);
+
+    guestSocket.disconnect();
+    guest = await connectTwoGameProductionClient(origin);
+    observeUnexpectedAdvisories(guest, "GUEST");
+    const resumeAck = await emitWithAck<SessionResumeWireAck>(
+      "production Number session:resume",
+      (acknowledge) => {
+        guest?.emit(
+          "session:resume",
+          {
+            kind: "session:resume",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: parse(RequestIdSchema, "production-number-resume"),
+            payload: {
+              credential: {
+                roomCode: created.room.roomCode,
+                sessionToken: guestBootstrap.data.credential.sessionToken,
+              },
+              lastSeenVersions: null,
+            },
+          },
+          acknowledge,
+        );
+      },
+    );
+    assert.equal(resumeAck.ok, true);
+    if (!resumeAck.ok || resumeAck.scope !== "ROOM") {
+      throw new Error("Production Number resume unexpectedly failed.");
+    }
+    const resumed = parse(
+      NumberTilePlayingPlatformSnapshotV2Schema,
+      resumeAck.data.snapshot,
+    );
+    assert.equal(resumed.self.playerId, guestPlayerId);
+    assert.equal(resumed.room.gameType, "NUMBER_TILE");
+    assert.equal(resumed.room.players.length, 2);
+    assert.equal(
+      new Set(resumed.room.players.map((player) => player.playerId)).size,
+      2,
+    );
+    assert.equal(resumed.game.gameRevision, 1);
+    assert.equal(resumed.game.remainingPoolCount, 77);
+    assert.equal(resumed.game.gameId, started.game.gameId);
+    assert.equal(resumed.game.turn.turnId, guestAfterDraw.game.turn.turnId);
+    assert.deepEqual(
+      resumed.game.privateState.rack,
+      guestAfterDraw.game.privateState.rack,
+    );
+    assert.equal(hostTurnAdvisories, 0);
+    assert.equal(guestTurnAdvisories, 0);
+    assert.equal(hostFinishAdvisories, 0);
+    assert.equal(guestFinishAdvisories, 0);
+  } finally {
+    host?.disconnect();
+    guest?.disconnect();
     await server.shutdown();
     rmSync(webDistPath, { recursive: true, force: true });
   }

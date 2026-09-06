@@ -1,7 +1,7 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0~P7C COMPLETE / P8 READY
-> 작성일: 2026-09-06
+> 상태: P0~P7C COMPLETE / P8 SOURCE E2E COMPLETE / PUBLIC DEPLOYMENT VERIFICATION PENDING
+> 작성일: 2026-09-07
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
 
@@ -25,7 +25,7 @@
 
 production 기준선 573 tests는 shared 55, web 87, server 431로 구성됐다. 이후 추가된 test를 포함한 수는 이유 없이 감소하면 해당 Phase는 완료가 아니다.
 
-P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A checkpoint `a215eaa`는 이 tests를 삭제·skip하지 않고 신규 boundary 6개를 더해 shared 59, web 91, server 453으로 총 603 tests를 통과했다. P3B checkpoint `bc4a62a`는 기존 603개와 신규 command-routing 9개를 포함해 총 612 tests를 통과했다. P3C checkpoint `d21eaad`는 신규 server-action regression 16개를 더해 shared 59, web 91, server 478로 총 628 tests를 통과했다. P3D checkpoint `cedda1a`는 import-boundary regression 3개를 더해 shared 59, web 91, server 481로 총 631 tests를 통과했다. P4 checkpoint `60eb77e`는 새 case 수를 늘리지 않고 production A/B smoke의 behavioral assertions를 강화하며 이 631-test 기준선을 두 번 검증했다. P5A checkpoint `05cac94`는 shared contract 6개와 server mapper/wire-isolation 8개를 더해 shared 65, web 91, server 489로 총 645 tests를 기준선으로 만들었다. P5B checkpoint `e9211bc`는 negotiation/wire contract 4개, Web decode·routing·storage regression 14개, server negotiation·selector·mixed-version regression 14개를 더해 shared 69, web 105, server 503으로 총 677 tests를 통과했다. P5C는 additive create contract, requested-type resolution/atomicity, Web catalog/selection/retry와 mixed legacy/V2 create/join 회귀 8개를 더해 shared 69, web 108, server 508로 총 685 tests를 통과했다. P7B checkpoint `d9329d1`은 P7A domain과 server/shared integration 회귀를 포함해 shared 75, web 109, server 694, 총 878 tests다. P7C는 Web capability/catalog/Number renderer와 local draft·active-control·responsive 회귀 31개를 더해 shared 75, web 140, server 694, 총 909 tests를 기준선으로 만든다.
+P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A checkpoint `a215eaa`는 이 tests를 삭제·skip하지 않고 신규 boundary 6개를 더해 shared 59, web 91, server 453으로 총 603 tests를 통과했다. P3B checkpoint `bc4a62a`는 기존 603개와 신규 command-routing 9개를 포함해 총 612 tests를 통과했다. P3C checkpoint `d21eaad`는 신규 server-action regression 16개를 더해 shared 59, web 91, server 478로 총 628 tests를 통과했다. P3D checkpoint `cedda1a`는 import-boundary regression 3개를 더해 shared 59, web 91, server 481로 총 631 tests를 통과했다. P4 checkpoint `60eb77e`는 새 case 수를 늘리지 않고 production A/B smoke의 behavioral assertions를 강화하며 이 631-test 기준선을 두 번 검증했다. P5A checkpoint `05cac94`는 shared contract 6개와 server mapper/wire-isolation 8개를 더해 shared 65, web 91, server 489로 총 645 tests를 기준선으로 만들었다. P5B checkpoint `e9211bc`는 negotiation/wire contract 4개, Web decode·routing·storage regression 14개, server negotiation·selector·mixed-version regression 14개를 더해 shared 69, web 105, server 503으로 총 677 tests를 통과했다. P5C는 additive create contract, requested-type resolution/atomicity, Web catalog/selection/retry와 mixed legacy/V2 create/join 회귀 8개를 더해 shared 69, web 108, server 508로 총 685 tests를 통과했다. P7B checkpoint `d9329d1`은 P7A domain과 server/shared integration 회귀를 포함해 shared 75, web 109, server 694, 총 878 tests다. P7C는 Web capability/catalog/Number renderer와 local draft·active-control·responsive 회귀 31개를 더해 shared 75, web 140, server 694, 총 909 tests를 기준선으로 만든다. P8 source/local gate는 raw two-game protocol, production-serving과 import/draft boundary 회귀 7개를 더해 shared 75, Web 142, server 699, 총 916 tests를 두 번 연속 통과했다.
 
 ## 2. Phase 개요
 
@@ -912,6 +912,15 @@ Multi-game Platform P7C만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의
 - multi-client reconnect and stale revision races
 - unsupported type/version UI와 server rejection
 - 전체 unit/integration/E2E, typecheck/build/diff-check
+
+### 2026-09-07 source/local gate 결과
+
+- P7C의 909 tests를 보존하고 shared 75, Web 142, server 699, 총 916 tests를 통과했다.
+- Deterministic raw protocol로 Number exact-29 reject, exact-30 GROUP/RUN commit과 Joker exact replacement/same-Submit reuse를 확인했다.
+- 같은 runtime의 Hangul V1 Room과 Number V2 Room에서 양방향 wrong command, cross-shaped payload, parallel Draw/replay, privacy, 60초/90초 Turn recovery와 Hangul-only overall deadline을 확인했다.
+- Fresh production server와 실제 browser A/B에서 두 card, 양 game create/join/start/Draw/resume, Number invalid-submit draft UX, privacy와 390×844/320×568 responsive gate를 확인했다.
+- Production source, public wire, rule와 dependency 변경은 없다. 자세한 증거는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)를 따른다.
+- 이 요청에는 Railway의 최신 P7C/P8 Active deployment와 1 Replica 사용자 확인이 없다. 따라서 P8은 `SOURCE_E2E_COMPLETE / DEPLOYMENT_PENDING_USER_ACTION`이며 P9A는 아직 `NOT READY`다.
 
 ### Codex 실행 명령
 

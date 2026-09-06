@@ -1,6 +1,6 @@
 # Number Tile Server Integration
 
-> 상태: P7B IMPLEMENTED / P7C WEB INTEGRATED / P8 READY
+> 상태: P7B IMPLEMENTED / P7C WEB INTEGRATED / P8 SOURCE E2E VERIFIED / PUBLIC DEPLOYMENT PENDING
 > 기준 규칙: `number-tile-rules-v1`
 > 적용 범위: shared wire, server application, persistence, projection, scheduling, admission
 
@@ -105,3 +105,16 @@ Number-local TurnDraft/editor는 P7B projection/command를 그대로 사용한�
 - Existing Hangul production-serving regression 5/5와 V1/V2 wire characterization을 유지했다.
 - 실제 `npm run build` 산출물을 `npm start`로 구동한 raw A/B smoke에서 Number create, join, start, 90초 Turn, rack 14, pool 78, Draw 뒤 rack 15/pool 77/revision 1, opponent privacy, advisory 0, stable-player resume와 no-duplicate membership을 확인했다.
 - P7B는 public Railway deploy를 수행하지 않는다. Current public deployment가 이 checkpoint를 포함하는지는 별도 manual deployment 확인 대상이며, process-memory 특성상 deploy/restart 시 active Room/Game/session은 사라진다.
+
+## 10. P8 two-game integration gate
+
+P8은 production implementation을 바꾸지 않고 다음 누락된 integration evidence를 추가했다.
+
+- Raw `number:submit`의 exact-29 atomic rejection과 exact-30 RUN/GROUP success를 실제 transport → router → application → domain → UoW → viewer projection 경로로 검증한다.
+- Pre-turn Table의 wrong ordinary Tile로 Joker 역할을 대체하면 atomic reject하고, actor rack의 exact ordinary replacement와 final Table의 동일 Joker `tileId` 재사용은 성공한다.
+- 한 runtime에 Hangul V1 Room과 Number V2 Room을 동시에 두고 `turn:*`/`number:*` 양방향 wrong command와 cross-shaped payload가 상태, revision, idempotency와 advisory를 만들지 않음을 고정한다.
+- 두 Room의 same-request-ID parallel Draw와 replay는 각 Room에서 한 번씩만 commit한다. Hangul은 기존 advisory를 유지하고 Number advisory는 0이다.
+- Recovery scan은 Hangul 60초와 Number 90초 active Turn을 각각 반환하며 overall game deadline은 Hangul만 반환한다.
+- Production-serving harness는 Number A/B explicit create, gameType 없는 join, shared start, idempotent Draw, private rack과 stable-player resume를 실제 HTTP/Socket.IO runtime에서 수행한다.
+
+P8 source/local gate 결과는 shared 75, Web 142, server 699, 총 916 tests다. Railway 최신 deployment 확인 전 최종 상태는 `SOURCE_E2E_COMPLETE / DEPLOYMENT_PENDING_USER_ACTION`이다. 상세 matrix는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)에 있다.

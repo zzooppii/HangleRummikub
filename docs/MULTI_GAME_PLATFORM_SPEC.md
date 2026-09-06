@@ -1,7 +1,7 @@
 # Multi-game Platform Specification
 
-> 상태: P0~P7C COMPLETE / P8 READY
-> 작성일: 2026-09-06
+> 상태: P0~P7C COMPLETE / P8 SOURCE E2E COMPLETE / PUBLIC DEPLOYMENT VERIFICATION PENDING
+> 작성일: 2026-09-07
 > 적용 범위: 현재 production 한글 타일 게임을 보존하면서 여러 턴제 보드게임을 수용하기 위한 제품 경계  
 > 비고: 이 문서는 구현 계약이 아니라 후속 Phase의 의사결정 기준이다.
 
@@ -48,7 +48,7 @@ P0 및 초기 migration의 비목표는 다음과 같다.
 | ID | 역할 | 현재 상태 |
 | --- | --- | --- |
 | `HANGUL_TILE` | 기존 한글 타일 게임 | production 기준 implementation |
-| `NUMBER_TILE` | 숫자 타일 게임 | P7A domain + P7B server/shared + P7C Web 완료, P8 E2E 대기 |
+| `NUMBER_TILE` | 숫자 타일 게임 | P7A domain + P7B server/shared + P7C Web + P8 source/local E2E 완료, public deployment 검증 대기 |
 | `GEM_CARD` | 보석·카드형 게임 | 후속 rules gate 대상 |
 
 `HANGUL_TILE`과 `NUMBER_TILE`은 확정된 중립 내부 식별자이고 `GEM_CARD`는 후속 rules gate의 후보다. 장기적으로 protocol, persistence, registry, telemetry에서 일관되게 사용하되 공개 UI 명칭과 licensing은 별도 결정하며, 특정 상용 게임 브랜드나 asset 이름을 결합하지 않는다.
@@ -300,9 +300,9 @@ P6는 runtime 구현 전에 다음 경계를 확정했다.
 - existing platform Room/session/presence/reconnect/idempotency/serialization mechanism과 Number-specific rule/state/result를 reuse matrix로 분리했다.
 - `game:start`와 protocol v1을 유지하면서 additive `number:submit`/`number:draw`/`number:pass`, V2-only projection, no Number advisory를 확정했다.
 - Current snapshot capability만으로는 Hangul-only V2 Web과 Number-capable Web을 구분할 수 없으므로 `selectedSnapshotVersion === 2`와 exact `supportedGameTypes`의 `NUMBER_TILE` 포함을 create/join/resume mutation 전에 함께 확인하도록 확정했다.
-- P7A, P7B와 P7C가 완료됐고 P8이 다음 stop gate다.
+- P7A, P7B와 P7C가 완료됐고 P8 source/local stop gate도 통과했다.
 
-현재 P6/P7A/P7B/P7C 판정은 `COMPLETE`, P8은 `READY`다. Current Web bundle의 catalog와 rendering은 exact 두 game을 지원하지만 P7C checkpoint 자체는 Railway에 배포하지 않는다.
+현재 P6/P7A/P7B/P7C 판정은 `COMPLETE`다. P8은 source/local 기준 `SOURCE_E2E_COMPLETE`이나, 이번 요청에는 최신 P7C/P8 Railway Active deployment와 1 Replica 사용자 확인이 없어 `DEPLOYMENT_PENDING_USER_ACTION`이다. Current Web bundle의 catalog와 rendering은 exact 두 game을 지원하지만 public 확인 전에는 P9A를 시작하지 않는다. 상세 결과는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)에 있다.
 
 ## 16. P7B Number Tile server/shared integration
 
@@ -320,7 +320,7 @@ P7B는 실제 두 번째 state를 추가한 뒤에도 미래 game을 추측하�
 
 P7C는 common Room shell과 canonical V2 game routing을 유지하면서 `apps/web/src/features/number-tile/`에 Number 전용 TurnDraft, editor, PLAYING/FINISHED 화면을 추가했다. Draft는 full proposed Table과 physical `tileId`, base game/revision/turn, 최대 50 history를 보존하며 Hangul Board/TurnDraft를 사용하지 않는다. Submit/Draw/Pass는 P7B strict commands와 authoritative snapshot-bearing ack만 사용하고 Number advisory를 만들지 않는다.
 
-Home은 Hangul/Number 두 항목만 제공하지만 join payload와 `/room/{ROOM_CODE}`에는 game type이 없다. Number는 V2-only이며 incompatible projection은 fail-closed한다. Countdown은 server deadline의 display-only view이고 rule/result/privacy 계산은 server가 계속 소유한다. 상세 Web contract는 [NUMBER_TILE_WEB_IMPLEMENTATION.md](./NUMBER_TILE_WEB_IMPLEMENTATION.md), 다음 two-game 검증은 P8 roadmap을 따른다.
+Home은 Hangul/Number 두 항목만 제공하지만 join payload와 `/room/{ROOM_CODE}`에는 game type이 없다. Number는 V2-only이며 incompatible projection은 fail-closed한다. Countdown은 server deadline의 display-only view이고 rule/result/privacy 계산은 server가 계속 소유한다. 상세 Web contract는 [NUMBER_TILE_WEB_IMPLEMENTATION.md](./NUMBER_TILE_WEB_IMPLEMENTATION.md)에 있다. 두 게임의 source/local 검증은 P8에서 완료됐고 public Railway gate는 최신 deployment 사용자 확인 뒤 수행한다.
 
 ## 17. 완료 조건
 

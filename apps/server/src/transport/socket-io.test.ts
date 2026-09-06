@@ -34,9 +34,15 @@ import {
   validateTurnSubmitAck,
   type GameType,
   type GameStartWireAck,
+  type NumberPassWireAck,
+  type NumberSubmitCommand,
+  type NumberSubmitWireAck,
   type NumberDrawWireAck,
   type NumberDrawCommand,
+  type NumberTileColor,
+  type NumberTileNumber,
   type NumberTilePlayingPlatformSnapshotV2,
+  type NumberTileProposedTable,
   type PlatformSnapshotV2,
   type RoomCreateWireAck,
   type RoomJoinWireAck,
@@ -143,6 +149,7 @@ import { NumberTileSubmitService } from "../games/number-tile/application/number
 import { NumberTileTimeoutService } from "../games/number-tile/application/number-tile-timeout-service.js";
 import { NumberTileGameStateAdapter } from "../games/number-tile/compatibility/number-tile-game-state-adapter.js";
 import { projectNumberTileV2Game } from "../games/number-tile/compatibility/number-tile-v2-game-projector.js";
+import type { PlayingNumberTileGameState } from "../games/number-tile/domain/game-state.js";
 import {
   createNumberTileRegistration,
   NUMBER_TILE_GAME_TYPE,
@@ -164,7 +171,10 @@ import {
   type RoomClosedAdvisoryListener,
 } from "../infrastructure/room-lifecycle-resources.js";
 import { TestDictionaryProvider } from "../games/hangul-tile/infrastructure/test-dictionary-provider.js";
-import type { HangulRoomRecord } from "../model/persistence.js";
+import type {
+  HangulRoomRecord,
+  NumberTileRoomRecord,
+} from "../model/persistence.js";
 import {
   FakeIdGenerator,
   NodeCryptoSessionTokenIssuer,
@@ -215,6 +225,18 @@ interface RawClientToServerEvents {
   "turn:pass": (
     command: unknown,
     acknowledge: (ack: TurnPassAck) => void,
+  ) => void;
+  "number:submit": (
+    command: unknown,
+    acknowledge: (ack: NumberSubmitWireAck) => void,
+  ) => void;
+  "number:draw": (
+    command: unknown,
+    acknowledge: (ack: NumberDrawWireAck) => void,
+  ) => void;
+  "number:pass": (
+    command: unknown,
+    acknowledge: (ack: NumberPassWireAck) => void,
   ) => void;
 }
 
@@ -1320,6 +1342,352 @@ function requireNumberTilePlayingSnapshotV2(
   snapshot: StateSnapshotWirePayload,
 ): NumberTilePlayingPlatformSnapshotV2 {
   return parse(NumberTilePlayingPlatformSnapshotV2Schema, snapshot);
+}
+
+type NumberWireObserver = Readonly<{
+  snapshots: StateSnapshotWireEvent[];
+  advisories: { turnStarted: number; gameFinished: number };
+}>;
+
+type NumberWirePlayer = Readonly<{
+  socket: WireClient;
+  sessionToken: SessionToken;
+  playerId: PlayerId;
+  observer: NumberWireObserver;
+}>;
+
+type StartedNumberWireRoom = Readonly<{
+  host: NumberWirePlayer;
+  guest: NumberWirePlayer;
+  snapshot: NumberTilePlayingPlatformSnapshotV2;
+}>;
+
+type PlayingNumberRoom = NumberTileRoomRecord &
+  Readonly<{ game: PlayingNumberTileGameState }>;
+
+function observeNumberWireClient(socket: WireClient): NumberWireObserver {
+  const snapshots: StateSnapshotWireEvent[] = [];
+  const advisories = { turnStarted: 0, gameFinished: 0 };
+  socket.on("state:snapshot", (event) => snapshots.push(event));
+  socket.on("turn:started", () => {
+    advisories.turnStarted += 1;
+  });
+  socket.on("game:finished", () => {
+    advisories.gameFinished += 1;
+  });
+  return { snapshots, advisories };
+}
+
+function emitNumberSubmit(
+  socket: WireClient,
+  command: NumberSubmitCommand,
+): Promise<NumberSubmitWireAck> {
+  return emitWithAck("number:submit", (acknowledge) => {
+    socket.emit("number:submit", command, acknowledge);
+  });
+}
+
+function emitNumberDraw(
+  socket: WireClient,
+  command: NumberDrawCommand,
+): Promise<NumberDrawWireAck> {
+  return emitWithAck("number:draw", (acknowledge) => {
+    socket.emit("number:draw", command, acknowledge);
+  });
+}
+
+async function startNumberWireRoom(
+  harness: TestHarness,
+  hostName: string,
+  guestName: string,
+): Promise<StartedNumberWireRoom> {
+  const capabilities = Object.freeze([
+    "HANGUL_TILE",
+    "NUMBER_TILE",
+  ] as const satisfies readonly GameType[]);
+  const hostSocket = await connectWireClient(harness, capabilities);
+  const guestSocket = await connectWireClient(harness, capabilities);
+  const hostObserver = observeNumberWireClient(hostSocket);
+  const guestObserver = observeNumberWireClient(guestSocket);
+
+  const hostToken = requireBootstrapSuccess(
+    await emitWithAck<SessionBootstrapAck>(
+      `${hostName} Number bootstrap`,
+      (acknowledge) =>
+        hostSocket.emit(
+          "session:bootstrap",
+          bootstrapCommand(`${hostName}-number-bootstrap`),
+          acknowledge,
+        ),
+    ),
+  );
+  const createdAck = await emitWithAck<RoomCreateWireAck>(
+    `${hostName} Number room:create`,
+    (acknowledge) =>
+      hostSocket.emit(
+        "room:create",
+        {
+          kind: "room:create",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId(`${hostName}-number-create`),
+          payload: {
+            bootstrapCredential: { sessionToken: hostToken },
+            nickname: nickname(hostName),
+            gameType: "NUMBER_TILE",
+          },
+        },
+        acknowledge,
+      ),
+  );
+  assert.equal(createdAck.ok, true);
+  if (!createdAck.ok) {
+    throw new Error("Expected deterministic Number Room creation.");
+  }
+  const created = requirePlatformSnapshotV2(createdAck.data.snapshot);
+
+  const guestToken = requireBootstrapSuccess(
+    await emitWithAck<SessionBootstrapAck>(
+      `${guestName} Number bootstrap`,
+      (acknowledge) =>
+        guestSocket.emit(
+          "session:bootstrap",
+          bootstrapCommand(`${guestName}-number-bootstrap`),
+          acknowledge,
+        ),
+    ),
+  );
+  const joinedAck = await emitWithAck<RoomJoinWireAck>(
+    `${guestName} Number room:join`,
+    (acknowledge) =>
+      guestSocket.emit(
+        "room:join",
+        {
+          kind: "room:join",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId(`${guestName}-number-join`),
+          payload: {
+            bootstrapCredential: { sessionToken: guestToken },
+            nickname: nickname(guestName),
+            roomCode: created.room.roomCode,
+          },
+        },
+        acknowledge,
+      ),
+  );
+  assert.equal(joinedAck.ok, true);
+  if (!joinedAck.ok) {
+    throw new Error("Expected deterministic Number Room join.");
+  }
+  const joined = requirePlatformSnapshotV2(joinedAck.data.snapshot);
+
+  const startedAck = await emitWithAck<GameStartWireAck>(
+    `${hostName} Number game:start`,
+    (acknowledge) =>
+      hostSocket.emit(
+        "game:start",
+        {
+          kind: "game:start",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId(`${hostName}-number-start`),
+          expectedRoomRevision: joined.versions.roomRevision,
+          payload: {},
+        },
+        acknowledge,
+      ),
+  );
+  assert.equal(startedAck.ok, true);
+  if (!startedAck.ok) {
+    throw new Error("Expected deterministic Number Game start.");
+  }
+  const snapshot = requireNumberTilePlayingSnapshotV2(
+    startedAck.data.snapshot,
+  );
+  await Promise.all(
+    [hostObserver, guestObserver].map((observer, index) =>
+      waitForValue(`Number Player ${index + 1} start snapshot`, () =>
+        takeMatching(observer.snapshots, (event) => {
+          const candidate = event.payload.snapshot;
+          return (
+            "snapshotVersion" in candidate &&
+            candidate.room.roomId === snapshot.room.roomId &&
+            candidate.room.phase === "PLAYING"
+          );
+        }),
+      ),
+    ),
+  );
+  hostObserver.snapshots.splice(0);
+  guestObserver.snapshots.splice(0);
+  assert.deepEqual(hostObserver.advisories, {
+    turnStarted: 0,
+    gameFinished: 0,
+  });
+  assert.deepEqual(guestObserver.advisories, {
+    turnStarted: 0,
+    gameFinished: 0,
+  });
+
+  return {
+    host: {
+      socket: hostSocket,
+      sessionToken: hostToken,
+      playerId: created.self.playerId,
+      observer: hostObserver,
+    },
+    guest: {
+      socket: guestSocket,
+      sessionToken: guestToken,
+      playerId: joined.self.playerId,
+      observer: guestObserver,
+    },
+    snapshot,
+  };
+}
+
+function requireNumberOrdinaryTileId(
+  game: PlayingNumberTileGameState,
+  color: NumberTileColor,
+  number: NumberTileNumber,
+  usedTileIds: Set<TileId>,
+): TileId {
+  const tile = [...game.tilesById.values()].find(
+    (candidate) =>
+      candidate.kind === "ORDINARY" &&
+      candidate.color === color &&
+      candidate.number === number &&
+      !usedTileIds.has(candidate.tileId),
+  );
+  if (tile === undefined) {
+    throw new Error(`Missing Number Tile fixture ${color} ${number}.`);
+  }
+  usedTileIds.add(tile.tileId);
+  return tile.tileId;
+}
+
+function requireNumberJokerTileId(
+  game: PlayingNumberTileGameState,
+  usedTileIds: Set<TileId>,
+): TileId {
+  const tile = [...game.tilesById.values()].find(
+    (candidate) =>
+      candidate.kind === "JOKER" && !usedTileIds.has(candidate.tileId),
+  );
+  if (tile === undefined) {
+    throw new Error("Missing Number Joker fixture.");
+  }
+  usedTileIds.add(tile.tileId);
+  return tile.tileId;
+}
+
+function numberOrdinaryPlacement(tileIdValue: TileId) {
+  return Object.freeze({ tileId: tileIdValue, kind: "ORDINARY" as const });
+}
+
+function reallocateNumberPlayingGame(
+  game: PlayingNumberTileGameState,
+  seedRackTileIds: ReadonlyMap<PlayerId, readonly TileId[]>,
+  table: NumberTileProposedTable = { melds: [] },
+): PlayingNumberTileGameState {
+  const usedTileIds = new Set<TileId>();
+  for (const placement of table.melds.flatMap((meld) => meld.tiles)) {
+    if (
+      !game.tilesById.has(placement.tileId) ||
+      usedTileIds.has(placement.tileId)
+    ) {
+      throw new Error("Number Table fixture has invalid physical identity.");
+    }
+    usedTileIds.add(placement.tileId);
+  }
+
+  const racks = new Map<PlayerId, TileId[]>();
+  for (const playerIdValue of game.turnOrder) {
+    const rack = [...(seedRackTileIds.get(playerIdValue) ?? [])];
+    for (const tileIdValue of rack) {
+      if (
+        !game.tilesById.has(tileIdValue) ||
+        usedTileIds.has(tileIdValue)
+      ) {
+        throw new Error("Number rack fixture has invalid physical identity.");
+      }
+      usedTileIds.add(tileIdValue);
+    }
+    racks.set(playerIdValue, rack);
+  }
+
+  const remaining = [...game.tilesById.keys()].filter(
+    (tileIdValue) => !usedTileIds.has(tileIdValue),
+  );
+  for (const playerIdValue of game.turnOrder) {
+    const rack = racks.get(playerIdValue)!;
+    while (rack.length < 14) {
+      const tileIdValue = remaining.shift();
+      if (tileIdValue === undefined) {
+        throw new Error("Number rack fixture exhausted physical Tiles.");
+      }
+      rack.push(tileIdValue);
+    }
+  }
+
+  return Object.freeze({
+    ...game,
+    pool: Object.freeze(remaining),
+    racks: new Map(
+      [...racks].map(([playerIdValue, rack]) => [
+        playerIdValue,
+        Object.freeze(rack),
+      ] as const),
+    ),
+    table,
+    noPlayPlayerIds: Object.freeze([]),
+  });
+}
+
+async function replaceNumberPlayingGame(
+  persistence: InMemoryPersistence,
+  roomIdValue: RoomId,
+  createGame: (
+    game: PlayingNumberTileGameState,
+  ) => PlayingNumberTileGameState,
+): Promise<PlayingNumberRoom> {
+  const room = await persistence.findById(roomIdValue);
+  if (
+    room === null ||
+    room.gameType !== "NUMBER_TILE" ||
+    room.phase !== "PLAYING" ||
+    room.game === null ||
+    room.game.turn === null ||
+    room.game.result !== null
+  ) {
+    throw new Error("A canonical Number PLAYING Room is required.");
+  }
+  const game = createGame(room.game);
+  const replaced = await persistence.replace({
+    candidate: {
+      roomId: room.roomId,
+      roomCode: room.roomCode,
+      gameType: room.gameType,
+      phase: room.phase,
+      hostPlayerId: room.hostPlayerId,
+      players: room.players,
+      game,
+      roomRevision: room.roomRevision,
+      createdAt: room.createdAt,
+      updatedAt: room.updatedAt,
+    },
+    expectedRoomRevision: room.roomRevision,
+    expectedStorageRevision: room.storageRevision,
+  });
+  if (
+    replaced.status !== "REPLACED" ||
+    replaced.room.gameType !== "NUMBER_TILE" ||
+    replaced.room.phase !== "PLAYING" ||
+    replaced.room.game === null ||
+    replaced.room.game.turn === null ||
+    replaced.room.game.result !== null
+  ) {
+    throw new Error("Failed to persist the Number PLAYING fixture.");
+  }
+  return replaced.room as PlayingNumberRoom;
 }
 
 function requirePlayingSnapshot(
@@ -5916,6 +6284,1028 @@ test(
           assert.equal(
             resumedSnapshot.game.privateState.rack.length,
             actorIsHost ? 14 : 15,
+          );
+        } finally {
+          await stopServer(harness);
+        }
+      },
+    );
+  },
+);
+
+test(
+  "P8 Number Tile Submit and mixed-game Socket.IO isolation",
+  { concurrency: false, timeout: 90_000 },
+  async (context) => {
+    await context.test(
+      "raw number:submit rejects exact 29 atomically then commits exact 30 with GROUP/RUN fan-out privacy",
+      async () => {
+        const deterministic = createDeterministicRuntime();
+        const harness = await startServer(deterministic.runtime);
+        try {
+          const started = await startNumberWireRoom(
+            harness,
+            "P8SubmitH",
+            "P8SubmitG",
+          );
+          const actorPlayerId = started.snapshot.game.turn.activePlayerId;
+          const actor =
+            started.host.playerId === actorPlayerId
+              ? started.host
+              : started.guest;
+          const opponent = actor === started.host ? started.guest : started.host;
+
+          const canonical = await deterministic.runtime.persistence.findById(
+            started.snapshot.room.roomId,
+          );
+          if (
+            canonical?.gameType !== "NUMBER_TILE" ||
+            canonical.phase !== "PLAYING" ||
+            canonical.game === null ||
+            canonical.game.turn === null ||
+            canonical.game.result !== null
+          ) {
+            throw new Error("Expected canonical Number state for Submit fixture.");
+          }
+          const canonicalGame = canonical.game;
+          const used = new Set<TileId>();
+          const invalidRun = ([2, 3, 4] as const).map((number) =>
+            requireNumberOrdinaryTileId(
+              canonicalGame,
+              "RED",
+              number,
+              used,
+            ),
+          );
+          const invalidGroup = (
+            ["RED", "BLUE", "BLACK", "ORANGE"] as const
+          ).map((color) =>
+            requireNumberOrdinaryTileId(
+              canonicalGame,
+              color,
+              5,
+              used,
+            ),
+          );
+          const validRun = ([4, 5, 6] as const).map((number) =>
+            requireNumberOrdinaryTileId(
+              canonicalGame,
+              "RED",
+              number,
+              used,
+            ),
+          );
+          const validGroup = (["BLUE", "BLACK", "ORANGE"] as const).map(
+            (color) =>
+              requireNumberOrdinaryTileId(
+                canonicalGame,
+                color,
+                5,
+                used,
+              ),
+          );
+          const invalidTable: NumberTileProposedTable = {
+            melds: [
+              { kind: "RUN", tiles: invalidRun.map(numberOrdinaryPlacement) },
+              {
+                kind: "GROUP",
+                tiles: invalidGroup.map(numberOrdinaryPlacement),
+              },
+            ],
+          };
+          const validTable: NumberTileProposedTable = {
+            melds: [
+              { kind: "RUN", tiles: validRun.map(numberOrdinaryPlacement) },
+              {
+                kind: "GROUP",
+                tiles: validGroup.map(numberOrdinaryPlacement),
+              },
+            ],
+          };
+          const seeded = await replaceNumberPlayingGame(
+            deterministic.runtime.persistence,
+            started.snapshot.room.roomId,
+            (game) =>
+              reallocateNumberPlayingGame(
+                game,
+                new Map([[actorPlayerId, [...used]]]),
+              ),
+          );
+          const beforeInvalid = await deterministic.runtime.persistence.findById(
+            seeded.roomId,
+          );
+          const invalidRequestId = requestId("p8-number-initial-29");
+          const invalidAck = await emitNumberSubmit(actor.socket, {
+            kind: "number:submit",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: invalidRequestId,
+            expectedGameRevision: seeded.game.gameRevision,
+            turnId: seeded.game.turn.turnId,
+            payload: { proposedTable: invalidTable },
+          });
+          assert.equal(invalidAck.ok, false);
+          if (invalidAck.ok) {
+            throw new Error("Expected exact-29 Number Submit rejection.");
+          }
+          assert.equal(invalidAck.error.code, "INITIAL_MELD_TOO_LOW");
+          assert.deepEqual(
+            await deterministic.runtime.persistence.findById(seeded.roomId),
+            beforeInvalid,
+          );
+          assert.deepEqual(
+            await deterministic.runtime.persistence.classify(
+              `room-player:${seeded.roomId}:${actorPlayerId}`,
+              invalidRequestId,
+              "rejected-command-has-no-record",
+            ),
+            { status: "MISS" },
+          );
+          assert.equal(actor.observer.snapshots.length, 0);
+          assert.equal(opponent.observer.snapshots.length, 0);
+
+          const validAck = await emitNumberSubmit(actor.socket, {
+            kind: "number:submit",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: requestId("p8-number-initial-30"),
+            expectedGameRevision: seeded.game.gameRevision,
+            turnId: seeded.game.turn.turnId,
+            payload: { proposedTable: validTable },
+          });
+          assert.equal(validAck.ok, true);
+          if (!validAck.ok) {
+            throw new Error("Expected exact-30 Number Submit success.");
+          }
+          const actorAckSnapshot = requireNumberTilePlayingSnapshotV2(
+            validAck.data.snapshot,
+          );
+          const validTileIds = new Set(
+            validTable.melds.flatMap((meld) =>
+              meld.tiles.map((placement) => placement.tileId),
+            ),
+          );
+          const seededActorRack = seeded.game.racks.get(actorPlayerId);
+          assert.ok(seededActorRack);
+          assert.equal(actorAckSnapshot.game.gameRevision, 1);
+          assert.deepEqual(
+            actorAckSnapshot.game.table.melds.map((meld) => meld.kind),
+            ["RUN", "GROUP"],
+          );
+          assert.equal(
+            actorAckSnapshot.game.playerStates.find(
+              (state) => state.playerId === actorPlayerId,
+            )?.initialMeldCompleted,
+            true,
+          );
+          assert.equal(
+            actorAckSnapshot.game.privateState.rack.length,
+            seededActorRack.length - validTileIds.size,
+          );
+          for (const tile of actorAckSnapshot.game.privateState.rack) {
+            assert.equal(validTileIds.has(tile.tileId), false);
+          }
+          assert.notEqual(
+            actorAckSnapshot.game.turn.turnId,
+            seeded.game.turn.turnId,
+          );
+          assert.equal(
+            actorAckSnapshot.game.turn.turnNumber,
+            seeded.game.turn.turnNumber + 1,
+          );
+          assert.equal(
+            actorAckSnapshot.game.turn.activePlayerId,
+            opponent.playerId,
+          );
+          assert.equal(
+            actorAckSnapshot.game.turn.deadlineAt -
+              actorAckSnapshot.game.turn.startedAt,
+            90_000,
+          );
+
+          const [actorEvent, opponentEvent] = await Promise.all([
+            waitForValue("P8 Number actor Submit snapshot", () =>
+              takeMatching(
+                actor.observer.snapshots,
+                (event) => event.versions.gameRevision === 1,
+              ),
+            ),
+            waitForValue("P8 Number opponent Submit snapshot", () =>
+              takeMatching(
+                opponent.observer.snapshots,
+                (event) => event.versions.gameRevision === 1,
+              ),
+            ),
+          ]);
+          const actorProjection = requireNumberTilePlayingSnapshotV2(
+            actorEvent.payload.snapshot,
+          );
+          const opponentProjection = requireNumberTilePlayingSnapshotV2(
+            opponentEvent.payload.snapshot,
+          );
+          const stored = await deterministic.runtime.persistence.findById(
+            seeded.roomId,
+          );
+          if (
+            stored?.gameType !== "NUMBER_TILE" ||
+            stored.phase !== "PLAYING" ||
+            stored.game === null
+          ) {
+            throw new Error("Expected committed exact-30 Number state.");
+          }
+          assert.deepEqual(stored.game.table, validTable);
+          assert.equal(stored.game.gameRevision, 1);
+          assert.equal(stored.game.initialMeldCompleted.get(actorPlayerId), true);
+          const actorRack = stored.game.racks.get(actorPlayerId);
+          assert.ok(actorRack);
+          assert.deepEqual(
+            actorProjection.game.privateState.rack.map((tile) => tile.tileId),
+            actorRack,
+          );
+          const opponentStringValues = new Set(
+            collectStringValues(opponentProjection),
+          );
+          for (const tileIdValue of actorRack) {
+            assert.equal(
+              opponentStringValues.has(tileIdValue),
+              false,
+            );
+          }
+          assert.equal(
+            opponentProjection.game.playerStates.find(
+              (state) => state.playerId === actorPlayerId,
+            )?.rackCount,
+            actorRack.length,
+          );
+          assert.deepEqual(actor.observer.advisories, {
+            turnStarted: 0,
+            gameFinished: 0,
+          });
+          assert.deepEqual(opponent.observer.advisories, {
+            turnStarted: 0,
+            gameFinished: 0,
+          });
+        } finally {
+          await stopServer(harness);
+        }
+      },
+    );
+
+    await context.test(
+      "raw number:submit rejects non-rack Joker replacement then commits exact replacement and same-Submit reuse",
+      async () => {
+        const deterministic = createDeterministicRuntime();
+        const harness = await startServer(deterministic.runtime);
+        try {
+          const started = await startNumberWireRoom(
+            harness,
+            "P8JokerH",
+            "P8JokerG",
+          );
+          const actorPlayerId = started.snapshot.game.turn.activePlayerId;
+          const actor =
+            started.host.playerId === actorPlayerId
+              ? started.host
+              : started.guest;
+          const canonical = await deterministic.runtime.persistence.findById(
+            started.snapshot.room.roomId,
+          );
+          if (
+            canonical?.gameType !== "NUMBER_TILE" ||
+            canonical.phase !== "PLAYING" ||
+            canonical.game === null ||
+            canonical.game.turn === null ||
+            canonical.game.result !== null
+          ) {
+            throw new Error("Expected canonical Number state for Joker fixture.");
+          }
+          const canonicalGame = canonical.game;
+
+          const used = new Set<TileId>();
+          const red5 = requireNumberOrdinaryTileId(
+            canonicalGame,
+            "RED",
+            5,
+            used,
+          );
+          const joker = requireNumberJokerTileId(canonicalGame, used);
+          const red7 = requireNumberOrdinaryTileId(
+            canonicalGame,
+            "RED",
+            7,
+            used,
+          );
+          const tableRed6 = requireNumberOrdinaryTileId(
+            canonicalGame,
+            "RED",
+            6,
+            used,
+          );
+          const tableBlue6 = requireNumberOrdinaryTileId(
+            canonicalGame,
+            "BLUE",
+            6,
+            used,
+          );
+          const tableBlack6 = requireNumberOrdinaryTileId(
+            canonicalGame,
+            "BLACK",
+            6,
+            used,
+          );
+          const tableOrange6 = requireNumberOrdinaryTileId(
+            canonicalGame,
+            "ORANGE",
+            6,
+            used,
+          );
+          const actorRed6 = requireNumberOrdinaryTileId(
+            canonicalGame,
+            "RED",
+            6,
+            used,
+          );
+          const wrongBlue6 = requireNumberOrdinaryTileId(
+            canonicalGame,
+            "BLUE",
+            6,
+            used,
+          );
+          const blue7 = requireNumberOrdinaryTileId(
+            canonicalGame,
+            "BLUE",
+            7,
+            used,
+          );
+          const blue8 = requireNumberOrdinaryTileId(
+            canonicalGame,
+            "BLUE",
+            8,
+            used,
+          );
+          const blue9 = requireNumberOrdinaryTileId(
+            canonicalGame,
+            "BLUE",
+            9,
+            used,
+          );
+          const black9 = requireNumberOrdinaryTileId(
+            canonicalGame,
+            "BLACK",
+            9,
+            used,
+          );
+          const canonicalTable: NumberTileProposedTable = {
+            melds: [
+              {
+                kind: "RUN",
+                tiles: [
+                  numberOrdinaryPlacement(red5),
+                  {
+                    tileId: joker,
+                    kind: "JOKER",
+                    assignedColor: "RED",
+                    assignedNumber: 6,
+                  },
+                  numberOrdinaryPlacement(red7),
+                ],
+              },
+              {
+                kind: "GROUP",
+                tiles: [
+                  tableRed6,
+                  tableBlue6,
+                  tableBlack6,
+                  tableOrange6,
+                ].map(numberOrdinaryPlacement),
+              },
+            ],
+          };
+          const rackTileIds = [
+            actorRed6,
+            wrongBlue6,
+            blue7,
+            blue8,
+            blue9,
+            black9,
+          ];
+          const seeded = await replaceNumberPlayingGame(
+            deterministic.runtime.persistence,
+            canonical.roomId,
+            (game) => {
+              const allocated = reallocateNumberPlayingGame(
+                game,
+                new Map([[actorPlayerId, rackTileIds]]),
+                canonicalTable,
+              );
+              const initialMeldCompleted = new Map(
+                allocated.initialMeldCompleted,
+              );
+              initialMeldCompleted.set(actorPlayerId, true);
+              return Object.freeze({ ...allocated, initialMeldCompleted });
+            },
+          );
+          const reusedJoker = {
+            tileId: joker,
+            kind: "JOKER" as const,
+            assignedColor: "ORANGE" as const,
+            assignedNumber: 9 as const,
+          };
+          const wrongTable: NumberTileProposedTable = {
+            melds: [
+              {
+                kind: "RUN",
+                tiles: [red5, tableRed6, red7].map(numberOrdinaryPlacement),
+              },
+              {
+                kind: "GROUP",
+                tiles: [tableBlue6, tableBlack6, tableOrange6].map(
+                  numberOrdinaryPlacement,
+                ),
+              },
+              {
+                kind: "RUN",
+                tiles: [wrongBlue6, blue7, blue8].map(
+                  numberOrdinaryPlacement,
+                ),
+              },
+              {
+                kind: "GROUP",
+                tiles: [
+                  numberOrdinaryPlacement(blue9),
+                  numberOrdinaryPlacement(black9),
+                  reusedJoker,
+                ],
+              },
+            ],
+          };
+          const beforeWrong = await deterministic.runtime.persistence.findById(
+            seeded.roomId,
+          );
+          const wrongRequestId = requestId("p8-number-joker-wrong");
+          const wrongAck = await emitNumberSubmit(actor.socket, {
+            kind: "number:submit",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: wrongRequestId,
+            expectedGameRevision: seeded.game.gameRevision,
+            turnId: seeded.game.turn.turnId,
+            payload: { proposedTable: wrongTable },
+          });
+          assert.equal(wrongAck.ok, false);
+          if (wrongAck.ok) {
+            throw new Error("Expected invalid Joker recovery rejection.");
+          }
+          assert.equal(wrongAck.error.code, "INVALID_JOKER_RECOVERY");
+          assert.deepEqual(
+            await deterministic.runtime.persistence.findById(seeded.roomId),
+            beforeWrong,
+          );
+          assert.deepEqual(
+            await deterministic.runtime.persistence.classify(
+              `room-player:${seeded.roomId}:${actorPlayerId}`,
+              wrongRequestId,
+              "rejected-command-has-no-record",
+            ),
+            { status: "MISS" },
+          );
+
+          const validTable: NumberTileProposedTable = {
+            melds: [
+              {
+                kind: "RUN",
+                tiles: [red5, actorRed6, red7].map(numberOrdinaryPlacement),
+              },
+              canonicalTable.melds[1]!,
+              {
+                kind: "GROUP",
+                tiles: [
+                  numberOrdinaryPlacement(blue9),
+                  numberOrdinaryPlacement(black9),
+                  reusedJoker,
+                ],
+              },
+            ],
+          };
+          const validAck = await emitNumberSubmit(actor.socket, {
+            kind: "number:submit",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: requestId("p8-number-joker-valid"),
+            expectedGameRevision: seeded.game.gameRevision,
+            turnId: seeded.game.turn.turnId,
+            payload: { proposedTable: validTable },
+          });
+          assert.equal(validAck.ok, true);
+          if (!validAck.ok) {
+            throw new Error("Expected exact Joker recovery success.");
+          }
+          const projection = requireNumberTilePlayingSnapshotV2(
+            validAck.data.snapshot,
+          );
+          const publicJokers = projection.game.table.melds
+            .flatMap((meld) => meld.tiles)
+            .filter((tile) => tile.tileId === joker);
+          assert.deepEqual(publicJokers, [reusedJoker]);
+          const stored = await deterministic.runtime.persistence.findById(
+            seeded.roomId,
+          );
+          if (
+            stored?.gameType !== "NUMBER_TILE" ||
+            stored.phase !== "PLAYING" ||
+            stored.game === null
+          ) {
+            throw new Error("Expected persisted Joker recovery.");
+          }
+          assert.equal(
+            stored.game.table.melds
+              .flatMap((meld) => meld.tiles)
+              .filter((tile) => tile.tileId === joker).length,
+            1,
+          );
+          assert.equal(stored.game.racks.get(actorPlayerId)?.includes(actorRed6), false);
+          assert.equal(stored.game.racks.get(actorPlayerId)?.includes(joker), false);
+        } finally {
+          await stopServer(harness);
+        }
+      },
+    );
+
+    await context.test(
+      "keeps concurrent Hangul and Number Rooms isolated across wrong commands and idempotent parallel Draws",
+      async () => {
+        const deterministic = createDeterministicRuntime();
+        const harness = await startServer(deterministic.runtime);
+        try {
+          const hangul = await startTwoPlayerRoom(
+            harness,
+            "P8HangulH",
+            "P8HangulG",
+          );
+          const number = await startNumberWireRoom(
+            harness,
+            "P8NumberH",
+            "P8NumberG",
+          );
+          const hangulActor =
+            hangul.snapshot.game.turn.activePlayerId ===
+            hangul.host.snapshot.self.playerId
+              ? hangul.host
+              : hangul.guest;
+          const hangulOpponent =
+            hangulActor === hangul.host ? hangul.guest : hangul.host;
+          const numberActor =
+            number.snapshot.game.turn.activePlayerId === number.host.playerId
+              ? number.host
+              : number.guest;
+          const numberOpponent =
+            numberActor === number.host ? number.guest : number.host;
+
+          for (const player of [hangul.host, hangul.guest]) {
+            player.observer.snapshots.splice(0);
+            player.observer.turnStarts.splice(0);
+            player.observer.gameFinishes.splice(0);
+          }
+          number.host.observer.snapshots.splice(0);
+          number.guest.observer.snapshots.splice(0);
+
+          const hangulBefore = await deterministic.runtime.persistence.findById(
+            hangul.snapshot.room.roomId,
+          );
+          const numberBefore = await deterministic.runtime.persistence.findById(
+            number.snapshot.room.roomId,
+          );
+          if (
+            hangulBefore?.gameType !== "HANGUL_TILE" ||
+            hangulBefore.phase !== "PLAYING" ||
+            hangulBefore.game === null ||
+            hangulBefore.game.turn === null ||
+            hangulBefore.game.result !== null ||
+            numberBefore?.gameType !== "NUMBER_TILE" ||
+            numberBefore.phase !== "PLAYING" ||
+            numberBefore.game === null ||
+            numberBefore.game.turn === null ||
+            numberBefore.game.result !== null
+          ) {
+            throw new Error("Expected concurrent canonical Hangul and Number Rooms.");
+          }
+          const hangulGameBefore = hangulBefore.game;
+          const numberGameBefore = numberBefore.game;
+
+          assert.equal(
+            (
+              await deterministic.runtime.persistence.findByCode(
+                hangul.snapshot.room.roomCode,
+              )
+            )?.roomId,
+            hangulBefore.roomId,
+          );
+          assert.equal(
+            (
+              await deterministic.runtime.persistence.findByCode(
+                number.snapshot.room.roomCode,
+              )
+            )?.roomId,
+            numberBefore.roomId,
+          );
+          const hangulSession =
+            await deterministic.runtime.persistence.findByVerificationData(
+              deterministic.tokenIssuer.deriveVerificationData(
+                hangulActor.sessionToken,
+              ),
+            );
+          const numberSession =
+            await deterministic.runtime.persistence.findByVerificationData(
+              deterministic.tokenIssuer.deriveVerificationData(
+                numberActor.sessionToken,
+              ),
+            );
+          assert.equal(hangulSession?.state, "BOUND");
+          assert.equal(numberSession?.state, "BOUND");
+          if (hangulSession?.state === "BOUND") {
+            assert.equal(hangulSession.roomId, hangulBefore.roomId);
+          }
+          if (numberSession?.state === "BOUND") {
+            assert.equal(numberSession.roomId, numberBefore.roomId);
+          }
+
+          const turnDeadlines =
+            await deterministic.runtime.persistence.listActiveTurnDeadlines();
+          assert.deepEqual(
+            new Set(turnDeadlines.map((deadline) => deadline.roomId)),
+            new Set([hangulBefore.roomId, numberBefore.roomId]),
+          );
+          assert.equal(
+            hangulGameBefore.turn.deadlineAt -
+              hangulGameBefore.turn.startedAt,
+            60_000,
+          );
+          assert.equal(
+            numberGameBefore.turn.deadlineAt -
+              numberGameBefore.turn.startedAt,
+            90_000,
+          );
+          const gameDeadlines =
+            await deterministic.runtime.persistence.listActiveGameDeadlines();
+          assert.deepEqual(
+            gameDeadlines.map((deadline) => deadline.roomId),
+            [hangulBefore.roomId],
+          );
+
+          const hangulRaw = hangulActor.socket as unknown as RawClient;
+          const numberRaw = numberActor.socket as unknown as RawClient;
+          const wrongRequestIds: RequestId[] = [];
+          const nextWrongRequestId = (value: string): RequestId => {
+            const id = requestId(value);
+            wrongRequestIds.push(id);
+            return id;
+          };
+
+          const wrongNumberSubmit = await emitWithAck<NumberSubmitWireAck>(
+            "number:submit on Hangul Room",
+            (acknowledge) =>
+              hangulRaw.emit(
+                "number:submit",
+                {
+                  kind: "number:submit",
+                  protocolVersion: PROTOCOL_VERSION,
+                  requestId: nextWrongRequestId("p8-number-submit-on-hangul"),
+                  expectedGameRevision: hangulGameBefore.gameRevision,
+                  turnId: hangulGameBefore.turn.turnId,
+                  payload: { proposedTable: { melds: [] } },
+                },
+                acknowledge,
+              ),
+          );
+          const wrongNumberDraw = await emitWithAck<NumberDrawWireAck>(
+            "number:draw on Hangul Room",
+            (acknowledge) =>
+              hangulRaw.emit(
+                "number:draw",
+                {
+                  kind: "number:draw",
+                  protocolVersion: PROTOCOL_VERSION,
+                  requestId: nextWrongRequestId("p8-number-draw-on-hangul"),
+                  expectedGameRevision: hangulGameBefore.gameRevision,
+                  turnId: hangulGameBefore.turn.turnId,
+                  payload: {},
+                },
+                acknowledge,
+              ),
+          );
+          const wrongNumberPass = await emitWithAck<NumberPassWireAck>(
+            "number:pass on Hangul Room",
+            (acknowledge) =>
+              hangulRaw.emit(
+                "number:pass",
+                {
+                  kind: "number:pass",
+                  protocolVersion: PROTOCOL_VERSION,
+                  requestId: nextWrongRequestId("p8-number-pass-on-hangul"),
+                  expectedGameRevision: hangulGameBefore.gameRevision,
+                  turnId: hangulGameBefore.turn.turnId,
+                  payload: {},
+                },
+                acknowledge,
+              ),
+          );
+          const wrongTurnSubmit = await emitWithAck<TurnSubmitAck>(
+            "turn:submit on Number Room",
+            (acknowledge) =>
+              numberRaw.emit(
+                "turn:submit",
+                {
+                  kind: "turn:submit",
+                  protocolVersion: PROTOCOL_VERSION,
+                  requestId: nextWrongRequestId("p8-turn-submit-on-number"),
+                  expectedGameRevision: numberGameBefore.gameRevision,
+                  turnId: numberGameBefore.turn.turnId,
+                  payload: { proposedBoard: { wordGroups: [] } },
+                },
+                acknowledge,
+              ),
+          );
+          const wrongTurnDraw = await emitWithAck<TurnDrawAck>(
+            "turn:draw on Number Room",
+            (acknowledge) =>
+              numberRaw.emit(
+                "turn:draw",
+                {
+                  kind: "turn:draw",
+                  protocolVersion: PROTOCOL_VERSION,
+                  requestId: nextWrongRequestId("p8-turn-draw-on-number"),
+                  expectedGameRevision: numberGameBefore.gameRevision,
+                  turnId: numberGameBefore.turn.turnId,
+                  payload: { bagKind: "CONSONANT" },
+                },
+                acknowledge,
+              ),
+          );
+          const wrongTurnPass = await emitWithAck<TurnPassAck>(
+            "turn:pass on Number Room",
+            (acknowledge) =>
+              numberRaw.emit(
+                "turn:pass",
+                {
+                  kind: "turn:pass",
+                  protocolVersion: PROTOCOL_VERSION,
+                  requestId: nextWrongRequestId("p8-turn-pass-on-number"),
+                  expectedGameRevision: numberGameBefore.gameRevision,
+                  turnId: numberGameBefore.turn.turnId,
+                  payload: {},
+                },
+                acknowledge,
+              ),
+          );
+          for (const acknowledgement of [
+            wrongNumberSubmit,
+            wrongNumberDraw,
+            wrongNumberPass,
+            wrongTurnSubmit,
+            wrongTurnDraw,
+            wrongTurnPass,
+          ]) {
+            assert.equal(acknowledgement.ok, false);
+            if (acknowledgement.ok) {
+              throw new Error("Expected wrong-game command rejection.");
+            }
+            assert.equal(acknowledgement.error.code, "INTERNAL_ERROR");
+          }
+
+          const crossTurnRequestId = nextWrongRequestId(
+            "p8-cross-shaped-turn-submit",
+          );
+          const crossTurnShape = await emitWithAck<TurnSubmitAck>(
+            "Number-shaped turn:submit",
+            (acknowledge) =>
+              numberRaw.emit(
+                "turn:submit",
+                {
+                  kind: "turn:submit",
+                  protocolVersion: PROTOCOL_VERSION,
+                  requestId: crossTurnRequestId,
+                  expectedGameRevision: numberGameBefore.gameRevision,
+                  turnId: numberGameBefore.turn.turnId,
+                  payload: { proposedTable: { melds: [] } },
+                },
+                acknowledge,
+              ),
+          );
+          assert.equal(crossTurnShape.ok, false);
+          if (!crossTurnShape.ok) {
+            assert.equal(crossTurnShape.error.code, "INVALID_PAYLOAD");
+          }
+          const crossNumberRequestId = nextWrongRequestId(
+            "p8-cross-shaped-number-submit",
+          );
+          const crossNumberShape = await emitWithAck<NumberSubmitWireAck>(
+            "Hangul-shaped number:submit",
+            (acknowledge) =>
+              hangulRaw.emit(
+                "number:submit",
+                {
+                  kind: "number:submit",
+                  protocolVersion: PROTOCOL_VERSION,
+                  requestId: crossNumberRequestId,
+                  expectedGameRevision: hangulGameBefore.gameRevision,
+                  turnId: hangulGameBefore.turn.turnId,
+                  payload: { proposedBoard: { wordGroups: [] } },
+                },
+                acknowledge,
+              ),
+          );
+          assert.equal(crossNumberShape.ok, false);
+          if (!crossNumberShape.ok) {
+            assert.equal(crossNumberShape.error.code, "INVALID_PAYLOAD");
+          }
+
+          assert.deepEqual(
+            await deterministic.runtime.persistence.findById(
+              hangulBefore.roomId,
+            ),
+            hangulBefore,
+          );
+          assert.deepEqual(
+            await deterministic.runtime.persistence.findById(
+              numberBefore.roomId,
+            ),
+            numberBefore,
+          );
+          assert.equal(hangul.host.observer.snapshots.length, 0);
+          assert.equal(hangul.guest.observer.snapshots.length, 0);
+          assert.equal(hangul.host.observer.turnStarts.length, 0);
+          assert.equal(hangul.guest.observer.turnStarts.length, 0);
+          assert.equal(hangul.host.observer.gameFinishes.length, 0);
+          assert.equal(hangul.guest.observer.gameFinishes.length, 0);
+          assert.equal(number.host.observer.snapshots.length, 0);
+          assert.equal(number.guest.observer.snapshots.length, 0);
+          assert.deepEqual(number.host.observer.advisories, {
+            turnStarted: 0,
+            gameFinished: 0,
+          });
+          assert.deepEqual(number.guest.observer.advisories, {
+            turnStarted: 0,
+            gameFinished: 0,
+          });
+          for (const wrongRequestId of wrongRequestIds) {
+            const roomIdValue: RoomId = wrongRequestId.includes("on-hangul") ||
+                wrongRequestId.includes("number-submit")
+              ? hangulBefore.roomId
+              : numberBefore.roomId;
+            const playerIdValue: PlayerId = roomIdValue === hangulBefore.roomId
+              ? hangulActor.snapshot.self.playerId
+              : numberActor.playerId;
+            assert.deepEqual(
+              await deterministic.runtime.persistence.classify(
+                `room-player:${roomIdValue}:${playerIdValue}`,
+                wrongRequestId,
+                "wrong-command-has-no-record",
+              ),
+              { status: "MISS" },
+            );
+          }
+
+          const sharedDrawRequestId = requestId("p8-parallel-draw");
+          const hangulDrawCommand: TurnDrawCommand = {
+            kind: "turn:draw",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: sharedDrawRequestId,
+            expectedGameRevision: hangulGameBefore.gameRevision,
+            turnId: hangulGameBefore.turn.turnId,
+            payload: { bagKind: "CONSONANT" },
+          };
+          const numberDrawCommand: NumberDrawCommand = {
+            kind: "number:draw",
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: sharedDrawRequestId,
+            expectedGameRevision: numberGameBefore.gameRevision,
+            turnId: numberGameBefore.turn.turnId,
+            payload: {},
+          };
+          const [hangulDrawAck, numberDrawAck] = await Promise.all([
+            emitTurnDraw(hangulActor.socket, hangulDrawCommand),
+            emitNumberDraw(numberActor.socket, numberDrawCommand),
+          ]);
+          assert.equal(hangulDrawAck.ok, true);
+          assert.equal(numberDrawAck.ok, true);
+          if (!hangulDrawAck.ok || !numberDrawAck.ok) {
+            throw new Error("Expected isolated parallel Draw success.");
+          }
+          const hangulActorProjection = requireAnyPlayingSnapshot(
+            hangulDrawAck.data.snapshot,
+          );
+          const numberActorProjection = requireNumberTilePlayingSnapshotV2(
+            numberDrawAck.data.snapshot,
+          );
+          assert.equal(hangulActorProjection.versions.gameRevision, 1);
+          assert.equal(numberActorProjection.game.gameRevision, 1);
+          assert.equal(numberActorProjection.room.gameType, "NUMBER_TILE");
+          assert.equal("snapshotVersion" in hangulActorProjection, false);
+
+          const [hangulOpponentEvent, numberOpponentEvent] =
+            await Promise.all([
+              waitForSnapshot(
+                hangulOpponent.observer,
+                (event) => event.versions.gameRevision === 1,
+              ),
+              waitForValue("P8 Number parallel Draw opponent snapshot", () =>
+                takeMatching(
+                  numberOpponent.observer.snapshots,
+                  (event) => event.versions.gameRevision === 1,
+                ),
+              ),
+            ]);
+          const hangulOpponentProjection = requireAnyPlayingSnapshot(
+            hangulOpponentEvent.payload.snapshot,
+          );
+          const numberOpponentProjection =
+            requireNumberTilePlayingSnapshotV2(
+              numberOpponentEvent.payload.snapshot,
+            );
+          const hangulDrawnTile = hangulActorProjection.self.rack.find(
+            (tile) =>
+              !hangulGameBefore.racks
+                .get(hangulActor.snapshot.self.playerId)
+                ?.includes(tile.tileId),
+          );
+          const numberDrawnTile =
+            numberActorProjection.game.privateState.rack.find(
+              (tile) =>
+                !numberGameBefore.racks
+                  .get(numberActor.playerId)
+                  ?.includes(tile.tileId),
+            );
+          assert.ok(hangulDrawnTile);
+          assert.ok(numberDrawnTile);
+          assert.equal(
+            new Set(collectStringValues(hangulOpponentProjection)).has(
+              hangulDrawnTile.tileId,
+            ),
+            false,
+          );
+          assert.equal(
+            new Set(collectStringValues(numberOpponentProjection)).has(
+              numberDrawnTile.tileId,
+            ),
+            false,
+          );
+
+          const hangulAfterFirst =
+            await deterministic.runtime.persistence.findById(
+              hangulBefore.roomId,
+            );
+          const numberAfterFirst =
+            await deterministic.runtime.persistence.findById(
+              numberBefore.roomId,
+            );
+          assert.equal(hangulAfterFirst?.gameType, "HANGUL_TILE");
+          assert.equal(numberAfterFirst?.gameType, "NUMBER_TILE");
+          assert.equal(hangulAfterFirst?.game?.gameRevision, 1);
+          assert.equal(numberAfterFirst?.game?.gameRevision, 1);
+          assert.equal(
+            hangulAfterFirst?.storageRevision,
+            hangulBefore.storageRevision + 1,
+          );
+          assert.equal(
+            numberAfterFirst?.storageRevision,
+            numberBefore.storageRevision + 1,
+          );
+          assert.deepEqual(number.host.observer.advisories, {
+            turnStarted: 0,
+            gameFinished: 0,
+          });
+          assert.deepEqual(number.guest.observer.advisories, {
+            turnStarted: 0,
+            gameFinished: 0,
+          });
+
+          const [hangulReplay, numberReplay] = await Promise.all([
+            emitTurnDraw(hangulActor.socket, hangulDrawCommand),
+            emitNumberDraw(numberActor.socket, numberDrawCommand),
+          ]);
+          assert.equal(hangulReplay.ok, true);
+          assert.equal(numberReplay.ok, true);
+          if (!hangulReplay.ok || !numberReplay.ok) {
+            throw new Error("Expected both cross-Room Draw replays to succeed.");
+          }
+          const hangulReplaySnapshot = requireAnyPlayingSnapshot(
+            hangulReplay.data.snapshot,
+          );
+          const numberReplaySnapshot = requireNumberTilePlayingSnapshotV2(
+            numberReplay.data.snapshot,
+          );
+          assert.equal(hangulReplay.requestId, hangulDrawCommand.requestId);
+          assert.equal(numberReplay.requestId, numberDrawCommand.requestId);
+          assert.equal(hangulReplaySnapshot.room.roomId, hangulBefore.roomId);
+          assert.equal(numberReplaySnapshot.room.roomId, numberBefore.roomId);
+          assert.equal(numberReplaySnapshot.room.gameType, "NUMBER_TILE");
+          assert.deepEqual(
+            await deterministic.runtime.persistence.findById(
+              hangulBefore.roomId,
+            ),
+            hangulAfterFirst,
+          );
+          assert.deepEqual(
+            await deterministic.runtime.persistence.findById(
+              numberBefore.roomId,
+            ),
+            numberAfterFirst,
           );
         } finally {
           await stopServer(harness);

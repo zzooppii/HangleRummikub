@@ -190,6 +190,18 @@ test("canonical revision/turn 종료 또는 FINISHED 전이만 pending Number co
       turn: { turnId },
     },
   };
+  const newerRevision = {
+    game: {
+      gameRevision: 5 as GameRevision,
+      turn: { turnId },
+    },
+  };
+  const changedTurn = {
+    game: {
+      gameRevision: revision,
+      turn: { turnId: "next-number-turn" as TurnId },
+    },
+  };
 
   assert.equal(
     numberSnapshotSupersedesCommand(
@@ -197,6 +209,20 @@ test("canonical revision/turn 종료 또는 FINISHED 전이만 pending Number co
       sameIdentity as Parameters<typeof numberSnapshotSupersedesCommand>[1],
     ),
     false,
+  );
+  assert.equal(
+    numberSnapshotSupersedesCommand(
+      command,
+      newerRevision as Parameters<typeof numberSnapshotSupersedesCommand>[1],
+    ),
+    true,
+  );
+  assert.equal(
+    numberSnapshotSupersedesCommand(
+      command,
+      changedTurn as Parameters<typeof numberSnapshotSupersedesCommand>[1],
+    ),
+    true,
   );
   assert.equal(numberSnapshotSupersedesCommand(command, null), true);
 });

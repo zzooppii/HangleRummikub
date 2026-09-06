@@ -7,6 +7,7 @@ import ts from "typescript";
 
 const sourceRoot = fileURLToPath(new URL("../src/", import.meta.url));
 const hangulModuleRoot = resolve(sourceRoot, "games/hangul-tile");
+const numberModuleRoot = resolve(sourceRoot, "games/number-tile");
 
 function portablePath(path: string): string {
   return path.split(sep).join("/");
@@ -148,6 +149,7 @@ test("Hangul domain은 platform orchestration이나 runtime adapter를 import하
         forbiddenPathSegments.some((segment) =>
           portableTarget.includes(segment),
         ) ||
+        portableTarget.startsWith(`${portablePath(numberModuleRoot)}/`) ||
         portableTarget.endsWith("/composition-root.ts") ||
         portableTarget.endsWith("/server.ts")
       ) {

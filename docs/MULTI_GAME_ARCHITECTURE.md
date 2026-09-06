@@ -1,7 +1,7 @@
 # Multi-game Platform Architecture
 
-> 상태: P0~P7C COMPLETE / P8 READY
-> 작성일: 2026-09-06
+> 상태: P0~P7C COMPLETE / P8 SOURCE E2E COMPLETE / PUBLIC DEPLOYMENT VERIFICATION PENDING
+> 작성일: 2026-09-07
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
 제품 범위는 [MULTI_GAME_PLATFORM_SPEC.md](./MULTI_GAME_PLATFORM_SPEC.md), 실행 순서와 Phase별 명령은 [MULTI_GAME_MIGRATION_ROADMAP.md](./MULTI_GAME_MIGRATION_ROADMAP.md)를 따른다. P1에서 확인한 exact wire, persistence/projector/service/scheduler/web ownership은 [MULTI_GAME_P1_CHARACTERIZATION.md](./MULTI_GAME_P1_CHARACTERIZATION.md)에 기록한다.
@@ -1184,3 +1184,21 @@ NumberTilePlayingScreen
 Number draft는 base game/revision/turn과 complete proposed Table, own rack identity, 최대 50 history를 소유한다. Intermediate invalid meld를 허용하고 `tileId` move/conservation, initial Table lock, rack-origin return, Joker assignment/reassignment만 local operation으로 수행한다. RuleEngine, score, timeout outcome, Joker recovery legality는 client에 복제하지 않는다.
 
 `RealtimeClient`는 `[2,1]` snapshot과 exact `[HANGUL_TILE, NUMBER_TILE]` game capability를 광고하고 strict Number ack를 검증한다. `useLobbyApp`은 공통 connection/Room ordering과 game별 pending command를 조정하지만 Number/Hangul draft 타입을 합치지 않는다. Number에는 advisory가 없으며 game/start, scheduler, persistence와 server domain은 P7C에서 변경하지 않았다. 구체 UI와 mobile/reconnect 계약은 [NUMBER_TILE_WEB_IMPLEMENTATION.md](./NUMBER_TILE_WEB_IMPLEMENTATION.md)에 있다.
+
+## 34. P8 two-game regression evidence
+
+P8은 architecture를 확장하지 않고 현재 두 concrete branch를 실제 protocol과 production serving 경로에서 함께 실행했다.
+
+```text
+same platform runtime
+  -> Hangul V1/V2 Room -- turn:* / 60s Turn / Hangul-only game deadline
+  -> Number V2 Room    -- number:* / 90s Turn / no game deadline
+
+wrong command or cross-shaped payload
+  -> canonical Room.gameType mismatch
+  -> fail closed before mutation/idempotency/advisory
+```
+
+새 raw Socket.IO gate는 deterministic exact-29 reject와 exact-30 GROUP/RUN commit, exact Joker replacement와 same-Submit reuse, 별도 Hangul/Number Room의 양방향 wrong command, parallel Draw와 replay, recovery deadline 격리를 한 runtime에서 확인한다. Production-serving gate는 실제 Number A/B create/join/start/Draw/privacy/resume를 추가했다. Web/source boundary gate는 두 feature 및 shared game namespace의 상호 import를 금지한다.
+
+이 검증은 기존 구체 router/adapter/result를 공통 `GameModule`로 승격할 근거로 사용하지 않는다. P8 상세 결과와 public pending 조건은 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)에 기록한다. Railway에서 최신 P7C/P8 checkpoint가 Active/Successful/master/1 Replica라는 사용자 확인과 public 두 게임 smoke 전에는 P9A를 시작하지 않는다.
