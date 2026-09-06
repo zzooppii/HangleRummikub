@@ -7,6 +7,7 @@ import {
   BROWSER_CREDENTIAL_STORAGE,
   DUPLICATE_CONNECTION_POLICY,
   OPAQUE_IDENTIFIER_MAX_LENGTH,
+  PLATFORM_SNAPSHOT_VERSION,
   PROPOSED_ASSIGNED_SYMBOL_MAX_LENGTH,
   PROPOSED_BOARD_MAX_TILE_REFERENCES,
   PROPOSED_BOARD_MAX_WORD_GROUPS,
@@ -16,6 +17,7 @@ import {
   SUPPORTED_GAME_TYPES,
   GameTypeSchema,
   GameResultSchema,
+  PlatformSnapshotV2Schema,
   ProposedWordGroupSchema,
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LENGTH,
@@ -299,6 +301,101 @@ function createFinishedSnapshot() {
     self: {
       playerId: "player_123",
       rack: [],
+    },
+  };
+}
+
+function createLobbyPlatformSnapshotV2() {
+  const legacy = createSnapshot();
+
+  return {
+    snapshotVersion: PLATFORM_SNAPSHOT_VERSION,
+    versions: {
+      roomRevision: legacy.versions.roomRevision,
+      presenceVersion: legacy.versions.presenceVersion,
+    },
+    serverTime: legacy.serverTime,
+    room: {
+      ...legacy.room,
+      gameType: "HANGUL_TILE",
+    },
+    self: legacy.self,
+    game: null,
+  };
+}
+
+function createPlayingPlatformSnapshotV2() {
+  const legacy = createPlayingSnapshot();
+
+  return {
+    snapshotVersion: PLATFORM_SNAPSHOT_VERSION,
+    versions: {
+      roomRevision: legacy.versions.roomRevision,
+      presenceVersion: legacy.versions.presenceVersion,
+    },
+    serverTime: legacy.serverTime,
+    room: {
+      roomId: legacy.room.roomId,
+      roomCode: legacy.room.roomCode,
+      phase: legacy.room.phase,
+      gameType: "HANGUL_TILE",
+      players: legacy.room.players.map((player) => ({
+        playerId: player.playerId,
+        nickname: player.nickname,
+        isHost: player.isHost,
+        connectionStatus: player.connectionStatus,
+      })),
+    },
+    self: { playerId: legacy.self.playerId },
+    game: {
+      gameType: "HANGUL_TILE",
+      gameRevision: legacy.versions.gameRevision,
+      publicState: legacy.game,
+      playerStates: legacy.room.players.map((player) => ({
+        playerId: player.playerId,
+        rackCount: player.rackCount,
+        initialMeldCompleted: player.initialMeldCompleted,
+        forfeited: player.forfeited,
+      })),
+      privateState: { rack: legacy.self.rack },
+    },
+  };
+}
+
+function createFinishedPlatformSnapshotV2() {
+  const legacy = createFinishedSnapshot();
+
+  return {
+    snapshotVersion: PLATFORM_SNAPSHOT_VERSION,
+    versions: {
+      roomRevision: legacy.versions.roomRevision,
+      presenceVersion: legacy.versions.presenceVersion,
+    },
+    serverTime: legacy.serverTime,
+    room: {
+      roomId: legacy.room.roomId,
+      roomCode: legacy.room.roomCode,
+      phase: legacy.room.phase,
+      gameType: "HANGUL_TILE",
+      players: legacy.room.players.map((player) => ({
+        playerId: player.playerId,
+        nickname: player.nickname,
+        isHost: player.isHost,
+        connectionStatus: player.connectionStatus,
+      })),
+    },
+    self: { playerId: legacy.self.playerId },
+    game: {
+      gameType: "HANGUL_TILE",
+      gameRevision: legacy.versions.gameRevision,
+      publicState: legacy.game,
+      playerStates: legacy.room.players.map((player) => ({
+        playerId: player.playerId,
+        rackCount: player.rackCount,
+        initialMeldCompleted: player.initialMeldCompleted,
+        forfeited: player.forfeited,
+      })),
+      privateState: { rack: legacy.self.rack },
     },
   };
 }
@@ -3608,5 +3705,208 @@ test("Legacy Hangul v1 LOBBY/PLAYING/FINISHED snapshot key set과 discriminant�
       false,
       `${phase} must keep a strict top-level shape`,
     );
+  }
+});
+
+test("PlatformSnapshot V2 LOBBY는 platform shell과 선택된 gameType, null game을 표현한다", () => {
+  const snapshot = createLobbyPlatformSnapshotV2();
+  const result = v.safeParse(PlatformSnapshotV2Schema, snapshot);
+
+  assert.equal(result.success, true);
+  assert.deepEqual(sortedKeys(snapshot), [
+    "game",
+    "room",
+    "self",
+    "serverTime",
+    "snapshotVersion",
+    "versions",
+  ]);
+  assert.deepEqual(sortedKeys(snapshot.versions), [
+    "presenceVersion",
+    "roomRevision",
+  ]);
+  assert.deepEqual(sortedKeys(snapshot.room), [
+    "gameType",
+    "phase",
+    "players",
+    "roomCode",
+    "roomId",
+  ]);
+  assert.equal(snapshot.snapshotVersion, 2);
+  assert.equal(snapshot.room.phase, "LOBBY");
+  assert.equal(snapshot.room.gameType, "HANGUL_TILE");
+  assert.equal(snapshot.game, null);
+  assert.equal("protocolVersion" in snapshot, false);
+  assert.equal("gameRevision" in snapshot.versions, false);
+});
+
+test("PlatformSnapshot V2 PLAYING은 platform player와 Hangul player state를 분리한다", () => {
+  const snapshot = createPlayingPlatformSnapshotV2();
+  const result = v.safeParse(PlatformSnapshotV2Schema, snapshot);
+
+  assert.equal(result.success, true);
+  assert.deepEqual(sortedKeys(snapshot.room.players[0] ?? {}), [
+    "connectionStatus",
+    "isHost",
+    "nickname",
+    "playerId",
+  ]);
+  assert.deepEqual(sortedKeys(snapshot.game), [
+    "gameRevision",
+    "gameType",
+    "playerStates",
+    "privateState",
+    "publicState",
+  ]);
+  assert.deepEqual(sortedKeys(snapshot.game.playerStates[0] ?? {}), [
+    "forfeited",
+    "initialMeldCompleted",
+    "playerId",
+    "rackCount",
+  ]);
+  assert.deepEqual(sortedKeys(snapshot.game.privateState), ["rack"]);
+  assert.equal(snapshot.room.phase, "PLAYING");
+  assert.equal(snapshot.room.gameType, snapshot.game.gameType);
+  assert.equal(snapshot.game.gameRevision, 0);
+  assert.equal("turn" in snapshot.game.publicState, true);
+  assert.equal("result" in snapshot.game.publicState, false);
+});
+
+test("PlatformSnapshot V2 FINISHED는 Hangul terminal projection과 result를 유지한다", () => {
+  const snapshot = createFinishedPlatformSnapshotV2();
+  const result = v.safeParse(PlatformSnapshotV2Schema, snapshot);
+
+  assert.equal(result.success, true);
+  assert.equal(snapshot.room.phase, "FINISHED");
+  assert.equal(snapshot.room.gameType, snapshot.game.gameType);
+  assert.equal(snapshot.game.gameRevision, 1);
+  assert.equal("turn" in snapshot.game.publicState, false);
+  assert.equal("result" in snapshot.game.publicState, true);
+  assert.deepEqual(snapshot.game.publicState.result.winnerPlayerIds, [
+    "player_123",
+  ]);
+  assert.deepEqual(snapshot.game.privateState.rack, []);
+});
+
+test("PlatformSnapshot V2는 version, phase, game, player, private state coherence를 strict하게 검증한다", () => {
+  const lobby = createLobbyPlatformSnapshotV2();
+  const playing = createPlayingPlatformSnapshotV2();
+  const finished = createFinishedPlatformSnapshotV2();
+  const missingVersion: Record<string, unknown> = { ...playing };
+  delete missingVersion.snapshotVersion;
+  const malformedPrivateRack = {
+    ...playing,
+    game: {
+      ...playing.game,
+      privateState: {
+        rack: [{ tileId: "tile_incomplete_private_view" }],
+      },
+    },
+  };
+  const missingGamePlayer = {
+    ...playing,
+    game: {
+      ...playing.game,
+      playerStates: playing.game.playerStates.slice(0, 1),
+    },
+  };
+  const mismatchedSelfRackCount = {
+    ...playing,
+    game: {
+      ...playing.game,
+      playerStates: playing.game.playerStates.map((player) =>
+        player.playerId === playing.self.playerId
+          ? { ...player, rackCount: player.rackCount + 1 }
+          : player,
+      ),
+    },
+  };
+
+  const invalidCases: readonly (readonly [string, unknown])[] = [
+    ["missing snapshot version", missingVersion],
+    ["wrong snapshot version", { ...playing, snapshotVersion: 3 }],
+    ["unexpected root key", { ...playing, unexpected: true }],
+    [
+      "unexpected Room key",
+      { ...playing, room: { ...playing.room, storageRevision: 7 } },
+    ],
+    ["LOBBY with active game", { ...lobby, game: playing.game }],
+    ["PLAYING with null game", { ...playing, game: null }],
+    [
+      "PLAYING with finished projection",
+      { ...playing, game: finished.game },
+    ],
+    [
+      "FINISHED with active projection",
+      { ...finished, game: playing.game },
+    ],
+    ["malformed private rack", malformedPrivateRack],
+    ["missing game player", missingGamePlayer],
+    ["self rack count mismatch", mismatchedSelfRackCount],
+  ];
+
+  for (const [name, input] of invalidCases) {
+    assert.equal(
+      v.safeParse(PlatformSnapshotV2Schema, input).success,
+      false,
+      name,
+    );
+  }
+});
+
+test("PlatformSnapshot V2는 구현되지 않은 future game type을 fail-closed한다", () => {
+  const playing = createPlayingPlatformSnapshotV2();
+
+  for (const futureGameType of [
+    "NUMBER_TILE",
+    "GEM_CARD",
+    "UNKNOWN",
+  ] as const) {
+    assert.equal(
+      v.safeParse(PlatformSnapshotV2Schema, {
+        ...playing,
+        room: { ...playing.room, gameType: futureGameType },
+      }).success,
+      false,
+      `${futureGameType} Room must remain unsupported`,
+    );
+    assert.equal(
+      v.safeParse(PlatformSnapshotV2Schema, {
+        ...playing,
+        game: { ...playing.game, gameType: futureGameType },
+      }).success,
+      false,
+      `${futureGameType} projection must remain unsupported`,
+    );
+  }
+});
+
+test("StateSnapshot V1과 PlatformSnapshot V2는 runtime에서 서로 확장되지 않는다", () => {
+  const legacySnapshots = [
+    createSnapshot(),
+    createPlayingSnapshot(),
+    createFinishedSnapshot(),
+  ];
+  const platformSnapshots = [
+    createLobbyPlatformSnapshotV2(),
+    createPlayingPlatformSnapshotV2(),
+    createFinishedPlatformSnapshotV2(),
+  ];
+
+  for (const legacy of legacySnapshots) {
+    assert.equal(validateStateSnapshot(legacy).ok, true);
+    assert.equal("snapshotVersion" in legacy, false);
+    assert.equal("gameType" in legacy.room, false);
+    assert.equal(
+      v.safeParse(PlatformSnapshotV2Schema, legacy).success,
+      false,
+    );
+  }
+  for (const platform of platformSnapshots) {
+    assert.equal(
+      v.safeParse(PlatformSnapshotV2Schema, platform).success,
+      true,
+    );
+    assert.equal(validateStateSnapshot(platform).ok, false);
   }
 });

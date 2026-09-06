@@ -1,7 +1,7 @@
 # Multi-game Platform Specification
 
-> 상태: P0 설계 기준선 + P1 characterization + P2 internal identity checkpoint
-> 작성일: 2026-09-05
+> 상태: P0~P4 기준선 + P5A latent PlatformSnapshot V2 contract
+> 작성일: 2026-09-06
 > 적용 범위: 현재 production 한글 타일 게임을 보존하면서 여러 턴제 보드게임을 수용하기 위한 제품 경계  
 > 비고: 이 문서는 구현 계약이 아니라 후속 Phase의 의사결정 기준이다.
 
@@ -221,6 +221,12 @@ catalog는 최소한 내부 `gameType`, 표시 metadata, 사용 가능 상태를
 - single service, one replica, process-memory라는 현재 운영 제약은 별도 persistence Phase 전까지 그대로 명시한다.
 - 배포 restart 시 Room/Game/session이 사라지는 현재 특성을 멀티게임 P0가 해결했다고 표현하지 않는다.
 
+P5A는 이 호환성 정책 아래 새 `PlatformSnapshotV2`를 additive하게 정의한다. 기존 `StateSnapshot`과 `StateSnapshotSchema`는 이름과 의미를 바꾸지 않은 Legacy Hangul v1 contract이며, production `state:snapshot` event와 Web은 계속 그 v1만 사용한다. `snapshotVersion: 2`는 snapshot 표현을 식별하고 realtime `protocolVersion = 1`과 별개다.
+
+V2는 Room identity·phase·player identity/presence·Room/presence revision·server time·canonical `gameType`을 platform shell에 둔다. `gameRevision`, Board, bag count, turn, rack progress/private rack, result는 `HANGUL_TILE` projection에 남긴다. LOBBY는 `room.gameType = HANGUL_TILE`과 `game = null`을 함께 표현하며, PLAYING/FINISHED는 Room과 game projection의 `gameType` 일치를 strict하게 검증한다. 현재 V2가 허용하는 game type도 `HANGUL_TILE` 하나뿐이다.
+
+P5A의 server mapper는 이미 검증되고 player-private한 v1 snapshot과 canonical Room `gameType`을 V2 구조로 재배치하는 transitional seam이다. game rule을 다시 계산하거나 canonical private state를 읽지 않으며 production transport에는 연결하지 않는다. 실제 version negotiation, Web decoding/routing과 incompatible UI는 P5B에서 결정한다. 세부 계약은 [MULTI_GAME_P5A_PLATFORM_SNAPSHOT_V2.md](./MULTI_GAME_P5A_PLATFORM_SNAPSHOT_V2.md)에 기록한다.
+
 ## 12. Production 기준선과 rollout
 
 P0 시작 시 기준은 다음과 같다.
@@ -235,7 +241,7 @@ P0 시작 시 기준은 다음과 같다.
 
 P2 구조 전환은 identity-only registry에 `HANGUL_TILE` 하나만 등록했다. composition root는 이 필수 registration의 누락·중복을 startup에서 fail-fast하고, Room create와 game start는 각각 legacy default와 canonical Room `gameType`의 registration을 확인한다. 이 entry는 service callback이나 state capability를 갖지 않으며 `GameModule`도 구현하지 않았다.
 
-외부 v1 wire, `StateSnapshot` shape, web route/rendering은 그대로다. catalog와 새 snapshot discriminator는 내부 경계가 검증된 뒤 별도 Phase에서 열고, production rollout 전에는 현재 한글 user journey를 smoke/E2E로 다시 검증한다.
+외부 v1 wire, `StateSnapshot` shape, web route/rendering은 그대로다. P5A의 새 snapshot discriminator와 V2 schema/mapper는 latent contract로만 존재하고 emission/negotiation은 없다. catalog와 public V2 adoption은 후속 stop gate에서 열며, 각 rollout 전에는 현재 한글 user journey를 smoke/E2E로 다시 검증한다.
 
 ## 13. 결과 모델 방향
 

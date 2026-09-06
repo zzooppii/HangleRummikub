@@ -1,6 +1,6 @@
 # Multi-game Platform Architecture
 
-> 상태: P0~P3D checkpoint 완료 + P4 Hangul production regression evidence 완료(checkpoint/push 조건부)
+> 상태: P0~P4 checkpoint 완료 + P5A latent PlatformSnapshot V2 contract
 > 작성일: 2026-09-06
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
@@ -482,32 +482,34 @@ packages/shared/src/
 
 현재 `StateSnapshot`은 phase union이면서 PLAYING/FINISHED에 한글 Board, rack, bag, turn, result를 직접 포함한다. 공통 player view도 `rackCount`, `initialMeldCompleted`, `forfeited`를 가진다. 따라서 generic한 이름과 달리 새 game projection을 수용하지 못한다.
 
-### 10.2 target envelope 후보
+### 10.2 P5A에서 확정한 latent V2 envelope
 
 ```ts
-type PlatformSnapshot = {
-  protocolVersion: number;
-  versions: PlatformVersions;
+type PlatformSnapshotV2 = {
+  snapshotVersion: 2;
+  versions: {
+    roomRevision: RoomRevision;
+    presenceVersion: PresenceVersion;
+  };
   serverTime: ServerTime;
   room: {
     roomId: RoomId;
     roomCode: RoomCode;
     phase: RoomPhase;
-    gameType: GameType;
+    gameType: "HANGUL_TILE";
     players: PlatformPlayerView[];
   };
-  self: PlatformSelfView;
-  game:
-    | null
-    | { type: "HANGUL_TILE"; state: HangulTileProjection }
-    | { type: "NUMBER_TILE"; state: NumberTileProjection }
-    | { type: "GEM_CARD"; state: GemCardProjection };
+  self: { playerId: PlayerId };
+  game: null | HangulTilePlayingProjectionV2 | HangulTileFinishedProjectionV2;
 };
 ```
 
-실제 Room field 이름은 P2, public projection union 위치는 P5A에서 확정한다. 중요한 불변 조건은 다음이다.
+`PlatformSnapshotV2Schema`는 `LOBBY | PLAYING | FINISHED`의 strict union이다. `snapshotVersion: 2`는 representation discriminator이고 기존 realtime `protocolVersion = 1`을 재해석하거나 올리지 않는다. V2 object에는 `protocolVersion`을 중복하지 않으며, transport protocol과 snapshot representation 선택을 연결하는 negotiation은 P5B의 별도 계약이다.
 
-- `room.gameType`과 `game.type`은 일치한다.
+현재 game union은 실제 지원되는 `HANGUL_TILE` projection만 포함한다. 빈 `NUMBER_TILE`/`GEM_CARD` member는 없다. 중요한 불변 조건은 다음이다.
+
+- LOBBY는 canonical `room.gameType`을 가지되 `game`은 `null`이다.
+- PLAYING/FINISHED의 `room.gameType`과 `game.gameType`은 일치한다.
 - 동일 Room ID의 snapshot에서 gameType은 바뀌지 않는다.
 - player identity/presence와 game-specific player progress를 분리한다.
 - game module만 private rack/resource/reserved card를 projection한다.
@@ -515,6 +517,22 @@ type PlatformSnapshot = {
 - 지원하지 않는 projection은 Lobby fallback이 아니라 명시적인 incompatible 상태로 처리한다.
 
 공개 상태를 따로 broadcast하고 개인 상태를 덧붙이는 구현보다, 현재처럼 player별 완성 projection을 만드는 방식이 privacy 검증에 유리하다. 이 판단은 새 game에서도 유지하되 wire 중복 최적화는 후순위다.
+
+`room.players`는 identity, nickname, Host, presence만 가진다. Hangul projection의 `playerStates`는 `playerId` join key로 rack count, initial meld, forfeit를 표현하고 `privateState.rack`은 outer `self.playerId`의 rack만 가진다. `gameRevision`, Hangul public Board/bag/turn과 terminal result도 Hangul projection이 소유한다. `GenericTurn`, `GenericResult`, platform-wide game revision은 만들지 않았다.
+
+### 10.3 P5A transitional projection path
+
+```text
+canonical Room.gameType
+        +
+validated, privacy-safe StateSnapshot v1
+        ↓
+pure V1 → PlatformSnapshot V2 mapper
+        ↓
+strict PlatformSnapshotV2Schema validation
+```
+
+이 mapper는 v1 data를 재배치할 뿐 domain state를 읽거나 game rule/privacy를 다시 판단하지 않는다. production Socket.IO, composition root와 Web에는 연결하지 않았으며, shared `realtime.ts`의 `state:snapshot`은 계속 `StateSnapshotSchema` v1이다. 이는 P5B 전환 위험을 낮추는 compatibility seam이지 장기 projector architecture는 아니다. 장기 목표는 canonical privacy projection에서 version별 serializer가 분기하는 구조이며 실제 두 번째 game 요구와 함께 재검토한다.
 
 ## 11. Result 방향
 
@@ -923,3 +941,17 @@ P4는 architecture나 production behavior를 바꾸지 않고 `hangul-game-v1`�
 - unresolved regression은 발견되지 않았다. process-memory restart loss와 `test-dictionary-v1`, 브라우저/device 한계는 그대로다.
 
 상세 범위와 evidence는 [MULTI_GAME_P4_REGRESSION_GATE.md](./MULTI_GAME_P4_REGRESSION_GATE.md)에 기록한다. root final gate, checkpoint commit, 일반 push와 post-push public smoke가 모두 통과하면 P4를 COMPLETE로 판정하고 P5A만 READY로 연다.
+
+## 27. P5A versioned PlatformSnapshot contract
+
+P5A는 기존 wire를 교체하지 않고 별도 shared contract와 pure server mapper를 추가했다.
+
+- `packages/shared/src/platform/platform-snapshot-v2.ts`가 `snapshotVersion: 2`, Room/presence version, server time, canonical `HANGUL_TILE` Room shell과 phase-coherent game union을 소유한다.
+- `packages/shared/src/games/hangul-tile/v2-projection-contracts.ts`가 Hangul `gameRevision`, public Board/bag/turn 또는 result, player progress와 viewer private rack을 소유한다. Result와 Turn을 platform type으로 승격하지 않는다.
+- LOBBY에는 fake game state가 없고 `game: null`이다. PLAYING과 FINISHED는 각각 active/terminal Hangul public schema로 구분한다.
+- Room player IDs, self membership, Host cardinality, Room/game player 집합, turn order, private rack count/Tile conservation과 finished ranking metadata를 strict runtime schema가 검증한다.
+- platform mapper는 canonical `gameType`과 기존 `StateSnapshot` v1을 모두 runtime-validate한 뒤 구조만 재배치하고 V2 output을 다시 검증한다. domain state, registry, rule engine과 persistence를 읽지 않는다.
+- mapper와 V2 schema는 production transport/composition/Web에 연결하지 않았다. shared realtime event, Socket.IO emission과 browser validator/renderer는 v1 그대로다.
+- `NUMBER_TILE`, `GEM_CARD`, `UNKNOWN` projection은 존재하지 않으며 parse에서 fail-closed한다.
+
+이 단계의 transitional debt는 V2가 v1 privacy projection에 의존한다는 점이다. P5B는 version negotiation/decoding/routing을 별도 stop gate로 다루며, 장기적으로는 canonical privacy projection 뒤에서 v1/v2 serializer가 나뉘는 방향을 검토한다. 상세 계약과 validation matrix는 [MULTI_GAME_P5A_PLATFORM_SNAPSHOT_V2.md](./MULTI_GAME_P5A_PLATFORM_SNAPSHOT_V2.md)에 기록한다.

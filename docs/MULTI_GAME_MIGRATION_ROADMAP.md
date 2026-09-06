@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0~P3D COMPLETE, P4 regression evidence 완료 / COMPLETE 판정은 checkpoint/push와 post-push public smoke 조건부
+> 상태: P0~P5A COMPLETE / P5B READY
 > 작성일: 2026-09-06
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -25,7 +25,7 @@
 
 production 기준선 573 tests는 shared 55, web 87, server 431로 구성됐다. 이후 추가된 test를 포함한 수는 이유 없이 감소하면 해당 Phase는 완료가 아니다.
 
-P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A checkpoint `a215eaa`는 이 tests를 삭제·skip하지 않고 신규 boundary 6개를 더해 shared 59, web 91, server 453으로 총 603 tests를 통과했다. P3B checkpoint `bc4a62a`는 기존 603개와 신규 command-routing 9개를 포함해 총 612 tests를 통과했다. P3C checkpoint `d21eaad`는 신규 server-action regression 16개를 더해 shared 59, web 91, server 478로 총 628 tests를 통과했다. P3D checkpoint `cedda1a`는 import-boundary regression 3개를 더해 shared 59, web 91, server 481로 총 631 tests를 통과했다. P4는 새 case 수를 늘리지 않고 production A/B smoke의 behavioral assertions를 강화하며 이 631-test 기준선을 두 번 검증한다.
+P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A checkpoint `a215eaa`는 이 tests를 삭제·skip하지 않고 신규 boundary 6개를 더해 shared 59, web 91, server 453으로 총 603 tests를 통과했다. P3B checkpoint `bc4a62a`는 기존 603개와 신규 command-routing 9개를 포함해 총 612 tests를 통과했다. P3C checkpoint `d21eaad`는 신규 server-action regression 16개를 더해 shared 59, web 91, server 478로 총 628 tests를 통과했다. P3D checkpoint `cedda1a`는 import-boundary regression 3개를 더해 shared 59, web 91, server 481로 총 631 tests를 통과했다. P4 checkpoint `60eb77e`는 새 case 수를 늘리지 않고 production A/B smoke의 behavioral assertions를 강화하며 이 631-test 기준선을 두 번 검증했다. P5A는 shared contract 6개와 server mapper/wire-isolation 8개를 더해 shared 65, web 91, server 489로 총 645 tests를 기준선으로 만든다.
 
 ## 2. Phase 개요
 
@@ -490,19 +490,21 @@ P5도 public protocol, web state migration, Home UX를 한 변경에 묶지 않�
 
 ### 8.1 P5A — Versioned platform snapshot contract
 
+> 완료: 2026-09-06. 기존 `StateSnapshot` v1과 production realtime/Web path를 그대로 둔 채 strict `PlatformSnapshotV2`와 pure transitional v1→v2 mapper를 추가했다. `snapshotVersion: 2`는 `protocolVersion = 1`과 분리되고 실제 projection은 `HANGUL_TILE` 하나만 지원한다. 총 645 tests와 root quality/serving/wire-isolation gate를 통과한 checkpoint를 전제로 **P5A COMPLETE / P5B READY**다.
+
 #### 목표
 
 authoritative Room gameType과 game-specific projection을 표현하는 versioned shared/server contract를 추가한다.
 
 #### Scope
 
-- v2 또는 명시적인 v1/v2 dual-version 전략
-- P5B 이전에는 v2 path를 additive/latent 또는 명시적 negotiation으로만 제공하고 current web의 default emitted snapshot은 v1 유지
-- `PlatformSnapshot + gameType-discriminated GameProjection`
-- common player identity/presence와 Hangul progress/result 분리
-- Room gameType과 projection discriminator 일치 검증
-- current v1 projection adapter와 old-client incompatibility 처리 정책
-- outer platform error와 Hangul failure composition
+- `snapshotVersion: 2`를 가진 strict `PlatformSnapshotV2Schema`; 기존 realtime `protocolVersion = 1`과 의미 분리
+- P5B 이전에는 V2 path를 additive/latent로만 제공하고 current web의 emitted snapshot은 v1 유지
+- Room identity/phase/player identity·presence와 canonical `gameType`을 가진 platform shell
+- `gameRevision`, Hangul Board/bag/turn/result, player progress/private rack을 가진 `HANGUL_TILE` projection
+- LOBBY/null, PLAYING/active, FINISHED/terminal phase coherence와 Room/projection discriminator 일치 검증
+- validated/privacy-safe current v1 projection을 재배치하는 pure transitional mapper
+- source-level wire isolation으로 mapper의 production consumer가 없고 Web이 v1만 쓰는 상태 고정
 
 #### 금지사항
 
@@ -513,19 +515,20 @@ authoritative Room gameType과 game-specific projection을 표현하는 versione
 
 #### Definition of Done
 
-- v2/dual-version schema와 runtime validation이 명시적이다.
-- v1 client/old tab 처리와 rollback 전략이 문서·test로 고정된다.
-- P5A 단독 배포 시 현재 web이 받는 default protocol/wire가 v1이며 global protocol switch가 일어나지 않는다.
-- private Hangul projection invariant가 새 envelope에서도 유지된다.
-- same Room의 gameType mutation과 discriminator mismatch가 fail-closed한다.
+- V2 schema와 runtime validation이 명시적이며 V1/V2는 서로의 schema로 parse되지 않는다.
+- v1 client/old tab은 변경 없는 production path를 사용하고 P5A rollback은 latent V2 파일만 제거하면 된다.
+- P5A 단독 배포 시 current Web이 받는 default protocol/wire가 v1이며 global protocol switch가 일어나지 않는다.
+- A/B 및 FINISHED private Hangul projection invariant와 v1→v2 semantic parity가 유지된다.
+- invalid phase/type/player/private state와 Room/projection discriminator mismatch가 fail-closed한다.
+- negotiation, Web decoder/routing과 incompatible UX는 P5B 전에는 존재하지 않는다.
 
 #### Required tests
 
-- current web에 대한 v1 default-wire compatibility와 negotiated/latent v2 opt-in; incompatible response는 실제 version mismatch client에만 사용
-- platform/game projection positive and mismatch/unknown negative cases
-- player identity와 private rack separation
-- no secret/credential in snapshot
-- 기존 전체 tests, typecheck/build/diff-check
+- current Web에 대한 v1 default-wire compatibility와 latent V2 mapper production 미연결
+- V2 LOBBY/PLAYING/FINISHED, strict version/phase/type/player/private-state negative cases
+- platform player identity와 Hangul player progress/private rack separation
+- A/B privacy와 v1→v2 semantic parity, no secret/credential in output
+- production-serving과 기존 전체 tests, typecheck/build/diff-check
 
 #### Codex 실행 명령
 
@@ -576,7 +579,7 @@ web이 authoritative snapshot의 gameType으로 정확한 decoder/renderer를 �
 #### Codex 실행 명령
 
 ```text
-Multi-game Platform P5B만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 P5A contract를 기준으로 HANGUL_TILE 하나만 등록한 web registry, authoritative phase+gameType route, unsupported/incompatible fail-closed 화면, realtime decoder, session-storage migration을 구현하라. P5A의 negotiation으로 새 client만 v2를 명시적으로 opt-in하고 old v1 client의 default response를 유지하며 무계획 global switch를 금지하라. /room/{ROOM_CODE}, current Hangul DOM/TurnDraft, 동일-ID retry·revision ordering을 보존하고 URL·cache를 권위로 쓰지 말며 Home catalog와 새 game UI 없이 전체 typecheck/test/build/diff-check를 통과시켜라.
+Multi-game Platform P5B만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 P5A contract를 기준으로 HANGUL_TILE 하나만 등록한 web registry, authoritative phase+gameType route, unsupported/incompatible fail-closed 화면, realtime decoder, session-storage migration을 구현하라. P5B에서 새 client의 명시적 v2 opt-in/negotiation을 구현하고 old v1 client의 default response를 유지하며 무계획 global switch를 금지하라. /room/{ROOM_CODE}, current Hangul DOM/TurnDraft, 동일-ID retry·revision ordering을 보존하고 URL·cache를 권위로 쓰지 말며 Home catalog와 새 game UI 없이 전체 typecheck/test/build/diff-check를 통과시켜라.
 ```
 
 ### 8.3 P5C — Game catalog and create selection
