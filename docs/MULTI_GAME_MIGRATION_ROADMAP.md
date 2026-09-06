@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0~P5A COMPLETE / P5B READY
+> 상태: P0~P5B COMPLETE / P5C READY
 > 작성일: 2026-09-06
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -25,7 +25,7 @@
 
 production 기준선 573 tests는 shared 55, web 87, server 431로 구성됐다. 이후 추가된 test를 포함한 수는 이유 없이 감소하면 해당 Phase는 완료가 아니다.
 
-P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A checkpoint `a215eaa`는 이 tests를 삭제·skip하지 않고 신규 boundary 6개를 더해 shared 59, web 91, server 453으로 총 603 tests를 통과했다. P3B checkpoint `bc4a62a`는 기존 603개와 신규 command-routing 9개를 포함해 총 612 tests를 통과했다. P3C checkpoint `d21eaad`는 신규 server-action regression 16개를 더해 shared 59, web 91, server 478로 총 628 tests를 통과했다. P3D checkpoint `cedda1a`는 import-boundary regression 3개를 더해 shared 59, web 91, server 481로 총 631 tests를 통과했다. P4 checkpoint `60eb77e`는 새 case 수를 늘리지 않고 production A/B smoke의 behavioral assertions를 강화하며 이 631-test 기준선을 두 번 검증했다. P5A는 shared contract 6개와 server mapper/wire-isolation 8개를 더해 shared 65, web 91, server 489로 총 645 tests를 기준선으로 만든다.
+P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A checkpoint `a215eaa`는 이 tests를 삭제·skip하지 않고 신규 boundary 6개를 더해 shared 59, web 91, server 453으로 총 603 tests를 통과했다. P3B checkpoint `bc4a62a`는 기존 603개와 신규 command-routing 9개를 포함해 총 612 tests를 통과했다. P3C checkpoint `d21eaad`는 신규 server-action regression 16개를 더해 shared 59, web 91, server 478로 총 628 tests를 통과했다. P3D checkpoint `cedda1a`는 import-boundary regression 3개를 더해 shared 59, web 91, server 481로 총 631 tests를 통과했다. P4 checkpoint `60eb77e`는 새 case 수를 늘리지 않고 production A/B smoke의 behavioral assertions를 강화하며 이 631-test 기준선을 두 번 검증했다. P5A checkpoint `05cac94`는 shared contract 6개와 server mapper/wire-isolation 8개를 더해 shared 65, web 91, server 489로 총 645 tests를 기준선으로 만들었다. P5B는 negotiation/wire contract 4개, Web decode·routing·storage regression 14개, server negotiation·selector·mixed-version regression 14개를 더해 shared 69, web 105, server 503으로 총 677 tests를 통과했다.
 
 ## 2. Phase 개요
 
@@ -42,7 +42,7 @@ P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3
 | P3D | Hangul physical module move | seam이 검증된 파일만 이동하고 import 방향을 정리한다. |
 | P4 | Hangul production regression gate | 기능 추가 없이 기존 production vertical slice의 완전 회귀를 통과시킨다. |
 | P5A | Versioned platform snapshot contract | authoritative gameType을 가진 v2/dual-version snapshot envelope를 정의한다. |
-| P5B | Web game decoding and routing | snapshot-driven web registry, route, session storage migration을 연결한다. |
+| P5B | Snapshot v2 negotiation and Web routing | connection별 V1/V2 협상, decoding, canonical gameType routing을 연결한다. |
 | P5C | Game catalog and create selection | Home catalog와 HANGUL_TILE create 선택을 공개한다. |
 | P6 | Number Tile rules gate | 구현 전에 NUMBER_TILE 규칙·state·privacy·command를 확정한다. |
 | P7A | Number Tile domain implementation | 확정된 규칙으로 독립 state와 RuleEngine을 구현한다. |
@@ -536,7 +536,9 @@ authoritative Room gameType과 game-specific projection을 표현하는 versione
 Multi-game Platform P5A만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 P4 회귀 기준을 지키고, authoritative Room gameType을 담는 versioned PlatformSnapshot + game-specific projection envelope와 runtime validator를 shared/server에 추가하라. v1 strict contract에는 field를 몰래 추가하지 말고 v2는 additive/latent 또는 명시적 negotiation으로 제공해 P5A 단독 배포 시 current web에 나가는 default wire를 v1로 유지하라. HANGUL_TILE projection만 실제 조합하고 호환/rollback을 test로 고정하며 catalog, web route 전환, future dummy projection, global protocol switch, event rename 없이 전체 typecheck/test/build/diff-check를 통과시켜라.
 ```
 
-### 8.2 P5B — Web game decoding and routing
+### 8.2 P5B — Snapshot v2 negotiation and Web routing
+
+> 완료: 2026-09-06. Socket handshake의 optional capability로 snapshot 표현을 connection별 협상하고, capability가 없는 legacy client에는 exact V1을 유지한다. Current Web은 `[2, 1]`을 광고하고 V2 canonical `gameType`을 먼저 확인한 뒤 현재 Hangul UI로 적응한다. Shared 69, Web 105, server 503으로 총 677 tests와 root typecheck/build/serving gate를 통과했으며 **P5B COMPLETE / P5C READY**다.
 
 #### 목표
 
@@ -544,12 +546,13 @@ web이 authoritative snapshot의 gameType으로 정확한 decoder/renderer를 �
 
 #### Scope
 
-- HANGUL_TILE 하나를 등록한 web game registry
+- V1 legacy rule과 exact `HANGUL_TILE` V2 route를 가진 작은 decoder/renderer decision boundary
 - phase + gameType 기반 App route와 unsupported/incompatible screen
 - `use-lobby-app`의 platform controller와 Hangul game controller 경계
 - realtime outer snapshot decode 후 exact game decoder 위임
-- 새 client의 명시적인 v2 opt-in/negotiation과 old v1 client의 기존 response 유지
-- browser storage dual-read/migration과 snapshot 대조
+- handshake `[2, 1]` opt-in, server highest-common selection과 old no-capability client의 V1 유지
+- socket별 V1/V2 delivery와 같은 Room의 mixed-version fan-out
+- browser credential/storage shape 무변경 및 capability 비영속화
 - join/resume/refresh 및 pending command reset/retry 보존
 
 #### 금지사항
@@ -564,7 +567,7 @@ web이 authoritative snapshot의 gameType으로 정확한 decoder/renderer를 �
 - join/resume/refresh는 오직 server snapshot type으로 renderer를 선택한다.
 - unsupported type/version은 command를 차단하는 명시적 화면으로 간다.
 - current HANGUL_TILE DOM, draft, retry, revision ordering이 유지된다.
-- 기존 storage session은 승인된 migration 정책으로 처리된다.
+- 기존 storage session은 shape 변경 없이 그대로 사용되고 negotiation은 reconnect마다 다시 수행된다.
 - 새 web이 v2를 명시적으로 선택한 뒤에만 v2 snapshot을 받고, old v1 client의 기존 path는 유지된다.
 
 #### Required tests
@@ -572,8 +575,9 @@ web이 authoritative snapshot의 gameType으로 정확한 decoder/renderer를 �
 - Hangul dispatch, mismatch/unknown type fail-closed
 - non-Hangul-shaped PLAYING이 Lobby로 fallback하지 않음
 - invitation/local selection 무시와 snapshot authority
-- storage dual-read, resume, pending command cleanup/retry
+- storage 비영속화, resume, pending command cleanup/retry
 - v2 opt-in/negotiation과 old v1 default response 병행
+- same Room mixed V1/V2 semantic/revision/privacy parity와 state sync
 - 기존 web/server/shared 전체 tests, typecheck/build/diff-check
 
 #### Codex 실행 명령

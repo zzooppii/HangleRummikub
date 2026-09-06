@@ -11,34 +11,38 @@ import {
   validateTurnDrawCommand,
   validateTurnPassCommand,
   validateTurnSubmitCommand,
-  type ClientToServerEvents,
   type ErrorDto,
   type FinishedStateSnapshot,
   type GameFinishedEvent,
-  type GameStartAck,
+  type GameStartWireAck,
   type PlayerId,
+  type PlayingOrFinishedSnapshotWirePayload,
+  type PlayingSnapshotWirePayload,
   type PlayingStateSnapshot,
   type RequestId,
-  type RoomCreateAck,
+  type RoomCreateWireAck,
   type RoomClosedEvent,
   type RoomId,
-  type RoomJoinAck,
+  type RoomJoinWireAck,
   type RoomLeaveAck,
   type RoomScopedAck,
   type RoomScopedAckFailure,
   type ServerTime,
-  type ServerToClientEvents,
+  type SnapshotWireClientToServerEvents,
+  type SnapshotWireServerToClientEvents,
+  type SnapshotWireVersion,
   type SessionBootstrapAck,
   type SessionReplacedNotification,
-  type SessionResumeAck,
+  type SessionResumeWireAck,
   type StateSnapshot,
-  type StateSnapshotDeliveryData,
-  type StateSnapshotEvent,
-  type StateSyncAck,
+  type StateSnapshotWireDeliveryData,
+  type StateSnapshotWireEvent,
+  type StateSnapshotWirePayload,
+  type StateSyncWireAck,
   type TurnStartedEvent,
-  type TurnDrawAck,
-  type TurnPassAck,
-  type TurnSubmitAck,
+  type TurnDrawWireAck,
+  type TurnPassWireAck,
+  type TurnSubmitWireAck,
   type UncorrelatedFailureAck,
   type UnscopedAckFailure,
 } from "@hangul-rummikub/shared";
@@ -52,22 +56,30 @@ import {
   type SocketId,
 } from "../infrastructure/connection-registry.js";
 import { KeyedSerialExecutor } from "../infrastructure/keyed-serial-executor.js";
+import type { RoomRecord } from "../model/persistence.js";
+import {
+  negotiateSnapshotVersion,
+  SNAPSHOT_NEGOTIATION_ERROR_MESSAGES,
+} from "./snapshot-version-negotiation.js";
+import { selectSnapshotWirePayload } from "./snapshot-wire-selector.js";
 
 type EmptyEvents = Record<never, never>;
-type EmptySocketData = Record<never, never>;
+export type RealtimeSocketData = {
+  selectedSnapshotVersion: SnapshotWireVersion;
+};
 
 export type RealtimeServer = SocketIOServer<
-  ClientToServerEvents,
-  ServerToClientEvents,
+  SnapshotWireClientToServerEvents,
+  SnapshotWireServerToClientEvents,
   EmptyEvents,
-  EmptySocketData
+  RealtimeSocketData
 >;
 
 type RealtimeSocket = Socket<
-  ClientToServerEvents,
-  ServerToClientEvents,
+  SnapshotWireClientToServerEvents,
+  SnapshotWireServerToClientEvents,
   EmptyEvents,
-  EmptySocketData
+  RealtimeSocketData
 >;
 
 type CorrelatableFailureAck =
@@ -149,57 +161,61 @@ function failureAck(
 
 function snapshotSuccessAck(
   requestId: RequestId,
-  snapshot: StateSnapshot,
-): RoomScopedAck<StateSnapshotDeliveryData> {
+  legacySnapshot: StateSnapshot,
+  wireSnapshot: StateSnapshotWirePayload,
+): RoomScopedAck<StateSnapshotWireDeliveryData> {
   return {
     scope: "ROOM",
     requestId,
     ok: true,
-    serverTime: snapshot.serverTime,
-    versions: snapshot.versions,
-    data: { snapshot },
+    serverTime: legacySnapshot.serverTime,
+    versions: legacySnapshot.versions,
+    data: { snapshot: wireSnapshot },
   };
 }
 
 function gameStartSuccessAck(
   requestId: RequestId,
-  snapshot: PlayingStateSnapshot,
-): GameStartAck {
+  legacySnapshot: PlayingStateSnapshot,
+  wireSnapshot: PlayingSnapshotWirePayload,
+): GameStartWireAck {
   return {
     scope: "ROOM",
     requestId,
     ok: true,
-    serverTime: snapshot.serverTime,
-    versions: snapshot.versions,
-    data: { snapshot },
+    serverTime: legacySnapshot.serverTime,
+    versions: legacySnapshot.versions,
+    data: { snapshot: wireSnapshot },
   };
 }
 
 function turnSubmitSuccessAck(
   requestId: RequestId,
-  snapshot: PlayingStateSnapshot | FinishedStateSnapshot,
-): TurnSubmitAck {
+  legacySnapshot: PlayingStateSnapshot | FinishedStateSnapshot,
+  wireSnapshot: PlayingOrFinishedSnapshotWirePayload,
+): TurnSubmitWireAck {
   return {
     scope: "ROOM",
     requestId,
     ok: true,
-    serverTime: snapshot.serverTime,
-    versions: snapshot.versions,
-    data: { snapshot },
+    serverTime: legacySnapshot.serverTime,
+    versions: legacySnapshot.versions,
+    data: { snapshot: wireSnapshot },
   };
 }
 
 function turnActionSuccessAck(
   requestId: RequestId,
-  snapshot: PlayingStateSnapshot | FinishedStateSnapshot,
-): TurnDrawAck | TurnPassAck {
+  legacySnapshot: PlayingStateSnapshot | FinishedStateSnapshot,
+  wireSnapshot: PlayingOrFinishedSnapshotWirePayload,
+): TurnDrawWireAck | TurnPassWireAck {
   return {
     scope: "ROOM",
     requestId,
     ok: true,
-    serverTime: snapshot.serverTime,
-    versions: snapshot.versions,
-    data: { snapshot },
+    serverTime: legacySnapshot.serverTime,
+    versions: legacySnapshot.versions,
+    data: { snapshot: wireSnapshot },
   };
 }
 
@@ -233,11 +249,12 @@ async function turnSubmitFailureAck(
 
   let snapshot: StateSnapshot | null;
   try {
-    snapshot = await loadSnapshot(
+    const loaded = await loadLegacySnapshot(
       runtime,
       binding.roomId,
       binding.playerId,
     );
+    snapshot = loaded?.snapshot ?? null;
   } catch {
     return failureAck({ requestId }, error, fallbackServerTime);
   }
@@ -306,13 +323,16 @@ function isCurrentBinding(
   );
 }
 
-function snapshotEvent(snapshot: StateSnapshot): StateSnapshotEvent {
+function snapshotEvent(
+  legacySnapshot: StateSnapshot,
+  wireSnapshot: StateSnapshotWirePayload,
+): StateSnapshotWireEvent {
   return {
     kind: "state:snapshot",
     protocolVersion: PROTOCOL_VERSION,
-    versions: snapshot.versions,
-    serverTime: snapshot.serverTime,
-    payload: { snapshot },
+    versions: legacySnapshot.versions,
+    serverTime: legacySnapshot.serverTime,
+    payload: { snapshot: wireSnapshot },
   };
 }
 
@@ -374,17 +394,40 @@ function reportRoomPolicyOrchestrationFailure(): void {
   );
 }
 
-async function loadSnapshot(
+type LoadedLegacySnapshot = Readonly<{
+  room: RoomRecord;
+  snapshot: StateSnapshot;
+}>;
+
+async function loadLegacySnapshot(
   runtime: ApplicationRuntime,
   roomId: RoomId,
   playerId: PlayerId,
-): Promise<StateSnapshot | null> {
+): Promise<LoadedLegacySnapshot | null> {
   const room = await runtime.persistence.findById(roomId);
   if (room === null) {
     return null;
   }
 
-  return runtime.snapshotProjector.project({ room, selfPlayerId: playerId });
+  return {
+    room,
+    snapshot: await runtime.snapshotProjector.project({
+      room,
+      selfPlayerId: playerId,
+    }),
+  };
+}
+
+function selectSnapshotForSocket(
+  socket: RealtimeSocket,
+  room: RoomRecord,
+  legacySnapshot: StateSnapshot,
+): StateSnapshotWirePayload {
+  return selectSnapshotWirePayload({
+    selectedVersion: socket.data.selectedSnapshotVersion,
+    canonicalGameType: room.gameType,
+    legacySnapshot,
+  });
 }
 
 async function fanOutRoomSnapshots(
@@ -402,14 +445,26 @@ async function fanOutRoomSnapshots(
       continue;
     }
 
-    const snapshot = await runtime.snapshotProjector.project({
+    const legacySnapshot = await runtime.snapshotProjector.project({
       room,
       selfPlayerId: binding.playerId,
     });
     if (!isCurrentBinding(runtime, binding)) {
       continue;
     }
-    io.to(binding.socketId).emit("state:snapshot", snapshotEvent(snapshot));
+    const connectedSocket = io.sockets.sockets.get(binding.socketId);
+    if (connectedSocket === undefined) {
+      continue;
+    }
+    const wireSnapshot = selectSnapshotForSocket(
+      connectedSocket,
+      room,
+      legacySnapshot,
+    );
+    connectedSocket.emit(
+      "state:snapshot",
+      snapshotEvent(legacySnapshot, wireSnapshot),
+    );
   }
 }
 
@@ -682,12 +737,12 @@ function registerCreateRoomHandler(
           result.data.roomId,
           result.data.playerId,
         );
-        const snapshot = await loadSnapshot(
+        const loaded = await loadLegacySnapshot(
           runtime,
           result.data.roomId,
           result.data.playerId,
         );
-        if (snapshot === null) {
+        if (loaded === null) {
           reportPostCommitDeliveryFailure();
           return;
         }
@@ -695,9 +750,15 @@ function registerCreateRoomHandler(
           return;
         }
 
-        const ack: RoomCreateAck = snapshotSuccessAck(
+        const wireSnapshot = selectSnapshotForSocket(
+          socket,
+          loaded.room,
+          loaded.snapshot,
+        );
+        const ack: RoomCreateWireAck = snapshotSuccessAck(
           command.value.requestId,
-          snapshot,
+          loaded.snapshot,
+          wireSnapshot,
         );
         acknowledgeIfPresent(acknowledge, ack);
         void fanOutRoomSnapshots(io, runtime, result.data.roomId).catch(
@@ -778,12 +839,12 @@ function registerJoinRoomHandler(
         } catch {
           reportRoomPolicyOrchestrationFailure();
         }
-        const snapshot = await loadSnapshot(
+        const loaded = await loadLegacySnapshot(
           runtime,
           result.data.roomId,
           result.data.playerId,
         );
-        if (snapshot === null) {
+        if (loaded === null) {
           reportPostCommitDeliveryFailure();
           return;
         }
@@ -791,9 +852,15 @@ function registerJoinRoomHandler(
           return;
         }
 
-        const ack: RoomJoinAck = snapshotSuccessAck(
+        const wireSnapshot = selectSnapshotForSocket(
+          socket,
+          loaded.room,
+          loaded.snapshot,
+        );
+        const ack: RoomJoinWireAck = snapshotSuccessAck(
           command.value.requestId,
-          snapshot,
+          loaded.snapshot,
+          wireSnapshot,
         );
         acknowledgeIfPresent(acknowledge, ack);
         void fanOutRoomSnapshots(io, runtime, result.data.roomId).catch(
@@ -976,12 +1043,12 @@ function registerResumeHandler(
             reportRoomPolicyOrchestrationFailure();
           }
         }
-        const snapshot = await loadSnapshot(
+        const loaded = await loadLegacySnapshot(
           runtime,
           result.data.roomId,
           result.data.playerId,
         );
-        if (snapshot === null) {
+        if (loaded === null) {
           const rejectedBinding = binding;
           if (isCurrentBinding(runtime, rejectedBinding)) {
             runtime.connectionRegistry.removePlayer(
@@ -1005,9 +1072,15 @@ function registerResumeHandler(
           return;
         }
 
-        const ack: SessionResumeAck = snapshotSuccessAck(
+        const wireSnapshot = selectSnapshotForSocket(
+          socket,
+          loaded.room,
+          loaded.snapshot,
+        );
+        const ack: SessionResumeWireAck = snapshotSuccessAck(
           command.value.requestId,
-          snapshot,
+          loaded.snapshot,
+          wireSnapshot,
         );
         acknowledgeIfPresent(acknowledge, ack);
         void fanOutRoomSnapshots(io, runtime, result.data.roomId).catch(
@@ -1066,12 +1139,12 @@ function registerStateSyncHandler(
         return;
       }
 
-      const snapshot = await loadSnapshot(
+      const loaded = await loadLegacySnapshot(
         runtime,
         binding.roomId,
         binding.playerId,
       );
-      if (snapshot === null) {
+      if (loaded === null) {
         acknowledgeIfPresent(
           acknowledge,
           failureAck(commandInput, ROOM_NOT_FOUND_ERROR, receivedAt),
@@ -1086,12 +1159,21 @@ function registerStateSyncHandler(
         return;
       }
 
-      const ack: StateSyncAck = snapshotSuccessAck(
+      const wireSnapshot = selectSnapshotForSocket(
+        socket,
+        loaded.room,
+        loaded.snapshot,
+      );
+      const ack: StateSyncWireAck = snapshotSuccessAck(
         command.value.requestId,
-        snapshot,
+        loaded.snapshot,
+        wireSnapshot,
       );
       acknowledgeIfPresent(acknowledge, ack);
-      socket.emit("state:snapshot", snapshotEvent(snapshot));
+      socket.emit(
+        "state:snapshot",
+        snapshotEvent(loaded.snapshot, wireSnapshot),
+      );
     })().catch(() => {
       acknowledgeIfPresent(
         acknowledge,
@@ -1150,12 +1232,12 @@ function registerGameStartHandler(
       }
       committed = true;
 
-      const snapshot = await loadSnapshot(
+      const loaded = await loadLegacySnapshot(
         runtime,
         binding.roomId,
         binding.playerId,
       );
-      if (snapshot === null || !isPlayingSnapshot(snapshot)) {
+      if (loaded === null || !isPlayingSnapshot(loaded.snapshot)) {
         reportPostCommitDeliveryFailure();
         return;
       }
@@ -1166,11 +1248,17 @@ function registerGameStartHandler(
       await fanOutRoomSnapshots(io, runtime, binding.roomId);
       io.to(internalRoomChannel(binding.roomId)).emit(
         "turn:started",
-        turnStartedEvent(snapshot),
+        turnStartedEvent(loaded.snapshot),
       );
+      const wireSnapshot = selectSnapshotWirePayload({
+        selectedVersion: socket.data.selectedSnapshotVersion,
+        canonicalGameType: loaded.room.gameType,
+        legacySnapshot: loaded.snapshot,
+      });
       const ack = gameStartSuccessAck(
         command.value.requestId,
-        snapshot,
+        loaded.snapshot,
+        wireSnapshot,
       );
       acknowledgeIfPresent(acknowledge, ack);
     })().catch(() => {
@@ -1246,12 +1334,12 @@ function registerTurnSubmitHandler(
       }
       committed = true;
 
-      const snapshot = await loadSnapshot(
+      const loaded = await loadLegacySnapshot(
         runtime,
         binding.roomId,
         binding.playerId,
       );
-      if (snapshot === null) {
+      if (loaded === null) {
         reportPostCommitDeliveryFailure();
         return;
       }
@@ -1259,25 +1347,37 @@ function registerTurnSubmitHandler(
         return;
       }
 
-      if (!isPlayingSnapshot(snapshot) && !isFinishedSnapshot(snapshot)) {
+      if (
+        !isPlayingSnapshot(loaded.snapshot) &&
+        !isFinishedSnapshot(loaded.snapshot)
+      ) {
         reportPostCommitDeliveryFailure();
         return;
       }
 
       await fanOutRoomSnapshots(io, runtime, binding.roomId);
-      if (isPlayingSnapshot(snapshot)) {
+      if (isPlayingSnapshot(loaded.snapshot)) {
         io.to(internalRoomChannel(binding.roomId)).emit(
           "turn:started",
-          turnStartedEvent(snapshot),
+          turnStartedEvent(loaded.snapshot),
         );
-      } else if (isFinishedSnapshot(snapshot)) {
+      } else if (isFinishedSnapshot(loaded.snapshot)) {
         io.to(internalRoomChannel(binding.roomId)).emit(
           "game:finished",
-          gameFinishedEvent(snapshot),
+          gameFinishedEvent(loaded.snapshot),
         );
       }
 
-      const ack = turnSubmitSuccessAck(command.value.requestId, snapshot);
+      const wireSnapshot = selectSnapshotWirePayload({
+        selectedVersion: socket.data.selectedSnapshotVersion,
+        canonicalGameType: loaded.room.gameType,
+        legacySnapshot: loaded.snapshot,
+      });
+      const ack = turnSubmitSuccessAck(
+        command.value.requestId,
+        loaded.snapshot,
+        wireSnapshot,
+      );
       acknowledgeIfPresent(acknowledge, ack);
     })().catch(() => {
       if (committed) {
@@ -1351,12 +1451,12 @@ function registerTurnDrawHandler(
       }
       committed = true;
 
-      const snapshot = await loadSnapshot(
+      const loaded = await loadLegacySnapshot(
         runtime,
         binding.roomId,
         binding.playerId,
       );
-      if (snapshot === null || !isPlayingSnapshot(snapshot)) {
+      if (loaded === null || !isPlayingSnapshot(loaded.snapshot)) {
         reportPostCommitDeliveryFailure();
         return;
       }
@@ -1366,9 +1466,18 @@ function registerTurnDrawHandler(
 
       await fanOutRoomSnapshots(io, runtime, binding.roomId);
       await emitCurrentGameAdvisory(io, runtime, binding.roomId);
+      const wireSnapshot = selectSnapshotWirePayload({
+        selectedVersion: socket.data.selectedSnapshotVersion,
+        canonicalGameType: loaded.room.gameType,
+        legacySnapshot: loaded.snapshot,
+      });
       acknowledgeIfPresent(
         acknowledge,
-        turnActionSuccessAck(command.value.requestId, snapshot),
+        turnActionSuccessAck(
+          command.value.requestId,
+          loaded.snapshot,
+          wireSnapshot,
+        ),
       );
     })().catch(() => {
       if (committed) {
@@ -1441,14 +1550,15 @@ function registerTurnPassHandler(
       }
       committed = true;
 
-      const snapshot = await loadSnapshot(
+      const loaded = await loadLegacySnapshot(
         runtime,
         binding.roomId,
         binding.playerId,
       );
       if (
-        snapshot === null ||
-        (!isPlayingSnapshot(snapshot) && !isFinishedSnapshot(snapshot))
+        loaded === null ||
+        (!isPlayingSnapshot(loaded.snapshot) &&
+          !isFinishedSnapshot(loaded.snapshot))
       ) {
         reportPostCommitDeliveryFailure();
         return;
@@ -1459,9 +1569,18 @@ function registerTurnPassHandler(
 
       await fanOutRoomSnapshots(io, runtime, binding.roomId);
       await emitCurrentGameAdvisory(io, runtime, binding.roomId);
+      const wireSnapshot = selectSnapshotWirePayload({
+        selectedVersion: socket.data.selectedSnapshotVersion,
+        canonicalGameType: loaded.room.gameType,
+        legacySnapshot: loaded.snapshot,
+      });
       acknowledgeIfPresent(
         acknowledge,
-        turnActionSuccessAck(command.value.requestId, snapshot),
+        turnActionSuccessAck(
+          command.value.requestId,
+          loaded.snapshot,
+          wireSnapshot,
+        ),
       );
     })().catch(() => {
       if (committed) {
@@ -1694,6 +1813,20 @@ export function registerSocketIoHandlers(
   runtime: ApplicationRuntime,
 ): () => void {
   const authenticationExecutor = new KeyedSerialExecutor<SocketId>();
+  io.use((socket, next) => {
+    const negotiation = negotiateSnapshotVersion(socket.handshake.auth);
+    if (!negotiation.ok) {
+      next(
+        new Error(
+          SNAPSHOT_NEGOTIATION_ERROR_MESSAGES[negotiation.reason],
+        ),
+      );
+      return;
+    }
+
+    socket.data.selectedSnapshotVersion = negotiation.selectedVersion;
+    next();
+  });
   const unsubscribeTimeoutApplied = runtime.subscribeTurnTimeoutApplied(
     async (data) => {
       try {

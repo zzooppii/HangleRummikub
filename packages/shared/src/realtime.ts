@@ -17,6 +17,11 @@ import {
   TurnNumberSchema,
 } from "./projections.js";
 import {
+  FinishedPlatformSnapshotV2Schema,
+  PlatformSnapshotV2Schema,
+  PlayingPlatformSnapshotV2Schema,
+} from "./platform/platform-snapshot-v2.js";
+import {
   BootstrapSessionAckSchema,
   ErrorDtoSchema,
   ProtocolVersionSchema,
@@ -59,6 +64,40 @@ export const StateSnapshotDeliveryDataSchema = v.strictObject({
 });
 export type StateSnapshotDeliveryData = v.InferOutput<
   typeof StateSnapshotDeliveryDataSchema
+>;
+
+/** Additive P5B wire union. `StateSnapshot` remains the exact legacy V1 type. */
+export const StateSnapshotWirePayloadSchema = v.union([
+  StateSnapshotSchema,
+  PlatformSnapshotV2Schema,
+]);
+export type StateSnapshotWirePayload = v.InferOutput<
+  typeof StateSnapshotWirePayloadSchema
+>;
+
+export const PlayingSnapshotWirePayloadSchema = v.union([
+  PlayingStateSnapshotSchema,
+  PlayingPlatformSnapshotV2Schema,
+]);
+export type PlayingSnapshotWirePayload = v.InferOutput<
+  typeof PlayingSnapshotWirePayloadSchema
+>;
+
+export const PlayingOrFinishedSnapshotWirePayloadSchema = v.union([
+  PlayingStateSnapshotSchema,
+  FinishedStateSnapshotSchema,
+  PlayingPlatformSnapshotV2Schema,
+  FinishedPlatformSnapshotV2Schema,
+]);
+export type PlayingOrFinishedSnapshotWirePayload = v.InferOutput<
+  typeof PlayingOrFinishedSnapshotWirePayloadSchema
+>;
+
+export const StateSnapshotWireDeliveryDataSchema = v.strictObject({
+  snapshot: StateSnapshotWirePayloadSchema,
+});
+export type StateSnapshotWireDeliveryData = v.InferOutput<
+  typeof StateSnapshotWireDeliveryDataSchema
 >;
 
 function createSnapshotCommandAckSchema() {
@@ -163,6 +202,70 @@ export const TurnPassAckSchema = v.union([
 ]);
 export type TurnPassAck = v.InferOutput<typeof TurnPassAckSchema>;
 
+function createSnapshotWireCommandAckSchema() {
+  return v.union([
+    UncorrelatedFailureAckSchema,
+    UnscopedAckFailureSchema,
+    createRoomScopedAckSchema(StateSnapshotWireDeliveryDataSchema),
+  ]);
+}
+
+/** Negotiated success-ack contracts. Legacy V1 ack schemas above stay exact. */
+export const RoomCreateWireAckSchema = createSnapshotWireCommandAckSchema();
+export type RoomCreateWireAck = v.InferOutput<
+  typeof RoomCreateWireAckSchema
+>;
+
+export const RoomJoinWireAckSchema = createSnapshotWireCommandAckSchema();
+export type RoomJoinWireAck = v.InferOutput<typeof RoomJoinWireAckSchema>;
+
+export const SessionResumeWireAckSchema = createSnapshotWireCommandAckSchema();
+export type SessionResumeWireAck = v.InferOutput<
+  typeof SessionResumeWireAckSchema
+>;
+
+export const StateSyncWireAckSchema = createSnapshotWireCommandAckSchema();
+export type StateSyncWireAck = v.InferOutput<typeof StateSyncWireAckSchema>;
+
+const PlayingSnapshotWireDeliveryDataSchema = v.strictObject({
+  snapshot: PlayingSnapshotWirePayloadSchema,
+});
+const PlayingOrFinishedSnapshotWireDeliveryDataSchema = v.strictObject({
+  snapshot: PlayingOrFinishedSnapshotWirePayloadSchema,
+});
+
+export const GameStartWireAckSchema = v.union([
+  UncorrelatedFailureAckSchema,
+  UnscopedAckFailureSchema,
+  createRoomScopedAckSchema(PlayingSnapshotWireDeliveryDataSchema),
+]);
+export type GameStartWireAck = v.InferOutput<
+  typeof GameStartWireAckSchema
+>;
+
+export const TurnSubmitWireAckSchema = v.union([
+  UncorrelatedFailureAckSchema,
+  UnscopedAckFailureSchema,
+  createRoomScopedAckSchema(PlayingOrFinishedSnapshotWireDeliveryDataSchema),
+]);
+export type TurnSubmitWireAck = v.InferOutput<
+  typeof TurnSubmitWireAckSchema
+>;
+
+export const TurnDrawWireAckSchema = v.union([
+  UncorrelatedFailureAckSchema,
+  UnscopedAckFailureSchema,
+  createRoomScopedAckSchema(PlayingSnapshotWireDeliveryDataSchema),
+]);
+export type TurnDrawWireAck = v.InferOutput<typeof TurnDrawWireAckSchema>;
+
+export const TurnPassWireAckSchema = v.union([
+  UncorrelatedFailureAckSchema,
+  UnscopedAckFailureSchema,
+  createRoomScopedAckSchema(PlayingOrFinishedSnapshotWireDeliveryDataSchema),
+]);
+export type TurnPassWireAck = v.InferOutput<typeof TurnPassWireAckSchema>;
+
 export const StateSnapshotEventSchema = v.strictObject({
   kind: v.literal("state:snapshot"),
   protocolVersion: ProtocolVersionSchema,
@@ -172,6 +275,17 @@ export const StateSnapshotEventSchema = v.strictObject({
 });
 export type StateSnapshotEvent = v.InferOutput<
   typeof StateSnapshotEventSchema
+>;
+
+export const StateSnapshotWireEventSchema = v.strictObject({
+  kind: v.literal("state:snapshot"),
+  protocolVersion: ProtocolVersionSchema,
+  versions: StateVersionsSchema,
+  serverTime: ServerTimeSchema,
+  payload: StateSnapshotWireDeliveryDataSchema,
+});
+export type StateSnapshotWireEvent = v.InferOutput<
+  typeof StateSnapshotWireEventSchema
 >;
 
 export const TurnStartedEventPayloadSchema = v.strictObject({
@@ -314,3 +428,57 @@ export interface ServerToClientEvents {
   "room:closed": (event: RoomClosedEvent) => void;
   "session:replaced": (event: SessionReplacedNotification) => void;
 }
+
+/**
+ * Runtime event maps used by the P5B server and Web. The legacy maps above
+ * remain available to compile old V1-only clients without changing their API.
+ */
+export interface SnapshotWireClientToServerEvents {
+  "session:bootstrap": (
+    command: SessionBootstrapCommand,
+    acknowledge: SocketAcknowledgement<SessionBootstrapAck>,
+  ) => void;
+  "room:create": (
+    command: RoomCreateCommand,
+    acknowledge: SocketAcknowledgement<RoomCreateWireAck>,
+  ) => void;
+  "room:join": (
+    command: RoomJoinCommand,
+    acknowledge: SocketAcknowledgement<RoomJoinWireAck>,
+  ) => void;
+  "room:leave": (
+    command: RoomLeaveCommand,
+    acknowledge: SocketAcknowledgement<RoomLeaveAck>,
+  ) => void;
+  "session:resume": (
+    command: SessionResumeCommand,
+    acknowledge: SocketAcknowledgement<SessionResumeWireAck>,
+  ) => void;
+  "state:sync": (
+    command: StateSyncCommand,
+    acknowledge: SocketAcknowledgement<StateSyncWireAck>,
+  ) => void;
+  "game:start": (
+    command: GameStartCommand,
+    acknowledge: SocketAcknowledgement<GameStartWireAck>,
+  ) => void;
+  "turn:submit": (
+    command: TurnSubmitCommand,
+    acknowledge: SocketAcknowledgement<TurnSubmitWireAck>,
+  ) => void;
+  "turn:draw": (
+    command: TurnDrawCommand,
+    acknowledge: SocketAcknowledgement<TurnDrawWireAck>,
+  ) => void;
+  "turn:pass": (
+    command: TurnPassCommand,
+    acknowledge: SocketAcknowledgement<TurnPassWireAck>,
+  ) => void;
+}
+
+export type SnapshotWireServerToClientEvents = Omit<
+  ServerToClientEvents,
+  "state:snapshot"
+> & {
+  "state:snapshot": (event: StateSnapshotWireEvent) => void;
+};

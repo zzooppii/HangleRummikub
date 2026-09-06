@@ -6,11 +6,12 @@ import { FinishedScreen } from "./features/game/FinishedScreen.js";
 import { useTurnDraft } from "./features/game/use-turn-draft.js";
 import { HomeScreen } from "./features/lobby/HomeScreen.js";
 import { LobbyScreen } from "./features/lobby/LobbyScreen.js";
+import { IncompatibleSnapshotScreen } from "./features/platform/IncompatibleSnapshotScreen.js";
 import {
   getGameStartControl,
   type GameStartControl,
 } from "./lib/game-start.js";
-import { resolveLegacyHangulRoomView } from "./lib/legacy-hangul-room-view.js";
+import { resolveRoomSnapshotView } from "./lib/room-snapshot-view.js";
 import { createInvitationUrl } from "./lib/room-url.js";
 import type { RealtimeConnectionState } from "./lib/realtime-client.js";
 
@@ -103,8 +104,17 @@ export function App() {
   const connection = connectionPresentation(app.connectionState);
   const connectionLabel = app.operationLabel ?? connection.label;
 
+  if (app.snapshotIncompatibility !== null) {
+    return (
+      <div data-protocol-version={PROTOCOL_VERSION}>
+        <IncompatibleSnapshotScreen onGoHome={app.goHome} />
+      </div>
+    );
+  }
+
   if (
     app.snapshot !== null &&
+    app.compatibleSnapshot !== null &&
     app.route.kind === "ROOM" &&
     app.route.roomCode === app.snapshot.room.roomCode
   ) {
@@ -112,7 +122,15 @@ export function App() {
       window.location.origin,
       app.snapshot.room.roomCode,
     );
-    const roomView = resolveLegacyHangulRoomView(app.snapshot);
+    const roomView = resolveRoomSnapshotView(app.compatibleSnapshot);
+
+    if (roomView.kind === "INCOMPATIBLE") {
+      return (
+        <div data-protocol-version={PROTOCOL_VERSION}>
+          <IncompatibleSnapshotScreen onGoHome={app.goHome} />
+        </div>
+      );
+    }
 
     if (roomView.kind === "PLAYING") {
       return (

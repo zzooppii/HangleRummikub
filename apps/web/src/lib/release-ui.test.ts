@@ -18,6 +18,25 @@ const finishedSource = readFileSync(
   new URL("../../src/features/game/FinishedScreen.tsx", import.meta.url),
   "utf8",
 );
+const appSource = readFileSync(
+  new URL("../../src/App.tsx", import.meta.url),
+  "utf8",
+);
+const appControllerSource = readFileSync(
+  new URL("../../src/app/use-lobby-app.ts", import.meta.url),
+  "utf8",
+);
+const realtimeClientSource = readFileSync(
+  new URL("../../src/lib/realtime-client.ts", import.meta.url),
+  "utf8",
+);
+const incompatibleSnapshotSource = readFileSync(
+  new URL(
+    "../../src/features/platform/IncompatibleSnapshotScreen.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
 
 function ruleFor(selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
@@ -83,4 +102,36 @@ test("Finished 화면도 reconnect와 room lifecycle 상태를 live region으로
     /className="live-region" aria-live="polite"/u,
   );
   assert.match(finishedSource, /\{props\.connectionLabel\}/u);
+});
+
+test("unsupported/future/malformed V2는 Lobby나 Hangul renderer 대신 명시적 incompatible 화면으로 차단한다", () => {
+  assert.match(
+    appControllerSource,
+    /decoded\.kind === "INCOMPATIBLE"[\s\S]*markSnapshotIncompatible\(decoded\.reason\)/u,
+  );
+  assert.match(
+    appSource,
+    /app\.snapshotIncompatibility !== null[\s\S]*<IncompatibleSnapshotScreen/u,
+  );
+  assert.match(
+    appSource,
+    /roomView\.kind === "INCOMPATIBLE"[\s\S]*<IncompatibleSnapshotScreen/u,
+  );
+  assert.match(incompatibleSnapshotSource, /role="alert"/u);
+  assert.match(
+    incompatibleSnapshotSource,
+    /이 게임 또는 데이터 버전을 현재 클라이언트에서 지원하지/u,
+  );
+  assert.doesNotMatch(
+    incompatibleSnapshotSource,
+    /window\.location|window\.history|useEffect/u,
+  );
+  assert.match(
+    appControllerSource,
+    /negotiationWasRejected[\s\S]*!negotiationWasRejected[\s\S]*clientRef\.current\.connect\(\)/u,
+  );
+  assert.match(
+    realtimeClientSource,
+    /reason: "NEGOTIATION_REJECTED"[\s\S]*#socket\.disconnect\(\)[\s\S]*#setConnectionState\("DISCONNECTED"\)/u,
+  );
 });

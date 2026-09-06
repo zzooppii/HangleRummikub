@@ -1,10 +1,10 @@
 import {
-  validateGameStartAck,
+  validateGameStartWireAck,
   validateGameStartCommand,
   validateGameFinishedEvent,
-  validateRoomCreateAck,
+  validateRoomCreateWireAck,
   validateRoomCreateCommand,
-  validateRoomJoinAck,
+  validateRoomJoinWireAck,
   validateRoomJoinCommand,
   validateRoomClosedEvent,
   validateRoomLeaveAck,
@@ -12,45 +12,47 @@ import {
   validateSessionBootstrapAck,
   validateSessionBootstrapCommand,
   validateSessionReplacedNotification,
-  validateSessionResumeAck,
+  validateSessionResumeWireAck,
   validateSessionResumeCommand,
-  validateStateSnapshotEvent,
-  validateStateSyncAck,
+  validateStateSnapshotWireEvent,
+  validateStateSyncWireAck,
   validateStateSyncCommand,
-  validateTurnDrawAck,
+  validateTurnDrawWireAck,
   validateTurnDrawCommand,
-  validateTurnPassAck,
+  validateTurnPassWireAck,
   validateTurnPassCommand,
-  validateTurnSubmitAck,
+  validateTurnSubmitWireAck,
   validateTurnSubmitCommand,
   validateTurnStartedEvent,
-  type ClientToServerEvents,
-  type GameStartAck,
+  type GameStartWireAck,
   type GameStartCommand,
   type GameFinishedEvent,
-  type RoomCreateAck,
+  type RoomCreateWireAck,
   type RoomCreateCommand,
-  type RoomJoinAck,
+  type RoomJoinWireAck,
   type RoomJoinCommand,
   type RoomClosedEvent,
   type RoomLeaveAck,
   type RoomLeaveCommand,
-  type ServerToClientEvents,
+  type SnapshotWireClientToServerEvents,
+  type SnapshotWireServerToClientEvents,
+  type SnapshotWireVersion,
   type SessionBootstrapAck,
   type SessionBootstrapCommand,
   type SessionReplacedNotification,
-  type SessionResumeAck,
+  type SessionResumeWireAck,
   type SessionResumeCommand,
-  type StateSnapshotEvent,
-  type StateSyncAck,
+  type StateSnapshotWireEvent,
+  type StateSnapshotWirePayload,
+  type StateSyncWireAck,
   type StateSyncCommand,
   type StateVersions,
   type TurnStartedEvent,
-  type TurnDrawAck,
+  type TurnDrawWireAck,
   type TurnDrawCommand,
-  type TurnPassAck,
+  type TurnPassWireAck,
   type TurnPassCommand,
-  type TurnSubmitAck,
+  type TurnSubmitWireAck,
   type TurnSubmitCommand,
 } from "@hangul-rummikub/shared";
 import {
@@ -61,11 +63,15 @@ import {
 } from "socket.io-client";
 
 import { hasMatchingAcknowledgementRequestId } from "./ack-correlation.js";
+import { WEB_SUPPORTED_SNAPSHOT_VERSIONS } from "./snapshot-wire-decoder.js";
 
 const DEFAULT_ACKNOWLEDGEMENT_TIMEOUT_MS = 8_000;
 const DEFAULT_SOCKET_PATH = "/socket.io";
 
-type RealtimeSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
+type RealtimeSocket = Socket<
+  SnapshotWireServerToClientEvents,
+  SnapshotWireClientToServerEvents
+>;
 
 export type RealtimeConnectionState =
   | "CONNECTING"
@@ -78,7 +84,7 @@ export type TransportConnectedEvent = Readonly<{
   kind: "INITIAL" | "RECONNECTED";
 }>;
 
-export type RealtimeCommandName = keyof ClientToServerEvents;
+export type RealtimeCommandName = keyof SnapshotWireClientToServerEvents;
 
 export type RealtimeProtocolIssue = Readonly<
   | {
@@ -93,6 +99,13 @@ export type RealtimeProtocolIssue = Readonly<
         | "game:finished"
         | "room:closed"
         | "session:replaced";
+    }
+  | {
+      kind: "INCOMPATIBLE_SNAPSHOT";
+      reason:
+        | "UNSUPPORTED_OR_INVALID_V2"
+        | "NEGOTIATION_REJECTED"
+        | "VERSION_CHANGED";
     }
 >;
 
@@ -122,7 +135,7 @@ export type RealtimeClientOptions = Readonly<{
 type Unsubscribe = () => void;
 type ConnectionStateListener = (state: RealtimeConnectionState) => void;
 type ConnectedListener = (event: TransportConnectedEvent) => void;
-type SnapshotListener = (event: StateSnapshotEvent) => void;
+type SnapshotListener = (event: StateSnapshotWireEvent) => void;
 type TurnStartedListener = (event: TurnStartedEvent) => void;
 type GameFinishedListener = (event: GameFinishedEvent) => void;
 type RoomClosedListener = (event: RoomClosedEvent) => void;
@@ -175,26 +188,76 @@ function sameVersions(left: StateVersions, right: StateVersions): boolean {
   );
 }
 
-function hasConsistentSnapshotEvent(event: StateSnapshotEvent): boolean {
+function snapshotVersions(snapshot: StateSnapshotWirePayload): StateVersions {
+  if ("snapshotVersion" in snapshot) {
+    return {
+      roomRevision: snapshot.versions.roomRevision,
+      gameRevision: snapshot.game?.gameRevision ?? null,
+      presenceVersion: snapshot.versions.presenceVersion,
+    };
+  }
+
+  return snapshot.versions;
+}
+
+function snapshotWireVersion(
+  snapshot: StateSnapshotWirePayload,
+): SnapshotWireVersion {
+  return "snapshotVersion" in snapshot ? 2 : 1;
+}
+
+function isRecord(input: unknown): input is Record<string, unknown> {
+  return typeof input === "object" && input !== null && !Array.isArray(input);
+}
+
+function containsVersionedSnapshotCandidate(input: unknown): boolean {
+  if (!isRecord(input)) {
+    return false;
+  }
+
+  const payloadOrData = isRecord(input.payload)
+    ? input.payload
+    : isRecord(input.data)
+      ? input.data
+      : null;
+  if (payloadOrData === null || !isRecord(payloadOrData.snapshot)) {
+    return false;
+  }
+
+  return (
+    Object.prototype.hasOwnProperty.call(
+      payloadOrData.snapshot,
+      "snapshotVersion",
+    ) ||
+    (isRecord(payloadOrData.snapshot.room) &&
+      Object.prototype.hasOwnProperty.call(
+        payloadOrData.snapshot.room,
+        "gameType",
+      ))
+  );
+}
+
+function hasConsistentSnapshotEvent(event: StateSnapshotWireEvent): boolean {
   const snapshot = event.payload.snapshot;
 
   return (
-    event.protocolVersion === snapshot.protocolVersion &&
+    (!("protocolVersion" in snapshot) ||
+      event.protocolVersion === snapshot.protocolVersion) &&
     event.serverTime === snapshot.serverTime &&
-    sameVersions(event.versions, snapshot.versions)
+    sameVersions(event.versions, snapshotVersions(snapshot))
   );
 }
 
 function hasConsistentSnapshotAcknowledgement(
   acknowledgement:
-    | RoomCreateAck
-    | RoomJoinAck
-    | SessionResumeAck
-    | StateSyncAck
-    | GameStartAck
-    | TurnDrawAck
-    | TurnPassAck
-    | TurnSubmitAck,
+    | RoomCreateWireAck
+    | RoomJoinWireAck
+    | SessionResumeWireAck
+    | StateSyncWireAck
+    | GameStartWireAck
+    | TurnDrawWireAck
+    | TurnPassWireAck
+    | TurnSubmitWireAck,
 ): boolean {
   if (!acknowledgement.ok) {
     return true;
@@ -205,7 +268,7 @@ function hasConsistentSnapshotAcknowledgement(
   return (
     acknowledgement.scope === "ROOM" &&
     acknowledgement.serverTime === snapshot.serverTime &&
-    sameVersions(acknowledgement.versions, snapshot.versions)
+    sameVersions(acknowledgement.versions, snapshotVersions(snapshot))
   );
 }
 
@@ -233,6 +296,7 @@ export class RealtimeClient {
   #hasConnected = false;
   #replacementBlocked = false;
   #closed = false;
+  #observedSnapshotVersion: SnapshotWireVersion | null = null;
 
   constructor(options: RealtimeClientOptions = {}) {
     this.#acknowledgementTimeoutMs = validatePositiveTimeout(
@@ -243,6 +307,9 @@ export class RealtimeClient {
     const socketOptions: Partial<ManagerOptions & SocketOptions> = {
       autoConnect: false,
       path: options.path ?? DEFAULT_SOCKET_PATH,
+      auth: {
+        supportedSnapshotVersions: [...WEB_SUPPORTED_SNAPSHOT_VERSIONS],
+      },
     };
 
     this.#socket = openSocket(options.url, socketOptions);
@@ -431,7 +498,7 @@ export class RealtimeClient {
     );
   }
 
-  createRoom(command: RoomCreateCommand): Promise<RoomCreateAck> {
+  createRoom(command: RoomCreateCommand): Promise<RoomCreateWireAck> {
     const validatedCommand = validateRoomCreateCommand(command);
     if (!validatedCommand.ok) {
       return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
@@ -447,12 +514,14 @@ export class RealtimeClient {
           acknowledge,
         );
       },
-      validateRoomCreateAck,
-      hasConsistentSnapshotAcknowledgement,
+      validateRoomCreateWireAck,
+      (acknowledgement) =>
+        hasConsistentSnapshotAcknowledgement(acknowledgement) &&
+        this.#acceptAcknowledgementSnapshotVersion(acknowledgement),
     );
   }
 
-  joinRoom(command: RoomJoinCommand): Promise<RoomJoinAck> {
+  joinRoom(command: RoomJoinCommand): Promise<RoomJoinWireAck> {
     const validatedCommand = validateRoomJoinCommand(command);
     if (!validatedCommand.ok) {
       return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
@@ -468,8 +537,10 @@ export class RealtimeClient {
           acknowledge,
         );
       },
-      validateRoomJoinAck,
-      hasConsistentSnapshotAcknowledgement,
+      validateRoomJoinWireAck,
+      (acknowledgement) =>
+        hasConsistentSnapshotAcknowledgement(acknowledgement) &&
+        this.#acceptAcknowledgementSnapshotVersion(acknowledgement),
     );
   }
 
@@ -493,7 +564,7 @@ export class RealtimeClient {
     );
   }
 
-  resumeSession(command: SessionResumeCommand): Promise<SessionResumeAck> {
+  resumeSession(command: SessionResumeCommand): Promise<SessionResumeWireAck> {
     const validatedCommand = validateSessionResumeCommand(command);
     if (!validatedCommand.ok) {
       return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
@@ -509,12 +580,14 @@ export class RealtimeClient {
           acknowledge,
         );
       },
-      validateSessionResumeAck,
-      hasConsistentSnapshotAcknowledgement,
+      validateSessionResumeWireAck,
+      (acknowledgement) =>
+        hasConsistentSnapshotAcknowledgement(acknowledgement) &&
+        this.#acceptAcknowledgementSnapshotVersion(acknowledgement),
     );
   }
 
-  syncState(command: StateSyncCommand): Promise<StateSyncAck> {
+  syncState(command: StateSyncCommand): Promise<StateSyncWireAck> {
     const validatedCommand = validateStateSyncCommand(command);
     if (!validatedCommand.ok) {
       return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
@@ -526,12 +599,14 @@ export class RealtimeClient {
       (acknowledge) => {
         this.#socket.emit("state:sync", validatedCommand.value, acknowledge);
       },
-      validateStateSyncAck,
-      hasConsistentSnapshotAcknowledgement,
+      validateStateSyncWireAck,
+      (acknowledgement) =>
+        hasConsistentSnapshotAcknowledgement(acknowledgement) &&
+        this.#acceptAcknowledgementSnapshotVersion(acknowledgement),
     );
   }
 
-  startGame(command: GameStartCommand): Promise<GameStartAck> {
+  startGame(command: GameStartCommand): Promise<GameStartWireAck> {
     const validatedCommand = validateGameStartCommand(command);
     if (!validatedCommand.ok) {
       return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
@@ -543,12 +618,14 @@ export class RealtimeClient {
       (acknowledge) => {
         this.#socket.emit("game:start", validatedCommand.value, acknowledge);
       },
-      validateGameStartAck,
-      hasConsistentSnapshotAcknowledgement,
+      validateGameStartWireAck,
+      (acknowledgement) =>
+        hasConsistentSnapshotAcknowledgement(acknowledgement) &&
+        this.#acceptAcknowledgementSnapshotVersion(acknowledgement),
     );
   }
 
-  submitTurn(command: TurnSubmitCommand): Promise<TurnSubmitAck> {
+  submitTurn(command: TurnSubmitCommand): Promise<TurnSubmitWireAck> {
     const validatedCommand = validateTurnSubmitCommand(command);
     if (!validatedCommand.ok) {
       return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
@@ -564,12 +641,14 @@ export class RealtimeClient {
           acknowledge,
         );
       },
-      validateTurnSubmitAck,
-      hasConsistentSnapshotAcknowledgement,
+      validateTurnSubmitWireAck,
+      (acknowledgement) =>
+        hasConsistentSnapshotAcknowledgement(acknowledgement) &&
+        this.#acceptAcknowledgementSnapshotVersion(acknowledgement),
     );
   }
 
-  drawTurn(command: TurnDrawCommand): Promise<TurnDrawAck> {
+  drawTurn(command: TurnDrawCommand): Promise<TurnDrawWireAck> {
     const validatedCommand = validateTurnDrawCommand(command);
     if (!validatedCommand.ok) {
       return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
@@ -581,12 +660,14 @@ export class RealtimeClient {
       (acknowledge) => {
         this.#socket.emit("turn:draw", validatedCommand.value, acknowledge);
       },
-      validateTurnDrawAck,
-      hasConsistentSnapshotAcknowledgement,
+      validateTurnDrawWireAck,
+      (acknowledgement) =>
+        hasConsistentSnapshotAcknowledgement(acknowledgement) &&
+        this.#acceptAcknowledgementSnapshotVersion(acknowledgement),
     );
   }
 
-  passTurn(command: TurnPassCommand): Promise<TurnPassAck> {
+  passTurn(command: TurnPassCommand): Promise<TurnPassWireAck> {
     const validatedCommand = validateTurnPassCommand(command);
     if (!validatedCommand.ok) {
       return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
@@ -598,8 +679,10 @@ export class RealtimeClient {
       (acknowledge) => {
         this.#socket.emit("turn:pass", validatedCommand.value, acknowledge);
       },
-      validateTurnPassAck,
-      hasConsistentSnapshotAcknowledgement,
+      validateTurnPassWireAck,
+      (acknowledgement) =>
+        hasConsistentSnapshotAcknowledgement(acknowledgement) &&
+        this.#acceptAcknowledgementSnapshotVersion(acknowledgement),
     );
   }
 
@@ -637,8 +720,22 @@ export class RealtimeClient {
         settled = true;
         globalThis.clearTimeout(timeoutId);
         const result = validator(input);
+        if (!result.ok) {
+          this.#notifyProtocolIssue(
+            containsVersionedSnapshotCandidate(input)
+              ? {
+                  kind: "INCOMPATIBLE_SNAPSHOT",
+                  reason: "UNSUPPORTED_OR_INVALID_V2",
+                }
+              : {
+                  kind: "INVALID_ACKNOWLEDGEMENT",
+                  command,
+                },
+          );
+          reject(new RealtimeClientError("INVALID_SERVER_RESPONSE"));
+          return;
+        }
         if (
-          !result.ok ||
           !hasMatchingAcknowledgementRequestId(
             expectedRequestId,
             result.value,
@@ -701,12 +798,45 @@ export class RealtimeClient {
     }
   }
 
+  #acceptSnapshotVersion(snapshot: StateSnapshotWirePayload): boolean {
+    const incomingVersion = snapshotWireVersion(snapshot);
+    if (this.#observedSnapshotVersion === null) {
+      this.#observedSnapshotVersion = incomingVersion;
+      return true;
+    }
+    if (this.#observedSnapshotVersion === incomingVersion) {
+      return true;
+    }
+
+    this.#notifyProtocolIssue({
+      kind: "INCOMPATIBLE_SNAPSHOT",
+      reason: "VERSION_CHANGED",
+    });
+    return false;
+  }
+
+  #acceptAcknowledgementSnapshotVersion(
+    acknowledgement:
+      | RoomCreateWireAck
+      | RoomJoinWireAck
+      | SessionResumeWireAck
+      | StateSyncWireAck
+      | GameStartWireAck
+      | TurnDrawWireAck
+      | TurnPassWireAck
+      | TurnSubmitWireAck,
+  ): boolean {
+    return !acknowledgement.ok ||
+      this.#acceptSnapshotVersion(acknowledgement.data.snapshot);
+  }
+
   readonly #handleConnect = (): void => {
     if (this.#closed || this.#replacementBlocked) {
       return;
     }
 
     const connectionKind = this.#hasConnected ? "RECONNECTED" : "INITIAL";
+    this.#observedSnapshotVersion = null;
     this.#hasConnected = true;
     this.#setConnectionState("CONNECTED");
 
@@ -725,8 +855,24 @@ export class RealtimeClient {
     );
   };
 
-  readonly #handleConnectError = (): void => {
+  readonly #handleConnectError = (error: Error): void => {
     if (this.#closed || this.#replacementBlocked) {
+      return;
+    }
+
+    if (
+      error.message === "INCOMPATIBLE_SNAPSHOT_VERSION" ||
+      error.message === "INVALID_SNAPSHOT_CAPABILITY"
+    ) {
+      this.#notifyProtocolIssue({
+        kind: "INCOMPATIBLE_SNAPSHOT",
+        reason: "NEGOTIATION_REJECTED",
+      });
+      // This is a deterministic representation mismatch, not a transient
+      // transport outage. Stop Socket.IO's automatic retries so the explicit
+      // incompatible view is stable instead of entering a reconnect loop.
+      this.#socket.disconnect();
+      this.#setConnectionState("DISCONNECTED");
       return;
     }
 
@@ -755,17 +901,35 @@ export class RealtimeClient {
     this.#setConnectionState("DISCONNECTED");
   };
 
-  readonly #handleSnapshot = (input: StateSnapshotEvent): void => {
+  readonly #handleSnapshot = (input: StateSnapshotWireEvent): void => {
     if (this.#closed || this.#replacementBlocked) {
       return;
     }
 
-    const validation = validateStateSnapshotEvent(input);
-    if (!validation.ok || !hasConsistentSnapshotEvent(validation.value)) {
+    const validation = validateStateSnapshotWireEvent(input);
+    if (!validation.ok) {
+      if (containsVersionedSnapshotCandidate(input)) {
+        this.#notifyProtocolIssue({
+          kind: "INCOMPATIBLE_SNAPSHOT",
+          reason: "UNSUPPORTED_OR_INVALID_V2",
+        });
+        return;
+      }
       this.#notifyProtocolIssue({
         kind: "INVALID_SERVER_EVENT",
         event: "state:snapshot",
       });
+      return;
+    }
+
+    if (!hasConsistentSnapshotEvent(validation.value)) {
+      this.#notifyProtocolIssue({
+        kind: "INVALID_SERVER_EVENT",
+        event: "state:snapshot",
+      });
+      return;
+    }
+    if (!this.#acceptSnapshotVersion(validation.value.payload.snapshot)) {
       return;
     }
 

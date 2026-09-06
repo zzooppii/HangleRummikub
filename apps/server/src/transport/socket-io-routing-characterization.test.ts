@@ -155,13 +155,13 @@ function passesReceivedAtToRouter(
   return found;
 }
 
-test("platform Socket.IO event는 기존 service path를, Legacy Hangul v1 command는 routing seam을 사용한다", () => {
+test("platform Socket.IO event는 기존 service path를, snapshot sync는 canonical Room과 V1 projection을 함께 읽는다", () => {
   const platformRouting = [
     ["session:bootstrap", "runtime.roomSessionService.bootstrapSession"],
     ["room:create", "runtime.roomSessionService.createRoom"],
     ["room:join", "runtime.roomSessionService.joinRoom"],
     ["session:resume", "runtime.sessionResumeService.resumeSession"],
-    ["state:sync", "loadSnapshot"],
+    ["state:sync", "loadLegacySnapshot"],
     ["room:leave", "runtime.roomLeaveService.leave"],
   ] as const;
 

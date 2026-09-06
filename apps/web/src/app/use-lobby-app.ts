@@ -7,11 +7,12 @@ import {
   type GameStartCommand,
   type Nickname,
   type RoomCode,
-  type RoomCreateAck,
-  type RoomJoinAck,
+  type RoomCreateWireAck,
+  type RoomJoinWireAck,
   type RoomLeaveCommand,
   type SessionResumeCommand,
   type StateSnapshot,
+  type StateSnapshotWirePayload,
   type StateSyncCommand,
   type TurnDrawBagKind,
   type TurnSubmitCommand,
@@ -28,6 +29,7 @@ import {
   RealtimeClientError,
   type RealtimeClient,
   type RealtimeConnectionState,
+  type RealtimeProtocolIssue,
 } from "../lib/realtime-client.js";
 import { createRequestId } from "../lib/request-id.js";
 import {
@@ -61,6 +63,11 @@ import {
   decideTurnStartedAdvisory,
 } from "../lib/snapshot-state.js";
 import {
+  decodeWebSnapshot,
+  type CompatibleWebSnapshot,
+  type WebSnapshotIncompatibilityReason,
+} from "../lib/snapshot-wire-decoder.js";
+import {
   createOrReuseTurnDrawCommand,
   createOrReuseTurnPassCommand,
   decideTurnActionFailureAction,
@@ -87,14 +94,22 @@ const CONNECTION_RETRY_MESSAGE =
 const INVALID_SERVER_STATE_MESSAGE =
   "서버 상태를 안전하게 확인할 수 없습니다. 잠시 후 다시 시도해주세요.";
 
-type EntryAck = RoomCreateAck | RoomJoinAck;
+type EntryAck = RoomCreateWireAck | RoomJoinWireAck;
 type SnapshotApplication = "CURRENT" | "REQUEST_SYNC" | "REJECTED";
+export type SnapshotIncompatibility =
+  | WebSnapshotIncompatibilityReason
+  | Extract<
+      RealtimeProtocolIssue,
+      { kind: "INCOMPATIBLE_SNAPSHOT" }
+    >["reason"];
 
 export type LobbyAppState = Readonly<{
   route: AppRoute;
   nickname: string;
   roomCodeInput: string;
   snapshot: StateSnapshot | null;
+  compatibleSnapshot: CompatibleWebSnapshot | null;
+  snapshotIncompatibility: SnapshotIncompatibility | null;
   connectionState: RealtimeConnectionState;
   operationLabel: string | null;
   errorMessage: string | null;
@@ -191,6 +206,10 @@ export function useLobbyApp(): LobbyAppState {
   const [nickname, setNicknameState] = useState("");
   const [roomCodeInput, setRoomCodeInputState] = useState("");
   const [snapshot, setSnapshot] = useState<StateSnapshot | null>(null);
+  const [compatibleSnapshot, setCompatibleSnapshot] =
+    useState<CompatibleWebSnapshot | null>(null);
+  const [snapshotIncompatibility, setSnapshotIncompatibility] =
+    useState<SnapshotIncompatibility | null>(null);
   const [connectionState, setConnectionState] =
     useState<RealtimeConnectionState>("CONNECTING");
   const [operationLabel, setOperationLabel] = useState<string | null>(null);
@@ -205,6 +224,8 @@ export function useLobbyApp(): LobbyAppState {
 
   const routeRef = useRef<AppRoute>(initialRoute);
   const snapshotRef = useRef<StateSnapshot | null>(null);
+  const snapshotIncompatibilityRef =
+    useRef<SnapshotIncompatibility | null>(null);
   const clientRef = useRef<RealtimeClient | null>(null);
   const entryFlightRef = useRef<Promise<void> | null>(null);
   const entryActionActiveRef = useRef(false);
@@ -264,9 +285,49 @@ export function useLobbyApp(): LobbyAppState {
     setRoute(nextRoute);
   }
 
-  function updateSnapshot(nextSnapshot: StateSnapshot | null): void {
+  function updateSnapshot(
+    nextSnapshot: StateSnapshot | null,
+    nextCompatibleSnapshot: CompatibleWebSnapshot | null = null,
+  ): void {
     snapshotRef.current = nextSnapshot;
     setSnapshot(nextSnapshot);
+    setCompatibleSnapshot(nextCompatibleSnapshot);
+  }
+
+  function clearSnapshotIncompatibility(): void {
+    snapshotIncompatibilityRef.current = null;
+    setSnapshotIncompatibility(null);
+  }
+
+  function markSnapshotIncompatible(
+    reason: SnapshotIncompatibility,
+  ): void {
+    snapshotIncompatibilityRef.current = reason;
+    setSnapshotIncompatibility(reason);
+    updateSnapshot(null);
+    clearPendingRoomOperation(window.sessionStorage);
+    clearPendingGameStartRequest();
+    clearPendingTurnSubmitRequest();
+    clearPendingTurnActionRequest();
+    clearPendingRoomLeaveRequest();
+    resetTurnDraftFromAuthority();
+    setOperationLabel(null);
+    setErrorMessage(null);
+  }
+
+  function decodeIncomingSnapshot(
+    incomingSnapshot: StateSnapshotWirePayload,
+  ): CompatibleWebSnapshot | null {
+    const decoded = decodeWebSnapshot(incomingSnapshot);
+    if (decoded.kind === "COMPATIBLE") {
+      return decoded.value;
+    }
+    if (decoded.kind === "INCOMPATIBLE") {
+      markSnapshotIncompatible(decoded.reason);
+    } else {
+      setErrorMessage(INVALID_SERVER_STATE_MESSAGE);
+    }
+    return null;
   }
 
   function clearCurrentRoomClientState(
@@ -280,6 +341,7 @@ export function useLobbyApp(): LobbyAppState {
     clearPendingTurnActionRequest();
     clearPendingRoomLeaveRequest();
     updateSnapshot(null);
+    clearSnapshotIncompatibility();
     resetTurnDraftFromAuthority();
     setOperationLabel(null);
     setCopyMessage(null);
@@ -348,9 +410,10 @@ export function useLobbyApp(): LobbyAppState {
   }
 
   function applyOrderedSnapshot(
-    incomingSnapshot: StateSnapshot,
+    compatible: CompatibleWebSnapshot,
     session: BrowserStoredPlayerSession,
   ): SnapshotApplication {
+    const incomingSnapshot = compatible.legacySnapshot;
     if (!isSnapshotForSession(incomingSnapshot, session)) {
       setErrorMessage(INVALID_SERVER_STATE_MESSAGE);
       return "REJECTED";
@@ -388,9 +451,17 @@ export function useLobbyApp(): LobbyAppState {
         ) {
           clearPendingTurnActionRequest(false);
         }
-        updateSnapshot(incomingSnapshot);
+        updateSnapshot(incomingSnapshot, compatible);
+        clearSnapshotIncompatibility();
         return "CURRENT";
       case "KEEP_EQUAL":
+        // A reconnect renegotiates the wire format per socket. Preserve the
+        // canonical V1-shaped state (and therefore TurnDraft identity), while
+        // refreshing the renderer-routing metadata even when revisions are
+        // equal across a V1 <-> V2 representation change.
+        setCompatibleSnapshot(compatible);
+        clearSnapshotIncompatibility();
+        return "CURRENT";
       case "IGNORE_STALE":
         return "CURRENT";
       case "REQUEST_SYNC":
@@ -398,10 +469,23 @@ export function useLobbyApp(): LobbyAppState {
     }
   }
 
+  function applyWireSnapshot(
+    incomingSnapshot: StateSnapshotWirePayload,
+    session: BrowserStoredPlayerSession,
+  ): SnapshotApplication {
+    const compatible = decodeIncomingSnapshot(incomingSnapshot);
+    return compatible === null
+      ? "REJECTED"
+      : applyOrderedSnapshot(compatible, session);
+  }
+
   async function requestLatestSnapshot(
     allowFollowup = true,
   ): Promise<void> {
     if (sessionReplacedRef.current) {
+      return;
+    }
+    if (snapshotIncompatibilityRef.current !== null) {
       return;
     }
     if (syncFlightRef.current !== null) {
@@ -435,7 +519,7 @@ export function useLobbyApp(): LobbyAppState {
           return;
         }
 
-        const application = applyOrderedSnapshot(
+        const application = applyWireSnapshot(
           acknowledgement.data.snapshot,
           session,
         );
@@ -469,18 +553,27 @@ export function useLobbyApp(): LobbyAppState {
     }
   }
 
-  function receiveSnapshot(incomingSnapshot: StateSnapshot): void {
+  function receiveSnapshot(incomingSnapshot: StateSnapshotWirePayload): void {
     const session = storedSessionForCurrentRoute();
-    if (session === null || !isSnapshotForSession(incomingSnapshot, session)) {
+    if (session === null) {
       return;
     }
 
-    const application = applyOrderedSnapshot(incomingSnapshot, session);
+    const compatible = decodeIncomingSnapshot(incomingSnapshot);
+    if (compatible === null) {
+      return;
+    }
+    const normalizedSnapshot = compatible.legacySnapshot;
+    if (!isSnapshotForSession(normalizedSnapshot, session)) {
+      return;
+    }
+
+    const application = applyOrderedSnapshot(compatible, session);
     if (application === "REQUEST_SYNC") {
       void requestLatestSnapshot();
     } else if (
       application === "CURRENT" &&
-      incomingSnapshot.room.phase === "PLAYING"
+      normalizedSnapshot.room.phase === "PLAYING"
     ) {
       clearPendingGameStartRequest();
     }
@@ -526,7 +619,7 @@ export function useLobbyApp(): LobbyAppState {
           return;
         }
 
-        const application = applyOrderedSnapshot(
+        const application = applyWireSnapshot(
           acknowledgement.data.snapshot,
           session,
         );
@@ -621,7 +714,7 @@ export function useLobbyApp(): LobbyAppState {
             return;
           }
 
-          const application = applyOrderedSnapshot(
+          const application = applyWireSnapshot(
             acknowledgement.data.snapshot,
             session,
           );
@@ -719,7 +812,7 @@ export function useLobbyApp(): LobbyAppState {
             return;
           }
 
-          const application = applyOrderedSnapshot(
+          const application = applyWireSnapshot(
             acknowledgement.data.snapshot,
             session,
           );
@@ -898,7 +991,7 @@ export function useLobbyApp(): LobbyAppState {
           return;
         }
 
-        const application = applyOrderedSnapshot(
+        const application = applyWireSnapshot(
           acknowledgement.data.snapshot,
           session,
         );
@@ -942,7 +1035,13 @@ export function useLobbyApp(): LobbyAppState {
       return;
     }
 
-    const nextSnapshot = acknowledgement.data.snapshot;
+    const compatible = decodeIncomingSnapshot(
+      acknowledgement.data.snapshot,
+    );
+    if (compatible === null) {
+      return;
+    }
+    const nextSnapshot = compatible.legacySnapshot;
     if (
       operation.kind === "room:join" &&
       operation.payload.roomCode !== nextSnapshot.room.roomCode
@@ -978,7 +1077,7 @@ export function useLobbyApp(): LobbyAppState {
     }
 
     navigateToRoom(nextSnapshot.room.roomCode);
-    const application = applyOrderedSnapshot(nextSnapshot, nextSession);
+    const application = applyOrderedSnapshot(compatible, nextSession);
     if (application === "REJECTED") {
       return;
     }
@@ -1149,7 +1248,10 @@ export function useLobbyApp(): LobbyAppState {
   }
 
   async function recoverAfterTransportConnection(): Promise<void> {
-    if (sessionReplacedRef.current) {
+    if (
+      sessionReplacedRef.current ||
+      snapshotIncompatibilityRef.current !== null
+    ) {
       return;
     }
 
@@ -1284,8 +1386,16 @@ export function useLobbyApp(): LobbyAppState {
       clearPendingTurnActionRequest();
       clearPendingRoomLeaveRequest();
       resetTurnDraftFromAuthority();
+      clearSnapshotIncompatibility();
     });
-    const unsubscribeProtocolIssue = client.subscribeProtocolIssue(() => {
+    const unsubscribeProtocolIssue = client.subscribeProtocolIssue((issue) => {
+      if (issue.kind === "INCOMPATIBLE_SNAPSHOT") {
+        markSnapshotIncompatible(issue.reason);
+        return;
+      }
+      if (snapshotIncompatibilityRef.current !== null) {
+        return;
+      }
       setErrorMessage(INVALID_SERVER_STATE_MESSAGE);
       void requestLatestSnapshot();
     });
@@ -1313,6 +1423,7 @@ export function useLobbyApp(): LobbyAppState {
     const handlePopState = () => {
       const nextRoute = parseAppPathname(window.location.pathname);
       updateRoute(nextRoute);
+      clearSnapshotIncompatibility();
       setErrorMessage(null);
       setCopyMessage(null);
 
@@ -1698,7 +1809,10 @@ export function useLobbyApp(): LobbyAppState {
       return;
     }
 
+    const negotiationWasRejected =
+      snapshotIncompatibilityRef.current === "NEGOTIATION_REJECTED";
     updateSnapshot(null);
+    clearSnapshotIncompatibility();
     clearPendingGameStartRequest();
     clearPendingTurnSubmitRequest();
     clearPendingTurnActionRequest();
@@ -1709,7 +1823,11 @@ export function useLobbyApp(): LobbyAppState {
       window.history.pushState(null, "", "/");
     }
     updateRoute({ kind: "HOME" });
-    if (clientRef.current !== null && !clientRef.current.connected) {
+    if (
+      !negotiationWasRejected &&
+      clientRef.current !== null &&
+      !clientRef.current.connected
+    ) {
       clientRef.current.connect();
     }
   }
@@ -1719,6 +1837,8 @@ export function useLobbyApp(): LobbyAppState {
     nickname,
     roomCodeInput,
     snapshot,
+    compatibleSnapshot,
+    snapshotIncompatibility,
     connectionState,
     operationLabel,
     errorMessage,

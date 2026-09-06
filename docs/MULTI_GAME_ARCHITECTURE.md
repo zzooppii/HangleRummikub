@@ -1,6 +1,6 @@
 # Multi-game Platform Architecture
 
-> 상태: P0~P4 checkpoint 완료 + P5A latent PlatformSnapshot V2 contract
+> 상태: P0~P5B checkpoint 완료 / P5C READY
 > 작성일: 2026-09-06
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
@@ -504,7 +504,7 @@ type PlatformSnapshotV2 = {
 };
 ```
 
-`PlatformSnapshotV2Schema`는 `LOBBY | PLAYING | FINISHED`의 strict union이다. `snapshotVersion: 2`는 representation discriminator이고 기존 realtime `protocolVersion = 1`을 재해석하거나 올리지 않는다. V2 object에는 `protocolVersion`을 중복하지 않으며, transport protocol과 snapshot representation 선택을 연결하는 negotiation은 P5B의 별도 계약이다.
+`PlatformSnapshotV2Schema`는 `LOBBY | PLAYING | FINISHED`의 strict union이다. `snapshotVersion: 2`는 representation discriminator이고 기존 realtime `protocolVersion = 1`을 재해석하거나 올리지 않는다. V2 object에는 `protocolVersion`을 중복하지 않는다. P5B는 Socket.IO handshake의 optional `supportedSnapshotVersions` metadata로 representation만 connection별 협상하며 command protocol과 분리한다.
 
 현재 game union은 실제 지원되는 `HANGUL_TILE` projection만 포함한다. 빈 `NUMBER_TILE`/`GEM_CARD` member는 없다. 중요한 불변 조건은 다음이다.
 
@@ -532,7 +532,7 @@ pure V1 → PlatformSnapshot V2 mapper
 strict PlatformSnapshotV2Schema validation
 ```
 
-이 mapper는 v1 data를 재배치할 뿐 domain state를 읽거나 game rule/privacy를 다시 판단하지 않는다. production Socket.IO, composition root와 Web에는 연결하지 않았으며, shared `realtime.ts`의 `state:snapshot`은 계속 `StateSnapshotSchema` v1이다. 이는 P5B 전환 위험을 낮추는 compatibility seam이지 장기 projector architecture는 아니다. 장기 목표는 canonical privacy projection에서 version별 serializer가 분기하는 구조이며 실제 두 번째 game 요구와 함께 재검토한다.
+이 mapper는 v1 data를 재배치할 뿐 domain state를 읽거나 game rule/privacy를 다시 판단하지 않는다. P5B의 delivery selector가 exact socket capability와 같은 조회에서 얻은 canonical `RoomRecord.gameType`을 mapper에 전달한다. shared는 기존 `StateSnapshotSchema`의 exact V1 의미를 유지하면서 별도 `StateSnapshotWirePayloadSchema`만 `V1 | V2`로 제공한다. 이는 migration risk를 낮추는 compatibility seam이지 장기 projector architecture는 아니다. 장기 목표는 canonical privacy projection에서 version별 serializer가 분기하는 구조이며 실제 두 번째 game 요구와 함께 재검토한다.
 
 ## 11. Result 방향
 
@@ -954,4 +954,40 @@ P5A는 기존 wire를 교체하지 않고 별도 shared contract와 pure server 
 - mapper와 V2 schema는 production transport/composition/Web에 연결하지 않았다. shared realtime event, Socket.IO emission과 browser validator/renderer는 v1 그대로다.
 - `NUMBER_TILE`, `GEM_CARD`, `UNKNOWN` projection은 존재하지 않으며 parse에서 fail-closed한다.
 
-이 단계의 transitional debt는 V2가 v1 privacy projection에 의존한다는 점이다. P5B는 version negotiation/decoding/routing을 별도 stop gate로 다루며, 장기적으로는 canonical privacy projection 뒤에서 v1/v2 serializer가 나뉘는 방향을 검토한다. 상세 계약과 validation matrix는 [MULTI_GAME_P5A_PLATFORM_SNAPSHOT_V2.md](./MULTI_GAME_P5A_PLATFORM_SNAPSHOT_V2.md)에 기록한다.
+이 단계의 transitional debt는 V2가 v1 privacy projection에 의존한다는 점이다. P5B는 version negotiation/decoding/routing을 별도 stop gate로 연결했고, 장기적으로는 canonical privacy projection 뒤에서 v1/v2 serializer가 나뉘는 방향을 검토한다. 상세 V2 schema는 [MULTI_GAME_P5A_PLATFORM_SNAPSHOT_V2.md](./MULTI_GAME_P5A_PLATFORM_SNAPSHOT_V2.md)에 기록한다.
+
+## 28. P5B per-socket negotiation과 Web routing
+
+P5B는 identity registry나 game command router를 확장하지 않고 snapshot representation 경계만 production runtime에 연결한다.
+
+### 28.1 Connection negotiation
+
+```text
+Socket.IO handshake.auth.supportedSnapshotVersions
+  -> runtime validation
+  -> server preference [2, 1]과 최고 공통 version 선택
+  -> socket.data.selectedSnapshotVersion
+```
+
+Field가 없는 legacy socket은 V1이다. 명시적 malformed metadata와 공통 version 부재는 handler 등록 전 connection error로 fail-closed한다. 선택값은 authorization과 무관하고 connection lifetime만 가지므로 `ConnectionRegistry`, Room/Player/session/persistence와 sessionStorage에는 추가하지 않았다. Reconnect와 primary replacement는 새 socket의 metadata로 다시 협상한다.
+
+### 28.2 Delivery dependency direction
+
+```text
+Room/session/scheduler mutation
+  -> Legacy Hangul V1 player projection (privacy owner)
+  -> per-socket snapshot selector
+     -> V1 exact pass-through
+     -> V2 P5A mapper(canonical Room.gameType)
+  -> existing state:snapshot event / success ack
+```
+
+Central fan-out이 recipient socket을 직접 찾아 format을 고르므로 한 Room에서 V1/V2가 공존한다. create, join, resume, state sync, start, submit, draw, pass의 snapshot-bearing success ack와 direct sync event도 동일 selector를 사용한다. Disconnect/presence, leave, timeout과 deadline은 기존 central fan-out을 통해 같은 규칙을 따른다. `turn:started`와 `game:finished` advisory, command payload와 outer `protocolVersion = 1`은 변경하지 않았다.
+
+### 28.3 Web decoding and renderer route
+
+Web realtime boundary는 wire union을 검증한 뒤 V1/V2를 구분한다. V1에는 `gameType`이 없으므로 decoder 한 곳에서 legacy Hangul compatibility로 명시한다. V2는 strict parse 전에 `snapshotVersion`과 canonical `room.gameType`을 분류하여 future version, unsupported game과 malformed V2를 Hangul/Lobby fallback 없이 incompatible state로 보낸다.
+
+Exact `HANGUL_TILE` V2만 pure V2→Legacy Hangul adapter를 통과한다. Adapter는 server projection을 현재 `use-lobby-app`, Hangul screens와 TurnDraft가 쓰는 V1-shaped view로 재배치할 뿐 privacy/rule/Tile/revision을 계산하지 않는다. App route는 LOBBY를 common Lobby, PLAYING/FINISHED를 current Hangul renderer로 고른다. V1의 characterized malformed PLAYING/FINISHED→Lobby behavior는 유지한다.
+
+Normalized V1-shaped state를 유지하는 것은 임시 migration debt다. Adapter가 `gameId`, `gameRevision`, `turnId`와 rack identity를 그대로 보존하므로 presence-only/equal snapshot은 dirty draft를 유지하고 canonical gameplay identity 변경만 reset한다. Reconnect에서 revision이 같아도 새 representation의 routing metadata는 갱신한다. 상세 결정과 rollback 경계는 [MULTI_GAME_P5B_SNAPSHOT_MIGRATION.md](./MULTI_GAME_P5B_SNAPSHOT_MIGRATION.md)에 기록한다.

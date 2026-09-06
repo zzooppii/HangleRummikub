@@ -8,4 +8,5 @@ export * from "./policies.js";
 export * from "./projections.js";
 export * from "./protocol.js";
 export * from "./realtime.js";
+export * from "./snapshot-negotiation.js";
 export * from "./validation.js";

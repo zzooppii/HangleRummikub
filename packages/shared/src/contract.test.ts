@@ -14,14 +14,26 @@ import {
   PROPOSED_WORD_GROUP_MAX_SYLLABLES,
   PROPOSED_WORD_GROUP_ID_MAX_LENGTH,
   PROTOCOL_VERSION,
+  SERVER_SUPPORTED_SNAPSHOT_VERSIONS,
   SUPPORTED_GAME_TYPES,
+  GameStartWireAckSchema,
   GameTypeSchema,
   GameResultSchema,
   PlatformSnapshotV2Schema,
   ProposedWordGroupSchema,
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LENGTH,
+  RoomCreateWireAckSchema,
+  RoomJoinWireAckSchema,
   SESSION_TOKEN_MAX_LENGTH,
+  SessionResumeWireAckSchema,
+  SnapshotCapabilityMetadataSchema,
+  StateSnapshotWireEventSchema,
+  StateSnapshotWirePayloadSchema,
+  StateSyncWireAckSchema,
+  TurnDrawWireAckSchema,
+  TurnPassWireAckSchema,
+  TurnSubmitWireAckSchema,
   type ClientToServerEvents,
   type GameStartAck,
   type GameType,
@@ -3908,5 +3920,180 @@ test("StateSnapshot V1과 PlatformSnapshot V2는 runtime에서 서로 확장되�
       true,
     );
     assert.equal(validateStateSnapshot(platform).ok, false);
+  }
+});
+
+test("P5B snapshot capability contract는 [2, 1]을 지원하고 explicit malformed metadata를 거절한다", () => {
+  assert.deepEqual(SERVER_SUPPORTED_SNAPSHOT_VERSIONS, [2, 1]);
+  assert.equal(
+    v.safeParse(SnapshotCapabilityMetadataSchema, {
+      supportedSnapshotVersions: [2, 1],
+    }).success,
+    true,
+  );
+  assert.equal(
+    v.safeParse(SnapshotCapabilityMetadataSchema, {
+      supportedSnapshotVersions: [3, 2, 1],
+    }).success,
+    true,
+    "future versions may be advertised while server selection remains authoritative",
+  );
+
+  const malformedCapabilities: readonly unknown[] = [
+    {},
+    { supportedSnapshotVersions: [] },
+    { supportedSnapshotVersions: [2, 2] },
+    { supportedSnapshotVersions: [2, 0] },
+    { supportedSnapshotVersions: [2, 1.5] },
+    { supportedSnapshotVersions: "2,1" },
+    { supportedSnapshotVersions: [2, 1], extra: true },
+  ];
+  for (const capability of malformedCapabilities) {
+    assert.equal(
+      v.safeParse(SnapshotCapabilityMetadataSchema, capability).success,
+      false,
+    );
+  }
+});
+
+function createSnapshotWireAck(snapshot: unknown, gameRevision: number | null) {
+  return {
+    scope: "ROOM",
+    requestId: "request_p5b_wire_ack",
+    ok: true,
+    serverTime: 1_750_000_000_000,
+    versions: {
+      roomRevision: 3,
+      gameRevision,
+      presenceVersion: 3,
+    },
+    data: { snapshot },
+  };
+}
+
+function createSnapshotWireEvent(
+  snapshot: unknown,
+  gameRevision: number | null,
+) {
+  return {
+    kind: "state:snapshot",
+    protocolVersion: PROTOCOL_VERSION,
+    versions: {
+      roomRevision: 3,
+      gameRevision,
+      presenceVersion: 3,
+    },
+    serverTime: 1_750_000_000_000,
+    payload: { snapshot },
+  };
+}
+
+test("P5B wire payload/event union은 V1과 V2를 수용하되 legacy validator는 V2를 거절한다", () => {
+  const legacy = createPlayingSnapshot();
+  const platform = createPlayingPlatformSnapshotV2();
+
+  assert.equal(v.safeParse(StateSnapshotWirePayloadSchema, legacy).success, true);
+  assert.equal(v.safeParse(StateSnapshotWirePayloadSchema, platform).success, true);
+  assert.equal(
+    v.safeParse(
+      StateSnapshotWireEventSchema,
+      createSnapshotWireEvent(legacy, legacy.versions.gameRevision),
+    ).success,
+    true,
+  );
+  assert.equal(
+    v.safeParse(
+      StateSnapshotWireEventSchema,
+      createSnapshotWireEvent(platform, platform.game.gameRevision),
+    ).success,
+    true,
+  );
+
+  assert.equal(validateStateSnapshot(platform).ok, false);
+  assert.equal(
+    validateStateSnapshotEvent(
+      createSnapshotWireEvent(platform, platform.game.gameRevision),
+    ).ok,
+    false,
+    "the exact legacy V1 event validator must not silently widen",
+  );
+  assert.equal(
+    v.safeParse(StateSnapshotWirePayloadSchema, {
+      ...platform,
+      snapshotVersion: 3,
+    }).success,
+    false,
+  );
+});
+
+test("P5B general success ack contract는 V1/V2의 LOBBY, PLAYING, FINISHED snapshot을 전달한다", () => {
+  const snapshots = [
+    [createSnapshot(), null],
+    [createPlayingSnapshot(), 0],
+    [createFinishedSnapshot(), 1],
+    [createLobbyPlatformSnapshotV2(), null],
+    [createPlayingPlatformSnapshotV2(), 0],
+    [createFinishedPlatformSnapshotV2(), 1],
+  ] as const;
+  const schemas = [
+    RoomCreateWireAckSchema,
+    RoomJoinWireAckSchema,
+    SessionResumeWireAckSchema,
+    StateSyncWireAckSchema,
+  ] as const;
+
+  for (const schema of schemas) {
+    for (const [snapshot, gameRevision] of snapshots) {
+      assert.equal(
+        v.safeParse(
+          schema,
+          createSnapshotWireAck(snapshot, gameRevision),
+        ).success,
+        true,
+      );
+    }
+  }
+
+  const platformLobby = createLobbyPlatformSnapshotV2();
+  assert.equal(
+    validateRoomCreateAck(createSnapshotWireAck(platformLobby, null)).ok,
+    false,
+    "the legacy room:create ack remains V1-only",
+  );
+});
+
+test("P5B game success ack contract는 command별 PLAYING/FINISHED phase 제한을 유지한다", () => {
+  const lobby = createLobbyPlatformSnapshotV2();
+  const playing = createPlayingPlatformSnapshotV2();
+  const finished = createFinishedPlatformSnapshotV2();
+
+  for (const schema of [GameStartWireAckSchema, TurnDrawWireAckSchema]) {
+    assert.equal(
+      v.safeParse(schema, createSnapshotWireAck(playing, 0)).success,
+      true,
+    );
+    assert.equal(
+      v.safeParse(schema, createSnapshotWireAck(lobby, null)).success,
+      false,
+    );
+    assert.equal(
+      v.safeParse(schema, createSnapshotWireAck(finished, 1)).success,
+      false,
+    );
+  }
+
+  for (const schema of [TurnSubmitWireAckSchema, TurnPassWireAckSchema]) {
+    assert.equal(
+      v.safeParse(schema, createSnapshotWireAck(playing, 0)).success,
+      true,
+    );
+    assert.equal(
+      v.safeParse(schema, createSnapshotWireAck(finished, 1)).success,
+      true,
+    );
+    assert.equal(
+      v.safeParse(schema, createSnapshotWireAck(lobby, null)).success,
+      false,
+    );
   }
 });

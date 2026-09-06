@@ -29,22 +29,33 @@ import {
   type TurnSubmitCommand,
 } from "./protocol.js";
 import {
+  GameStartWireAckSchema,
   GameFinishedEventSchema,
   GameStartAckSchema,
+  RoomCreateWireAckSchema,
   RoomCreateAckSchema,
+  RoomJoinWireAckSchema,
   RoomJoinAckSchema,
   RoomClosedEventSchema,
   RoomLeaveAckSchema,
   SessionBootstrapAckSchema,
+  SessionResumeWireAckSchema,
   SessionResumeAckSchema,
   StateSnapshotDeliveryDataSchema,
   StateSnapshotEventSchema,
+  StateSnapshotWireEventSchema,
+  StateSnapshotWirePayloadSchema,
+  StateSyncWireAckSchema,
   StateSyncAckSchema,
   TurnStartedEventSchema,
+  TurnDrawWireAckSchema,
   TurnDrawAckSchema,
+  TurnPassWireAckSchema,
   TurnPassAckSchema,
+  TurnSubmitWireAckSchema,
   TurnSubmitAckSchema,
 } from "./realtime.js";
+import { PlatformSnapshotV2Schema } from "./platform/platform-snapshot-v2.js";
 import {
   NicknameSchema,
   RequestIdSchema,
@@ -647,6 +658,102 @@ export function validateTurnPassAck(input: unknown) {
   );
 }
 
+export function validateRoomCreateWireAck(input: unknown) {
+  return validateSchema(
+    RoomCreateWireAckSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Negotiated room create acknowledgement is invalid.",
+      false,
+    ),
+  );
+}
+
+export function validateRoomJoinWireAck(input: unknown) {
+  return validateSchema(
+    RoomJoinWireAckSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Negotiated room join acknowledgement is invalid.",
+      false,
+    ),
+  );
+}
+
+export function validateSessionResumeWireAck(input: unknown) {
+  return validateSchema(
+    SessionResumeWireAckSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Negotiated session resume acknowledgement is invalid.",
+      false,
+    ),
+  );
+}
+
+export function validateStateSyncWireAck(input: unknown) {
+  return validateSchema(
+    StateSyncWireAckSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Negotiated state sync acknowledgement is invalid.",
+      false,
+    ),
+  );
+}
+
+export function validateGameStartWireAck(input: unknown) {
+  return validateSchema(
+    GameStartWireAckSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Negotiated game start acknowledgement is invalid.",
+      false,
+    ),
+  );
+}
+
+export function validateTurnSubmitWireAck(input: unknown) {
+  return validateSchema(
+    TurnSubmitWireAckSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Negotiated turn submit acknowledgement is invalid.",
+      false,
+    ),
+  );
+}
+
+export function validateTurnDrawWireAck(input: unknown) {
+  return validateSchema(
+    TurnDrawWireAckSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Negotiated turn draw acknowledgement is invalid.",
+      false,
+    ),
+  );
+}
+
+export function validateTurnPassWireAck(input: unknown) {
+  return validateSchema(
+    TurnPassWireAckSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Negotiated turn pass acknowledgement is invalid.",
+      false,
+    ),
+  );
+}
+
 export function validateErrorDto(input: unknown) {
   return validateSchema(
     ErrorDtoSchema,
@@ -662,6 +769,30 @@ export function validateStateSnapshot(
     StateSnapshotSchema,
     input,
     validationError("INVALID_PAYLOAD", "State snapshot is invalid.", false),
+  );
+}
+
+export function validatePlatformSnapshotV2(input: unknown) {
+  return validateSchema(
+    PlatformSnapshotV2Schema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Platform snapshot V2 is invalid.",
+      false,
+    ),
+  );
+}
+
+export function validateStateSnapshotWirePayload(input: unknown) {
+  return validateSchema(
+    StateSnapshotWirePayloadSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Snapshot wire payload is invalid.",
+      false,
+    ),
   );
 }
 
@@ -726,6 +857,18 @@ export function validateStateSnapshotEvent(input: unknown) {
     validationError(
       "INVALID_PAYLOAD",
       "State snapshot event is invalid.",
+      false,
+    ),
+  );
+}
+
+export function validateStateSnapshotWireEvent(input: unknown) {
+  return validateSchema(
+    StateSnapshotWireEventSchema,
+    input,
+    validationError(
+      "INVALID_PAYLOAD",
+      "Negotiated state snapshot event is invalid.",
       false,
     ),
   );

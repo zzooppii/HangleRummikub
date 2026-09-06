@@ -260,3 +260,38 @@ test("pending turn:draw/pass와 room:leave는 sessionStorage가 아닌 page memo
     assert.equal(storage.getItem(PENDING_ROOM_OPERATION_STORAGE_KEY), null);
   }
 });
+
+test("snapshot version/gameType capability는 sessionStorage credential이나 pending operation에 저장하지 않는다", () => {
+  const storage = new MemoryStorage();
+  const session = storedPlayerSession();
+  const pending = createPendingRoomJoinOperation({
+    requestId: requestId("request_storage_capability_boundary"),
+    sessionToken: sessionToken(),
+    nickname: nickname("Harvey"),
+    roomCode: roomCode(),
+  });
+
+  assert.equal(writeStoredPlayerSession(storage, session), true);
+  assert.equal(writePendingRoomOperation(storage, pending), true);
+  assert.deepEqual([...storage.values.keys()].sort(), [
+    PENDING_ROOM_OPERATION_STORAGE_KEY,
+    PLAYER_SESSION_STORAGE_KEY,
+  ]);
+  assert.doesNotMatch(
+    [...storage.values.values()].join("\n"),
+    /snapshotVersion|supportedSnapshotVersions|gameType/u,
+  );
+
+  const pollutedStorage = new MemoryStorage();
+  pollutedStorage.setItem(
+    PLAYER_SESSION_STORAGE_KEY,
+    JSON.stringify({
+      ...session,
+      snapshotVersion: 2,
+      supportedSnapshotVersions: [2, 1],
+      gameType: "HANGUL_TILE",
+    }),
+  );
+  assert.equal(readStoredPlayerSession(pollutedStorage), null);
+  assert.equal(pollutedStorage.getItem(PLAYER_SESSION_STORAGE_KEY), null);
+});

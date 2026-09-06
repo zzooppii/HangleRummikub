@@ -7,8 +7,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type {
-  ClientToServerEvents,
-  ServerToClientEvents,
+  SnapshotWireClientToServerEvents,
+  SnapshotWireServerToClientEvents,
 } from "@hangul-rummikub/shared";
 import express from "express";
 import { Server as SocketIOServer } from "socket.io";
@@ -17,10 +17,12 @@ import {
   createApplicationRuntime,
   type ApplicationRuntime,
 } from "./composition-root.js";
-import { registerSocketIoHandlers } from "./transport/socket-io.js";
+import {
+  registerSocketIoHandlers,
+  type RealtimeSocketData,
+} from "./transport/socket-io.js";
 
 type EmptyEvents = Record<never, never>;
-type EmptySocketData = Record<never, never>;
 
 export type CreateHttpServerOptions = Readonly<{
   runtime?: ApplicationRuntime;
@@ -146,10 +148,10 @@ export function createHttpServer(options: CreateHttpServerOptions = {}) {
 
   const httpServer = createNodeServer(app);
   const io = new SocketIOServer<
-    ClientToServerEvents,
-    ServerToClientEvents,
+    SnapshotWireClientToServerEvents,
+    SnapshotWireServerToClientEvents,
     EmptyEvents,
-    EmptySocketData
+    RealtimeSocketData
   >(httpServer, {
     allowRequest: (request, callback) => {
       callback(null, isAllowedSocketIoOrigin(request));
