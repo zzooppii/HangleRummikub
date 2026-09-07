@@ -1,6 +1,6 @@
 # Multi-game Platform Specification
 
-> 상태: P0~P9B COMPLETE / PUBLIC TWO-GAME VERIFIED / P10 READY
+> 상태: P0~P9B COMPLETE / PUBLIC TWO-GAME VERIFIED / P10 AWAITING_RULE_DECISIONS
 > 작성일: 2026-09-07
 > 적용 범위: 현재 production 한글 타일 게임을 보존하면서 여러 턴제 보드게임을 수용하기 위한 제품 경계  
 > 비고: 이 문서는 구현 계약이 아니라 후속 Phase의 의사결정 기준이다.
@@ -333,3 +333,18 @@ P0는 다음 조건을 만족할 때 완료다.
 - P0부터 P12까지 작은 migration Phase와 각 Phase별 실행 명령이 있다.
 - application source와 dependency는 바뀌지 않았다.
 - 기존 typecheck, 573 tests, build, `git diff --check`가 통과한다.
+
+## 18. P10 GEM_CARD rules / IP / product-design gate
+
+P10 first pass는 세 번째 game을 구현하지 않고, 독립적인 rules와 product 표현 경계를 결정하기 위한 문서 gate를 열었다.
+
+- 내부 중립 식별자 후보는 `GEM_CARD`, 공개 working name은 **보석 카드 게임**이다. 둘 다 runtime 지원이나 최종 공개 title 승인을 뜻하지 않는다.
+- Rules 후보와 stable decision `GC-001`~`GC-038`은 [GEM_CARD_GAME_RULES.md](./GEM_CARD_GAME_RULES.md)에 기록한다. 사용자 승인 전 모든 제안은 `PROPOSED ORIGINAL BASELINE / USER_DECISION_REQUIRED`다.
+- Command, capability, V2 projection, privacy와 P11 integration blocker는 [GEM_CARD_PROTOCOL_GATE.md](./GEM_CARD_PROTOCOL_GATE.md)에 기록한다. P10에서는 shared/runtime contract를 추가하지 않는다.
+- Naming, asset, rule text, visual layout와 balance/data provenance 정책은 [GEM_CARD_IP_PRODUCT_GATE.md](./GEM_CARD_IP_PRODUCT_GATE.md)에 기록한다. 이 정책은 법률 자문이나 비침해 판단이 아니다.
+
+GEM_CARD는 public market, resource supply, purchased development와 optional reserve를 가진 card/resource game 후보이며 Tile, Rack, Board, Meld, Joker, Draw/Pass 또는 TurnDraft를 전제로 하지 않는다. Room/session/Host/presence/reconnect/invitation, capability admission mechanism, V2 shell, Room lane, UoW/CAS, idempotency, retention/cleanup, Socket.IO transport, identity-only Registry와 Home catalog mechanism은 그대로 재사용할 platform core다. `nextGameRevision`, frozen Fisher–Yates와 Web async single-flight는 실제 선택된 rule/call site가 같은 경우에만 opt-in 재사용한다. Turn scheduler는 `GC-020`/`GC-021` 결정에 따른 optional mechanism이고 market/resource/card/purchase/reserve/scoring/end condition은 GEM_CARD가 소유한다.
+
+현재 runtime은 계속 exact `HANGUL_TILE | NUMBER_TILE`만 지원한다. `GameType`, GameRegistry, RoomRecord exact union, PlatformSnapshot V2, commands, capability advertisement, Web decoder/catalog/renderer에 `GEM_CARD`가 없으며 placeholder도 만들지 않는다. 특히 현재 V2 outer validator의 rack/player-state 상관 검증은 rack이 없는 GEM_CARD에 적용할 수 없으므로 P11B 전에 platform shell과 game-owned validation 책임을 분리하는 명시적 wire/privacy migration gate가 필요하다. 이를 이유로 giant `GameModule`, generic state/result/command executor 또는 opaque stored envelope를 P10에서 확정하지 않는다.
+
+Player 수, resource와 supply, market/card, collect/purchase/reserve, timer/timeout, leave/forfeit, finish/ranking/privacy, command surface, original deck/version policy와 public naming이 아직 사용자 결정 대상이다. 따라서 P10 first-pass 판정은 **AWAITING_RULE_DECISIONS**이고 P11A는 `NOT_READY`다. 사용자가 decision table을 확정한 뒤 rules consistency audit과 IP/product audit을 다시 통과해야 P10 COMPLETE / P11A READY로 전환한다.

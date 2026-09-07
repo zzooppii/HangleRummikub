@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0~P9B COMPLETE / PUBLIC TWO-GAME VERIFIED / P10 READY
+> 상태: P0~P9B COMPLETE / PUBLIC TWO-GAME VERIFIED / P10 AWAITING_RULE_DECISIONS
 > 작성일: 2026-09-07
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -1051,6 +1051,15 @@ Multi-game Platform P9B만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의
 
 Tile/Rack과 다른 `GEM_CARD`의 rules, state, command, privacy, neutral naming/asset 경계를 구현 전에 확정한다.
 
+### First-pass 상태 (2026-09-07)
+
+- `docs/GEM_CARD_GAME_RULES.md`: `PROPOSED ORIGINAL BASELINE`과 stable `GC-001`~`GC-038` decision table을 작성했다. 사용자 승인 전 `CONFIRMED` rule은 없다.
+- `docs/GEM_CARD_PROTOCOL_GATE.md`: platform command reuse, `gem:*` 후보, V2/privacy/capability/idempotency와 current two-game architecture migration blocker를 기록했다.
+- `docs/GEM_CARD_IP_PRODUCT_GATE.md`: `NOT LEGAL ADVICE`, neutral naming, original/licensed asset, independent rule text/data와 public release checklist를 기록했다.
+- Current runtime `GameType`, Registry, Room union, V2 schema, Socket events, Web capability/catalog에는 `GEM_CARD`가 없다.
+- `GC-001`~`GC-038`의 high-impact rules, original deck/version 정책과 public naming이 미확정이므로 판정은 **AWAITING_RULE_DECISIONS**다. P11A는 `NOT_READY`이며 구현을 시작하지 않는다.
+- 사용자 결정 뒤 rules consistency audit, projection/privacy audit와 IP/product gate를 다시 수행해 blocker가 없어야 `P10 COMPLETE / P11A READY`로 변경한다.
+
 ### Scope
 
 - neutral public/internal naming과 rules version
@@ -1092,7 +1101,7 @@ Multi-game Platform P10 GEM_CARD rules/IP gate만 수행하라. docs/MULTI_GAME_
 
 ## 14. P11 — Gem/Card implementation
 
-P11은 domain, server/shared integration, web 구현을 각각 독립 stop gate로 수행한다. P11A~P11C가 모두 끝나기 전에는 production catalog에서 enable하지 않는다.
+P11은 domain, server/shared integration, web 구현을 각각 독립 stop gate로 수행한다. P10 decision table과 후속 consistency/IP audit이 완료되기 전에는 P11A를 시작하지 않으며, P11A~P11C가 모두 끝나기 전에는 production catalog에서 enable하지 않는다.
 
 ### 14.1 P11A — Gem/Card domain implementation
 

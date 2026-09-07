@@ -1,6 +1,6 @@
 # Multi-game Platform Architecture
 
-> 상태: P0~P9B COMPLETE / PUBLIC TWO-GAME VERIFIED / P10 READY
+> 상태: P0~P9B COMPLETE / PUBLIC TWO-GAME VERIFIED / P10 AWAITING_RULE_DECISIONS
 > 작성일: 2026-09-07
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
@@ -1247,3 +1247,52 @@ Hangul/Number draft reconciliation
 Exact `HangulRoomRecord | NumberTileRoomRecord`, identity-only `GameRegistry`, concrete services/routers/domain/projectors/renderers, game-specific Turn/Result/RuleEngine은 그대로다. Lifecycle/codec registry, start shell, generic command executor, ranking/renderer abstraction, offline timeout policy와 stored envelope는 `GEM_CARD` 근거 전까지 보류한다. Public wire, persistence shape, scheduler, gameplay와 UI에는 새 contract가 없다.
 
 P9B는 신규 primitive test 14개를 더해 shared 75, Web 151, server 704, 총 930 tests와 root typecheck/build, production-serving 6개, `git diff --check`를 통과했다. 승인한 네 primitive 밖의 architecture를 추가하지 않았으므로 **P9B COMPLETE / P10 READY**다.
+
+## 37. P10 GEM_CARD architecture stress test
+
+P10 first pass는 runtime을 수정하지 않고 card/resource/market 중심의 세 번째 game 후보를 현재 architecture에 대입했다. Canonical rules 후보는 [GEM_CARD_GAME_RULES.md](./GEM_CARD_GAME_RULES.md), protocol/integration gate는 [GEM_CARD_PROTOCOL_GATE.md](./GEM_CARD_PROTOCOL_GATE.md), product 표현과 asset 정책은 [GEM_CARD_IP_PRODUCT_GATE.md](./GEM_CARD_IP_PRODUCT_GATE.md)에 기록한다.
+
+Conceptual dependency direction은 다음과 같다.
+
+```text
+Platform Room/session/realtime shell
+  -> future exact GEM_CARD typed route / projector / storage adapter
+     -> GEM_CARD application
+        -> GEM_CARD market/resource/card domain
+```
+
+GEM_CARD domain은 Tile, Rack, Board/Table, Meld, Joker, whole-state Submit, Draw/Pass 또는 TurnDraft를 import하거나 흉내 내지 않는다. Deck order와 hidden reserve가 있다면 game-owned private state이고, public market/supply/purchased developments와 viewer-specific reserved information도 game-owned projector가 판정한다.
+
+### 37.1 Reuse 판정
+
+| 분류 | P10 판정 |
+| --- | --- |
+| `REUSE_AS_IS` | Room, Player/Host, session, presence, reconnect, invitation, connection capability mechanism, immutable gameType authority, Room lane, UoW/CAS, idempotency, retention/cleanup, per-viewer fan-out, Socket.IO/serving, identity-only GameRegistry와 Home catalog mechanism |
+| `PROVEN_SMALL_PRIMITIVE` | `nextGameRevision`, `shuffleFrozen`, Web async single-flight; 실제 GEM call site의 동일 의미가 확정될 때만 opt-in |
+| `OPTIONAL` | active-turn scheduler/recovery와 Clock; `GC-020`/`GC-021`에서 timer를 채택한 경우에만 사용 |
+| `GAME_SPECIFIC` | deck/market, resource supply/holdings, card cost/production/points, collect, purchase, reserve, refill, score, result와 end condition |
+
+Gameplay-identity comparator는 GEM Web에 local interaction state가 있고 canonical `gameId/gameRevision/turnId`에 귀속될 때만 사용할 수 있다. P10의 single-step action 후보만으로 `GenericTurnDraft`를 만들 근거는 없다. Fisher–Yates도 server-owned deck shuffle의 algorithm과 RNG consumption contract가 동일할 때만 재사용하며 deck composition이나 refill policy를 소유하지 않는다.
+
+### 37.2 P9 보류 항목 재검토
+
+- Lifecycle/codec registry와 stored envelope: third branch 필요성은 확인됐지만 concrete GEM state가 아직 없고 heterogeneous type correlation 문제도 그대로이므로 계속 `WAIT_FOR_GEM_CARD_RUNTIME`이다.
+- Start orchestration shell과 generic command executor: readiness, timer, reserve/collect/purchase와 terminal policy가 모두 미확정이므로 추출하지 않는다.
+- Ranking abstraction과 generic Result: score, winner, final-round와 forfeit 의미가 `GC-016`~`GC-026`에 의존하므로 concrete로 유지한다.
+- Renderer registry: current explicit Hangul/Number routing에 third branch 비용은 있지만 GEM projection/UI가 없으므로 P11C 전에는 만들지 않는다.
+- Offline timeout policy: timer와 timeout/forfeit가 별도 decision이므로 platform invariant로 승격하지 않는다.
+- Exact `HangulRoomRecord | NumberTileRoomRecord`, identity-only Registry와 concrete routers/services는 P10에서 변경하지 않는다. GEM branch는 P11의 concrete types가 존재할 때만 추가한다.
+
+### 37.3 Confirmed migration blockers
+
+현재 `PlatformSnapshotV2Schema`의 outer refinement는 `game.playerStates`, 각 `rackCount`와 `privateState.rack`을 두 tile game 공통처럼 읽는다. Rack이 없는 GEM projection에는 이 invariant를 적용할 수 없다. P11B는 outer platform shell에는 Room player/self/Host 같은 shell invariant만 남기고, 각 game의 player correlation과 private-state consistency를 해당 game projection validator가 소유하게 하는 별도 characterization/privacy gate를 먼저 설계해야 한다. 실제 V2 union 변경은 P10 범위가 아니다.
+
+다른 concrete migration point도 명시적으로 남긴다.
+
+- `GameType`, capability parser, GameRegistry와 Web catalog/decoder는 현재 exact 두 값만 가진다.
+- `RoomRecord`, persistence adapter selection, start/lifecycle/scheduled router와 projector는 exact two-game union/switch다.
+- Platform Room maximum은 현재 4명이다. `GC-001`이 2~5를 선택하면 game module만으로 해결할 수 없고 별도 platform capacity migration이 필요하다.
+- Current Web `use-lobby-app`과 App routing은 two-game explicit branches다. GEM single-step interaction을 기존 tile drafts에 맞추지 않는다.
+- Result, timer, advisory와 server action은 optional/game-specific으로 유지한다. GEM-specific advisory를 P10에서 가정하지 않는다.
+
+Stable `GC-001`~`GC-038`과 IP/product release decisions가 아직 승인되지 않았으므로 P10은 **AWAITING_RULE_DECISIONS**, P11A는 `NOT_READY`다. 이 상태는 runtime capability나 catalog availability를 추가하지 않는다.
