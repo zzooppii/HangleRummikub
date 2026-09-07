@@ -1,6 +1,6 @@
 # Multi-game Platform Specification
 
-> 상태: P0~P9B COMPLETE / PUBLIC TWO-GAME VERIFIED / P10 AWAITING_RULE_DECISIONS
+> 상태: P0~P10 COMPLETE / PUBLIC TWO-GAME VERIFIED / P11A READY
 > 작성일: 2026-09-07
 > 적용 범위: 현재 production 한글 타일 게임을 보존하면서 여러 턴제 보드게임을 수용하기 위한 제품 경계  
 > 비고: 이 문서는 구현 계약이 아니라 후속 Phase의 의사결정 기준이다.
@@ -49,11 +49,11 @@ P0 및 초기 migration의 비목표는 다음과 같다.
 | --- | --- | --- |
 | `HANGUL_TILE` | 기존 한글 타일 게임 | production 기준 implementation |
 | `NUMBER_TILE` | 숫자 타일 게임 | P7A domain + P7B server/shared + P7C Web + P8 source/local/public E2E 완료 |
-| `GEM_CARD` | 보석·카드형 게임 | 후속 rules gate 대상 |
+| `GEM_CARD` | 보석·카드형 게임 | P10 rules/IP/cardset 완료, P11A READY; runtime 미구현 |
 
-`HANGUL_TILE`과 `NUMBER_TILE`은 확정된 중립 내부 식별자이고 `GEM_CARD`는 후속 rules gate의 후보다. 장기적으로 protocol, persistence, registry, telemetry에서 일관되게 사용하되 공개 UI 명칭과 licensing은 별도 결정하며, 특정 상용 게임 브랜드나 asset 이름을 결합하지 않는다.
+세 ID는 중립 내부 식별자로 확정했다. 장기적으로 protocol, persistence, registry, telemetry에서 일관되게 사용하되 공개 UI 명칭과 licensing은 별도 결정하며, 특정 상용 게임 브랜드나 asset 이름을 결합하지 않는다.
 
-Runtime contract인 `SUPPORTED_GAME_TYPES`와 `GameTypeSchema`는 `HANGUL_TILE`, `NUMBER_TILE` 두 값만 허용한다. Identity-only GameRegistry와 P7C Current Web capability/catalog도 이 두 값만 가진다. 후보 `GEM_CARD`는 runtime 지원 값, registration 또는 placeholder card가 아니다.
+Runtime contract인 `SUPPORTED_GAME_TYPES`와 `GameTypeSchema`는 `HANGUL_TILE`, `NUMBER_TILE` 두 값만 허용한다. Identity-only GameRegistry와 P7C Current Web capability/catalog도 이 두 값만 가진다. 문서상 확정된 `GEM_CARD`는 아직 runtime 지원 값, registration 또는 placeholder card가 아니다.
 
 ## 5. 공통 플랫폼 범위
 
@@ -147,7 +147,7 @@ P6는 [NUMBER_TILE_GAME_RULES.md](./NUMBER_TILE_GAME_RULES.md)에 `number-tile-r
 
 세 번째 게임은 card market, resources/tokens, purchase, reserve, score처럼 전혀 다른 state와 action을 가질 수 있다. 이 게임이 Tile, Rack, Board, Submit을 전혀 사용하지 않아도 Room, Session, Presence, Reconnect, realtime transport, persistence boundary, cleanup을 재사용할 수 있어야 한다.
 
-이 시점까지 공통으로 유지되는 표면만 검증된 platform abstraction으로 본다.
+P10은 [GEM_CARD_GAME_RULES.md](./GEM_CARD_GAME_RULES.md), [GEM_CARD_CARDSET_V1.md](./GEM_CARD_CARDSET_V1.md), [GEM_CARD_PROTOCOL_GATE.md](./GEM_CARD_PROTOCOL_GATE.md)와 [GEM_CARD_IP_PRODUCT_GATE.md](./GEM_CARD_IP_PRODUCT_GATE.md)에 rules, original data, conceptual protocol과 product boundary를 확정했다. 실제 P11 implementation에서도 공통으로 유지되는 표면만 검증된 platform abstraction으로 본다.
 
 ## 8. `gameType` 정책
 
@@ -336,15 +336,16 @@ P0는 다음 조건을 만족할 때 완료다.
 
 ## 18. P10 GEM_CARD rules / IP / product-design gate
 
-P10 first pass는 세 번째 game을 구현하지 않고, 독립적인 rules와 product 표현 경계를 결정하기 위한 문서 gate를 열었다.
+P10은 세 번째 game을 구현하지 않고 독립적인 rules, original card dataset과 product 표현 경계를 확정했다.
 
-- 내부 중립 식별자 후보는 `GEM_CARD`, 공개 working name은 **보석 카드 게임**이다. 둘 다 runtime 지원이나 최종 공개 title 승인을 뜻하지 않는다.
-- Rules 후보와 stable decision `GC-001`~`GC-038`은 [GEM_CARD_GAME_RULES.md](./GEM_CARD_GAME_RULES.md)에 기록한다. 사용자 승인 전 모든 제안은 `PROPOSED ORIGINAL BASELINE / USER_DECISION_REQUIRED`다.
-- Command, capability, V2 projection, privacy와 P11 integration blocker는 [GEM_CARD_PROTOCOL_GATE.md](./GEM_CARD_PROTOCOL_GATE.md)에 기록한다. P10에서는 shared/runtime contract를 추가하지 않는다.
+- 문서상 canonical 내부 중립 식별자는 `GEM_CARD`, 공개 working name은 **보석 카드 게임**이다. 이는 아직 runtime 지원이나 최종 공개 title 승인을 뜻하지 않는다.
+- Stable decision `GC-001`~`GC-038`은 [GEM_CARD_GAME_RULES.md](./GEM_CARD_GAME_RULES.md)에 기록한다. 사용자는 모든 A안을 승인하되 explicit PLAYING leave인 `GC-023`만 B를 선택했다.
+- Tier별 15장, production type별 tier당 3장을 갖는 original `gem-cardset-v1` 45장과 static balance audit은 [GEM_CARD_CARDSET_V1.md](./GEM_CARD_CARDSET_V1.md)에 기록한다. 이는 외부 published table을 참고하거나 복제한 dataset이 아니다.
+- Confirmed command, capability, V2 projection, privacy와 P11 integration requirement는 [GEM_CARD_PROTOCOL_GATE.md](./GEM_CARD_PROTOCOL_GATE.md)에 기록한다. P10에서는 shared/runtime contract를 추가하지 않는다.
 - Naming, asset, rule text, visual layout와 balance/data provenance 정책은 [GEM_CARD_IP_PRODUCT_GATE.md](./GEM_CARD_IP_PRODUCT_GATE.md)에 기록한다. 이 정책은 법률 자문이나 비침해 판단이 아니다.
 
-GEM_CARD는 public market, resource supply, purchased development와 optional reserve를 가진 card/resource game 후보이며 Tile, Rack, Board, Meld, Joker, Draw/Pass 또는 TurnDraft를 전제로 하지 않는다. Room/session/Host/presence/reconnect/invitation, capability admission mechanism, V2 shell, Room lane, UoW/CAS, idempotency, retention/cleanup, Socket.IO transport, identity-only Registry와 Home catalog mechanism은 그대로 재사용할 platform core다. `nextGameRevision`, frozen Fisher–Yates와 Web async single-flight는 실제 선택된 rule/call site가 같은 경우에만 opt-in 재사용한다. Turn scheduler는 `GC-020`/`GC-021` 결정에 따른 optional mechanism이고 market/resource/card/purchase/reserve/scoring/end condition은 GEM_CARD가 소유한다.
+GEM_CARD는 public market, shared resource supply, purchased development와 public reserve를 가진 card/resource game이며 Tile, Rack, Board, Meld, Joker, Draw/Pass 또는 TurnDraft를 전제로 하지 않는다. Room/session/Host/presence/reconnect/invitation, capability admission mechanism, V2 shell, Room lane, UoW/CAS, idempotency, retention/cleanup, Socket.IO transport, identity-only Registry와 Home catalog mechanism은 그대로 재사용할 platform core다. `nextGameRevision`, frozen Fisher–Yates와 Web async single-flight는 실제 P11 call site가 같은 의미일 때만 opt-in 재사용한다. Confirmed 45초 turn은 existing scheduler mechanism을 선택적으로 사용하지만 market/resource/card/purchase/reserve/scoring/end condition은 GEM_CARD가 소유한다.
 
 현재 runtime은 계속 exact `HANGUL_TILE | NUMBER_TILE`만 지원한다. `GameType`, GameRegistry, RoomRecord exact union, PlatformSnapshot V2, commands, capability advertisement, Web decoder/catalog/renderer에 `GEM_CARD`가 없으며 placeholder도 만들지 않는다. 특히 현재 V2 outer validator의 rack/player-state 상관 검증은 rack이 없는 GEM_CARD에 적용할 수 없으므로 P11B 전에 platform shell과 game-owned validation 책임을 분리하는 명시적 wire/privacy migration gate가 필요하다. 이를 이유로 giant `GameModule`, generic state/result/command executor 또는 opaque stored envelope를 P10에서 확정하지 않는다.
 
-Player 수, resource와 supply, market/card, collect/purchase/reserve, timer/timeout, leave/forfeit, finish/ranking/privacy, command surface, original deck/version policy와 public naming이 아직 사용자 결정 대상이다. 따라서 P10 first-pass 판정은 **AWAITING_RULE_DECISIONS**이고 P11A는 `NOT_READY`다. 사용자가 decision table을 확정한 뒤 rules consistency audit과 IP/product audit을 다시 통과해야 P10 COMPLETE / P11A READY로 전환한다.
+Rules consistency와 IP/product development audit에는 blocker가 없다. `rulesVersion = gem-rules-v1`, `cardSetVersion = gem-cardset-v1`을 문서상 확정했고 P10 판정은 **COMPLETE / P11A READY**다. 다만 public title, visual assets와 release provenance review는 계속 별도 release gate이며, current production runtime은 여전히 exact `HANGUL_TILE | NUMBER_TILE` 두 game만 지원한다.

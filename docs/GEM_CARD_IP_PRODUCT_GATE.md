@@ -1,6 +1,6 @@
 # GEM_CARD IP / Product-design Gate
 
-> 상태: `P10 FIRST PASS / AWAITING_RULE_DECISIONS / REVIEW_BEFORE_RELEASE`
+> 상태: `P10 RULES CONFIRMED / ORIGINAL CARDSET AUTHORED / REVIEW_BEFORE_RELEASE`
 > 범위: `GEM_CARD`의 제품 정체성, 표현물, asset, 규칙 문구, balance/data 및 공개 출시 전 검토 경계
 > 중요: **NOT LEGAL ADVICE — 이 문서는 법률 자문이나 권리 비침해 판단이 아니다.**
 
@@ -13,14 +13,14 @@
 - 특정 제3자 권리의 존재·범위·유효성 또는 침해 여부를 판단하지 않는다.
 - 저작권, 상표, trade dress, 특허, 퍼블리시티권, 계약 또는 license의 법률 결론을 내리지 않는다.
 - 특정 제3자 제품이나 asset을 조사·비교·승인하지 않는다.
-- 미확정 `GEM_CARD` 규칙, 수치, 카드 dataset 또는 public title을 확정하지 않는다.
+- Confirmed `GEM_CARD` 규칙과 card dataset만으로 public title, asset 또는 release clearance가 자동 승인된다고 보지 않는다.
 - 어떤 외부 자료도 사용 가능하다고 추정하지 않는다.
 
 ## 2. 제품 정체성과 naming 정책
 
 ### 2.1 내부 식별자
 
-`GEM_CARD`는 protocol, persistence, registry, telemetry와 source code에서 사용할 중립적인 내부 식별자 후보다. P10에서는 runtime `GameType`에 추가하지 않으며, 후속 구현 gate가 열릴 때까지 문서상의 식별자로만 사용한다.
+`GEM_CARD`는 protocol, persistence, registry, telemetry와 source code에서 사용할 중립적인 내부 식별자로 확정했다. P10에서는 runtime `GameType`에 추가하지 않으며, P11 구현 전까지 문서상의 canonical identifier로만 사용한다.
 
 내부 식별자에는 다음을 결합하지 않는다.
 
@@ -38,6 +38,18 @@
 4. 승인된 이름만 UI, store metadata, domain, social account와 marketing material에 적용한다.
 
 이 검토가 끝날 때까지 정책은 `NEUTRAL_NAMING / REVIEW_BEFORE_RELEASE`다.
+
+### 2.3 P10 confirmed product inputs
+
+사용자는 `GC-001`~`GC-038`을 A안으로 확정하되 explicit PLAYING leave인 `GC-023`만 B안으로 확정했다. IP/product 관점의 canonical inputs는 다음과 같다.
+
+- Conceptual versions는 `gem-rules-v1`, `gem-cardset-v1`이며 runtime representation은 P11에서 구현한다.
+- Basic resource working IDs는 `DAWN`, `TIDE`, `GROVE`, `EMBER`, `ECHO`, wild working ID는 `PRISM`이다. 이는 release-cleared public terminology나 icon identity가 아니다.
+- v1은 named card, flavor text, character, public objective와 special ability를 사용하지 않는다.
+- [GEM_CARD_CARDSET_V1.md](./GEM_CARD_CARDSET_V1.md)는 중립 card ID만 사용하는 45-card original dataset과 생성 provenance·static audit을 기록한다.
+- Public working name `보석 카드 게임`은 설명적 문서 명칭일 뿐 final title clearance를 통과하지 않았다.
+
+확정된 rule mechanics와 original data의 존재는 logo, artwork, icon, typography, card layout 또는 marketing expression의 사용을 승인하지 않는다.
 
 ## 3. 정책 표기
 
@@ -118,10 +130,12 @@ P10에서는 asset을 다운로드, 생성 또는 repository에 추가하지 않
 `GEM_CARD` v1 dataset은 다음 순서로 독립 설계한다.
 
 1. 목표 play time, player count, resource scarcity와 strategic trade-off를 문서화한다.
-2. confirmed rule에 맞는 자체 supply, cost, point, threshold와 deck distribution을 만든다.
+2. Confirmed rule에 맞는 자체 supply, cost, point, threshold와 deck distribution을 만든다. 최초 canonical rows는 `gem-cardset-v1`에 기록한다.
 3. 생성 근거와 revision을 versioned design record에 남긴다.
 4. simulation과 playtest 결과로 조정한다.
-5. 공개 전 전체 dataset에 대해 외부 published table의 복제 여부와 provenance를 검토한다.
+5. 공개 전 전체 dataset에 대해 외부 published table의 복제 여부와 provenance를 다시 검토한다.
+
+`gem-cardset-v1`은 commercial data를 조회하거나 옮기지 않고 다섯 basic resource의 original cyclic templates로 작성했다. 각 tier의 production count와 printed demand, card identity, cost/point range, duplicate tuple 부재와 total VP를 정적 감사했다. 이 기록은 independent-authoring evidence이며 gameplay balance 검증이나 법률 clearance는 아니다.
 
 다음은 금지한다.
 
@@ -159,18 +173,19 @@ Marketing material은 승인된 `GEM_CARD` build, public title, logo와 asset만
 
 ### Identity
 
-- [ ] 내부 식별자는 중립적인 `GEM_CARD`로 유지된다.
+- [x] 내부 식별자는 중립적인 `GEM_CARD`로 유지된다.
 - [ ] 최종 public title이 확정되고 product/brand review가 완료됐다.
 - [ ] 필요하다고 판단한 시장·관할의 qualified legal review가 완료됐다.
 - [ ] title, subtitle, domain, metadata와 marketing copy가 제3자와의 관계를 암시하지 않는다.
 
 ### Rules, terminology and data
 
-- [ ] 모든 high-impact `GC-*` 규칙이 사용자에 의해 확정됐다.
+- [x] 모든 high-impact `GC-*` 규칙이 사용자에 의해 확정됐다.
 - [ ] Rulebook, tutorial, UI text와 examples가 confirmed rule에서 독립적으로 작성됐다.
 - [ ] 고유 명칭·문구의 외부 출처 복사나 close adaptation이 없다.
-- [ ] Card/deck, supply, cost, score와 threshold dataset에 독립 설계 provenance가 있다.
-- [ ] Exact balance/data audit와 product review가 완료됐다.
+- [x] `gem-cardset-v1`의 card/deck, cost, score와 threshold 관련 독립 설계 provenance가 기록됐다.
+- [x] `gem-cardset-v1`의 arithmetic, range, uniqueness와 demand static audit이 완료됐다.
+- [ ] Simulation/playtest balance와 최종 product/data release review가 완료됐다.
 
 ### Assets and visual identity
 
@@ -214,9 +229,9 @@ Marketing material은 승인된 `GEM_CARD` build, public title, logo와 asset만
 - Rule text, terminology, objective 또는 flavor content의 독립 작성 여부가 불명확함
 - Marketing screenshot에 unapproved/third-party asset 또는 오해를 유발하는 branding이 포함됨
 - 필요한 legal review가 미완료이거나 사용 권한에 해결되지 않은 의문이 있음
-- P10의 high-impact rule decisions와 consistency audit이 완료되지 않음
+- Confirmed rule 또는 cardset을 변경하면서 consistency, provenance와 version review를 다시 수행하지 않음
 
-현재 P10 first pass에서는 final public title, artwork/icon system, original balance dataset과 card/deck data가 아직 없고 `GC-*` 사용자 결정도 남아 있다. 따라서 이 문서는 구현 가능한 asset/data를 승인하지 않으며, public release gate는 닫혀 있다.
+현재 P10 finalization에서 `GC-001`~`GC-038`과 original `gem-cardset-v1`은 확정됐고 static audit을 통과했다. 그러나 final public title, logo, artwork/icon system, final UI layout, simulation/playtest balance, asset inventory와 product/legal release review는 아직 없다. 따라서 P11의 data implementation input은 준비됐지만 public release gate는 계속 닫혀 있다.
 
 ## 14. Change control
 

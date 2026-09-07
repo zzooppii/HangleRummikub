@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0~P9B COMPLETE / PUBLIC TWO-GAME VERIFIED / P10 AWAITING_RULE_DECISIONS
+> 상태: P0~P10 COMPLETE / PUBLIC TWO-GAME VERIFIED / P11A READY
 > 작성일: 2026-09-07
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -1051,22 +1051,22 @@ Multi-game Platform P9B만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의
 
 Tile/Rack과 다른 `GEM_CARD`의 rules, state, command, privacy, neutral naming/asset 경계를 구현 전에 확정한다.
 
-### First-pass 상태 (2026-09-07)
+### Final 상태 (2026-09-07)
 
-- `docs/GEM_CARD_GAME_RULES.md`: `PROPOSED ORIGINAL BASELINE`과 stable `GC-001`~`GC-038` decision table을 작성했다. 사용자 승인 전 `CONFIRMED` rule은 없다.
-- `docs/GEM_CARD_PROTOCOL_GATE.md`: platform command reuse, `gem:*` 후보, V2/privacy/capability/idempotency와 current two-game architecture migration blocker를 기록했다.
-- `docs/GEM_CARD_IP_PRODUCT_GATE.md`: `NOT LEGAL ADVICE`, neutral naming, original/licensed asset, independent rule text/data와 public release checklist를 기록했다.
-- Current runtime `GameType`, Registry, Room union, V2 schema, Socket events, Web capability/catalog에는 `GEM_CARD`가 없다.
-- `GC-001`~`GC-038`의 high-impact rules, original deck/version 정책과 public naming이 미확정이므로 판정은 **AWAITING_RULE_DECISIONS**다. P11A는 `NOT_READY`이며 구현을 시작하지 않는다.
-- 사용자 결정 뒤 rules consistency audit, projection/privacy audit와 IP/product gate를 다시 수행해 blocker가 없어야 `P10 COMPLETE / P11A READY`로 변경한다.
+- 사용자는 [GEM_CARD_GAME_RULES.md](./GEM_CARD_GAME_RULES.md)의 stable `GC-001`~`GC-038`에서 모든 A안을 승인하되 explicit PLAYING leave인 `GC-023`만 B로 확정했다.
+- [GEM_CARD_CARDSET_V1.md](./GEM_CARD_CARDSET_V1.md)에 tier별 15장, production type별 tier당 3장을 갖는 original `gem-cardset-v1` 45장과 static balance audit을 기록했다.
+- [GEM_CARD_PROTOCOL_GATE.md](./GEM_CARD_PROTOCOL_GATE.md)는 `game:start`, additive `gem:collect`/`purchase`/`reserve`/`yield`, V2-only capability/projection, revision/idempotency와 45초 scheduled turn을 confirmed conceptual contract로 고정했다.
+- [GEM_CARD_IP_PRODUCT_GATE.md](./GEM_CARD_IP_PRODUCT_GATE.md)는 `NOT LEGAL ADVICE`, neutral naming, original/licensed asset, independent rule text/data와 public release checklist를 유지한다.
+- Rules consistency와 IP/product development audit에는 blocker가 없어 **P10 COMPLETE / P11A READY**다. Public title/asset release review는 별도 gate다.
+- Current runtime `GameType`, Registry, Room union, V2 schema, Socket events, Web capability/catalog에는 계속 `GEM_CARD`가 없다.
 
 ### Scope
 
 - neutral public/internal naming과 rules version
 - card market/deck, resource/token supply, purchase, reserve, score 구조
-- hidden/public information과 player-specific projection
+- public market/supply/player holdings/reserves와 private deck/order projection
 - turn/action ordering, refill, limits, finish/tie rules
-- player count, reconnect/leave/forfeit, optional timer 정책
+- player count, reconnect/leave/forfeit, 45초 turn timer와 no-overall-deadline 정책
 - command DTO/result schema 초안
 - original or properly licensed asset strategy와 별도 legal review 필요 항목
 - 새 규칙은 `docs/GEM_CARD_GAME_RULES.md`에만 기록하고 기존 `docs/GAME_RULES.md`는 Hangul canonical 문서로 유지
@@ -1091,17 +1091,17 @@ Tile/Rack과 다른 `GEM_CARD`의 rules, state, command, privacy, neutral naming
 - 코드 미변경 시 기존 전체 tests와 docs/diff-check
 - market refill, resource conservation, purchase/reserve, limits, finish/tie table-driven plan
 - privacy and unauthorized card/resource reference matrix
-- no-timer 또는 optional-timer lifecycle cases
+- 45초 no-action timeout, offline third-timeout forfeit, YIELD/no-progress와 overall-deadline 부재
 
 ### Codex 실행 명령
 
 ```text
-Multi-game Platform P10 GEM_CARD rules/IP gate만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙을 지키고 구현 없이 neutral naming 아래 card market/deck, resources/tokens, purchase, reserve, refill, limits, turn ordering, finish/tie, player count, reconnect/leave, optional timer, private projection을 docs/GEM_CARD_GAME_RULES.md에 기록하라. 기존 docs/GAME_RULES.md에는 링크 외 GEM_CARD 규칙을 섞지 말고, 상용 브랜드·logo·official art 사용 가능성을 가정하지 않으며 original/licensed asset 경계와 별도 검토 항목을 남겨라. Tile/Rack/Board에 맞추지 말고 미확정 규칙은 blocker로 표시해 P11 test matrix와 gate 판정을 제출하라.
+Multi-game Platform P10 GEM_CARD rules/IP gate만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙을 지키고 구현 없이 neutral naming 아래 card market/deck, resources/tokens, purchase, reserve, refill, limits, turn ordering, finish/tie, player count, reconnect/leave, timer와 public/private projection을 docs/GEM_CARD_GAME_RULES.md에 기록하라. 기존 docs/GAME_RULES.md에는 링크 외 GEM_CARD 규칙을 섞지 말고, 상용 브랜드·logo·official art 사용 가능성을 가정하지 않으며 original/licensed asset 경계와 별도 검토 항목을 남겨라. Tile/Rack/Board에 맞추지 말고 결정 전 규칙은 blocker로 표시해 P11 test matrix와 gate 판정을 제출하라.
 ```
 
 ## 14. P11 — Gem/Card implementation
 
-P11은 domain, server/shared integration, web 구현을 각각 독립 stop gate로 수행한다. P10 decision table과 후속 consistency/IP audit이 완료되기 전에는 P11A를 시작하지 않으며, P11A~P11C가 모두 끝나기 전에는 production catalog에서 enable하지 않는다.
+P11은 domain, server/shared integration, web 구현을 각각 독립 stop gate로 수행한다. P10 rules/consistency/IP development gate가 완료되어 P11A가 READY이며, P11A~P11C와 P12 production gate가 끝나기 전에는 production catalog에서 enable하지 않는다.
 
 ### 14.1 P11A — Gem/Card domain implementation
 
@@ -1111,17 +1111,17 @@ P10에서 confirmed된 카드·resource 규칙만으로 Tile/Rack 전제 없는 
 
 #### Scope
 
-- card deck/market, resource/token supply, player holdings/reserve state
-- purchase, reserve, refill, limit, finish/tie RuleEngine
-- 주입된 ID/random과 confirmed된 경우만 optional Clock
-- resource/card conservation과 private state invariant
+- original `gem-cardset-v1` typed seed, card deck/market, resource supply, player holdings/reserve state
+- collect, purchase, reserve, refill, limit, YIELD/no-progress, fair-round/finish/ranking RuleEngine
+- 주입된 ID/random/Clock과 confirmed 45초 turn deadline; overall game deadline 없음
+- resource/card conservation, public holdings/reserves와 private deck-order invariant
 - module-owned structured failures
 
 #### 금지사항
 
 - shared wire/server persistence/React UI 연결
 - GenericTile/GenericRack/WordGroup adapter
-- P10 미확정 규칙과 상용 asset
+- P10 confirmed 범위 밖의 규칙과 상용 asset/data
 - client-computed score/resource 의존
 
 #### Definition of Done
@@ -1129,21 +1129,21 @@ P10에서 confirmed된 카드·resource 규칙만으로 Tile/Rack 전제 없는 
 - P10 rule matrix가 framework 없이 deterministic하게 통과한다.
 - failure가 state를 변경하지 않고 conservation invariant가 항상 유지된다.
 - Hangul/Number game type을 import하지 않는다.
-- timer를 채택하지 않았다면 deadline capability가 없다.
+- 45초 turn/timeout semantics를 검증하며 overall game deadline capability는 없다.
 
 #### Required tests
 
-- market refill/deck exhaustion
-- resource/token conservation과 purchase/reserve limits
-- finish/tie/score cases
-- hidden reserve/deck invariant
-- optional/no-timer behavior
+- market refill, reserved-aware deck/market exhaustion과 `gem-cardset-v1` static constraints
+- resource conservation과 collect/purchase/reserve/holding limits
+- fair-round, YIELD/no-progress, finish/tie/score cases
+- public reserve/holdings와 hidden deck-order invariant
+- 45초 timeout, offline third-timeout forfeit와 no-overall-deadline behavior
 - 기존 두 game 전체 tests, typecheck/build/diff-check
 
 #### Codex 실행 명령
 
 ```text
-Multi-game Platform P11A만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 docs/GEM_CARD_GAME_RULES.md의 CONFIRMED 항목만 사용해 Tile/Rack 없는 card market/deck/resources/player holdings/reserve state와 purchase/reserve/refill/finish RuleEngine을 구현하라. ID/random을 주입하고 timer가 확정된 경우에만 Clock을 사용하며 GenericTile/WordGroup, shared wire, persistence, React, catalog는 제외하라. conservation/privacy/result table-driven tests와 세 game 전체 typecheck/test/build/diff-check를 통과시켜라.
+Multi-game Platform P11A만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙, docs/GEM_CARD_GAME_RULES.md의 CONFIRMED 항목과 docs/GEM_CARD_CARDSET_V1.md의 canonical rows만 사용해 Tile/Rack 없는 card market/deck/resources/player holdings/reserve state와 collect/purchase/reserve/refill/YIELD/fair-round/finish RuleEngine을 구현하라. ID/random/Clock을 주입하고 45초 turn timeout을 구현하되 overall game deadline은 만들지 않으며 GenericTile/WordGroup, shared wire, persistence, React, catalog는 제외하라. cardset validation, conservation/privacy/result table-driven tests와 세 game 전체 typecheck/test/build/diff-check를 통과시켜라.
 ```
 
 ### 14.2 P11B — Gem/Card server/shared integration
@@ -1157,8 +1157,8 @@ GEM_CARD command/projection/state codec을 canonical registry와 Room applicatio
 - closed shared command/failure/player projection runtime schema
 - state codec, lifecycle inspector, projector registration
 - canonical gameType, actor, scoped revision, idempotency, Room serialization
-- candidate validation 후 atomic commit과 private projection
-- rules에서 필요한 경우만 optional server action/recovery
+- candidate validation 후 atomic commit과 confirmed public/private projection
+- 45초 turn timeout server action/recovery; overall game deadline 없음
 - registry 등록과 catalog disabled/controlled 상태
 
 #### 금지사항
@@ -1173,21 +1173,21 @@ GEM_CARD command/projection/state codec을 canonical registry와 Room applicatio
 - exact GEM_CARD module만 validated command를 처리한다.
 - wrong actor/type/revision와 unauthorized resource/card reference가 안전하게 reject된다.
 - failure는 state/revision을 유지하고 concurrent purchase/reserve가 직렬화된다.
-- player별 projection이 deck/reserve privacy policy를 지킨다.
+- projection이 public holdings/reserves와 private deck/order policy를 지킨다.
 
 #### Required tests
 
 - runtime command/projection schemas
 - atomicity/idempotency/concurrent purchase-reserve
-- codec/clone/lifecycle; scheduled action이 있으면 recovery, 없으면 recovery capability 부재
-- private projection and existence-nondisclosure
-- optional/no-timer application path
+- codec/clone/lifecycle, 45초 scheduled-turn recovery와 game-deadline capability 부재
+- public holdings/reserves, private deck/order와 existence-nondisclosure
+- timeout/YIELD/offline-forfeit/leave resource-return application path
 - 기존 두 game 전체 tests, typecheck/build/diff-check
 
 #### Codex 실행 명령
 
 ```text
-Multi-game Platform P11B만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 P11A를 기준으로 GEM_CARD의 닫힌 shared command/failure/projection schema, state codec/lifecycle/projector, server application을 canonical gameType registry와 Room UoW에 연결하라. resource/card conservation, actor/scoped revision, idempotency, serialization, private projection, atomic commit을 서버에서 검증하고 필요한 경우에만 optional server action을 사용하라. React와 production enablement는 제외하고 세 게임 전체 typecheck/test/build/diff-check를 통과시켜라.
+Multi-game Platform P11B만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 P11A를 기준으로 GEM_CARD의 닫힌 shared command/failure/projection schema, state codec/lifecycle/projector, server application을 canonical gameType registry와 Room UoW에 연결하라. resource/card conservation, actor/scoped revision, idempotency, serialization, public holdings/reserves, private deck/order와 atomic commit을 서버에서 검증하고 45초 scheduled-turn action/recovery를 연결하되 overall game deadline은 만들지 마라. React와 production enablement는 제외하고 세 게임 전체 typecheck/test/build/diff-check를 통과시켜라.
 ```
 
 ### 14.3 P11C — Gem/Card web implementation
@@ -1215,13 +1215,13 @@ authoritative GEM_CARD projection만 소비하는 독립 card/resource renderer�
 #### Definition of Done
 
 - renderer가 server projection과 ack만 authority로 사용한다.
-- hidden deck/reserve data를 DOM/log에 노출하지 않는다.
+- exact public holdings/reserves만 렌더링하고 hidden deck IDs/order와 server internals를 DOM/log에 노출하지 않는다.
 - reconnect와 stale snapshot에서 local interaction이 안전하게 reset/reconcile된다.
 - Hangul/Number renderer가 회귀하지 않고 catalog는 controlled 상태다.
 
 #### Required tests
 
-- decoder/renderer routing and private DOM checks
+- decoder/renderer routing, public holdings/reserves와 hidden-deck DOM checks
 - purchase/reserve retry/reconnect/stale revision UX
 - result rendering과 accessibility/responsive checks
 - asset provenance/build verification
@@ -1230,7 +1230,7 @@ authoritative GEM_CARD projection만 소비하는 독립 card/resource renderer�
 #### Codex 실행 명령
 
 ```text
-Multi-game Platform P11C만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 P11B projection/command를 사용해 독립 GEM_CARD web decoder, market/resource/purchase/reserve/result renderer를 구현하라. server snapshot/ack만 authority로 삼고 hidden deck/reserve를 DOM/log에 노출하지 말며 승인된 neutral/original/licensed asset만 사용하라. reconnect/retry/stale revision과 accessibility를 검증하고 P12 전 production catalog는 controlled 상태로 유지한 채 세 게임 전체 typecheck/test/build/diff-check를 통과시켜라.
+Multi-game Platform P11C만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 P11B projection/command를 사용해 독립 GEM_CARD web decoder, market/resource/purchase/reserve/result renderer를 구현하라. server snapshot/ack만 authority로 삼고 confirmed public holdings/reserves를 정확히 표시하되 hidden deck IDs/order와 server internals를 DOM/log에 노출하지 말며 승인된 neutral/original/licensed asset만 사용하라. reconnect/retry/stale revision과 accessibility를 검증하고 P12 전 production catalog는 controlled 상태로 유지한 채 세 게임 전체 typecheck/test/build/diff-check를 통과시켜라.
 ```
 
 ## 15. P12 — Multi-game E2E and deployment
