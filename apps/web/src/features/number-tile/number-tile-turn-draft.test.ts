@@ -11,13 +11,16 @@ import {
 import {
   NUMBER_TILE_TURN_DRAFT_HISTORY_LIMIT,
   addNumberTileDraftMeld,
+  appendNumberTileDraftTileToMeld,
   assignNumberTileDraftJoker,
   canEditNumberTileTurnDraft,
   createNumberTileTurnDraft,
   decideNumberTileTurnDraftReconciliation,
+  findNumberTileDraftReusableEmptyMeldIndex,
   findNumberTileDraftTile,
   isNumberTileTurnDraftDirty,
   placeNumberTileDraftTile,
+  placeNumberTileDraftTileInNewMeld,
   removeEmptyNumberTileDraftMeld,
   resetNumberTileTurnDraft,
   returnNumberTileDraftTileToRack,
@@ -35,6 +38,7 @@ type SnapshotOptions = Readonly<{
   turnId?: string;
   presenceVersion?: number;
   canonicalJoker?: boolean;
+  emptyTable?: boolean;
 }>;
 
 function isNumberTilePlayingSnapshot(
@@ -125,9 +129,11 @@ function snapshot(
       gameType: "NUMBER_TILE",
       gameId: options.gameId ?? "number-draft-game",
       gameRevision: options.gameRevision ?? 3,
-      remainingPoolCount: 97,
+      remainingPoolCount: options.emptyTable === true ? 100 : 97,
       table: {
-        melds: [{ kind: "RUN", tiles: tableTiles }],
+        melds: options.emptyTable === true
+          ? []
+          : [{ kind: "RUN", tiles: tableTiles }],
       },
       playerStates: [
         {
@@ -301,33 +307,170 @@ test("초기 duplicate tileId 입력은 거절하고 모든 edit는 한 physical
       tileIndex: 1,
     }),
   );
+  assert.equal(draft.table.melds.length, 1);
   assert.equal(tileOccurrences(draft, rackTileId), 1);
   assert.equal(draft.availableRackTiles.some((tile) => tile.tileId === rackTileId), false);
 });
 
-test("미분류 조합을 empty 상태로 만들 수 있고 오직 empty meld만 삭제한다", () => {
+test("empty 조합은 하나만 재사용하고 tile이 있는 조합과 구분해 삭제한다", () => {
   let draft = requireDraft(createNumberTileTurnDraft(snapshot()));
   draft = requireEdit(addNumberTileDraftMeld(draft));
+  const oneEmptyMeld = draft;
   draft = requireEdit(addNumberTileDraftMeld(draft));
+  assert.equal(draft, oneEmptyMeld);
+  assert.equal(findNumberTileDraftReusableEmptyMeldIndex(draft), 1);
   assert.deepEqual(
     draft.table.melds.slice(1).map((meld) => [meld.kind, meld.tiles.length]),
-    [[null, 0], [null, 0]],
+    [[null, 0]],
   );
 
   const rackTileId = fixtureTileId(draft, "rack-red-7-a");
-  draft = requireEdit(
-    placeNumberTileDraftTile(draft, rackTileId, {
-      meldIndex: 1,
-      tileIndex: 0,
-    }),
-  );
+  draft = requireEdit(placeNumberTileDraftTileInNewMeld(draft, rackTileId));
   assert.equal(draft.table.melds[1]?.tiles.length, 1);
+  assert.equal(findNumberTileDraftReusableEmptyMeldIndex(draft), null);
   expectEditError(
     removeEmptyNumberTileDraftMeld(draft, 1),
     "MELD_NOT_EMPTY",
   );
+  draft = requireEdit(addNumberTileDraftMeld(draft));
+  assert.equal(findNumberTileDraftReusableEmptyMeldIndex(draft), 2);
   draft = requireEdit(removeEmptyNumberTileDraftMeld(draft, 2));
   assert.equal(draft.table.melds.length, 2);
+});
+
+test("첫 rack click용 edit는 조합 생성과 physical Tile 이동을 Undo 한 번에 commit한다", () => {
+  const baseline = requireDraft(
+    createNumberTileTurnDraft(snapshot({
+      initialMeldCompleted: false,
+      emptyTable: true,
+    })),
+  );
+  const red = fixtureTileId(baseline, "rack-red-7-a");
+  const placed = requireEdit(placeNumberTileDraftTileInNewMeld(baseline, red));
+
+  assert.equal(baseline.table.melds.length, 0);
+  assert.equal(placed.table.melds.length, 1);
+  assert.deepEqual(
+    placed.table.melds.at(-1)?.tiles.map((tile) => tile.tileId),
+    [red],
+  );
+  assert.equal(placed.history.length, 1);
+  assert.equal(tileOccurrences(placed, red), 1);
+
+  const undone = requireEdit(undoNumberTileTurnDraft(placed));
+  assert.deepEqual(undone.table, baseline.table);
+  assert.deepEqual(undone.availableRackTiles, baseline.availableRackTiles);
+});
+
+test("whole-card append는 조합 간 Tile을 이동하고 비워진 source 조합을 정리한다", () => {
+  let draft = requireDraft(createNumberTileTurnDraft(snapshot()));
+  const red = fixtureTileId(draft, "rack-red-7-a");
+  const blue = fixtureTileId(draft, "rack-blue-7-a");
+
+  draft = requireEdit(placeNumberTileDraftTileInNewMeld(draft, red));
+  draft = requireEdit(addNumberTileDraftMeld(draft));
+  draft = requireEdit(placeNumberTileDraftTileInNewMeld(draft, blue));
+  const beforeMove = draft;
+  draft = requireEdit(appendNumberTileDraftTileToMeld(draft, red, 2));
+
+  assert.equal(draft.table.melds.length, 2);
+  assert.deepEqual(
+    draft.table.melds[1]?.tiles.map((tile) => tile.tileId),
+    [blue, red],
+  );
+  assert.equal(tileOccurrences(draft, red), 1);
+  assert.equal(tileOccurrences(draft, blue), 1);
+
+  const undone = requireEdit(undoNumberTileTurnDraft(draft));
+  assert.deepEqual(undone.table, beforeMove.table);
+});
+
+test("canonical source 조합도 마지막 Tile 이동 시 제거하고 target index를 보존한다", () => {
+  let draft = requireDraft(createNumberTileTurnDraft(snapshot()));
+  draft = requireEdit(addNumberTileDraftMeld(draft));
+  const canonicalTileIds = [
+    fixtureTileId(draft, "table-red-3-a"),
+    fixtureTileId(draft, "table-red-4-a"),
+    fixtureTileId(draft, "table-red-5-a"),
+  ];
+  draft = requireEdit(
+    appendNumberTileDraftTileToMeld(draft, canonicalTileIds[0]!, 1),
+  );
+  draft = requireEdit(
+    appendNumberTileDraftTileToMeld(draft, canonicalTileIds[1]!, 1),
+  );
+  const beforeLastMove = draft;
+  draft = requireEdit(
+    appendNumberTileDraftTileToMeld(draft, canonicalTileIds[2]!, 1),
+  );
+
+  assert.equal(draft.table.melds.length, 1);
+  assert.deepEqual(
+    draft.table.melds[0]?.tiles.map((tile) => tile.tileId),
+    canonicalTileIds,
+  );
+  for (const tileId of canonicalTileIds) {
+    assert.equal(tileOccurrences(draft, tileId), 1);
+  }
+  assert.deepEqual(
+    requireEdit(undoNumberTileTurnDraft(draft)).table,
+    beforeLastMove.table,
+  );
+});
+
+test("rack-origin Tile 반환은 빈 조합을 정리하고 canonical Table Tile 반환은 atomic reject한다", () => {
+  const baseline = requireDraft(createNumberTileTurnDraft(snapshot()));
+  const red = fixtureTileId(baseline, "rack-red-7-a");
+  const placed = requireEdit(placeNumberTileDraftTileInNewMeld(baseline, red));
+  const returned = requireEdit(returnNumberTileDraftTileToRack(placed, red));
+  assert.equal(returned.table.melds.length, baseline.table.melds.length);
+  assert.deepEqual(returned.availableRackTiles, baseline.availableRackTiles);
+  assert.deepEqual(
+    requireEdit(undoNumberTileTurnDraft(returned)).table,
+    placed.table,
+  );
+
+  const canonical = fixtureTileId(returned, "table-red-3-a");
+  const beforeRejectedReturn = structuredClone(returned);
+  expectEditError(
+    returnNumberTileDraftTileToRack(returned, canonical),
+    "CANONICAL_TILE_CANNOT_RETURN_TO_RACK",
+  );
+  assert.deepEqual(returned, beforeRejectedReturn);
+});
+
+test("새 조합 이동은 rearrangement Table Tile을 허용하지만 initial canonical Table은 잠근다", () => {
+  const rearrangement = requireDraft(createNumberTileTurnDraft(snapshot()));
+  const canonical = fixtureTileId(rearrangement, "table-red-3-a");
+  const beforeInvalidEdits = structuredClone(rearrangement);
+  expectEditError(
+    placeNumberTileDraftTileInNewMeld(
+      rearrangement,
+      "unknown-number-tile" as TileId,
+    ),
+    "TILE_NOT_FOUND",
+  );
+  expectEditError(
+    appendNumberTileDraftTileToMeld(rearrangement, canonical, 999),
+    "MELD_NOT_FOUND",
+  );
+  assert.deepEqual(rearrangement, beforeInvalidEdits);
+
+  const moved = requireEdit(
+    placeNumberTileDraftTileInNewMeld(rearrangement, canonical),
+  );
+  assert.equal(tileOccurrences(moved, canonical), 1);
+  assert.equal(moved.table.melds.at(-1)?.tiles[0]?.tileId, canonical);
+
+  const initial = requireDraft(
+    createNumberTileTurnDraft(snapshot({ initialMeldCompleted: false })),
+  );
+  const beforeLockedEdit = structuredClone(initial);
+  expectEditError(
+    placeNumberTileDraftTileInNewMeld(initial, canonical),
+    "INITIAL_MELD_TABLE_LOCKED",
+  );
+  assert.deepEqual(initial, beforeLockedEdit);
 });
 
 test("rack face만으로 local 조합 kind를 자동 분류하고 Undo/Reset은 같은 physical identity를 복원한다", () => {
@@ -434,10 +577,12 @@ test("Table Tile은 meld 사이를 이동하지만 pre-turn Table Tile은 rack�
   assert.equal(tileOccurrences(draft, canonicalTileId), 1);
   assert.equal(draft.table.melds[0]?.tiles.length, 2);
   assert.equal(draft.table.melds[1]?.tiles[0]?.origin, "CANONICAL_TABLE");
+  const beforeRejectedReturn = structuredClone(draft);
   expectEditError(
     returnNumberTileDraftTileToRack(draft, canonicalTileId),
     "CANONICAL_TILE_CANNOT_RETURN_TO_RACK",
   );
+  assert.deepEqual(draft, beforeRejectedReturn);
 });
 
 test("initial meld draft는 canonical Table을 수정하지 않고 local meld만 편집한다", () => {
@@ -591,17 +736,18 @@ test("undo/reset/dirty는 local history만 변경하고 baseline을 복원한다
 
 test("edit history는 최근 50개 상태만 유지한다", () => {
   let draft = requireDraft(createNumberTileTurnDraft(snapshot()));
+  const red = fixtureTileId(draft, "rack-red-7-a");
   for (let index = 0; index < 55; index += 1) {
-    draft = requireEdit(
-      addNumberTileDraftMeld(draft),
-    );
+    draft = index % 2 === 0
+      ? requireEdit(placeNumberTileDraftTileInNewMeld(draft, red))
+      : requireEdit(returnNumberTileDraftTileToRack(draft, red));
   }
   assert.equal(
     draft.history.length,
     NUMBER_TILE_TURN_DRAFT_HISTORY_LIMIT,
   );
   const undone = requireEdit(undoNumberTileTurnDraft(draft));
-  assert.equal(undone.table.melds.length, draft.table.melds.length - 1);
+  assert.equal(findNumberTileDraftTile(undone, red)?.source, "AVAILABLE_RACK");
   assert.equal(
     undone.history.length,
     NUMBER_TILE_TURN_DRAFT_HISTORY_LIMIT - 1,

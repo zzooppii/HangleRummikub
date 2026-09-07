@@ -28,13 +28,13 @@ RealtimeClient
 
 Draft는 browser memory에만 존재하며 base `gameId`, `gameRevision`, `turnId`, complete proposed Table, available rack, immutable baseline, dirty state와 최대 50단계 history를 가진다. Physical identity는 항상 `tileId`로 유지되어 같은 number/color의 두 physical copy도 합쳐지지 않는다. 중간에는 empty/short/invalid meld가 허용되며 canonical state는 Submit 성공 snapshot 전까지 바뀌지 않는다.
 
-- `+ 새 조합 만들기`로 분류되지 않은 empty local meld를 추가하고 empty meld만 삭제한다. Physical face가 같은-number/서로 다른 color이면 GROUP, 같은-color/consecutive number이면 RUN으로 자동 분류하며 사용자가 kind를 선택하지 않는다.
-- Tap/click과 native button으로 rack→Table 및 Table→Table insertion/move를 수행한다. Drag-only interaction은 없다.
+- 첫 rack Tile tap/click은 active combination이 없을 때 local meld를 자동 생성하고 같은 atomic draft edit로 Tile을 바로 옮긴다. `+ 새 조합 만들기`는 새 active combination을 만들거나 이미 존재하는 empty local meld를 재사용하므로 의미 없는 empty card가 누적되지 않는다. Physical face가 same-number/distinct-color이면 GROUP, same-color/consecutive-number이면 RUN으로 자동 분류하며 사용자가 kind나 insertion slot을 선택하지 않는다.
+- Native button 기반 tap/keyboard flow가 primary path다. Rack Tile은 active combination으로 바로 들어가고, combination header 전체 선택 control로 destination을 바꿀 수 있다. Desktop에서는 같은 draft operations 위에 optional mouse Pointer Events drag-and-drop을 제공해 rack→combination, rack→new combination, combination→combination, SELF_RACK placement→rack 이동을 지원한다. Pre-turn canonical Table Tile의 rack drop은 거절된다.
 - 첫 등록 전 canonical Table은 읽기 전용이고 local meld에는 own rack tile만 놓는다. 합계 30 안내와 candidate 합계는 UX hint일 뿐 server 판정을 대체하지 않는다.
 - 첫 등록 뒤 split/merge/extend/rebuild가 가능한 whole-table editor를 제공하고 own rack tile 1개 사용 requirement를 안내한다.
 - 이번 turn의 rack-origin tile은 rack으로 되돌릴 수 있지만 pre-turn canonical Table tile은 rack으로 반환할 수 없다.
 - Joker는 같은 `tileId`를 유지한다. 유일한 valid assignment는 자동 추론하고 여러 후보일 때만 picker를 제공하며, Stable meld ID나 recovery algorithm을 client에 만들지 않고 exact replacement/same-Submit reuse/final validity는 server가 판정한다.
-- Undo는 move, meld create/delete, Joker assignment, rack return을 복원하고 Reset은 authoritative baseline으로 돌아간다.
+- Undo는 click/drag move, meld create/delete, Joker assignment, rack return을 복원한다. 첫 combination 생성+첫 Tile 배치는 history 한 entry이며, 비워진 source combination은 같은 edit에서 제거된다. Reset은 authoritative baseline으로 돌아간다.
 
 ## 4. Command와 recovery
 
@@ -74,3 +74,5 @@ Random browser rack의 valid 30/Joker recovery와 pool-empty Pass는 production 
 ## 8. UX polish boundary
 
 Rack wrap/sort, stronger color identity, compact turn hierarchy, sound feedback, automatic meld classification, and Joker inference are documented in [NUMBER_TILE_UX_POLISH.md](./NUMBER_TILE_UX_POLISH.md). These are Web-only presentation/draft helpers: the existing command/event/snapshot contracts are unchanged and the Number server RuleEngine remains the final authority.
+
+The second interaction pass adds an Editor-local active-combination pointer and optional desktop mouse Pointer Events drag-and-drop without adding a stable meld identity, protocol field, or command. Pointer state carries the exact physical `tileId` only inside browser memory; Submit continues to serialize only the complete proposed Table and existing identities/assignments. Click, tap, Enter, and Space remain complete non-drag interaction paths.

@@ -1360,6 +1360,32 @@ button.game-tile:hover:not(:disabled) {
   border-radius: 18px;
   padding: 15px;
   background: #fafaf8;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.number-meld-card:not(.locked) {
+  cursor: pointer;
+}
+
+.number-meld-card.active {
+  border-color: #2f6fd6;
+  background: #f4f8ff;
+  box-shadow: 0 0 0 3px rgb(47 111 214 / 16%);
+}
+
+.number-meld-card.is-drop-target,
+.number-add-meld.is-drop-target,
+.number-rack.is-drop-target:not(.is-drop-blocked) {
+  border-color: #2563eb;
+  background: #e8f1ff;
+  box-shadow: 0 0 0 4px rgb(37 99 235 / 18%);
+}
+
+.number-meld-card.empty {
+  padding-block: 11px;
 }
 
 .number-meld-card.locked {
@@ -1370,9 +1396,29 @@ button.game-tile:hover:not(:disabled) {
   margin-bottom: 12px;
 }
 
-.number-meld-card > header > div {
+.number-meld-card > header > div:first-child {
   display: grid;
   gap: 3px;
+}
+
+.number-meld-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: end;
+  gap: 8px;
+}
+
+.number-activate-meld.active {
+  border-color: #2f6fd6;
+  background: #dfeaff;
+  color: #19498d;
+}
+
+.number-remove-empty-meld {
+  min-height: 44px;
+  padding: 4px 8px;
+  font-size: 0.76rem;
 }
 
 .number-meld-tiles {
@@ -1413,30 +1459,6 @@ button.game-tile:hover:not(:disabled) {
   text-align: center;
 }
 
-.number-meld-position {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-}
-
-.number-insert-button {
-  width: 48px;
-  min-width: 48px;
-  min-height: 58px;
-  border: 1px dashed #97a1a8;
-  border-radius: 11px;
-  background: #f5f7f8;
-  color: #536470;
-  font-size: 1.35rem;
-}
-
-.number-insert-button:hover:not(:disabled) {
-  border-color: #2563eb;
-  background: #e8f0ff;
-  color: #19498d;
-}
-
 .number-tile {
   display: grid;
   width: 58px;
@@ -1453,6 +1475,20 @@ button.game-tile:hover:not(:disabled) {
   font-variant-numeric: tabular-nums;
   line-height: 1;
   touch-action: manipulation;
+  user-select: none;
+}
+
+.number-tile[data-drag-enabled="true"] {
+  cursor: grab;
+}
+
+.number-tile[data-drag-enabled="true"]:active {
+  cursor: grabbing;
+}
+
+.number-tile.dragging {
+  opacity: 0.55;
+  transform: translateY(-3px);
 }
 
 .number-tile strong {
@@ -1516,6 +1552,10 @@ button.game-tile:hover:not(:disabled) {
   margin-top: 16px;
 }
 
+.number-add-meld {
+  border-style: dashed;
+}
+
 .number-rack {
   min-width: 0;
   margin-top: 18px;
@@ -1523,6 +1563,16 @@ button.game-tile:hover:not(:disabled) {
   border-radius: 16px;
   padding: 16px;
   background: #f7f2e7;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.number-rack.is-drop-blocked {
+  border-color: #b74635;
+  background: #fff2ef;
+  box-shadow: 0 0 0 4px rgb(183 70 53 / 15%);
 }
 
 .number-rack-heading {
@@ -1578,6 +1628,21 @@ button.game-tile:hover:not(:disabled) {
 .number-rack-tiles .number-tile {
   width: 100%;
   min-width: 0;
+}
+
+.number-rack-drop-message {
+  margin: 10px 0 0;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #e8f1ff;
+  color: #19498d;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.number-rack-drop-message.blocked {
+  background: #ffe4df;
+  color: #8f2f24;
 }
 
 .joker-assignment {

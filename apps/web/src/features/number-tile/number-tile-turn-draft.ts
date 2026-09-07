@@ -319,6 +319,9 @@ function commitEdit(
 export function addNumberTileDraftMeld(
   draft: NumberTileTurnDraft,
 ): NumberTileTurnDraftEditResult {
+  if (findNumberTileDraftReusableEmptyMeldIndex(draft) !== null) {
+    return succeed(draft);
+  }
   return succeed(
     commitEdit(draft, {
       table: {
@@ -330,6 +333,16 @@ export function addNumberTileDraftMeld(
       availableRackTiles: draft.availableRackTiles,
     }),
   );
+}
+
+/** Returns the one reusable local empty meld, preventing empty-card buildup. */
+export function findNumberTileDraftReusableEmptyMeldIndex(
+  draft: NumberTileTurnDraft,
+): number | null {
+  const meldIndex = draft.table.melds.findIndex(
+    (meld) => meld.origin === "LOCAL" && meld.tiles.length === 0,
+  );
+  return meldIndex === -1 ? null : meldIndex;
 }
 
 export function removeEmptyNumberTileDraftMeld(
@@ -403,6 +416,44 @@ function removeTableTile(
   };
 }
 
+type RemovedTableSource = Readonly<{
+  table: NumberTileDraftTable;
+  targetMeldIndex: number;
+  sourceMeldIndex: number | null;
+}>;
+
+function removeTableSourceForMove(
+  table: NumberTileDraftTable,
+  source: Extract<NumberTileDraftTileLocation, { source: "TABLE" }>,
+  targetMeldIndex: number,
+): RemovedTableSource {
+  const withoutTile = removeTableTile(table, source);
+  const emptiedSource = withoutTile.melds[source.meldIndex];
+  const shouldPruneSource =
+    source.meldIndex !== targetMeldIndex &&
+    emptiedSource?.tiles.length === 0;
+  if (!shouldPruneSource) {
+    return {
+      table: withoutTile,
+      targetMeldIndex,
+      sourceMeldIndex: source.meldIndex,
+    };
+  }
+
+  return {
+    table: {
+      melds: withoutTile.melds.filter(
+        (_, meldIndex) => meldIndex !== source.meldIndex,
+      ),
+    },
+    targetMeldIndex:
+      targetMeldIndex > source.meldIndex
+        ? targetMeldIndex - 1
+        : targetMeldIndex,
+    sourceMeldIndex: null,
+  };
+}
+
 function rackPlacement(
   tile: NumberTilePrivateRackTileViewV2,
 ): NumberTileDraftPlacement {
@@ -473,11 +524,15 @@ export function placeNumberTileDraftTile(
     return fail("INITIAL_MELD_TABLE_LOCKED");
   }
 
-  const tableWithoutSource =
+  const removedSource =
     source.source === "TABLE"
-      ? removeTableTile(draft.table, source)
-      : draft.table;
-  const targetMeld = tableWithoutSource.melds[target.meldIndex];
+      ? removeTableSourceForMove(draft.table, source, target.meldIndex)
+      : {
+          table: draft.table,
+          targetMeldIndex: target.meldIndex,
+          sourceMeldIndex: null,
+        };
+  const targetMeld = removedSource.table.melds[removedSource.targetMeldIndex];
   if (
     targetMeld === undefined ||
     !Number.isInteger(target.tileIndex) ||
@@ -489,7 +544,15 @@ export function placeNumberTileDraftTile(
 
   const placement =
     source.source === "TABLE" ? source.tile : rackPlacement(source.tile);
-  const nextTable = insertTableTile(tableWithoutSource, target, placement);
+  const adjustedTarget = {
+    meldIndex: removedSource.targetMeldIndex,
+    tileIndex: target.tileIndex,
+  };
+  const nextTable = insertTableTile(
+    removedSource.table,
+    adjustedTarget,
+    placement,
+  );
   const nextRack =
     source.source === "AVAILABLE_RACK"
       ? draft.availableRackTiles.filter((tile) => tile.tileId !== tileId)
@@ -500,9 +563,106 @@ export function placeNumberTileDraftTile(
       table: nextTable,
       availableRackTiles: nextRack,
     }, [
-      ...(source.source === "TABLE" ? [source.meldIndex] : []),
-      target.meldIndex,
+      ...(removedSource.sourceMeldIndex === null
+        ? []
+        : [removedSource.sourceMeldIndex]),
+      adjustedTarget.meldIndex,
     ]),
+  );
+}
+
+/** Appends one physical Tile to a whole-card target using post-removal indices. */
+export function appendNumberTileDraftTileToMeld(
+  draft: NumberTileTurnDraft,
+  tileId: TileId,
+  meldIndex: number,
+): NumberTileTurnDraftEditResult {
+  const meld = draft.table.melds[meldIndex];
+  if (meld === undefined) {
+    return fail("MELD_NOT_FOUND");
+  }
+  const source = findNumberTileDraftTile(draft, tileId);
+  if (source === null) {
+    return fail("TILE_NOT_FOUND");
+  }
+  const targetLengthAfterRemoval =
+    source.source === "TABLE" && source.meldIndex === meldIndex
+      ? meld.tiles.length - 1
+      : meld.tiles.length;
+  return placeNumberTileDraftTile(draft, tileId, {
+    meldIndex,
+    tileIndex: targetLengthAfterRemoval,
+  });
+}
+
+/** Creates (or reuses) one local meld and moves a Tile in one Undo entry. */
+export function placeNumberTileDraftTileInNewMeld(
+  draft: NumberTileTurnDraft,
+  tileId: TileId,
+): NumberTileTurnDraftEditResult {
+  const reusableMeldIndex = findNumberTileDraftReusableEmptyMeldIndex(draft);
+  if (reusableMeldIndex !== null) {
+    return appendNumberTileDraftTileToMeld(
+      draft,
+      tileId,
+      reusableMeldIndex,
+    );
+  }
+
+  const source = findNumberTileDraftTile(draft, tileId);
+  if (source === null) {
+    return fail("TILE_NOT_FOUND");
+  }
+  if (
+    source.source === "TABLE" &&
+    isCanonicalMeldLocked(draft, draft.table.melds[source.meldIndex]!)
+  ) {
+    return fail("INITIAL_MELD_TABLE_LOCKED");
+  }
+
+  const tableWithoutSource =
+    source.source === "TABLE"
+      ? removeTableTile(draft.table, source)
+      : draft.table;
+  const originalSourceMeldIndex =
+    source.source === "TABLE" ? source.meldIndex : null;
+  const emptiedSource =
+    originalSourceMeldIndex === null
+      ? undefined
+      : tableWithoutSource.melds[originalSourceMeldIndex];
+  const shouldPruneSource =
+    emptiedSource?.tiles.length === 0;
+  const remainingMelds = shouldPruneSource
+    ? tableWithoutSource.melds.filter(
+        (_, meldIndex) => meldIndex !== originalSourceMeldIndex,
+      )
+    : tableWithoutSource.melds;
+  const placement =
+    source.source === "TABLE" ? source.tile : rackPlacement(source.tile);
+  const targetMeldIndex = remainingMelds.length;
+  const nextTable: NumberTileDraftTable = {
+    melds: [
+      ...remainingMelds,
+      { kind: null, origin: "LOCAL", tiles: [placement] },
+    ],
+  };
+  const nextRack =
+    source.source === "AVAILABLE_RACK"
+      ? draft.availableRackTiles.filter((tile) => tile.tileId !== tileId)
+      : draft.availableRackTiles;
+  const sourceMeldIndex =
+    originalSourceMeldIndex !== null && !shouldPruneSource
+      ? originalSourceMeldIndex
+      : null;
+  return succeed(
+    commitEdit(
+      draft,
+      { table: nextTable, availableRackTiles: nextRack },
+      [
+        ...(sourceMeldIndex === null ? [] : [sourceMeldIndex]),
+        targetMeldIndex,
+      ],
+    ),
   );
 }
 
@@ -528,11 +688,22 @@ export function returnNumberTileDraftTileToRack(
   const restoredRack = draft.rackTiles.filter((tile) =>
     availableTileIds.has(tile.tileId),
   );
+  const tableWithoutSource = removeTableTile(draft.table, source);
+  const emptiedSource = tableWithoutSource.melds[source.meldIndex];
+  const shouldPruneSource = emptiedSource?.tiles.length === 0;
+  const nextTable = shouldPruneSource
+    ? {
+        melds: tableWithoutSource.melds.filter(
+          (_, meldIndex) => meldIndex !== source.meldIndex,
+        ),
+      }
+    : tableWithoutSource;
   return succeed(
-    commitEdit(draft, {
-      table: removeTableTile(draft.table, source),
-      availableRackTiles: restoredRack,
-    }, [source.meldIndex]),
+    commitEdit(
+      draft,
+      { table: nextTable, availableRackTiles: restoredRack },
+      shouldPruneSource ? [] : [source.meldIndex],
+    ),
   );
 }
 

@@ -8,12 +8,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   addNumberTileDraftMeld,
+  appendNumberTileDraftTileToMeld,
   assignNumberTileDraftJoker,
   canEditNumberTileTurnDraft,
   createNumberTileTurnDraft,
   decideNumberTileTurnDraftReconciliation,
   isNumberTileTurnDraftDirty,
   placeNumberTileDraftTile,
+  placeNumberTileDraftTileInNewMeld,
   removeEmptyNumberTileDraftMeld,
   resetNumberTileTurnDraft,
   returnNumberTileDraftTileToRack,
@@ -58,6 +60,8 @@ export type NumberTileTurnDraftController = Readonly<{
   addMeld: () => void;
   removeEmptyMeld: (meldIndex: number) => void;
   placeTile: (tileId: TileId, target: NumberTileDraftTarget) => void;
+  appendTileToMeld: (tileId: TileId, meldIndex: number) => void;
+  placeTileInNewMeld: (tileId: TileId) => void;
   returnTileToRack: (tileId: TileId) => void;
   assignJoker: (
     tileId: TileId,
@@ -187,6 +191,12 @@ export function useNumberTileTurnDraft(
       applyEdit((draft) => removeEmptyNumberTileDraftMeld(draft, meldIndex)),
     placeTile: (tileId, target) =>
       applyEdit((draft) => placeNumberTileDraftTile(draft, tileId, target)),
+    appendTileToMeld: (tileId, meldIndex) =>
+      applyEdit((draft) =>
+        appendNumberTileDraftTileToMeld(draft, tileId, meldIndex),
+      ),
+    placeTileInNewMeld: (tileId) =>
+      applyEdit((draft) => placeNumberTileDraftTileInNewMeld(draft, tileId)),
     returnTileToRack: (tileId) =>
       applyEdit((draft) => returnNumberTileDraftTileToRack(draft, tileId)),
     assignJoker: (tileId, number, color) =>

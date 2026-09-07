@@ -99,6 +99,10 @@ test("320px mobile layout은 document overflow를 강제하지 않고 핵심 tou
     /\.game-option-heading strong,\s*\.game-option-description\s*\{[^}]*overflow-wrap:\s*anywhere/su,
   );
   assert.match(ruleFor(".text-button"), /min-height:\s*44px/u);
+  assert.match(
+    ruleFor(".number-remove-empty-meld"),
+    /min-height:\s*44px/u,
+  );
   assert.match(ruleFor(".game-tile"), /min-height:\s*52px/u);
   assert.match(ruleFor(".symbol-picker button"), /min-height:\s*46px/u);
 });
@@ -171,9 +175,37 @@ test("P7C current Web은 snapshot V2와 구현된 Hangul/Number capability만 �
   assert.doesNotMatch(realtimeClientSource, /"number:start"/u);
 });
 
-test("Number editor는 keyboard/touch controls와 색상 외 marker를 제공한다", () => {
+test("Number editor는 drag 외에도 native keyboard/touch controls와 색상 외 marker를 제공한다", () => {
   assert.match(numberEditorSource, /type="button"/u);
-  assert.match(numberEditorSource, /aria-pressed=\{props\.selected\}/u);
+  assert.match(
+    numberEditorSource,
+    /event\.key !== "Enter" && event\.key !== " "/u,
+  );
+  assert.match(
+    numberEditorSource,
+    /aria-pressed=\{props\.selected === undefined \? undefined : props\.selected\}/u,
+  );
+  assert.match(
+    numberEditorSource,
+    /data-drag-enabled=\{props\.dragEnabled === true \? "true" : undefined\}/u,
+  );
+  assert.match(
+    numberEditorSource,
+    /onSelect=\{\(\) => placeRackTile\(tile\.tileId\)\}/u,
+  );
+  assert.doesNotMatch(
+    numberEditorSource,
+    /tile=\{tile\}[\s\S]{0,160}selected=\{selectedTileId === tile\.tileId\}[\s\S]{0,300}locationLabel="내 랙"/u,
+  );
+  assert.match(
+    numberEditorSource,
+    /`조합 \$\{meldIndex \+ 1\}, 편집 대상으로 선택`/u,
+  );
+  assert.match(
+    numberEditorSource,
+    /`선택한 타일을 조합 \$\{meldIndex \+ 1\}로 이동`/u,
+  );
+  assert.doesNotMatch(numberEditorSource, /role="button"/u);
   assert.match(numberEditorSource, /className="number-tile-marker"/u);
   assert.match(numberUxSource, /RED:\s*"R"/u);
   assert.match(numberUxSource, /BLUE:\s*"B"/u);
@@ -200,11 +232,87 @@ test("Number rack은 horizontal scroll 대신 responsive grid로 감싸고 view-
 test("Number 조합 UX는 하나의 생성 action과 derived classification만 노출한다", () => {
   assert.match(numberEditorSource, /\+ 새 조합 만들기/u);
   assert.doesNotMatch(numberEditorSource, /GROUP 추가|RUN 추가/u);
+  assert.doesNotMatch(numberEditorSource, /number-insert-button|number-meld-position/u);
+  assert.match(numberEditorSource, /placeTileInNewMeld\(tileId\)/u);
+  assert.match(numberEditorSource, /appendTileToMeld\(tileId, meldIndex\)/u);
+  assert.match(numberEditorSource, /findNumberTileDraftReusableEmptyMeldIndex/u);
+  assert.match(numberEditorSource, /aria-pressed=\{active\}/u);
+  assert.match(numberEditorSource, /● 여기에 추가 중/u);
+  assert.match(
+    numberEditorSource,
+    /selected\?\.source === "TABLE" && selected\.tile\.origin === "SELF_RACK"/u,
+  );
+  assert.match(numberEditorSource, /선택한 타일을 랙으로 되돌리기/u);
+  assert.match(
+    numberEditorSource,
+    /selected\?\.source === "TABLE"[\s\S]*placeTileInNewMeld\(selected\.tile\.tileId\)/u,
+  );
+  assert.match(numberEditorSource, /pendingFocusTargetRef\.current/u);
+  assert.match(numberEditorSource, /rackTileButtonRefs\.current/u);
   assert.match(numberEditorSource, /✓ 같은 숫자 조합/u);
   assert.match(numberEditorSource, /✓ 연속 숫자 조합/u);
   assert.match(numberEditorSource, /최종 유효성은 서버가 판정합니다/u);
   assert.match(numberUxSource, /classifyNumberTileDraftMeld/u);
   assert.match(numberUxSource, /status:\s*"AMBIGUOUS_JOKER"/u);
+});
+
+test("Number pointer drag route는 whole meld/new meld/rack target과 physical tileId를 사용한다", () => {
+  assert.match(numberEditorSource, /function beginPointerCandidate/u);
+  assert.match(numberEditorSource, /function movePointerCandidate/u);
+  assert.match(numberEditorSource, /function endPointerCandidate/u);
+  assert.match(numberEditorSource, /function cancelPointerCandidate/u);
+  assert.match(numberEditorSource, /data-number-drop-meld-index=\{meldIndex\}/u);
+  assert.match(numberEditorSource, /data-number-drop-new-meld/u);
+  assert.match(numberEditorSource, /data-number-drop-rack/u);
+  assert.match(
+    numberEditorSource,
+    /placeTileOnMeld\(candidate\.tileId, target\.meldIndex\)/u,
+  );
+  assert.match(numberEditorSource, /placeTileInNewMeld\(candidate\.tileId\)/u);
+  assert.match(
+    numberEditorSource,
+    /returnPlacedTileToRack\(candidate\.tileId\)/u,
+  );
+  assert.match(
+    numberEditorSource,
+    /event\.preventDefault\(\);\s*event\.stopPropagation\(\)/u,
+  );
+  assert.match(numberEditorSource, /draggedTileIdRef\.current = tileId/u);
+  assert.match(
+    numberEditorSource,
+    /pointerDragRef\.current = \{\s*tileId,/u,
+  );
+  assert.match(
+    numberEditorSource,
+    /target\.kind === "MELD"[\s\S]*requestFocus\(\{[\s\S]*kind: "MELD"[\s\S]*placeTileOnMeld/u,
+  );
+  assert.match(
+    numberEditorSource,
+    /target\.kind === "NEW_MELD"[\s\S]*requestFocus\(\{[\s\S]*kind: "MELD"[\s\S]*placeTileInNewMeld/u,
+  );
+  assert.match(
+    numberEditorSource,
+    /event\.pointerType !== "mouse"/u,
+  );
+  assert.match(numberEditorSource, /NUMBER_TILE_DRAG_THRESHOLD_PX/u);
+  assert.match(numberEditorSource, /setPointerCapture\(event\.pointerId\)/u);
+  assert.match(numberEditorSource, /releasePointerCapture\(event\.pointerId\)/u);
+  assert.match(
+    numberEditorSource,
+    /dragged\.tile\.origin === "CANONICAL_TABLE"/u,
+  );
+  assert.match(numberEditorSource, /공개 테이블의 타일은 내 랙으로 가져올 수 없습니다/u);
+  assert.match(styles, /\.number-meld-card\.is-drop-target,[\s\S]*\.number-rack\.is-drop-target/u);
+  assert.match(ruleFor(".number-tile.dragging"), /opacity:\s*0\.55/u);
+  assert.match(ruleFor(".number-rack.is-drop-blocked"), /border-color:/u);
+  assert.match(
+    numberEditorSource,
+    /props\.controller\.undo\(\);\s*setActiveMeldIndex\(null\)/u,
+  );
+  assert.match(
+    numberEditorSource,
+    /previousDraftBaselineRef\.current = draftBaseline;[\s\S]*setActiveMeldIndex\(null\);[\s\S]*setDraggedTileId\(null\)/u,
+  );
 });
 
 test("Number turn awareness는 prominent countdown과 exact-turn/action sound guard를 사용한다", () => {
