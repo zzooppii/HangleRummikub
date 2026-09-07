@@ -13,6 +13,10 @@ import {
 } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 
+import {
+  FisherYatesRandomIndexError,
+  shuffleFrozen,
+} from "../../../domain/frozen-fisher-yates.js";
 import type {
   Clock,
   IdGenerator,
@@ -161,26 +165,16 @@ function shuffleNumberTileValues<TValue>(
   values: readonly TValue[],
   randomSource: RandomSource,
 ): readonly TValue[] {
-  const shuffled = [...values];
-
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    const selectedIndex = randomSource.nextInt(index + 1);
-    if (
-      !Number.isSafeInteger(selectedIndex) ||
-      selectedIndex < 0 ||
-      selectedIndex > index
-    ) {
+  try {
+    return shuffleFrozen(values, randomSource);
+  } catch (error) {
+    if (error instanceof FisherYatesRandomIndexError) {
       throw new RangeError(
         "RandomSource returned an index outside the Number Tile shuffle range.",
       );
     }
-
-    const currentValue = shuffled[index]!;
-    shuffled[index] = shuffled[selectedIndex]!;
-    shuffled[selectedIndex] = currentValue;
+    throw error;
   }
-
-  return Object.freeze(shuffled);
 }
 
 function requirePlayers(playerIds: readonly PlayerId[]): void {

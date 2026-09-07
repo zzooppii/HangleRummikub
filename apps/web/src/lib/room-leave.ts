@@ -9,9 +9,12 @@ import {
   type RoomRevision,
 } from "@hangul-rummikub/shared";
 
-export type RoomLeaveFlightRef = {
-  current: Promise<void> | null;
-};
+import {
+  runAsyncSingleFlight,
+  type AsyncSingleFlightRef,
+} from "./async-single-flight.js";
+
+export type RoomLeaveFlightRef = AsyncSingleFlightRef;
 
 export type RoomLeaveClientOutcome =
   | "ACCEPTED"
@@ -66,17 +69,7 @@ export function runRoomLeaveSingleFlight(
   flightRef: RoomLeaveFlightRef,
   execute: () => Promise<void>,
 ): Promise<void> {
-  if (flightRef.current !== null) {
-    return flightRef.current;
-  }
-
-  const flight = execute().finally(() => {
-    if (flightRef.current === flight) {
-      flightRef.current = null;
-    }
-  });
-  flightRef.current = flight;
-  return flight;
+  return runAsyncSingleFlight(flightRef, execute);
 }
 
 export function roomLeaveConfirmationMessage(phase: RoomPhase): string {

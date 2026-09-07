@@ -11,11 +11,14 @@ import {
   type TurnPassCommand,
 } from "@hangul-rummikub/shared";
 
+import {
+  runAsyncSingleFlight,
+  type AsyncSingleFlightRef,
+} from "./async-single-flight.js";
+
 export type PendingTurnActionCommand = TurnDrawCommand | TurnPassCommand;
 
-export type TurnActionFlightRef = {
-  current: Promise<void> | null;
-};
+export type TurnActionFlightRef = AsyncSingleFlightRef;
 
 export type TurnActionFailureAction =
   | "PRESERVE_DRAFT"
@@ -98,17 +101,7 @@ export function runTurnActionSingleFlight(
   flightRef: TurnActionFlightRef,
   execute: () => Promise<void>,
 ): Promise<void> {
-  if (flightRef.current !== null) {
-    return flightRef.current;
-  }
-
-  const flight = execute().finally(() => {
-    if (flightRef.current === flight) {
-      flightRef.current = null;
-    }
-  });
-  flightRef.current = flight;
-  return flight;
+  return runAsyncSingleFlight(flightRef, execute);
 }
 
 export function getTurnActionControls(

@@ -1,5 +1,4 @@
 import {
-  GameRevisionSchema,
   ServerTimeSchema,
   TurnNumberSchema,
   type GameId,
@@ -22,12 +21,6 @@ import type {
   ScheduledTurnDeadline,
   TurnScheduler,
 } from "../ports/system.js";
-
-export function incrementGameRevision(
-  revision: GameRevision,
-): GameRevision {
-  return parse(GameRevisionSchema, revision + 1);
-}
 
 function addDuration(
   startedAt: ServerTime,

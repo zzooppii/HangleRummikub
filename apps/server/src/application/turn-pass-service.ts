@@ -17,6 +17,7 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
+import { nextGameRevision } from "../domain/game-revision.js";
 import type { PlayingGameState } from "../games/hangul-tile/domain/game-state.js";
 import {
   createForfeitResult,
@@ -47,7 +48,6 @@ import {
 import type { RoomMutationSerialExecutor } from "./room-session-service.js";
 import {
   createNextTurn,
-  incrementGameRevision,
   scheduleCurrentTurnBestEffort,
   type TurnSchedulingFailureReporter,
 } from "./turn-transition.js";
@@ -212,7 +212,7 @@ function createCandidate(
   roomCandidate: RoomWriteCandidate;
   terminalResult: TurnPassSuccessData;
 }> {
-  const gameRevision = incrementGameRevision(game.gameRevision);
+  const gameRevision = nextGameRevision(game.gameRevision);
   const noMoveTurnEndPlayerIds = advanceNoMoveTurnEnds(
     game.turnOrder,
     game.forfeitedPlayerIds,

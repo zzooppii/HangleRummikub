@@ -9,6 +9,8 @@ import type {
   TurnId,
 } from "@hangul-rummikub/shared";
 
+import { isSameGameplayIdentity } from "./gameplay-identity.js";
+
 export const TURN_DRAFT_HISTORY_LIMIT = 50;
 
 type DraftTileOrigin = "CANONICAL_BOARD" | "SELF_RACK";
@@ -903,9 +905,18 @@ export function decideTurnDraftReconciliation(
   }
 
   if (
-    incomingSnapshot.game.gameId !== draft.baseGameId ||
-    incomingSnapshot.versions.gameRevision !== draft.baseGameRevision ||
-    incomingSnapshot.game.turn.turnId !== draft.baseTurnId ||
+    !isSameGameplayIdentity(
+      {
+        gameId: draft.baseGameId,
+        gameRevision: draft.baseGameRevision,
+        turnId: draft.baseTurnId,
+      },
+      {
+        gameId: incomingSnapshot.game.gameId,
+        gameRevision: incomingSnapshot.versions.gameRevision,
+        turnId: incomingSnapshot.game.turn.turnId,
+      },
+    ) ||
     incomingSnapshot.self.playerId !==
       incomingSnapshot.game.turn.activePlayerId
   ) {

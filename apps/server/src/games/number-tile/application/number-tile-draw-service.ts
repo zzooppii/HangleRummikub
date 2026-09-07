@@ -3,6 +3,7 @@ import type {
   TurnId,
 } from "@hangul-rummikub/shared";
 
+import { nextGameRevision } from "../../../domain/game-revision.js";
 import type { RoomMutationSerialExecutor } from "../../../application/room-session-service.js";
 import {
   scheduleCurrentTurnBestEffort,
@@ -36,7 +37,6 @@ import {
 } from "./number-tile-command-support.js";
 import {
   createNextNumberTileTurn,
-  incrementNumberTileGameRevision,
 } from "./number-tile-turn-transition.js";
 
 export type NumberTileDrawInput = NumberTileTurnCommandInput;
@@ -190,7 +190,7 @@ export class NumberTileDrawService {
       selectedTileId,
     );
     const committedAt = this.#dependencies.clock.now();
-    const gameRevision = incrementNumberTileGameRevision(
+    const gameRevision = nextGameRevision(
       latest.game.gameRevision,
     );
     const turn = createNextNumberTileTurn(

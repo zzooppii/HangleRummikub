@@ -1,6 +1,6 @@
 # Multi-game Platform Specification
 
-> 상태: P0~P9A COMPLETE / PUBLIC TWO-GAME VERIFIED / P9B DECISION REQUIRED
+> 상태: P0~P9B COMPLETE / PUBLIC TWO-GAME VERIFIED / P10 READY
 > 작성일: 2026-09-07
 > 적용 범위: 현재 production 한글 타일 게임을 보존하면서 여러 턴제 보드게임을 수용하기 위한 제품 경계  
 > 비고: 이 문서는 구현 계약이 아니라 후속 Phase의 의사결정 기준이다.
@@ -15,7 +15,7 @@ P0의 목적은 다음 세 가지다.
 2. 두 번째와 세 번째 게임을 구현하며 검증할 수 있는 최소 경계만 제안한다.
 3. production 동작을 유지하는 단계별 migration과 품질 gate를 정의한다.
 
-상세 코드 분류와 구조 후보는 [MULTI_GAME_ARCHITECTURE.md](./MULTI_GAME_ARCHITECTURE.md), 실행 순서는 [MULTI_GAME_MIGRATION_ROADMAP.md](./MULTI_GAME_MIGRATION_ROADMAP.md)를 따른다. 두 production game 구현으로 공통성을 재검증한 P9A 결과와 승인 대기 decision은 [MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md](./MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md)에 있다.
+상세 코드 분류와 구조 후보는 [MULTI_GAME_ARCHITECTURE.md](./MULTI_GAME_ARCHITECTURE.md), 실행 순서는 [MULTI_GAME_MIGRATION_ROADMAP.md](./MULTI_GAME_MIGRATION_ROADMAP.md)를 따른다. 두 production game 구현으로 공통성을 재검증한 P9A 결과는 [MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md](./MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md), 승인된 네 small primitive의 P9B 구현은 [MULTI_GAME_P9B_SMALL_ABSTRACTIONS.md](./MULTI_GAME_P9B_SMALL_ABSTRACTIONS.md)에 있다.
 
 ## 2. 목표
 
@@ -302,7 +302,7 @@ P6는 runtime 구현 전에 다음 경계를 확정했다.
 - Current snapshot capability만으로는 Hangul-only V2 Web과 Number-capable Web을 구분할 수 없으므로 `selectedSnapshotVersion === 2`와 exact `supportedGameTypes`의 `NUMBER_TILE` 포함을 create/join/resume mutation 전에 함께 확인하도록 확정했다.
 - P7A, P7B와 P7C가 완료됐고 P8 source/local 및 public stop gate도 통과했다.
 
-현재 P6/P7A/P7B/P7C/P8 판정은 `COMPLETE`다. 사용자가 Railway의 `deafc39` Active/Successful/master/1 Replica를 확인했고, Current Web bundle의 exact capability와 catalog, 두 game의 public create·join·start·Draw·resume, privacy, admission/isolation, responsive와 console을 검증했다. P8 최종 상태는 `PUBLIC TWO-GAME VERIFIED`다. P9A analysis-only Phase도 완료됐으며, strict small primitive 네 개만 `PROPOSED / USER_DECISION_REQUIRED`로 남고 P9B implementation은 승인 전 시작하지 않는다. 상세 production 결과는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md), abstraction 판정은 [MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md](./MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md)에 있다.
+현재 P6/P7A/P7B/P7C/P8 판정은 `COMPLETE`다. 사용자가 Railway의 `deafc39` Active/Successful/master/1 Replica를 확인했고, Current Web bundle의 exact capability와 catalog, 두 game의 public create·join·start·Draw·resume, privacy, admission/isolation, responsive와 console을 검증했다. P8 최종 상태는 `PUBLIC TWO-GAME VERIFIED`다. P9A analysis-only Phase도 완료됐으며 사용자는 `P9A-001`~`004`만 승인했다. P9B는 pure GameRevision successor, frozen Fisher–Yates, Web async single-flight와 gameplay identity comparator만 구현했고 다른 후보는 계속 보류했다. Shared 75, Web 151, server 704로 총 930 tests와 build/production-serving gate를 통과해 **P9B COMPLETE / P10 READY**다. 상세 production 결과는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md), abstraction 판정은 [MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md](./MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md), 구현 record는 [MULTI_GAME_P9B_SMALL_ABSTRACTIONS.md](./MULTI_GAME_P9B_SMALL_ABSTRACTIONS.md)에 있다.
 
 ## 16. P7B Number Tile server/shared integration
 

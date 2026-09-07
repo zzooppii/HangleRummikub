@@ -12,6 +12,7 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
+import { nextGameRevision } from "../../../domain/game-revision.js";
 import {
   notifyGameFinishedBestEffort,
   type GameFinishedPostCommit,
@@ -52,7 +53,6 @@ import { asNumberTilePlayingRoom } from "./number-tile-command-support.js";
 import {
   createNextNumberTileTurn,
   createNumberTileFinishedRoomTransition,
-  incrementNumberTileGameRevision,
 } from "./number-tile-turn-transition.js";
 
 const NumberTileTimeoutCommonSchema = v.strictObject({
@@ -429,7 +429,7 @@ export class NumberTileTimeoutService {
         winnerPlayerIds: [...result.winnerPlayerIds],
       });
     } else {
-      const gameRevision = incrementNumberTileGameRevision(game.gameRevision);
+      const gameRevision = nextGameRevision(game.gameRevision);
       const turn = createNextNumberTileTurn(
         game,
         committedAt,

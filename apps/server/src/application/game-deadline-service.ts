@@ -9,6 +9,7 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
+import { nextGameRevision } from "../domain/game-revision.js";
 import type { FinishedGameState } from "../games/hangul-tile/domain/game-state.js";
 import { createTimeLimitResult } from "../games/hangul-tile/domain/result-engine.js";
 import type { RoomWriteCandidate } from "../model/persistence.js";
@@ -103,12 +104,6 @@ function incrementRoomRevision(
   revision: import("@hangul-rummikub/shared").RoomRevision,
 ) {
   return v.parse(RoomRevisionSchema, revision + 1);
-}
-
-function incrementGameRevision(
-  revision: import("@hangul-rummikub/shared").GameRevision,
-) {
-  return v.parse(GameRevisionSchema, revision + 1);
 }
 
 export class GameDeadlineService {
@@ -210,7 +205,7 @@ export class GameDeadlineService {
       return failedExecution();
     }
 
-    const gameRevision = incrementGameRevision(game.gameRevision);
+    const gameRevision = nextGameRevision(game.gameRevision);
     const roomRevision = incrementRoomRevision(room.roomRevision);
     const result = createTimeLimitResult({
       playerIds: game.turnOrder,

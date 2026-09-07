@@ -12,14 +12,16 @@ import {
 } from "@hangul-rummikub/shared";
 
 import type { NumberTileTurnDraft } from "../features/number-tile/number-tile-turn-draft.js";
+import {
+  runAsyncSingleFlight,
+  type AsyncSingleFlightRef,
+} from "./async-single-flight.js";
 
 export type PendingNumberTileActionCommand =
   | NumberDrawCommand
   | NumberPassCommand;
 
-export type NumberTileCommandFlightRef = {
-  current: Promise<void> | null;
-};
+export type NumberTileCommandFlightRef = AsyncSingleFlightRef;
 
 export type NumberTileCommandFailureAction =
   | "PRESERVE_DRAFT"
@@ -140,15 +142,5 @@ export function runNumberTileCommandSingleFlight(
   flightRef: NumberTileCommandFlightRef,
   execute: () => Promise<void>,
 ): Promise<void> {
-  if (flightRef.current !== null) {
-    return flightRef.current;
-  }
-
-  const flight = execute().finally(() => {
-    if (flightRef.current === flight) {
-      flightRef.current = null;
-    }
-  });
-  flightRef.current = flight;
-  return flight;
+  return runAsyncSingleFlight(flightRef, execute);
 }

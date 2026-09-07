@@ -18,6 +18,7 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
+import { nextGameRevision } from "../domain/game-revision.js";
 import type { Board } from "../games/hangul-tile/domain/board.js";
 import type { PlayingGameState } from "../games/hangul-tile/domain/game-state.js";
 import { createRackEmptyResult } from "../games/hangul-tile/domain/result-engine.js";
@@ -53,7 +54,6 @@ import {
 } from "./game-finish-transition.js";
 import {
   createNextTurn,
-  incrementGameRevision,
   scheduleCurrentTurnBestEffort,
   type TurnSchedulingFailureReporter,
 } from "./turn-transition.js";
@@ -386,7 +386,7 @@ function createCandidate(
   if (completesInitialMeld) {
     initialMeldCompleted.set(actorPlayerId, true);
   }
-  const gameRevision = incrementGameRevision(game.gameRevision);
+  const gameRevision = nextGameRevision(game.gameRevision);
   const baseGame = {
     gameId: game.gameId,
     gameRevision,

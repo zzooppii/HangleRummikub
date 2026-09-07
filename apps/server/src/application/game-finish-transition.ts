@@ -7,6 +7,7 @@ import {
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
+import { nextGameRevision } from "../domain/game-revision.js";
 import type {
   FinishedGameState,
   GameResult,
@@ -19,7 +20,6 @@ import type {
 import type { RoomPolicyScheduler } from "../ports/room-policy-scheduler.js";
 import type { RoomRepository } from "../ports/room-repository.js";
 import { ROOM_RETENTION_MS } from "./room-presence-policy-service.js";
-import { incrementGameRevision } from "./turn-transition.js";
 
 export type GameFinishedPostCommitData = Readonly<{
   roomId: RoomId;
@@ -132,7 +132,7 @@ export function createFinishedRoomTransition(
       "Legacy Hangul finish transition received an unsupported gameType.",
     );
   }
-  const gameRevision = incrementGameRevision(game.gameRevision);
+  const gameRevision = nextGameRevision(game.gameRevision);
   const roomRevision = v.parse(RoomRevisionSchema, room.roomRevision + 1);
   const finishedGame: FinishedGameState = Object.freeze({
     ...gameBase,

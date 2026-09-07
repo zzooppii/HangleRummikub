@@ -10,6 +10,9 @@ import {
 } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 
+import {
+  shuffleFrozen as fisherYatesShuffle,
+} from "../../../domain/frozen-fisher-yates.js";
 import type { IdGenerator, RandomSource } from "../../../ports/system.js";
 import type {
   Board,
@@ -189,32 +192,7 @@ export function createDefaultRulesConfig(): RulesConfig {
   return cloneRulesConfig(DEFAULT_RULES_CONFIG);
 }
 
-/** Returns a frozen shuffled copy and never changes the caller's collection. */
-export function fisherYatesShuffle<TValue>(
-  values: readonly TValue[],
-  randomSource: RandomSource,
-): readonly TValue[] {
-  const shuffled = [...values];
-
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    const selectedIndex = randomSource.nextInt(index + 1);
-    if (
-      !Number.isSafeInteger(selectedIndex) ||
-      selectedIndex < 0 ||
-      selectedIndex > index
-    ) {
-      throw new RangeError(
-        "RandomSource returned an index outside the Fisher-Yates range.",
-      );
-    }
-
-    const currentValue = shuffled[index]!;
-    shuffled[index] = shuffled[selectedIndex]!;
-    shuffled[selectedIndex] = currentValue;
-  }
-
-  return Object.freeze(shuffled);
-}
+export { fisherYatesShuffle };
 
 function createReadonlyMap<TKey, TValue>(
   entries: Iterable<readonly [TKey, TValue]>,

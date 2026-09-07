@@ -1,6 +1,6 @@
 # Multi-game Platform P9A — Two-game Abstraction Analysis
 
-> 상태: P9A ANALYSIS COMPLETE / P9B USER DECISION REQUIRED
+> 상태: P9A ANALYSIS COMPLETE / P9A-001~004 APPROVED AND IMPLEMENTED / P9B COMPLETE
 > 기준 checkpoint: `1fafc05 docs: complete two-game production verification`
 > 분석 대상: production에서 검증된 `HANGUL_TILE`, `NUMBER_TILE`
 > 원칙: 두 구현의 의미가 실제로 같을 때만 작은 공통 primitive를 제안하고, runtime source나 public contract는 변경하지 않는다.
@@ -18,7 +18,7 @@ P9B에 제안할 엄격한 `EXTRACT_NOW`는 다음 네 개뿐이다.
 3. Web async single-flight helper
 4. Web gameplay command supersession comparator
 
-모두 `PROPOSED / USER_DECISION_REQUIRED`이며 승인된 것이 아니다. exact `RoomRecord` union과 identity-only `GameRegistry`는 유지하고, lifecycle adapter registry, common start/command executor, competition-ranking helper, renderer registry, direct Hangul V2 migration과 rack-free PlatformSnapshot validation 경계는 `GEM_CARD` 또는 별도 migration gate까지 보류한다.
+사용자는 네 항목만 승인했고 P9B는 그 범위만 구현했다. exact `RoomRecord` union과 identity-only `GameRegistry`는 유지하고, lifecycle adapter registry, common start/command executor, competition-ranking helper, renderer registry, direct Hangul V2 migration과 rack-free PlatformSnapshot validation 경계는 `GEM_CARD` 또는 별도 migration gate까지 보류한다.
 
 ## 2. Scope and evidence
 
@@ -415,7 +415,7 @@ Platform/root files가 두 concrete module을 import하는 것은 위 debt 목�
 | `application/turn-transition.ts::incrementGameRevision`, Number transition, `game-deadline-service.ts` local helper | branded revision +1과 parser guard | 동일 | 작은 canonical rule | 낮음 | `EXTRACT_NOW` |
 | Hangul `domain/game-state.ts::fisherYatesShuffle`, Number `domain/game-state.ts::shuffleNumberTileValues` | input copy, descending swap, injected RNG index guard, freeze | 동일 | algorithm/error guard 한 곳 | 낮음 | `EXTRACT_NOW` |
 | `lib/turn-submit.ts`, `turn-actions.ts`, `number-tile-actions.ts`, `room-leave.ts` single-flight wrappers | in-flight Promise 공유, settled identity 확인 후 clear | 동일 | race cleanup 한 곳 | 낮음 | `EXTRACT_NOW` |
-| Hangul/Number pending command helpers | current null/revision advance/turn change로 superseded 판정 | 동일 | reconnect/retry 판정 한 곳 | 낮음 | `EXTRACT_NOW` |
+| Hangul/Number draft reconciliation | gameId/revision/turn identity로 local draft 지속 여부 판정 | 동일 | draft invalidation identity 한 곳 | 낮음 | `EXTRACT_NOW` |
 | `GameStartService.#startWithinRoomBoundary`, `NumberTileStartService.#startWithinRoomBoundary` | lane, preflight, validation, UoW, post-commit scheduling | 구조만 유사 | line 감소 | 높음: presence/deadline hooks | `WAIT_FOR_GEM_CARD` |
 | Hangul and Number Submit/Draw/Pass services | lane, idempotency, authority, detached candidate, UoW | 구조만 유사 | apparent high | 높음: error/rule/action hooks | `WAIT_FOR_GEM_CARD` |
 | `TurnTimeoutService`와 `NumberTileTimeoutService` room-boundary methods | scheduled identity, presence lease, action, UoW | 일부 동일 | medium | 높음: penalty/no-play/deadline | `WAIT_FOR_GEM_CARD` |
@@ -487,16 +487,16 @@ GEM/Card형 게임을 rack, physical tile, meld, rearrangement, Draw/Pass, local
 
 ## 27. EXTRACT_NOW candidates and decisions
 
-아래 네 항목만 엄격한 기준을 통과했다. 각 항목은 승인 전이며 P9A에서 구현하지 않는다.
+아래 네 항목만 엄격한 기준을 통과했고 사용자가 모두 승인했다. P9A에서는 구현하지 않았으며 P9B에서 승인 범위 그대로 구현했다.
 
 | Decision ID | 상태 | 최소 변경 | 근거 |
 | --- | --- | --- | --- |
-| `P9A-001` | `PROPOSED / USER_DECISION_REQUIRED` | pure `incrementGameRevision(revision)` helper | 3곳의 동일 branded +1 semantics, no game branch |
-| `P9A-002` | `PROPOSED / USER_DECISION_REQUIRED` | frozen-copy Fisher–Yates utility | 양 initial state의 동일 injected-RNG algorithm, opt-in 사용 |
-| `P9A-003` | `PROPOSED / USER_DECISION_REQUIRED` | Web `runSingleFlight(ref, execute)` | 네 wrapper의 동일 Promise/race cleanup semantics |
-| `P9A-004` | `PROPOSED / USER_DECISION_REQUIRED` | pure gameplay supersession comparator | Hangul/Number pending command의 동일 revision/turn identity rule |
+| `P9A-001` | `APPROVED / IMPLEMENTED` | pure `nextGameRevision(revision)` helper | 동일 branded +1 semantics, no game branch |
+| `P9A-002` | `APPROVED / IMPLEMENTED` | `shuffleFrozen(values, randomSource)` | 양 initial state의 동일 injected-RNG algorithm, opt-in 사용 |
+| `P9A-003` | `APPROVED / IMPLEMENTED` | Web `runAsyncSingleFlight(ref, execute)` | 네 wrapper의 동일 Promise/race cleanup semantics |
+| `P9A-004` | `APPROVED / IMPLEMENTED` | `isSameGameplayIdentity(previous, next)` | Hangul/Number draft의 동일 game/revision/turn identity rule |
 
-`P9A-001`은 revision 저장 위치, increment timing 또는 error를 바꾸지 않는다. `P9A-002`는 inventory/deal/order policy를 소유하지 않고 existing invalid RNG behavior를 그대로 보존해야 한다. `P9A-003`은 payload/requestId/retry/error mapping을 caller에 남긴다. `P9A-004`는 concrete caller가 phase/gameType을 먼저 narrow하며 draft model을 받지 않는다.
+`P9A-001`은 revision 저장 위치, increment timing 또는 error를 바꾸지 않는다. `P9A-002`는 inventory/deal/order policy를 소유하지 않으며 Number wrapper가 기존 Number 전용 invalid-index error message를 번역해 보존한다. `P9A-003`은 payload/requestId/retry/error mapping을 caller에 남긴다. `P9A-004`는 concrete caller가 phase/gameType과 active player를 먼저 판정하며 draft model을 받지 않는다. Pending-command ack supersession helpers는 `gameId`를 보유하지 않는 기존 command model의 의미를 넓히지 않기 위해 그대로 두었다.
 
 ## 28. KEEP_CONCRETE list
 
@@ -528,16 +528,16 @@ GEM/Card형 게임을 rack, physical tile, meld, rearrangement, Draw/Pass, local
 
 `legacy-hangul-v1-command-router`의 unused start, legacy server-action duplicate timeout facet와 dead Number current-turn identity type은 `REMOVE_DUPLICATION_ONLY`지만 P9B의 네 승인 단위와 섞지 않는다. 별도 cleanup decision으로 후속 제안할 수 있다.
 
-## 30. P9B proposed scope and migration risk
+## 30. P9B approved scope and migration risk
 
-P9B는 사용자가 명시적으로 승인한 Decision ID만 하나씩 구현한다. 권장 순서는 독립 rollback이 쉬운 순서다.
+P9B는 사용자가 명시적으로 승인한 네 Decision ID만 구현했다. 각 primitive는 독립 rollback이 가능하며 public wire나 game state를 소유하지 않는다.
 
 | ID | 주요 affected files | Wire | Persistence | Scheduler | Web | Rollback | 필수 regression |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `P9A-001` | revision helper, Hangul/Number transition/deadline callers | LOW | LOW | LOW | NONE | easy | start=0, success +1, reject/no-op unchanged, exhaustion |
 | `P9A-002` | pure utility, both `game-state.ts` | NONE | NONE | NONE | NONE | easy | deterministic shuffle, inventory/deal/order, invalid RNG |
 | `P9A-003` | Web action helpers and focused tests | NONE | NONE | NONE | LOW | easy | same Promise, exact-once, retry/requestId, settle cleanup |
-| `P9A-004` | Web pending/supersession helpers and tests | NONE | NONE | NONE | LOW | easy | revision advance, turn change, reconnect/stale sync, both games |
+| `P9A-004` | Web draft reconciliation helpers and tests | NONE | NONE | NONE | LOW | easy | game/revision/turn change, presence-only/reconnect, both games |
 
 한 ID마다 targeted tests 후 916-test full regression, typecheck, build와 diff-check를 수행한다. public event/schema, GameType, Room representation, persistence format, scheduler behavior, UI와 gameplay는 변경하지 않는다. 여러 ID를 승인하더라도 각 변경의 semantic diff와 rollback boundary를 유지한다.
 
@@ -555,18 +555,18 @@ P9B의 공통 stop gate는 다음과 같다.
 
 `P9A-001`은 revision overflow/exhaustion과 all terminal paths를, `P9A-002`는 deterministic random source와 inventory counts를, `P9A-003/004`는 same-ID retry, stale sync, reconnect와 draft invalidation을 추가 targeted gate로 사용한다. 테스트 expectation을 새 behavior에 맞춰 약화하지 않는다.
 
-## 32. Decision required
+## 32. Decision outcome
 
-P9A 분석 자체는 완료됐지만 P9B implementation은 승인되지 않았다.
+P9A 분석은 완료됐고 사용자는 아래 네 항목을 모두 승인했다. P9B는 승인되지 않은 후보를 추가하지 않고 이 네 항목만 구현했다.
 
 | Decision ID | 제안 | 현재 상태 |
 | --- | --- | --- |
-| `P9A-001` | canonical pure GameRevision successor | `PROPOSED / USER_DECISION_REQUIRED` |
-| `P9A-002` | canonical frozen Fisher–Yates utility | `PROPOSED / USER_DECISION_REQUIRED` |
-| `P9A-003` | Web async single-flight helper | `PROPOSED / USER_DECISION_REQUIRED` |
-| `P9A-004` | Web gameplay supersession comparator | `PROPOSED / USER_DECISION_REQUIRED` |
+| `P9A-001` | canonical pure GameRevision successor | `APPROVED / IMPLEMENTED` |
+| `P9A-002` | canonical frozen Fisher–Yates utility | `APPROVED / IMPLEMENTED` |
+| `P9A-003` | Web async single-flight helper | `APPROVED / IMPLEMENTED` |
+| `P9A-004` | Web gameplay supersession comparator | `APPROVED / IMPLEMENTED` |
 
-사용자는 각 ID를 `APPROVED` 또는 `REJECTED`로 별도 결정해야 한다. 승인되지 않은 ID는 P9B에서 구현하지 않는다. P9B는 자동 시작하지 않으며, 아무 ID도 승인되지 않으면 no-op/defer가 올바른 결과다.
+구현 위치와 call site, 보존된 의미는 [MULTI_GAME_P9B_SMALL_ABSTRACTIONS.md](./MULTI_GAME_P9B_SMALL_ABSTRACTIONS.md)에 기록한다. lifecycle/codec registry, start shell, generic command executor, ranking, renderer registry, offline timeout policy와 stored game envelope는 계속 `WAIT_FOR_GEM_CARD` 또는 `KEEP_CONCRETE`다.
 
 ## 33. P9A non-changes
 

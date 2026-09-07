@@ -5,6 +5,7 @@ import type {
   ServerTime,
 } from "@hangul-rummikub/shared";
 
+import { nextGameRevision } from "../../../domain/game-revision.js";
 import type { PlayingGameState } from "../domain/game-state.js";
 import {
   createForfeitResult,
@@ -23,7 +24,6 @@ import type { IdGenerator } from "../../../ports/system.js";
 import { createFinishedRoomTransition } from "../../../application/game-finish-transition.js";
 import {
   createNextTurn,
-  incrementGameRevision,
   type CurrentTurnIdentity,
 } from "../../../application/turn-transition.js";
 import { LEGACY_V1_DEFAULT_GAME_TYPE } from "./legacy-hangul-compatibility-registration.js";
@@ -115,7 +115,7 @@ export function applyLegacyHangulPlayingLeave(
   const forfeitedPlayerIds = new Set(game.forfeitedPlayerIds);
   forfeitedPlayerIds.add(input.actorPlayerId);
   const actorWasCurrent = game.turn.activePlayerId === input.actorPlayerId;
-  const gameRevision = incrementGameRevision(game.gameRevision);
+  const gameRevision = nextGameRevision(game.gameRevision);
   const noMoveTurnEndPlayerIds = pruneNoMoveTurnEnds(
     game.turnOrder,
     forfeitedPlayerIds,

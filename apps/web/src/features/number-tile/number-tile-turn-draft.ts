@@ -12,6 +12,8 @@ import type {
   TurnId,
 } from "@hangul-rummikub/shared";
 
+import { isSameGameplayIdentity } from "../../lib/gameplay-identity.js";
+
 export const NUMBER_TILE_TURN_DRAFT_HISTORY_LIMIT = 50;
 
 export type NumberTileDraftMode = "INITIAL_MELD" | "REARRANGEMENT";
@@ -603,9 +605,18 @@ export function decideNumberTileTurnDraftReconciliation(
   }
 
   if (
-    incomingSnapshot.game.gameId !== draft.baseGameId ||
-    incomingSnapshot.game.gameRevision !== draft.baseGameRevision ||
-    incomingSnapshot.game.turn.turnId !== draft.baseTurnId ||
+    !isSameGameplayIdentity(
+      {
+        gameId: draft.baseGameId,
+        gameRevision: draft.baseGameRevision,
+        turnId: draft.baseTurnId,
+      },
+      {
+        gameId: incomingSnapshot.game.gameId,
+        gameRevision: incomingSnapshot.game.gameRevision,
+        turnId: incomingSnapshot.game.turn.turnId,
+      },
+    ) ||
     incomingSnapshot.self.playerId !==
       incomingSnapshot.game.turn.activePlayerId
   ) {

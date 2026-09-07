@@ -1,5 +1,6 @@
 import type { GameRevision, TurnId } from "@hangul-rummikub/shared";
 
+import { nextGameRevision } from "../../../domain/game-revision.js";
 import {
   notifyGameFinishedBestEffort,
   type GameFinishedPostCommit,
@@ -40,7 +41,6 @@ import {
 import {
   createNextNumberTileTurn,
   createNumberTileFinishedRoomTransition,
-  incrementNumberTileGameRevision,
 } from "./number-tile-turn-transition.js";
 
 export type NumberTilePassInput = NumberTileTurnCommandInput;
@@ -214,7 +214,7 @@ export class NumberTilePassService {
         winnerPlayerIds: [...result.winnerPlayerIds],
       });
     } else {
-      const gameRevision = incrementNumberTileGameRevision(
+      const gameRevision = nextGameRevision(
         latest.game.gameRevision,
       );
       const turn = createNextNumberTileTurn(

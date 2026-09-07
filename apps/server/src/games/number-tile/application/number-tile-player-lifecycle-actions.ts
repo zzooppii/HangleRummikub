@@ -5,6 +5,7 @@ import type {
   ServerTime,
 } from "@hangul-rummikub/shared";
 
+import { nextGameRevision } from "../../../domain/game-revision.js";
 import type { CurrentTurnIdentity } from "../../../application/turn-transition.js";
 import type {
   NumberTileRoomRecord,
@@ -26,7 +27,6 @@ import { NUMBER_TILE_GAME_TYPE } from "../number-tile-registration.js";
 import {
   createNextNumberTileTurn,
   createNumberTileFinishedRoomTransition,
-  incrementNumberTileGameRevision,
 } from "./number-tile-turn-transition.js";
 
 export type NumberTilePlayingLeaveActionResult = Readonly<{
@@ -144,7 +144,7 @@ export function applyNumberTilePlayingLeave(input: {
     });
   }
 
-  const gameRevision = incrementNumberTileGameRevision(game.gameRevision);
+  const gameRevision = nextGameRevision(game.gameRevision);
   const turn =
     game.turn.activePlayerId === input.actorPlayerId
       ? createNextNumberTileTurn(

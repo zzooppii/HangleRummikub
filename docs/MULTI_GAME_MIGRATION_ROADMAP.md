@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0~P9A COMPLETE / PUBLIC TWO-GAME VERIFIED / P9B DECISION REQUIRED
+> 상태: P0~P9B COMPLETE / PUBLIC TWO-GAME VERIFIED / P10 READY
 > 작성일: 2026-09-07
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -25,7 +25,7 @@
 
 production 기준선 573 tests는 shared 55, web 87, server 431로 구성됐다. 이후 추가된 test를 포함한 수는 이유 없이 감소하면 해당 Phase는 완료가 아니다.
 
-P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A checkpoint `a215eaa`는 이 tests를 삭제·skip하지 않고 신규 boundary 6개를 더해 shared 59, web 91, server 453으로 총 603 tests를 통과했다. P3B checkpoint `bc4a62a`는 기존 603개와 신규 command-routing 9개를 포함해 총 612 tests를 통과했다. P3C checkpoint `d21eaad`는 신규 server-action regression 16개를 더해 shared 59, web 91, server 478로 총 628 tests를 통과했다. P3D checkpoint `cedda1a`는 import-boundary regression 3개를 더해 shared 59, web 91, server 481로 총 631 tests를 통과했다. P4 checkpoint `60eb77e`는 새 case 수를 늘리지 않고 production A/B smoke의 behavioral assertions를 강화하며 이 631-test 기준선을 두 번 검증했다. P5A checkpoint `05cac94`는 shared contract 6개와 server mapper/wire-isolation 8개를 더해 shared 65, web 91, server 489로 총 645 tests를 기준선으로 만들었다. P5B checkpoint `e9211bc`는 negotiation/wire contract 4개, Web decode·routing·storage regression 14개, server negotiation·selector·mixed-version regression 14개를 더해 shared 69, web 105, server 503으로 총 677 tests를 통과했다. P5C는 additive create contract, requested-type resolution/atomicity, Web catalog/selection/retry와 mixed legacy/V2 create/join 회귀 8개를 더해 shared 69, web 108, server 508로 총 685 tests를 통과했다. P7B checkpoint `d9329d1`은 P7A domain과 server/shared integration 회귀를 포함해 shared 75, web 109, server 694, 총 878 tests다. P7C는 Web capability/catalog/Number renderer와 local draft·active-control·responsive 회귀 31개를 더해 shared 75, web 140, server 694, 총 909 tests를 기준선으로 만든다. P8 source/local gate는 raw two-game protocol, production-serving과 import/draft boundary 회귀 7개를 더해 shared 75, Web 142, server 699, 총 916 tests를 두 번 연속 통과했다.
+P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A checkpoint `a215eaa`는 이 tests를 삭제·skip하지 않고 신규 boundary 6개를 더해 shared 59, web 91, server 453으로 총 603 tests를 통과했다. P3B checkpoint `bc4a62a`는 기존 603개와 신규 command-routing 9개를 포함해 총 612 tests를 통과했다. P3C checkpoint `d21eaad`는 신규 server-action regression 16개를 더해 shared 59, web 91, server 478로 총 628 tests를 통과했다. P3D checkpoint `cedda1a`는 import-boundary regression 3개를 더해 shared 59, web 91, server 481로 총 631 tests를 통과했다. P4 checkpoint `60eb77e`는 새 case 수를 늘리지 않고 production A/B smoke의 behavioral assertions를 강화하며 이 631-test 기준선을 두 번 검증했다. P5A checkpoint `05cac94`는 shared contract 6개와 server mapper/wire-isolation 8개를 더해 shared 65, web 91, server 489로 총 645 tests를 기준선으로 만들었다. P5B checkpoint `e9211bc`는 negotiation/wire contract 4개, Web decode·routing·storage regression 14개, server negotiation·selector·mixed-version regression 14개를 더해 shared 69, web 105, server 503으로 총 677 tests를 통과했다. P5C는 additive create contract, requested-type resolution/atomicity, Web catalog/selection/retry와 mixed legacy/V2 create/join 회귀 8개를 더해 shared 69, web 108, server 508로 총 685 tests를 통과했다. P7B checkpoint `d9329d1`은 P7A domain과 server/shared integration 회귀를 포함해 shared 75, web 109, server 694, 총 878 tests다. P7C는 Web capability/catalog/Number renderer와 local draft·active-control·responsive 회귀 31개를 더해 shared 75, web 140, server 694, 총 909 tests를 기준선으로 만든다. P8 source/local gate는 raw two-game protocol, production-serving과 import/draft boundary 회귀 7개를 더해 shared 75, Web 142, server 699, 총 916 tests를 두 번 연속 통과했다. P9B는 approved primitive unit regression 14개를 추가해 shared 75, Web 151, server 704, 총 930 tests를 통과했다.
 
 ## 2. Phase 개요
 
@@ -922,7 +922,7 @@ Multi-game Platform P7C만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의
 - Production source, public wire, rule와 dependency 변경은 없다. 자세한 증거는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)를 따른다.
 - 사용자가 Railway Dashboard에서 `deafc39`가 master의 Active/Successful deployment이며 1 Replica라고 확인했다.
 - 해당 public deployment에서 exact Web capability `[2,1]` + `[HANGUL_TILE, NUMBER_TILE]`, Home 두 card, Hangul/Number A/B create·join·start·Draw·resume, Legacy V1, Number V2/game type, viewer privacy, wrong-client/cross-game rejection, 390×844·320×568 responsive와 clean browser console을 검증했다.
-- P8 최종 판정은 `COMPLETE / PUBLIC TWO-GAME VERIFIED`다. P9A analysis-only Phase도 완료됐으며 P9B는 네 proposed decision에 대한 사용자 승인 전 `NOT STARTED`다.
+- P8 최종 판정은 `COMPLETE / PUBLIC TWO-GAME VERIFIED`다. P9A analysis-only Phase도 완료됐고, 사용자가 `P9A-001`~`004`만 승인해 P9B implementation을 해당 범위로 제한했다.
 
 ### Codex 실행 명령
 
@@ -985,7 +985,7 @@ Multi-game Platform P9A 분석만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMA
 - Tile/Rack/Board/Table/Meld/Joker/TurnDraft/Result와 Draw/Pass/timeout semantics는 game-specific 또는 accidental similarity로 판정했다.
 - giant `GameModule` 대신 narrow typed collaborators를 composition root에서 조립하는 방향을 유지한다.
 - strict `EXTRACT_NOW`는 `P9A-001` GameRevision successor, `P9A-002` frozen Fisher–Yates, `P9A-003` Web single-flight, `P9A-004` gameplay supersession comparator 네 개뿐이다.
-- 네 decision은 모두 `PROPOSED / USER_DECISION_REQUIRED`다. P9A는 `COMPLETE`, P9B는 사용자 승인 전 `NOT STARTED`다.
+- 네 decision은 모두 사용자 `APPROVED` 후 P9B에서 `IMPLEMENTED`됐다. P9A는 `COMPLETE`이며 P9B 최종 판정은 full quality gate와 checkpoint/push 뒤 확정한다.
 
 ### 12.2 P9B — Approved abstraction adjustments
 
@@ -1025,6 +1025,19 @@ P9A에서 근거와 승인을 얻은 작은 contract adjustment만 순차 구현
 - result/projection/codec isolation
 - complete Hangul/Number E2E after each adjustment
 - typecheck/build/diff-check
+
+#### 승인 및 implementation 결과
+
+사용자는 `P9A-001`~`P9A-004`만 승인했다. 구현은 다음 네 small primitive에 한정한다.
+
+- `apps/server/src/domain/game-revision.ts`: `nextGameRevision`
+- `apps/server/src/domain/frozen-fisher-yates.ts`: `shuffleFrozen`
+- `apps/web/src/lib/async-single-flight.ts`: `runAsyncSingleFlight`
+- `apps/web/src/lib/gameplay-identity.ts`: `isSameGameplayIdentity`
+
+Revision helper는 두 game의 canonical commit call site만 사용하고 다른 revision을 다루지 않는다. Shuffle은 기존 RNG call order/count와 frozen detached output을 보존하고 Number wrapper가 기존 invalid-index error를 번역한다. 네 Web wrapper는 동일 Promise single-flight 의미를 유지한다. Gameplay identity comparator는 Hangul/Number draft reconciliation에만 적용하며 pending-command ack supersession helper는 command model을 바꾸지 않도록 concrete로 남긴다.
+
+Exact Room union, identity-only Registry, concrete services/domain/Result/TurnDraft와 `WAIT_FOR_GEM_CARD` 항목은 그대로다. 상세 implementation record는 [MULTI_GAME_P9B_SMALL_ABSTRACTIONS.md](./MULTI_GAME_P9B_SMALL_ABSTRACTIONS.md)를 따른다. Root typecheck, shared 75 + Web 151 + server 704 = 930 tests, build, production-serving 6/6과 diff-check를 통과했으므로 **P9B COMPLETE / P10 READY**다.
 
 #### Codex 실행 명령
 

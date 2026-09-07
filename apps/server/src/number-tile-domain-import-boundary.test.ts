@@ -75,7 +75,7 @@ function resolveTypeScriptImport(
   );
 }
 
-test("Number Tile domain은 Hangul과 platform runtime layer를 import하지 않는다", () => {
+test("Number Tile domain은 승인된 pure primitive 외 Hangul/platform runtime을 import하지 않는다", () => {
   const forbiddenBareImports = new Set([
     "express",
     "react",
@@ -83,6 +83,9 @@ test("Number Tile domain은 Hangul과 platform runtime layer를 import하지 않
     "socket.io-client",
   ]);
   const allowedSystemPort = resolve(sourceRoot, "ports/system.ts");
+  const allowedPurePrimitives = new Set([
+    resolve(sourceRoot, "domain/frozen-fisher-yates.ts"),
+  ]);
   const violations: string[] = [];
 
   for (const path of collectTypeScriptFiles(numberDomainRoot)) {
@@ -107,7 +110,8 @@ test("Number Tile domain은 Hangul과 platform runtime layer를 import하지 않
       const portableTarget = portablePath(target);
       if (
         !portableTarget.startsWith(`${portablePath(numberDomainRoot)}/`) &&
-        portableTarget !== portablePath(allowedSystemPort)
+        portableTarget !== portablePath(allowedSystemPort) &&
+        !allowedPurePrimitives.has(target)
       ) {
         violations.push(`${sourceRelative(path)} -> ${specifier}`);
       }

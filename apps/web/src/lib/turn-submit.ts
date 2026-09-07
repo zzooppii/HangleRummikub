@@ -8,6 +8,11 @@ import {
   type TurnSubmitCommand,
 } from "@hangul-rummikub/shared";
 
+import {
+  runAsyncSingleFlight,
+  type AsyncSingleFlightRef,
+} from "./async-single-flight.js";
+
 import type {
   DraftPlacedTile,
   DraftSyllable,
@@ -18,9 +23,7 @@ export type TurnSubmitFailureAction =
   | "PRESERVE_DRAFT"
   | "RESET_DRAFT_AND_SYNC";
 
-export type TurnSubmitFlightRef = {
-  current: Promise<void> | null;
-};
+export type TurnSubmitFlightRef = AsyncSingleFlightRef;
 
 type PendingTurnSnapshot =
   | Readonly<{
@@ -118,17 +121,7 @@ export function runTurnSubmitSingleFlight(
   flightRef: TurnSubmitFlightRef,
   execute: () => Promise<void>,
 ): Promise<void> {
-  if (flightRef.current !== null) {
-    return flightRef.current;
-  }
-
-  const flight = execute().finally(() => {
-    if (flightRef.current === flight) {
-      flightRef.current = null;
-    }
-  });
-  flightRef.current = flight;
-  return flight;
+  return runAsyncSingleFlight(flightRef, execute);
 }
 
 export function decideTurnSubmitFailureAction(

@@ -1,6 +1,6 @@
 # Multi-game Platform Architecture
 
-> 상태: P0~P9A COMPLETE / PUBLIC TWO-GAME VERIFIED / P9B DECISION REQUIRED
+> 상태: P0~P9B COMPLETE / PUBLIC TWO-GAME VERIFIED / P10 READY
 > 작성일: 2026-09-07
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
@@ -1219,4 +1219,31 @@ P9A는 production source를 변경하지 않고 `HANGUL_TILE`과 `NUMBER_TILE`�
 
 Giant `GameModule`은 재검토 결과도 기각한다. 권장 방향은 immutable identity registration과 composition root에서 조립하는 narrow typed start/router/adapter/projector/server-action collaborators다. capability가 없는 game에 timer, advisory, rack 또는 result shape를 강제하지 않는다.
 
-P9B 후보는 pure revision successor, frozen-copy Fisher–Yates, Web async single-flight와 gameplay supersession comparator 네 개뿐이다. 모두 `PROPOSED / USER_DECISION_REQUIRED`이며 승인 전에는 구현하지 않는다. P9A는 `COMPLETE`, P9B는 사용자 decision 전 `BLOCKED/NOT STARTED`다.
+사용자는 P9B에서 pure revision successor, frozen-copy Fisher–Yates, Web async single-flight와 gameplay identity comparator 네 개만 승인했고, 구현도 그 범위에 한정했다. 상세 API와 call site는 [MULTI_GAME_P9B_SMALL_ABSTRACTIONS.md](./MULTI_GAME_P9B_SMALL_ABSTRACTIONS.md)를 따른다. P9A의 `WAIT_FOR_GEM_CARD`와 `KEEP_CONCRETE` 판정은 바뀌지 않았다.
+
+## 36. P9B approved small primitives
+
+P9B는 두 production game에 공통 base model을 만들지 않고 다음 네 opt-in primitive만 추가했다.
+
+```text
+Server concrete services
+  -> nextGameRevision(GameRevision)
+
+Hangul/Number initial-state policy
+  -> shuffleFrozen(readonly values, injected RandomSource)
+
+Hangul/Number Web command wrappers
+  -> runAsyncSingleFlight(ref, execute)
+
+Hangul/Number draft reconciliation
+  -> isSameGameplayIdentity({ gameId, gameRevision, turnId }, next)
+```
+
+- `nextGameRevision`은 branded numeric successor 검증만 하며 commit timing, UoW와 no-op/replay 판단은 concrete service가 계속 소유한다.
+- `shuffleFrozen`은 detached/frozen descending Fisher–Yates와 RNG index guard만 소유한다. Hangul은 기존 export alias를 유지하고 Number wrapper는 기존 invalid-index error message를 번역해 보존한다.
+- 네 Web single-flight wrapper는 동일 Promise 재사용과 settle cleanup을 common helper에 위임하지만 payload, requestId, ack-loss/retry와 error policy는 바꾸지 않는다.
+- gameplay comparator는 draft의 `gameId`, `gameRevision`, `turnId`만 비교한다. Phase/game type/active-player 및 refresh/session replacement는 concrete controller의 책임이고, 기존 pending-command comparator에는 적용하지 않는다.
+
+Exact `HangulRoomRecord | NumberTileRoomRecord`, identity-only `GameRegistry`, concrete services/routers/domain/projectors/renderers, game-specific Turn/Result/RuleEngine은 그대로다. Lifecycle/codec registry, start shell, generic command executor, ranking/renderer abstraction, offline timeout policy와 stored envelope는 `GEM_CARD` 근거 전까지 보류한다. Public wire, persistence shape, scheduler, gameplay와 UI에는 새 contract가 없다.
+
+P9B는 신규 primitive test 14개를 더해 shared 75, Web 151, server 704, 총 930 tests와 root typecheck/build, production-serving 6개, `git diff --check`를 통과했다. 승인한 네 primitive 밖의 architecture를 추가하지 않았으므로 **P9B COMPLETE / P10 READY**다.

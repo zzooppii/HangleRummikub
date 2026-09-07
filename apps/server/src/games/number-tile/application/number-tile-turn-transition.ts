@@ -1,5 +1,4 @@
 import {
-  GameRevisionSchema,
   RoomRevisionSchema,
   ServerTimeSchema,
   TurnNumberSchema,
@@ -11,6 +10,7 @@ import {
 } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 
+import { nextGameRevision } from "../../../domain/game-revision.js";
 import type {
   FinishedNumberTileGameState,
   NumberTileGameState,
@@ -37,12 +37,6 @@ export type NumberTileFinishedRoomTransition = Readonly<{
   roomCandidate: RoomWriteCandidate;
   finishedGame: FinishedNumberTileGameState;
 }>;
-
-export function incrementNumberTileGameRevision(
-  revision: GameRevision,
-): GameRevision {
-  return parse(GameRevisionSchema, revision + 1);
-}
 
 function addTurnDuration(startedAt: ServerTime): ServerTime {
   return parse(
@@ -103,9 +97,7 @@ export function createNumberTileFinishedRoomTransition(
 
   const finishedGame: FinishedNumberTileGameState = Object.freeze({
     ...gameBase,
-    gameRevision: incrementNumberTileGameRevision(
-      originalGame.gameRevision,
-    ),
+    gameRevision: nextGameRevision(originalGame.gameRevision),
     turn: null,
     result,
   });
