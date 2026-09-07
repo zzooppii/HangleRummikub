@@ -410,6 +410,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
   ]);
   const idGenerator = new FakeIdGenerator();
   const playerLifecycleActions = new PlayerLifecycleRouter({
+    gemCard: createGemCardPlayerLifecycleActions(idGenerator),
     hangul: createLegacyHangulPlayerLifecycleActions(idGenerator),
     numberTile: createNumberTilePlayerLifecycleActions(idGenerator),
   });
@@ -596,6 +597,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
     turnScheduler,
   });
   const gameStartRouter = new GameStartRouter({
+    gemCard: { gameType: "GEM_CARD", start: async () => { throw new Error("GEM start is outside this Hangul/Number harness."); } },
     roomRepository: persistence,
     hangul: {
       gameType: LEGACY_V1_DEFAULT_GAME_TYPE,
@@ -712,6 +714,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
     onGameFinished,
   });
   scheduledTurnRouter = new ScheduledTurnRouter({
+    gemCard: { gameType: "GEM_CARD", handleTurnTimeout: async () => { throw new Error("GEM timeout is outside this harness."); } },
     roomRepository: persistence,
     hangul: {
       gameType: LEGACY_V1_DEFAULT_GAME_TYPE,
@@ -738,6 +741,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
     legacyHangulV1GameProjector: projectLegacyHangulV1Game,
   });
   const platformSnapshotV2Projector = new PlatformSnapshotV2Projector({
+    gemCardGameProjector: projectGemCardV2Game,
     clock,
     presenceReader,
     legacyHangulSnapshotProjector: snapshotProjector,
@@ -759,6 +763,14 @@ function createDeterministicRuntime(): DeterministicRuntime {
 
   return {
     runtime: {
+      gemCardCommandRouter: new GemCardCommandRouter({ roomRepository: persistence, capability: {
+        gameType: "GEM_CARD",
+        collect: async () => { throw new Error("Unexpected GEM action."); },
+        purchase: async () => { throw new Error("Unexpected GEM action."); },
+        reserve: async () => { throw new Error("Unexpected GEM action."); },
+        yield: async () => { throw new Error("Unexpected GEM action."); },
+      } }),
+      subscribeGemCardTimeoutApplied() { return () => undefined; },
       clock,
       connectionRegistry,
       gameRegistry,
@@ -4504,6 +4516,7 @@ test(
           snapshot.room.roomId,
         );
         assert.ok(persisted?.game);
+        assert.equal(persisted.gameType, "HANGUL_TILE");
         assert.equal(persisted.storageRevision, seeded.storageRevision + 1);
         assert.equal(persisted.roomRevision, seeded.roomRevision);
         assert.deepEqual(
@@ -8182,3 +8195,6 @@ test(
     );
   },
 );
+import { projectGemCardV2Game } from "../games/gem-card/compatibility/gem-card-v2-game-projector.js";
+import { createGemCardPlayerLifecycleActions } from "../games/gem-card/application/gem-card-player-lifecycle-actions.js";
+import { GemCardCommandRouter } from "../games/gem-card/application/gem-card-command-router.js";

@@ -51,6 +51,7 @@ test("scheduled turn routing selects exactly one concrete timeout capability", a
   for (const selected of ["HANGUL_TILE", "NUMBER_TILE"] as const) {
     const calls: string[] = [];
     const router = new ScheduledTurnRouter({
+      gemCard: { gameType: "GEM_CARD", handleTurnTimeout: async () => { throw new Error("Unexpected GEM timeout in two-game fixture."); } },
       roomRepository: { findById: async () => room(selected) },
       hangul: {
         gameType: "HANGUL_TILE",
@@ -78,6 +79,7 @@ test("scheduled turn routing selects exactly one concrete timeout capability", a
 test("scheduled turn routing does not delegate an absent Room", async () => {
   let calls = 0;
   const router = new ScheduledTurnRouter({
+      gemCard: { gameType: "GEM_CARD", handleTurnTimeout: async () => { throw new Error("Unexpected GEM timeout in two-game fixture."); } },
     roomRepository: { findById: async () => null },
     hangul: {
       gameType: "HANGUL_TILE",

@@ -1,3 +1,4 @@
+import { HangulTilePlayingPlatformSnapshotV2Schema, type HangulTilePlayingPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -299,8 +300,8 @@ function requireV1Playing(snapshot: unknown): PlayingStateSnapshot {
   return v.parse(PlayingStateSnapshotSchema, snapshot);
 }
 
-function requireV2Playing(snapshot: unknown): PlayingPlatformSnapshotV2 {
-  return v.parse(PlayingPlatformSnapshotV2Schema, snapshot);
+function requireV2Playing(snapshot: unknown): HangulTilePlayingPlatformSnapshotV2 {
+  return v.parse(HangulTilePlayingPlatformSnapshotV2Schema, snapshot);
 }
 
 function platformPlayersFromV1(snapshot: StateSnapshot) {

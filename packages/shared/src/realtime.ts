@@ -1,3 +1,5 @@
+import { GemCardPlayingPlatformSnapshotV2Schema, GemCardFinishedPlatformSnapshotV2Schema } from "./platform/platform-snapshot-v2.js";
+import type { GemCollectCommand, GemPurchaseCommand, GemReserveCommand, GemYieldCommand } from "./protocol.js";
 import * as v from "valibot";
 
 import {
@@ -329,6 +331,16 @@ export type NumberPassWireAck = v.InferOutput<
   typeof NumberPassWireAckSchema
 >;
 
+const GemSnapshotDeliveryDataSchema = v.strictObject({ snapshot: v.union([GemCardPlayingPlatformSnapshotV2Schema, GemCardFinishedPlatformSnapshotV2Schema]) });
+export const GemCollectWireAckSchema = v.union([UncorrelatedFailureAckSchema, UnscopedAckFailureSchema, createRoomScopedAckSchema(GemSnapshotDeliveryDataSchema)]);
+export type GemCollectWireAck = v.InferOutput<typeof GemCollectWireAckSchema>;
+export const GemPurchaseWireAckSchema = v.union([UncorrelatedFailureAckSchema, UnscopedAckFailureSchema, createRoomScopedAckSchema(GemSnapshotDeliveryDataSchema)]);
+export type GemPurchaseWireAck = v.InferOutput<typeof GemPurchaseWireAckSchema>;
+export const GemReserveWireAckSchema = v.union([UncorrelatedFailureAckSchema, UnscopedAckFailureSchema, createRoomScopedAckSchema(GemSnapshotDeliveryDataSchema)]);
+export type GemReserveWireAck = v.InferOutput<typeof GemReserveWireAckSchema>;
+export const GemYieldWireAckSchema = v.union([UncorrelatedFailureAckSchema, UnscopedAckFailureSchema, createRoomScopedAckSchema(GemSnapshotDeliveryDataSchema)]);
+export type GemYieldWireAck = v.InferOutput<typeof GemYieldWireAckSchema>;
+
 export const StateSnapshotEventSchema = v.strictObject({
   kind: v.literal("state:snapshot"),
   protocolVersion: ProtocolVersionSchema,
@@ -537,6 +549,10 @@ export interface SnapshotWireClientToServerEvents {
     command: TurnPassCommand,
     acknowledge: SocketAcknowledgement<TurnPassWireAck>,
   ) => void;
+  "gem:collect": (command: GemCollectCommand, acknowledge: SocketAcknowledgement<GemCollectWireAck>) => void;
+  "gem:purchase": (command: GemPurchaseCommand, acknowledge: SocketAcknowledgement<GemPurchaseWireAck>) => void;
+  "gem:reserve": (command: GemReserveCommand, acknowledge: SocketAcknowledgement<GemReserveWireAck>) => void;
+  "gem:yield": (command: GemYieldCommand, acknowledge: SocketAcknowledgement<GemYieldWireAck>) => void;
   "number:submit": (
     command: NumberSubmitCommand,
     acknowledge: SocketAcknowledgement<NumberSubmitWireAck>,

@@ -178,11 +178,13 @@ test("GEM Card domain은 runtime infrastructure와 Tile/Rack 계열 모델을 �
   assert.deepEqual(violations, []);
 });
 
-test("P11A GEM Card domain은 production runtime에서 import되지 않는다", () => {
+test("P11B GEM domain의 runtime consumers는 GEM application/compatibility와 exact stored Room type뿐이다", () => {
   const gemPrefix = portablePath(gemDomainRoot);
   const directImports = collectTypeScriptFiles(sourceRoot)
     .filter((path) => !path.endsWith(".test.ts"))
     .filter((path) => !portablePath(path).startsWith(gemPrefix))
+    .filter((path) => !["games/gem-card/application/", "games/gem-card/compatibility/"].some(prefix => sourceRelative(path).startsWith(prefix)))
+    .filter((path) => !["model/persistence.ts", "application/player-lifecycle-router.ts", "application/turn-transition.ts"].includes(sourceRelative(path)))
     .flatMap((path) =>
       importSpecifiers(path)
         .map((specifier) => ({

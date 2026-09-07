@@ -1,3 +1,4 @@
+import { projectGemCardV2Game } from "../games/gem-card/compatibility/gem-card-v2-game-projector.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -87,6 +88,7 @@ function createProjectors() {
   return {
     legacyHangulSnapshotProjector,
     platform: new PlatformSnapshotV2Projector({
+    gemCardGameProjector: projectGemCardV2Game,
       clock,
       presenceReader,
       legacyHangulSnapshotProjector,

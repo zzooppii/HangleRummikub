@@ -1765,6 +1765,7 @@ test("the first offline Number timeout records streak one and a persisted resume
   });
   assert.equal(replacement.status, "REPLACED");
   const resumed = await harness.persistence.findById(afterTimeout.roomId);
+  assert.equal(resumed?.gameType, "NUMBER_TILE");
   assert.equal(
     resumed?.game?.offlineTimeoutStreakByPlayerId.get(actorPlayerId),
     0,
@@ -1866,6 +1867,7 @@ test("overdue recovery reads a canonical Number deadline and routes one timeout 
   let hangulCalls = 0;
   let numberCalls = 0;
   const router = new ScheduledTurnRouter({
+      gemCard: { gameType: "GEM_CARD", handleTurnTimeout: async () => { throw new Error("Unexpected GEM timeout in two-game fixture."); } },
     roomRepository: harness.persistence,
     hangul: {
       gameType: "HANGUL_TILE",
@@ -2215,6 +2217,7 @@ test("a serialized Number leave wins over an already-captured Submit without a s
   }
   assert.equal(staleSubmit.error.code, "NOT_YOUR_TURN");
   const afterSubmit = await harness.persistence.findById(before.roomId);
+  assert.equal(afterSubmit?.gameType, "NUMBER_TILE");
   assert.equal(afterSubmit?.storageRevision, storageRevisionAfterLeave);
   assert.equal(
     afterSubmit?.game?.gameRevision,

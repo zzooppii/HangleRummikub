@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0~P11A COMPLETE / PUBLIC TWO-GAME VERIFIED / P11B READY
+> 상태: P0~P11B COMPLETE / PUBLIC TWO-GAME VERIFIED / P11C READY (NOT STARTED)
 > 작성일: 2026-09-07
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -1199,6 +1199,12 @@ GEM_CARD command/projection/state codec을 canonical registry와 Room applicatio
 ```text
 Multi-game Platform P11B만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙과 P11A를 기준으로 GEM_CARD의 닫힌 shared command/failure/projection schema, state codec/lifecycle/projector, server application을 canonical gameType registry와 Room UoW에 연결하라. resource/card conservation, actor/scoped revision, idempotency, serialization, public holdings/reserves, private deck/order와 atomic commit을 서버에서 검증하고 45초 scheduled-turn action/recovery를 연결하되 overall game deadline은 만들지 마라. React와 production enablement는 제외하고 세 게임 전체 typecheck/test/build/diff-check를 통과시켜라.
 ```
+
+#### P11B completion checkpoint
+
+Started at `9e124e4` with 1045 passing tests. The exact third Room union, identity-only registration, four GEM commands, V2-only capability admission, rack-free projection, immutable clone/coherence, 45-second timeout/recovery and platform retention are implemented. The P11A domain and recent Number Joker correction are unchanged. Details and final validation are in [GEM_CARD_SERVER_INTEGRATION.md](./GEM_CARD_SERVER_INTEGRATION.md).
+
+P11B is source integration only: current Web advertises/creates only Hangul + Number; no GEM card, renderer, generic framework or Railway change. `DEPLOYMENT_NOT_REQUIRED_FOR_P11B`. P11C is the next separate task, not implemented here. Number manual browser verification is not reclassified as completed.
 
 ### 14.3 P11C — Gem/Card web implementation
 

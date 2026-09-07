@@ -27,6 +27,6 @@ export function isRoomAdmissionCompatible(
     return false;
   }
 
-  // Number has no Legacy StateSnapshot V1 representation.
-  return gameType !== "NUMBER_TILE" || capabilities.selectedSnapshotVersion === 2;
+  // Number and GEM have no Legacy StateSnapshot V1 representation.
+  return gameType === "HANGUL_TILE" || capabilities.selectedSnapshotVersion === 2;
 }

@@ -28,8 +28,8 @@ test("malformed, duplicate, unknown and oversized game capability fail closed", 
   for (const supportedGameTypes of [
     [],
     ["HANGUL_TILE", "HANGUL_TILE"],
-    ["GEM_CARD"],
-    ["HANGUL_TILE", "NUMBER_TILE", "GEM_CARD"],
+    ["FUTURE_GAME"],
+    ["HANGUL_TILE", "NUMBER_TILE", "FUTURE_GAME"],
     "HANGUL_TILE",
     null,
   ]) {

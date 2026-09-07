@@ -1,3 +1,4 @@
+import { validateGemCollectCommand, validateGemPurchaseCommand, validateGemReserveCommand, validateGemYieldCommand, type GemCollectWireAck, type GemCardPlayingPlatformSnapshotV2, type GemCardFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import {
   PROTOCOL_VERSION,
   validateNumberDrawCommand,
@@ -291,6 +292,23 @@ function numberSubmitSuccessAck(
   };
 }
 
+function gemSuccessAck(
+  requestId: RequestId,
+  metadata: SnapshotMetadata,
+  wireSnapshot:
+    | GemCardPlayingPlatformSnapshotV2
+    | GemCardFinishedPlatformSnapshotV2,
+): GemCollectWireAck {
+  return {
+    scope: "ROOM",
+    requestId,
+    ok: true,
+    serverTime: metadata.serverTime,
+    versions: metadata.versions,
+    data: { snapshot: wireSnapshot },
+  };
+}
+
 function numberDrawSuccessAck(
   requestId: RequestId,
   metadata: SnapshotMetadata,
@@ -437,6 +455,26 @@ function isNumberTileFinishedWireSnapshot(
   return (
     "snapshotVersion" in snapshot &&
     snapshot.room.gameType === "NUMBER_TILE" &&
+    snapshot.room.phase === "FINISHED"
+  );
+}
+
+function isGemCardPlayingWireSnapshot(
+  snapshot: StateSnapshotWirePayload,
+): snapshot is GemCardPlayingPlatformSnapshotV2 {
+  return (
+    "snapshotVersion" in snapshot &&
+    snapshot.room.gameType === "GEM_CARD" &&
+    snapshot.room.phase === "PLAYING"
+  );
+}
+
+function isGemCardFinishedWireSnapshot(
+  snapshot: StateSnapshotWirePayload,
+): snapshot is GemCardFinishedPlatformSnapshotV2 {
+  return (
+    "snapshotVersion" in snapshot &&
+    snapshot.room.gameType === "GEM_CARD" &&
     snapshot.room.phase === "FINISHED"
   );
 }
@@ -1872,6 +1910,408 @@ function registerTurnPassHandler(
   });
 }
 
+function registerGemCollectHandler(
+  io: RealtimeServer,
+  socket: RealtimeSocket,
+  runtime: ApplicationRuntime,
+): void {
+  socket.on("gem:collect", (rawCommand, acknowledge) => {
+    const receivedAt = runtime.clock.now();
+    let committed = false;
+    const commandInput: unknown = rawCommand;
+    const command = validateGemCollectCommand(commandInput);
+    if (!command.ok) {
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, command.error, receivedAt),
+      );
+      return;
+    }
+
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(
+        createSocketId(socket.id),
+      );
+      if (binding === null) {
+        acknowledgeIfPresent(
+          acknowledge,
+          failureAck(commandInput, UNAUTHENTICATED_ERROR, receivedAt),
+        );
+        return;
+      }
+      if (!isRoomAdmissionCompatible("GEM_CARD", socketAdmissionCapabilities(socket))) {
+        acknowledgeIfPresent(acknowledge, failureAck(commandInput, { code: "INCOMPATIBLE_GAME_CAPABILITY", message: "GEM requires V2 and GEM capability.", recoverable: false }, receivedAt));
+        return;
+      }
+      const result = await runtime.gemCardCommandRouter.collect({
+        roomId: binding.roomId,
+        actorPlayerId: binding.playerId,
+        requestId: command.value.requestId,
+        expectedGameRevision: command.value.expectedGameRevision,
+        turnId: command.value.turnId,
+        receivedAt,
+        selection: command.value.payload.selection,
+        authorization: {
+          isCurrent: () =>
+            socket.connected && isCurrentBinding(runtime, binding),
+        },
+      });
+      if (!result.ok) {
+        acknowledgeIfPresent(
+          acknowledge,
+          await turnSubmitFailureAck(
+            runtime,
+            socket,
+            binding,
+            command.value.requestId,
+            result.error,
+            receivedAt,
+          ),
+        );
+        return;
+      }
+      committed = true;
+      const loaded = await loadSnapshotForSocket(
+        runtime,
+        socket,
+        binding.roomId,
+        binding.playerId,
+      );
+      if (
+        loaded === null ||
+        (!isGemCardPlayingWireSnapshot(loaded.wireSnapshot) &&
+          !isGemCardFinishedWireSnapshot(loaded.wireSnapshot))
+      ) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      if (!socket.connected || !isCurrentBinding(runtime, binding)) {
+        return;
+      }
+      await fanOutRoomSnapshots(io, runtime, binding.roomId);
+      acknowledgeIfPresent(
+        acknowledge,
+        gemSuccessAck(
+          command.value.requestId,
+          loaded.metadata,
+          loaded.wireSnapshot,
+        ),
+      );
+    })().catch(() => {
+      if (committed) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, INTERNAL_ERROR, receivedAt),
+      );
+    });
+  });
+}
+
+
+function registerGemPurchaseHandler(
+  io: RealtimeServer,
+  socket: RealtimeSocket,
+  runtime: ApplicationRuntime,
+): void {
+  socket.on("gem:purchase", (rawCommand, acknowledge) => {
+    const receivedAt = runtime.clock.now();
+    let committed = false;
+    const commandInput: unknown = rawCommand;
+    const command = validateGemPurchaseCommand(commandInput);
+    if (!command.ok) {
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, command.error, receivedAt),
+      );
+      return;
+    }
+
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(
+        createSocketId(socket.id),
+      );
+      if (binding === null) {
+        acknowledgeIfPresent(
+          acknowledge,
+          failureAck(commandInput, UNAUTHENTICATED_ERROR, receivedAt),
+        );
+        return;
+      }
+      if (!isRoomAdmissionCompatible("GEM_CARD", socketAdmissionCapabilities(socket))) {
+        acknowledgeIfPresent(acknowledge, failureAck(commandInput, { code: "INCOMPATIBLE_GAME_CAPABILITY", message: "GEM requires V2 and GEM capability.", recoverable: false }, receivedAt));
+        return;
+      }
+      const result = await runtime.gemCardCommandRouter.purchase({
+        roomId: binding.roomId,
+        actorPlayerId: binding.playerId,
+        requestId: command.value.requestId,
+        expectedGameRevision: command.value.expectedGameRevision,
+        turnId: command.value.turnId,
+        receivedAt,
+        source: command.value.payload.source,
+        authorization: {
+          isCurrent: () =>
+            socket.connected && isCurrentBinding(runtime, binding),
+        },
+      });
+      if (!result.ok) {
+        acknowledgeIfPresent(
+          acknowledge,
+          await turnSubmitFailureAck(
+            runtime,
+            socket,
+            binding,
+            command.value.requestId,
+            result.error,
+            receivedAt,
+          ),
+        );
+        return;
+      }
+      committed = true;
+      const loaded = await loadSnapshotForSocket(
+        runtime,
+        socket,
+        binding.roomId,
+        binding.playerId,
+      );
+      if (
+        loaded === null ||
+        (!isGemCardPlayingWireSnapshot(loaded.wireSnapshot) &&
+          !isGemCardFinishedWireSnapshot(loaded.wireSnapshot))
+      ) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      if (!socket.connected || !isCurrentBinding(runtime, binding)) {
+        return;
+      }
+      await fanOutRoomSnapshots(io, runtime, binding.roomId);
+      acknowledgeIfPresent(
+        acknowledge,
+        gemSuccessAck(
+          command.value.requestId,
+          loaded.metadata,
+          loaded.wireSnapshot,
+        ),
+      );
+    })().catch(() => {
+      if (committed) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, INTERNAL_ERROR, receivedAt),
+      );
+    });
+  });
+}
+
+
+function registerGemReserveHandler(
+  io: RealtimeServer,
+  socket: RealtimeSocket,
+  runtime: ApplicationRuntime,
+): void {
+  socket.on("gem:reserve", (rawCommand, acknowledge) => {
+    const receivedAt = runtime.clock.now();
+    let committed = false;
+    const commandInput: unknown = rawCommand;
+    const command = validateGemReserveCommand(commandInput);
+    if (!command.ok) {
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, command.error, receivedAt),
+      );
+      return;
+    }
+
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(
+        createSocketId(socket.id),
+      );
+      if (binding === null) {
+        acknowledgeIfPresent(
+          acknowledge,
+          failureAck(commandInput, UNAUTHENTICATED_ERROR, receivedAt),
+        );
+        return;
+      }
+      if (!isRoomAdmissionCompatible("GEM_CARD", socketAdmissionCapabilities(socket))) {
+        acknowledgeIfPresent(acknowledge, failureAck(commandInput, { code: "INCOMPATIBLE_GAME_CAPABILITY", message: "GEM requires V2 and GEM capability.", recoverable: false }, receivedAt));
+        return;
+      }
+      const result = await runtime.gemCardCommandRouter.reserve({
+        roomId: binding.roomId,
+        actorPlayerId: binding.playerId,
+        requestId: command.value.requestId,
+        expectedGameRevision: command.value.expectedGameRevision,
+        turnId: command.value.turnId,
+        receivedAt,
+        source: command.value.payload.source,
+        authorization: {
+          isCurrent: () =>
+            socket.connected && isCurrentBinding(runtime, binding),
+        },
+      });
+      if (!result.ok) {
+        acknowledgeIfPresent(
+          acknowledge,
+          await turnSubmitFailureAck(
+            runtime,
+            socket,
+            binding,
+            command.value.requestId,
+            result.error,
+            receivedAt,
+          ),
+        );
+        return;
+      }
+      committed = true;
+      const loaded = await loadSnapshotForSocket(
+        runtime,
+        socket,
+        binding.roomId,
+        binding.playerId,
+      );
+      if (
+        loaded === null ||
+        (!isGemCardPlayingWireSnapshot(loaded.wireSnapshot) &&
+          !isGemCardFinishedWireSnapshot(loaded.wireSnapshot))
+      ) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      if (!socket.connected || !isCurrentBinding(runtime, binding)) {
+        return;
+      }
+      await fanOutRoomSnapshots(io, runtime, binding.roomId);
+      acknowledgeIfPresent(
+        acknowledge,
+        gemSuccessAck(
+          command.value.requestId,
+          loaded.metadata,
+          loaded.wireSnapshot,
+        ),
+      );
+    })().catch(() => {
+      if (committed) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, INTERNAL_ERROR, receivedAt),
+      );
+    });
+  });
+}
+
+
+function registerGemYieldHandler(
+  io: RealtimeServer,
+  socket: RealtimeSocket,
+  runtime: ApplicationRuntime,
+): void {
+  socket.on("gem:yield", (rawCommand, acknowledge) => {
+    const receivedAt = runtime.clock.now();
+    let committed = false;
+    const commandInput: unknown = rawCommand;
+    const command = validateGemYieldCommand(commandInput);
+    if (!command.ok) {
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, command.error, receivedAt),
+      );
+      return;
+    }
+
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(
+        createSocketId(socket.id),
+      );
+      if (binding === null) {
+        acknowledgeIfPresent(
+          acknowledge,
+          failureAck(commandInput, UNAUTHENTICATED_ERROR, receivedAt),
+        );
+        return;
+      }
+      if (!isRoomAdmissionCompatible("GEM_CARD", socketAdmissionCapabilities(socket))) {
+        acknowledgeIfPresent(acknowledge, failureAck(commandInput, { code: "INCOMPATIBLE_GAME_CAPABILITY", message: "GEM requires V2 and GEM capability.", recoverable: false }, receivedAt));
+        return;
+      }
+      const result = await runtime.gemCardCommandRouter.yield({
+        roomId: binding.roomId,
+        actorPlayerId: binding.playerId,
+        requestId: command.value.requestId,
+        expectedGameRevision: command.value.expectedGameRevision,
+        turnId: command.value.turnId,
+        receivedAt,
+        authorization: {
+          isCurrent: () =>
+            socket.connected && isCurrentBinding(runtime, binding),
+        },
+      });
+      if (!result.ok) {
+        acknowledgeIfPresent(
+          acknowledge,
+          await turnSubmitFailureAck(
+            runtime,
+            socket,
+            binding,
+            command.value.requestId,
+            result.error,
+            receivedAt,
+          ),
+        );
+        return;
+      }
+      committed = true;
+      const loaded = await loadSnapshotForSocket(
+        runtime,
+        socket,
+        binding.roomId,
+        binding.playerId,
+      );
+      if (
+        loaded === null ||
+        (!isGemCardPlayingWireSnapshot(loaded.wireSnapshot) &&
+          !isGemCardFinishedWireSnapshot(loaded.wireSnapshot))
+      ) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      if (!socket.connected || !isCurrentBinding(runtime, binding)) {
+        return;
+      }
+      await fanOutRoomSnapshots(io, runtime, binding.roomId);
+      acknowledgeIfPresent(
+        acknowledge,
+        gemSuccessAck(
+          command.value.requestId,
+          loaded.metadata,
+          loaded.wireSnapshot,
+        ),
+      );
+    })().catch(() => {
+      if (committed) {
+        reportPostCommitDeliveryFailure();
+        return;
+      }
+      acknowledgeIfPresent(
+        acknowledge,
+        failureAck(commandInput, INTERNAL_ERROR, receivedAt),
+      );
+    });
+  });
+}
+
 function registerNumberSubmitHandler(
   io: RealtimeServer,
   socket: RealtimeSocket,
@@ -2424,6 +2864,14 @@ export function registerSocketIoHandlers(
         reportSnapshotFanOutFailure();
       }
     });
+  const unsubscribeGemCardTimeoutApplied =
+    runtime.subscribeGemCardTimeoutApplied(async (data) => {
+      try {
+        await fanOutRoomSnapshots(io, runtime, data.roomId);
+      } catch {
+        reportSnapshotFanOutFailure();
+      }
+    });
   const unsubscribeRoomPlayerRemoved = runtime.subscribeRoomPlayerRemoved(
     async (roomId) => {
       try {
@@ -2461,6 +2909,10 @@ export function registerSocketIoHandlers(
     registerTurnSubmitHandler(io, socket, runtime);
     registerTurnDrawHandler(io, socket, runtime);
     registerTurnPassHandler(io, socket, runtime);
+    registerGemCollectHandler(io, socket, runtime);
+    registerGemPurchaseHandler(io, socket, runtime);
+    registerGemReserveHandler(io, socket, runtime);
+    registerGemYieldHandler(io, socket, runtime);
     registerNumberSubmitHandler(io, socket, runtime);
     registerNumberDrawHandler(io, socket, runtime);
     registerNumberPassHandler(io, socket, runtime);
@@ -2473,6 +2925,7 @@ export function registerSocketIoHandlers(
     unsubscribeRoomPlayerRemoved();
     unsubscribeTimeoutApplied();
     unsubscribeNumberTileTimeoutApplied();
+    unsubscribeGemCardTimeoutApplied();
     unsubscribeGameDeadlineApplied();
   };
 }

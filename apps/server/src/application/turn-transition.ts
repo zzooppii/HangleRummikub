@@ -1,3 +1,4 @@
+import type { PlayingGemGameState } from "../games/gem-card/domain/game-state.js";
 import {
   ServerTimeSchema,
   TurnNumberSchema,
@@ -65,7 +66,7 @@ export function createNextTurn(
 
 export function toScheduledTurnDeadline(
   roomId: RoomId,
-  game: PlayingGameState | PlayingNumberTileGameState,
+  game: PlayingGameState | PlayingNumberTileGameState | PlayingGemGameState,
 ): ScheduledTurnDeadline {
   return Object.freeze({
     roomId,

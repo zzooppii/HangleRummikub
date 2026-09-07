@@ -580,6 +580,17 @@ test("future version과 unsupported canonical gameType은 Hangul fallback 없이
   });
 });
 
+test("P11B shared GEM identity does not enable GEM admission/rendering in the current H/N Web", () => {
+  const gem = {
+    ...playingV2(),
+    room: { ...(playingV2().room as Record<string, unknown>), gameType: "GEM_CARD" },
+  };
+  assert.deepEqual(decodeWebSnapshot(gem), {
+    kind: "INCOMPATIBLE",
+    reason: "UNSUPPORTED_GAME_TYPE",
+  });
+});
+
 test("recognized V2의 malformed projection은 V1로 downgrade하지 않는다", () => {
   const missingVersion = { ...playingV2() };
   delete missingVersion.snapshotVersion;

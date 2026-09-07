@@ -1,6 +1,12 @@
 import type { ProtocolErrorCode } from "@hangul-rummikub/shared";
 
 const USER_ERROR_MESSAGES = {
+  RESOURCE_SUPPLY_EMPTY: "요청한 자원이 남아 있지 않습니다.",
+  RESOURCE_LIMIT_EXCEEDED: "보유 가능한 자원 수를 초과합니다.",
+  CARD_NOT_AVAILABLE: "구매하거나 예약할 수 없는 카드입니다.",
+  INSUFFICIENT_RESOURCES: "카드를 구매할 자원이 부족합니다.",
+  RESERVE_LIMIT_REACHED: "카드는 두 장까지 예약할 수 있습니다.",
+  YIELD_NOT_ALLOWED: "실행할 수 있는 행동이 있어 턴을 넘길 수 없습니다.",
   INVALID_PAYLOAD: "요청 형식이 올바르지 않습니다. 다시 시도해주세요.",
   INCOMPATIBLE_PROTOCOL:
     "앱 버전이 서버와 맞지 않습니다. 페이지를 새로고침해주세요.",

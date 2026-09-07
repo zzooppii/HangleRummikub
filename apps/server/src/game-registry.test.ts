@@ -124,7 +124,7 @@ test("registry copies and freezes registrations instead of retaining mutable inp
   assert.equal(registry.find("UNKNOWN_GAME"), null);
 });
 
-test("the production-like composition root registers exactly the two supported games", () => {
+test("the production-like composition root registers exactly the three supported games", () => {
   const runtime = createApplicationRuntime();
 
   assert.deepEqual(
@@ -135,10 +135,10 @@ test("the production-like composition root registers exactly the two supported g
     runtime.gameRegistry.getRequired(NUMBER_TILE_GAME_TYPE),
     { gameType: "NUMBER_TILE" },
   );
-  assert.equal(runtime.gameRegistry.find("GEM_CARD"), null);
+  assert.deepEqual(runtime.gameRegistry.getRequired("GEM_CARD"), { gameType: "GEM_CARD" });
 });
 
-test("the composition root fails immediately when either supported game is missing", () => {
+test("the composition root fails immediately when a supported game is missing", () => {
   assert.throws(
     () =>
       createApplicationRuntime({

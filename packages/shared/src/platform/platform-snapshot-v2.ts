@@ -1,3 +1,4 @@
+import { GemCardPlayingProjectionV2Schema, GemCardFinishedProjectionV2Schema } from "../games/gem-card/v2-projection-contracts.js";
 import * as v from "valibot";
 
 import {
@@ -131,6 +132,14 @@ const NumberTileLobbyPlatformRoomViewV2Schema = v.strictObject({
   players: LobbyPlatformPlayersV2Schema,
 });
 
+const GemCardLobbyPlatformRoomViewV2Schema = v.strictObject({
+  roomId: RoomIdSchema,
+  roomCode: RoomCodeSchema,
+  phase: v.literal("LOBBY"),
+  gameType: v.literal("GEM_CARD"),
+  players: LobbyPlatformPlayersV2Schema,
+});
+
 const HangulTileLobbyPlatformSnapshotV2ObjectSchema = v.strictObject({
   snapshotVersion: PlatformSnapshotVersionSchema,
   versions: PlatformSnapshotVersionsV2Schema,
@@ -187,9 +196,38 @@ export type NumberTileLobbyPlatformSnapshotV2 = v.InferOutput<
   typeof NumberTileLobbyPlatformSnapshotV2Schema
 >;
 
+const GemCardLobbyPlatformSnapshotV2ObjectSchema = v.strictObject({
+  snapshotVersion: PlatformSnapshotVersionSchema,
+  versions: PlatformSnapshotVersionsV2Schema,
+  serverTime: ServerTimeSchema,
+  room: GemCardLobbyPlatformRoomViewV2Schema,
+  self: PlatformSelfViewV2Schema,
+  game: v.null(),
+});
+
+export const GemCardLobbyPlatformSnapshotV2Schema = v.pipe(
+  GemCardLobbyPlatformSnapshotV2ObjectSchema,
+  v.check(
+    (snapshot) => hasUniqueRoomPlayers(snapshot),
+    "Room players must not contain duplicates.",
+  ),
+  v.check(
+    (snapshot) => containsSelfPlayer(snapshot),
+    "Snapshot self Player must belong to the Room.",
+  ),
+  v.check(
+    (snapshot) => hasAtMostOneHost(snapshot),
+    "A Room may expose at most one Host.",
+  ),
+);
+export type GemCardLobbyPlatformSnapshotV2 = v.InferOutput<
+  typeof GemCardLobbyPlatformSnapshotV2Schema
+>;
+
 export const LobbyPlatformSnapshotV2Schema = v.union([
   HangulTileLobbyPlatformSnapshotV2Schema,
   NumberTileLobbyPlatformSnapshotV2Schema,
+  GemCardLobbyPlatformSnapshotV2Schema,
 ]);
 export type LobbyPlatformSnapshotV2 = v.InferOutput<
   typeof LobbyPlatformSnapshotV2Schema
@@ -208,6 +246,14 @@ const NumberTilePlayingPlatformRoomViewV2Schema = v.strictObject({
   roomCode: RoomCodeSchema,
   phase: v.literal("PLAYING"),
   gameType: v.literal("NUMBER_TILE"),
+  players: ActivePlatformPlayersV2Schema,
+});
+
+const GemCardPlayingPlatformRoomViewV2Schema = v.strictObject({
+  roomId: RoomIdSchema,
+  roomCode: RoomCodeSchema,
+  phase: v.literal("PLAYING"),
+  gameType: v.literal("GEM_CARD"),
   players: ActivePlatformPlayersV2Schema,
 });
 
@@ -283,9 +329,42 @@ export type NumberTilePlayingPlatformSnapshotV2 = v.InferOutput<
   typeof NumberTilePlayingPlatformSnapshotV2Schema
 >;
 
+const GemCardPlayingPlatformSnapshotV2ObjectSchema = v.strictObject({
+  snapshotVersion: PlatformSnapshotVersionSchema,
+  versions: PlatformSnapshotVersionsV2Schema,
+  serverTime: ServerTimeSchema,
+  room: GemCardPlayingPlatformRoomViewV2Schema,
+  self: PlatformSelfViewV2Schema,
+  game: GemCardPlayingProjectionV2Schema,
+});
+
+export const GemCardPlayingPlatformSnapshotV2Schema = v.pipe(
+  GemCardPlayingPlatformSnapshotV2ObjectSchema,
+  v.check(
+    (snapshot) => hasUniqueRoomPlayers(snapshot),
+    "Room players must not contain duplicates.",
+  ),
+  v.check(
+    (snapshot) => containsSelfPlayer(snapshot),
+    "Snapshot self Player must belong to the Room.",
+  ),
+  v.check(
+    (snapshot) => hasAtMostOneHost(snapshot),
+    "A Room may expose at most one Host.",
+  ),
+  v.check(
+    (snapshot) => hasMatchingGamePlayers(snapshot),
+    "Game player states must match the Room player identities.",
+  ),
+);
+export type GemCardPlayingPlatformSnapshotV2 = v.InferOutput<
+  typeof GemCardPlayingPlatformSnapshotV2Schema
+>;
+
 export const PlayingPlatformSnapshotV2Schema = v.union([
   HangulTilePlayingPlatformSnapshotV2Schema,
   NumberTilePlayingPlatformSnapshotV2Schema,
+  GemCardPlayingPlatformSnapshotV2Schema,
 ]);
 export type PlayingPlatformSnapshotV2 = v.InferOutput<
   typeof PlayingPlatformSnapshotV2Schema
@@ -304,6 +383,14 @@ const NumberTileFinishedPlatformRoomViewV2Schema = v.strictObject({
   roomCode: RoomCodeSchema,
   phase: v.literal("FINISHED"),
   gameType: v.literal("NUMBER_TILE"),
+  players: ActivePlatformPlayersV2Schema,
+});
+
+const GemCardFinishedPlatformRoomViewV2Schema = v.strictObject({
+  roomId: RoomIdSchema,
+  roomCode: RoomCodeSchema,
+  phase: v.literal("FINISHED"),
+  gameType: v.literal("GEM_CARD"),
   players: ActivePlatformPlayersV2Schema,
 });
 
@@ -379,9 +466,42 @@ export type NumberTileFinishedPlatformSnapshotV2 = v.InferOutput<
   typeof NumberTileFinishedPlatformSnapshotV2Schema
 >;
 
+const GemCardFinishedPlatformSnapshotV2ObjectSchema = v.strictObject({
+  snapshotVersion: PlatformSnapshotVersionSchema,
+  versions: PlatformSnapshotVersionsV2Schema,
+  serverTime: ServerTimeSchema,
+  room: GemCardFinishedPlatformRoomViewV2Schema,
+  self: PlatformSelfViewV2Schema,
+  game: GemCardFinishedProjectionV2Schema,
+});
+
+export const GemCardFinishedPlatformSnapshotV2Schema = v.pipe(
+  GemCardFinishedPlatformSnapshotV2ObjectSchema,
+  v.check(
+    (snapshot) => hasUniqueRoomPlayers(snapshot),
+    "Room players must not contain duplicates.",
+  ),
+  v.check(
+    (snapshot) => containsSelfPlayer(snapshot),
+    "Snapshot self Player must belong to the Room.",
+  ),
+  v.check(
+    (snapshot) => hasAtMostOneHost(snapshot),
+    "A Room may expose at most one Host.",
+  ),
+  v.check(
+    (snapshot) => hasMatchingGamePlayers(snapshot),
+    "Game player states must match the Room player identities.",
+  ),
+);
+export type GemCardFinishedPlatformSnapshotV2 = v.InferOutput<
+  typeof GemCardFinishedPlatformSnapshotV2Schema
+>;
+
 export const FinishedPlatformSnapshotV2Schema = v.union([
   HangulTileFinishedPlatformSnapshotV2Schema,
   NumberTileFinishedPlatformSnapshotV2Schema,
+  GemCardFinishedPlatformSnapshotV2Schema,
 ]);
 export type FinishedPlatformSnapshotV2 = v.InferOutput<
   typeof FinishedPlatformSnapshotV2Schema

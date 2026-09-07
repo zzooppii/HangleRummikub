@@ -1,3 +1,4 @@
+import { GemCollectSelectionSchema, GemPurchaseSourceSchema, GemMarketSourceSchema } from "./games/gem-card/contracts.js";
 import * as v from "valibot";
 
 import {
@@ -149,6 +150,12 @@ export const PROTOCOL_ERROR_CODES = [
   "WORD_NOT_ALLOWED",
   "RULE_VIOLATION",
   "TEMPORARILY_UNAVAILABLE",
+  "RESOURCE_SUPPLY_EMPTY",
+  "RESOURCE_LIMIT_EXCEEDED",
+  "CARD_NOT_AVAILABLE",
+  "INSUFFICIENT_RESOURCES",
+  "RESERVE_LIMIT_REACHED",
+  "YIELD_NOT_ALLOWED",
   "INTERNAL_ERROR",
 ] as const;
 
@@ -369,6 +376,34 @@ export const NumberPassCommandSchema = v.strictObject({
 });
 export type NumberPassCommand = v.InferOutput<typeof NumberPassCommandSchema>;
 
+export const GemCollectCommandSchema = v.strictObject({
+  kind: v.literal("gem:collect"), protocolVersion: ProtocolVersionSchema,
+  requestId: RequestIdSchema, expectedGameRevision: GameRevisionSchema, turnId: TurnIdSchema,
+  payload: v.strictObject({ selection: GemCollectSelectionSchema }),
+});
+export type GemCollectCommand = v.InferOutput<typeof GemCollectCommandSchema>;
+
+export const GemPurchaseCommandSchema = v.strictObject({
+  kind: v.literal("gem:purchase"), protocolVersion: ProtocolVersionSchema,
+  requestId: RequestIdSchema, expectedGameRevision: GameRevisionSchema, turnId: TurnIdSchema,
+  payload: v.strictObject({ source: GemPurchaseSourceSchema }),
+});
+export type GemPurchaseCommand = v.InferOutput<typeof GemPurchaseCommandSchema>;
+
+export const GemReserveCommandSchema = v.strictObject({
+  kind: v.literal("gem:reserve"), protocolVersion: ProtocolVersionSchema,
+  requestId: RequestIdSchema, expectedGameRevision: GameRevisionSchema, turnId: TurnIdSchema,
+  payload: v.strictObject({ source: GemMarketSourceSchema }),
+});
+export type GemReserveCommand = v.InferOutput<typeof GemReserveCommandSchema>;
+
+export const GemYieldCommandSchema = v.strictObject({
+  kind: v.literal("gem:yield"), protocolVersion: ProtocolVersionSchema,
+  requestId: RequestIdSchema, expectedGameRevision: GameRevisionSchema, turnId: TurnIdSchema,
+  payload: v.strictObject({}),
+});
+export type GemYieldCommand = v.InferOutput<typeof GemYieldCommandSchema>;
+
 export const Phase2ClientCommandSchema = v.variant("kind", [
   SessionBootstrapCommandSchema,
   RoomCreateCommandSchema,
@@ -394,6 +429,10 @@ export const ClientCommandSchema = v.variant("kind", [
   NumberSubmitCommandSchema,
   NumberDrawCommandSchema,
   NumberPassCommandSchema,
+  GemCollectCommandSchema,
+  GemPurchaseCommandSchema,
+  GemReserveCommandSchema,
+  GemYieldCommandSchema,
 ]);
 export type KnownClientCommand = v.InferOutput<typeof ClientCommandSchema>;
 

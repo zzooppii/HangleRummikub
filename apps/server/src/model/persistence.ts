@@ -1,3 +1,4 @@
+import type { GemGameState } from "../games/gem-card/domain/game-state.js";
 import {
   BOOTSTRAP_SESSION_TTL_MS,
   ServerTimeSchema,
@@ -67,11 +68,12 @@ export type NumberTileRoomRecord = RoomRecordBase &
   }>;
 
 /**
- * The exact two canonical game states currently supported by the server.
+ * The exact three canonical game states currently supported by the server.
  * `gameType` is the discriminator so callers cannot construct a typed Room
  * whose game metadata and concrete state disagree.
  */
-export type RoomRecord = HangulRoomRecord | NumberTileRoomRecord;
+export type GemCardRoomRecord = RoomRecordBase & Readonly<{ gameType: "GEM_CARD"; game: GemGameState | null }>;
+export type RoomRecord = HangulRoomRecord | NumberTileRoomRecord | GemCardRoomRecord;
 
 type WithoutStorageRevision<TRoom> = TRoom extends RoomRecord
   ? Omit<TRoom, "storageRevision">

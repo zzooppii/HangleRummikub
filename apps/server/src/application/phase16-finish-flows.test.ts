@@ -1,3 +1,4 @@
+const unexpectedGemLifecycle = Object.freeze({ gameType: "GEM_CARD" as const, applyPlayingLeave: () => { throw new Error("Unexpected GEM leave in two-game fixture."); }, planPresenceRestored: () => { throw new Error("Unexpected GEM presence in two-game fixture."); } });
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -523,6 +524,7 @@ function leaveService(harness: Harness, finished: string[] = []) {
     roomMutationExecutor: harness.executor,
     presenceReader: new StaticRoomPresenceReader(),
     playerLifecycleActions: new PlayerLifecycleRouter({
+      gemCard: unexpectedGemLifecycle,
       hangul: createLegacyHangulPlayerLifecycleActions(harness.idGenerator),
       numberTile: createNumberTilePlayerLifecycleActions(harness.idGenerator),
     }),

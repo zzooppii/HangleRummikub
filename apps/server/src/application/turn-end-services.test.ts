@@ -403,6 +403,7 @@ test("turn:draw removes one server-selected Tile, appends it to rack, and advanc
     await context.test(bagKind, async () => {
       const harness = await createHarness();
       const before = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(before?.gameType, "HANGUL_TILE");
       assert.equal(before?.gameType, "HANGUL_TILE");
       assert.ok(before?.game?.turn);
       const selectedBefore =
@@ -425,6 +426,7 @@ test("turn:draw removes one server-selected Tile, appends it to rack, and advanc
       assert.equal(result.data.drawnTileId, expectedTile);
 
       const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
       assert.equal(after?.gameType, "HANGUL_TILE");
       assert.ok(after?.game?.turn);
       assert.equal(after.gameType, "HANGUL_TILE");
@@ -458,6 +460,7 @@ test("empty selected bag and disallowed pass reject without mutation", async (co
   await context.test("selected empty bag reports BAG_EMPTY", async () => {
     const harness = await createHarness({ consonantCount: 0, vowelCount: 1 });
     const before = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(before?.gameType, "HANGUL_TILE");
     requireError(await harness.drawService.draw(drawInput(harness)), "BAG_EMPTY");
     assert.deepEqual(
       await harness.persistence.findById(harness.room.roomId),
@@ -468,6 +471,7 @@ test("empty selected bag and disallowed pass reject without mutation", async (co
   await context.test("remaining Tile reports PASS_NOT_ALLOWED", async () => {
     const harness = await createHarness({ consonantCount: 0, vowelCount: 1 });
     const before = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(before?.gameType, "HANGUL_TILE");
     requireError(
       await harness.passService.pass(passInput(harness)),
       "PASS_NOT_ALLOWED",
@@ -483,6 +487,7 @@ test("Draw/Pass reject stale primary and UoW failure without partial state", asy
   await context.test("current-primary is rechecked before Draw candidate", async () => {
     const harness = await createHarness();
     const before = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(before?.gameType, "HANGUL_TILE");
     requireError(
       await harness.drawService.draw(
         drawInput(harness, {
@@ -500,6 +505,7 @@ test("Draw/Pass reject stale primary and UoW failure without partial state", asy
   await context.test("current-primary is rechecked before Pass candidate", async () => {
     const harness = await createHarness({ consonantCount: 0, vowelCount: 0 });
     const before = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(before?.gameType, "HANGUL_TILE");
     requireError(
       await harness.passService.pass(
         passInput(harness, {
@@ -521,6 +527,7 @@ test("Draw/Pass reject stale primary and UoW failure without partial state", asy
         vowelCount: kind === "PASS" ? 0 : 1,
       });
       const before = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(before?.gameType, "HANGUL_TILE");
       const authorization = new RevokedAtCommitAuthorization();
       const result =
         kind === "DRAW"
@@ -545,6 +552,7 @@ test("Draw/Pass reject stale primary and UoW failure without partial state", asy
         vowelCount: kind === "PASS" ? 0 : 1,
       });
       const before = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(before?.gameType, "HANGUL_TILE");
       const dependencies = {
         roomRepository: harness.persistence,
         idempotencyRepository: harness.persistence,
@@ -577,11 +585,13 @@ test("turn:pass succeeds only with both bags empty and preserves rack/Board", as
   const harness = await createHarness({ consonantCount: 0, vowelCount: 0 });
   const before = await harness.persistence.findById(harness.room.roomId);
   assert.equal(before?.gameType, "HANGUL_TILE");
+  assert.equal(before?.gameType, "HANGUL_TILE");
   assert.ok(before?.game?.turn);
   const result = await harness.passService.pass(passInput(harness));
   assert.equal(result.ok, true);
 
   const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
   assert.equal(after?.gameType, "HANGUL_TILE");
   assert.ok(after?.game?.turn);
   assert.equal(after.gameType, "HANGUL_TILE");
@@ -604,6 +614,7 @@ test("Draw and Pass use accepted-result idempotency without advancing twice", as
     const input = drawInput(harness);
     const first = await harness.drawService.draw(input);
     const afterFirst = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(afterFirst?.gameType, "HANGUL_TILE");
     const replay = await harness.drawService.draw(input);
     assert.deepEqual(replay, first);
     assert.deepEqual(
@@ -622,6 +633,7 @@ test("Draw and Pass use accepted-result idempotency without advancing twice", as
     const input = passInput(harness);
     const first = await harness.passService.pass(input);
     const afterFirst = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(afterFirst?.gameType, "HANGUL_TILE");
     assert.deepEqual(await harness.passService.pass(input), first);
     assert.deepEqual(
       await harness.persistence.findById(harness.room.roomId),
@@ -669,6 +681,7 @@ test("timeout is Clock-authoritative at the exact deadline and draws three deter
   const identity = deadline(harness.room);
   const before = await harness.persistence.findById(harness.room.roomId);
   assert.equal(before?.gameType, "HANGUL_TILE");
+  assert.equal(before?.gameType, "HANGUL_TILE");
   assert.equal((await harness.timeoutService.timeout(identity)).status, "NO_OP");
   assert.deepEqual(
     await harness.persistence.findById(harness.room.roomId),
@@ -686,6 +699,7 @@ test("timeout is Clock-authoritative at the exact deadline and draws three deter
   assert.deepEqual(harness.randomSource.calls, [2, 2, 2]);
 
   const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
   assert.equal(after?.gameType, "HANGUL_TILE");
   assert.ok(after?.game?.turn && before?.game?.turn);
   assert.equal(after.gameType, "HANGUL_TILE");
@@ -709,6 +723,7 @@ test("timeout at deadline +1ms is accepted and does not require a socket authori
   const result = await harness.timeoutService.timeout(deadline(harness.room));
   assert.equal(result.status, "APPLIED");
   const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
   assert.equal(after?.game?.gameRevision, 5);
 });
 
@@ -727,6 +742,7 @@ test("OFFLINE timeout streak increments once, then second timeout forfeits after
     assert.equal(result.data.timedOutPlayerForfeited, false);
 
     const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
     assert.equal(after?.game?.offlineTimeoutStreakByPlayerId.get(PLAYER_A), 1);
     assert.equal(after?.game?.forfeitedPlayerIds.has(PLAYER_A), false);
     assert.equal(after?.game?.racks.get(PLAYER_A)?.length, 4);
@@ -741,6 +757,7 @@ test("OFFLINE timeout streak increments once, then second timeout forfeits after
         playerAOfflineTimeoutStreak: 1,
       });
       const before = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(before?.gameType, "HANGUL_TILE");
       if (before === null || before.game === null || before.game.turn === null) {
         throw new Error("Expected a playing timeout fixture.");
       }
@@ -757,6 +774,7 @@ test("OFFLINE timeout streak increments once, then second timeout forfeits after
       assert.deepEqual(result.data.winnerPlayerIds, [PLAYER_B]);
 
       const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
       if (after?.phase !== "FINISHED" || after.game?.result === null || after.game === null) {
         throw new Error("Expected LAST_PLAYER_STANDING terminal state.");
       }
@@ -788,6 +806,7 @@ test("CONNECTED timeout resets an existing offline streak without forfeiting", a
   assert.equal(result.data.offlineTimeoutStreak, 0);
   assert.equal(result.data.timedOutPlayerForfeited, false);
   const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
   assert.equal(after?.game?.offlineTimeoutStreakByPlayerId.get(PLAYER_A), 0);
   assert.equal(after?.game?.forfeitedPlayerIds.has(PLAYER_A), false);
 });
@@ -801,6 +820,7 @@ test("next Turn skips forfeited Players while immutable turnOrder stays complete
   const result = await harness.timeoutService.timeout(deadline(harness.room));
   assert.equal(result.status, "APPLIED");
   const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
   assert.ok(after?.game?.turn);
   assert.deepEqual(after.game.turnOrder, [PLAYER_A, PLAYER_B, PLAYER_C]);
   assert.equal(after.game.forfeitedPlayerIds.has(PLAYER_B), true);
@@ -817,6 +837,7 @@ test("두 번째 offline timeout은 penalty 후 ALL_PLAYERS_FORFEITED로 원자 
     randomSequence: [0, 1, 0],
   });
   const before = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(before?.gameType, "HANGUL_TILE");
   if (before === null || before.game === null) {
     throw new Error("Expected a playing timeout fixture.");
   }
@@ -830,6 +851,7 @@ test("두 번째 offline timeout은 penalty 후 ALL_PLAYERS_FORFEITED로 원자 
   assert.deepEqual(result.data.winnerPlayerIds, []);
   assert.equal(result.data.penaltyTileIds.length, 3);
   const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
   if (after?.phase !== "FINISHED" || after.game?.result === null || after.game === null) {
     throw new Error("Expected ALL_PLAYERS_FORFEITED terminal state.");
   }
@@ -847,6 +869,7 @@ test("presence lease changing before commit makes timeout a no-op without partia
     playerAOfflineTimeoutStreak: 1,
   });
   const before = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(before?.gameType, "HANGUL_TILE");
   const timeoutService = new TurnTimeoutService({
     roomRepository: harness.persistence,
     idempotencyRepository: harness.persistence,
@@ -905,6 +928,7 @@ test("stale timeout game/turn/revision/deadline identities are harmless no-ops",
     await context.test(entry.name, async () => {
       const harness = await createHarness({ clockNow: 61_001 });
       const before = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(before?.gameType, "HANGUL_TILE");
       const result = await harness.timeoutService.timeout({
         ...deadline(harness.room),
         ...entry.change,
@@ -939,6 +963,7 @@ test("timeout penalty is capped by remaining physical Tiles without inventing an
       assert.equal(result.data.penaltyTileIds.length, remaining);
       assert.deepEqual(harness.randomSource.calls, []);
       const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
       assert.equal(after?.game?.racks.get(PLAYER_A)?.length, 1 + remaining);
     });
   }
@@ -960,6 +985,7 @@ test("vowel-only timeout penalty never consumes RandomSource", async () => {
   assert.deepEqual(harness.randomSource.calls, []);
   const after = await harness.persistence.findById(harness.room.roomId);
   assert.equal(after?.gameType, "HANGUL_TILE");
+  assert.equal(after?.gameType, "HANGUL_TILE");
   assert.equal(after?.game?.vowelBag.length, 0);
 });
 
@@ -969,6 +995,7 @@ test("invalid timeout RandomSource output fails atomically", async () => {
     randomSequence: [2],
   });
   const before = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(before?.gameType, "HANGUL_TILE");
   assert.deepEqual(await harness.timeoutService.timeout(deadline(harness.room)), {
     status: "FAILED",
     reason: "INTERNAL_ERROR",
@@ -984,6 +1011,7 @@ test("duplicate and stale timeout callbacks never apply a second penalty", async
   const identity = deadline(harness.room);
   assert.equal((await harness.timeoutService.timeout(identity)).status, "APPLIED");
   const afterFirst = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(afterFirst?.gameType, "HANGUL_TILE");
   assert.equal((await harness.timeoutService.timeout(identity)).status, "NO_OP");
   assert.deepEqual(
     await harness.persistence.findById(harness.room.roomId),
@@ -1002,6 +1030,7 @@ test("deadline-before Draw/Pass wins the shared Room lane and makes timeout stal
     assert.equal(drawResult.ok, true);
     assert.equal(timeoutResult.status, "NO_OP");
     const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
     assert.equal(after?.game?.gameRevision, 5);
     assert.equal(after?.game?.racks.get(PLAYER_A)?.length, 2);
   });
@@ -1020,6 +1049,7 @@ test("deadline-before Draw/Pass wins the shared Room lane and makes timeout stal
     assert.equal(passResult.ok, true);
     assert.equal(timeoutResult.status, "NO_OP");
     const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
     assert.equal(after?.game?.gameRevision, 5);
     assert.equal(after?.game?.racks.get(PLAYER_A)?.length, 1);
   });
@@ -1037,6 +1067,7 @@ test("timeout queued first wins expired Draw/Pass races with one commit", async 
     assert.equal(timeoutResult.status, "APPLIED");
     requireError(drawResult, "NOT_YOUR_TURN");
     const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
     assert.equal(after?.game?.gameRevision, 5);
     assert.equal(after?.game?.racks.get(PLAYER_A)?.length, 4);
   });
@@ -1056,6 +1087,7 @@ test("timeout queued first wins expired Draw/Pass races with one commit", async 
     assert.equal(timeoutResult.status, "APPLIED");
     requireError(passResult, "NOT_YOUR_TURN");
     const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
     assert.equal(after?.game?.gameRevision, 5);
     assert.equal(after?.game?.racks.get(PLAYER_A)?.length, 1);
   });
@@ -1100,6 +1132,7 @@ test("deadline-before Submit and timeout race commit exactly one canonical trans
   assert.equal(submitResult.ok, true);
   assert.equal(timeoutResult.status, "NO_OP");
   const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
   assert.equal(after?.game?.gameRevision, 5);
   assert.equal(after?.game?.racks.get(PLAYER_A)?.length, 1);
 });
@@ -1112,6 +1145,7 @@ test("timeout queued first in the shared Room lane wins an expired Submit with o
   const game = harness.room.game;
   assert.ok(game?.turn);
   const before = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(before?.gameType, "HANGUL_TILE");
   assert.equal(before?.gameType, "HANGUL_TILE");
   assert.ok(before?.game?.turn);
   const beforeBagTileCount =
@@ -1185,6 +1219,7 @@ test("timeout queued first in the shared Room lane wins an expired Submit with o
 
   const after = await harness.persistence.findById(harness.room.roomId);
   assert.equal(after?.gameType, "HANGUL_TILE");
+  assert.equal(after?.gameType, "HANGUL_TILE");
   assert.ok(after?.game?.turn);
   assert.equal(after.game.gameRevision, before.game.gameRevision + 1);
   assert.equal(after.storageRevision, before.storageRevision + 1);
@@ -1221,6 +1256,7 @@ test("persistent post-commit scheduling failure is reported without rollback and
   assert.equal(scheduler.failuresRemaining, 98);
   assert.equal(failures.length, 1);
   const after = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(after?.gameType, "HANGUL_TILE");
   assert.equal(after?.game?.gameRevision, 5);
   assert.equal(after?.storageRevision, harness.room.storageRevision + 1);
 
@@ -1233,6 +1269,7 @@ test("persistent post-commit scheduling failure is reported without rollback and
   sweeper.start();
   assert.equal(await sweeper.sweepOnce(), 1);
   const recovered = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(recovered?.gameType, "HANGUL_TILE");
   assert.equal(recovered?.game?.gameRevision, 6);
   assert.equal(await sweeper.sweepOnce(), 0);
   sweeper.stop();

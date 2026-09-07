@@ -245,6 +245,10 @@ test("platform Socket.IO event는 platform service/router를, snapshot sync는 n
     ["number:submit", "runtime.numberTileCommandRouter.submit"],
     ["number:draw", "runtime.numberTileCommandRouter.draw"],
     ["number:pass", "runtime.numberTileCommandRouter.pass"],
+    ["gem:collect", "runtime.gemCardCommandRouter.collect"],
+    ["gem:purchase", "runtime.gemCardCommandRouter.purchase"],
+    ["gem:reserve", "runtime.gemCardCommandRouter.reserve"],
+    ["gem:yield", "runtime.gemCardCommandRouter.yield"],
   ] as const;
 
   for (const [eventName, routerCall] of numberGameRouting) {
@@ -276,6 +280,10 @@ test("turn command receivedAt은 transport entry의 runtime clock 값과 동일�
     ["number:submit", "runtime.numberTileCommandRouter.submit"],
     ["number:draw", "runtime.numberTileCommandRouter.draw"],
     ["number:pass", "runtime.numberTileCommandRouter.pass"],
+    ["gem:collect", "runtime.gemCardCommandRouter.collect"],
+    ["gem:purchase", "runtime.gemCardCommandRouter.purchase"],
+    ["gem:reserve", "runtime.gemCardCommandRouter.reserve"],
+    ["gem:yield", "runtime.gemCardCommandRouter.yield"],
   ] as const;
 
   for (const [eventName, routerCall] of routing) {

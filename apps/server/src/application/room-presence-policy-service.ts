@@ -326,6 +326,8 @@ export class RoomPresencePolicyService {
         plan.gameType === "NUMBER_TILE"
       ) {
         candidate = { ...room, game: plan.game, updatedAt: now };
+      } else if (room.gameType === "GEM_CARD" && plan.gameType === "GEM_CARD") {
+        candidate = { ...room, game: plan.game, updatedAt: now };
       } else {
         return false;
       }

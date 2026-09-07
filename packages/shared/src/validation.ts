@@ -1,3 +1,5 @@
+import type { GemCollectCommand, GemPurchaseCommand, GemReserveCommand, GemYieldCommand } from "./protocol.js";
+import { GemCollectWireAckSchema, GemPurchaseWireAckSchema, GemReserveWireAckSchema, GemYieldWireAckSchema } from "./realtime.js";
 import * as v from "valibot";
 
 import {
@@ -1032,3 +1034,31 @@ export function validateSessionReplacedNotification(input: unknown) {
     ),
   );
 }
+
+export function validateGemCollectCommand(input: unknown): RuntimeValidationResult<GemCollectCommand> {
+  const result = validateClientCommand(input);
+  if (!result.ok) return result;
+  return result.value.kind === "gem:collect" ? { ok: true, value: result.value } : { ok: false, error: validationError("INVALID_PAYLOAD", "GEM collect command is invalid.", false) };
+}
+export function validateGemCollectWireAck(input: unknown) { return validateSchema(GemCollectWireAckSchema, input, validationError("INVALID_PAYLOAD", "GEM acknowledgement is invalid.", false)); }
+
+export function validateGemPurchaseCommand(input: unknown): RuntimeValidationResult<GemPurchaseCommand> {
+  const result = validateClientCommand(input);
+  if (!result.ok) return result;
+  return result.value.kind === "gem:purchase" ? { ok: true, value: result.value } : { ok: false, error: validationError("INVALID_PAYLOAD", "GEM purchase command is invalid.", false) };
+}
+export function validateGemPurchaseWireAck(input: unknown) { return validateSchema(GemPurchaseWireAckSchema, input, validationError("INVALID_PAYLOAD", "GEM acknowledgement is invalid.", false)); }
+
+export function validateGemReserveCommand(input: unknown): RuntimeValidationResult<GemReserveCommand> {
+  const result = validateClientCommand(input);
+  if (!result.ok) return result;
+  return result.value.kind === "gem:reserve" ? { ok: true, value: result.value } : { ok: false, error: validationError("INVALID_PAYLOAD", "GEM reserve command is invalid.", false) };
+}
+export function validateGemReserveWireAck(input: unknown) { return validateSchema(GemReserveWireAckSchema, input, validationError("INVALID_PAYLOAD", "GEM acknowledgement is invalid.", false)); }
+
+export function validateGemYieldCommand(input: unknown): RuntimeValidationResult<GemYieldCommand> {
+  const result = validateClientCommand(input);
+  if (!result.ok) return result;
+  return result.value.kind === "gem:yield" ? { ok: true, value: result.value } : { ok: false, error: validationError("INVALID_PAYLOAD", "GEM yield command is invalid.", false) };
+}
+export function validateGemYieldWireAck(input: unknown) { return validateSchema(GemYieldWireAckSchema, input, validationError("INVALID_PAYLOAD", "GEM acknowledgement is invalid.", false)); }

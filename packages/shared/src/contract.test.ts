@@ -1218,8 +1218,8 @@ test("Room phase와 session replacement notification은 exhaustive shape를 가�
   );
 });
 
-test("GameType runtime contract는 HANGUL_TILE과 NUMBER_TILE만 지원한다", () => {
-  assert.deepEqual(SUPPORTED_GAME_TYPES, ["HANGUL_TILE", "NUMBER_TILE"]);
+test("GameType runtime contract는 정확히 세 개의 구현된 게임을 지원한다", () => {
+  assert.deepEqual(SUPPORTED_GAME_TYPES, ["HANGUL_TILE", "NUMBER_TILE", "GEM_CARD"]);
   assert.equal(Object.isFrozen(SUPPORTED_GAME_TYPES), true);
 
   const hangul = v.safeParse(GameTypeSchema, "HANGUL_TILE");
@@ -1236,7 +1236,7 @@ test("GameType runtime contract는 HANGUL_TILE과 NUMBER_TILE만 지원한다", 
     assert.equal(numberGameType, "NUMBER_TILE");
   }
   assert.equal(unknown.success, false);
-  assert.equal(futureGemCard.success, false);
+  assert.equal(futureGemCard.success, true);
 });
 
 test("snapshot projection은 credential과 server-only field를 거절한다", () => {
@@ -3769,7 +3769,7 @@ test("room:create wire는 legacy omission과 두 supported gameType을 허용하
     { ...command, gameType: "HANGUL_TILE" },
     {
       ...command,
-      payload: { ...command.payload, gameType: "GEM_CARD" },
+      payload: { ...command.payload, gameType: "FUTURE_GAME" },
     },
     {
       ...command,
@@ -4363,7 +4363,7 @@ test("supportedGameTypes capability는 legacy Hangul default와 exact explicit s
     [],
     { supportedGameTypes: [] },
     { supportedGameTypes: ["HANGUL_TILE", "HANGUL_TILE"] },
-    { supportedGameTypes: ["GEM_CARD"] },
+    { supportedGameTypes: ["FUTURE_GAME"] },
     { supportedGameTypes: ["UNKNOWN"] },
     { supportedGameTypes: "HANGUL_TILE" },
   ]) {
@@ -4620,6 +4620,10 @@ test("runtime Socket.IO map은 Number events를 additive하게 제공하고 lega
     | "number:submit"
     | "number:draw"
     | "number:pass"
+    | "gem:collect"
+    | "gem:purchase"
+    | "gem:reserve"
+    | "gem:yield"
   > = true;
   const legacyEventNamesRemainExact: SameUnion<
     keyof ClientToServerEvents,

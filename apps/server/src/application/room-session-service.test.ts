@@ -714,7 +714,7 @@ test("createRoom은 invalid nickname을 shared validator의 NICKNAME_INVALID로 
 
 test("createRoom은 invalid requested gameType을 default하지 않고 모든 create mutation 전에 거절한다", async () => {
   const invalidGameTypes: readonly unknown[] = [
-    "GEM_CARD",
+    "FUTURE_GAME",
     "UNKNOWN",
     "",
     1,

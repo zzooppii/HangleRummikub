@@ -1,3 +1,5 @@
+import type { PlayingGemGameState } from "../games/gem-card/domain/game-state.js";
+import type { GemCardPlayerLifecycleActionRouting, GemCardPlayingLeaveActionResult } from "../games/gem-card/application/gem-card-player-lifecycle-actions.js";
 import type {
   GameId,
   GameRevision,
@@ -24,9 +26,11 @@ export type PlayingLeaveAdvisory =
 
 export type PlayingLeaveActionResult =
   | LegacyHangulPlayingLeaveActionResult
-  | NumberTilePlayingLeaveActionResult;
+  | NumberTilePlayingLeaveActionResult
+  | GemCardPlayingLeaveActionResult;
 
 export type PresenceRestoredPlan =
+  | Readonly<{ status: "RESET"; gameType: "GEM_CARD"; game: PlayingGemGameState; gameId: GameId; gameRevision: GameRevision; previousOfflineTimeoutStreak: number }>
   | Readonly<{ status: "NO_CHANGE" }>
   | Readonly<{
       status: "RESET";
@@ -48,6 +52,7 @@ export type PresenceRestoredPlan =
 export type PlayerLifecycleRouterDependencies = Readonly<{
   hangul: LegacyHangulPlayerLifecycleActionRouting;
   numberTile: NumberTilePlayerLifecycleActionRouting;
+  gemCard: GemCardPlayerLifecycleActionRouting;
 }>;
 
 export interface PlayerLifecycleActionRouting {
@@ -66,6 +71,7 @@ export interface PlayerLifecycleActionRouting {
 export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
   readonly #hangul: LegacyHangulPlayerLifecycleActionRouting;
   readonly #numberTile: NumberTilePlayerLifecycleActionRouting;
+  readonly #gemCard: GemCardPlayerLifecycleActionRouting;
 
   constructor(dependencies: PlayerLifecycleRouterDependencies) {
     if (dependencies.hangul.gameType !== "HANGUL_TILE") {
@@ -76,6 +82,8 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
     }
     this.#hangul = dependencies.hangul;
     this.#numberTile = dependencies.numberTile;
+    if (dependencies.gemCard.gameType !== "GEM_CARD") throw new Error("Missing GEM_CARD lifecycle capability.");
+    this.#gemCard = dependencies.gemCard;
     Object.freeze(this);
   }
 
@@ -89,6 +97,8 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
         return this.#hangul.applyPlayingLeave(input);
       case "NUMBER_TILE":
         return this.#numberTile.applyPlayingLeave(input);
+      case "GEM_CARD":
+        return this.#gemCard.applyPlayingLeave(input);
     }
   }
 
@@ -102,6 +112,10 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
         return plan.status === "RESET"
           ? Object.freeze({ ...plan, gameType: room.gameType })
           : plan;
+      }
+      case "GEM_CARD": {
+        const plan = this.#gemCard.planPresenceRestored(room, playerId);
+        return plan.status === "RESET" ? Object.freeze({ ...plan, gameType: room.gameType }) : plan;
       }
       case "NUMBER_TILE": {
         const plan = this.#numberTile.planPresenceRestored(room, playerId);

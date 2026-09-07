@@ -1,29 +1,29 @@
 # GEM_CARD Protocol Gate
 
-> 상태: `CONFIRMED / P10 COMPLETE / P11A READY / RUNTIME NOT IMPLEMENTED`
-> 기준 checkpoint: `8d5444f docs: define gem card rules and ip gate`
-> 범위: P10 문서 설계만 해당하며 shared/server/Web runtime contract는 변경하지 않음
+> 상태: `P10 / P11A / P11B COMPLETE — SERVER/SHARED ENABLED; P11C WEB DEFERRED`
+> P11B 시작 checkpoint: `9e124e4 fix: simplify number tile joker semantics`
+> 범위: strict shared/server GEM integration. Current Web capability/catalog는 Hangul + Number만 유지.
 > 사용자 결정: `GC-001`~`GC-038` 중 `GC-023=B`, 나머지는 모두 `A`
 > 연관 규칙: 확정된 `GC-001`~`GC-038` — [GEM_CARD_GAME_RULES.md](./GEM_CARD_GAME_RULES.md)
 > 연관 data: 확정된 original 45-card input — [GEM_CARD_CARDSET_V1.md](./GEM_CARD_CARDSET_V1.md)
 
 ## 1. 목적과 현재 runtime 기준선
 
-이 문서는 세 번째 게임 `GEM_CARD`를 구현하기 전에 platform command 재사용 범위, game-specific command, `PlatformSnapshotV2` projection, capability admission, revision/idempotency, server action과 privacy 요구를 고정하는 protocol gate다. 아래 event 이름과 의미는 확정된 conceptual contract다. P11B가 strict TypeScript/Valibot schema를 구현하기 전에는 runtime public wire가 아니며, 설명용 pseudotype의 정확한 TypeScript field spelling은 runtime 구현으로 간주하지 않는다.
+이 문서는 세 번째 게임 `GEM_CARD`를 구현하기 전에 platform command 재사용 범위, game-specific command, `PlatformSnapshotV2` projection, capability admission, revision/idempotency, server action과 privacy 요구를 고정하는 protocol gate다. P11B는 아래 contract를 strict TypeScript/Valibot schema와 실제 Socket.IO handler로 구현했다. Exact source와 verification은 [GEM_CARD_SERVER_INTEGRATION.md](./GEM_CARD_SERVER_INTEGRATION.md)를 따른다.
 
-현재 production 기준선은 다음과 같다.
+P11B source 기준선은 다음과 같다. Public Railway deployment를 의미하지 않는다.
 
 - `protocolVersion = 1`
-- runtime `GameType`, identity-only `GameRegistry`, exact Room union은 `HANGUL_TILE | NUMBER_TILE`만 지원
-- `PlatformSnapshotV2`와 realtime event map도 두 game만 지원
+- runtime `GameType`, identity-only `GameRegistry`, exact Room union은 `HANGUL_TILE | NUMBER_TILE | GEM_CARD` 지원
+- `PlatformSnapshotV2`와 negotiated realtime event map은 세 game 지원; Legacy V1 map은 그대로
 - capability가 없는 client는 `HANGUL_TILE` legacy mode이며 `NUMBER_TILE`은 selected snapshot V2와 exact game capability가 모두 필요
-- `RoomRecord`는 exact `HangulRoomRecord | NumberTileRoomRecord`
+- `RoomRecord`는 exact `HangulRoomRecord | NumberTileRoomRecord | GemCardRoomRecord`
 - Home/catalog/decoder/renderer에는 두 production game만 존재
-- `GEM_CARD` identifier, registration, command, projection, Web capability와 catalog item은 없음
+- GEM identifier/registration/commands/rack-free V2는 존재; GEM Web capability/catalog/renderer는 아직 없음
 
-P10에서는 이 기준선을 변경하지 않는다. 특히 `GEM_CARD` placeholder, `game:command`, giant `GameModule`, generic state/result/turn/card abstraction을 추가하지 않는다.
+P11B는 P11A domain을 수정 없이 연결했다. 특히 `GEM_CARD` placeholder, `game:command`, giant `GameModule`, generic state/result/turn/card abstraction을 추가하지 않는다.
 
-현재 source에서 확인한 P11 integration seam은 다음과 같다.
+아래 표는 P10에서 확인한 pre-integration seam 기록이다. P11B는 server/shared의 exact third branches를 완료했으며 Web 행은 P11C로 남긴다.
 
 | Current source | 확인된 제약/재사용점 |
 | --- | --- |
@@ -128,16 +128,15 @@ type GemTurnCommandConcept<TKind extends string, TPayload> = {
 
 ## 6. 확정된 conceptual payloads
 
-다음 pseudotype은 확정된 payload 의미와 최소 입력을 보여준다. P11B는 이를 strict schema로 옮기되 optional rule branch나 client-computed state를 추가하지 않는다.
+다음은 P11B의 exact serialized payload shape다. Concept suffix는 설명용 이름이며 exported schema/type 이름은 shared source가 기준이다.
 
 ### 6.1 Collect — `GC-002`, `GC-004`, `GC-007`, `GC-008`
 
 ```ts
 type GemCollectPayloadConcept = {
-  selections: readonly {
-    resourceType: GemResourceType;
-    count: number;
-  }[];
+  selection:
+    | { kind: "BASIC"; resources: GemBasicResource[] } // unique length 1..2
+    | { kind: "PRISM" };
 };
 ```
 
@@ -148,7 +147,7 @@ type GemCollectPayloadConcept = {
 ```ts
 type GemPurchasePayloadConcept = {
   source:
-    | { kind: "MARKET"; cardId: GemCardId }
+    | { kind: "MARKET"; tier: 1 | 2 | 3; slotIndex: 0 | 1 | 2 }
     | { kind: "RESERVED"; cardId: GemCardId };
 };
 ```
@@ -159,7 +158,7 @@ Server가 canonical card cost와 permanent discount를 적용하고, basic holdi
 
 ```ts
 type GemReservePayloadConcept = {
-  source: { kind: "MARKET"; cardId: GemCardId };
+  source: { tier: 1 | 2 | 3; slotIndex: 0 | 1 | 2 };
 };
 ```
 
@@ -216,8 +215,8 @@ Resource conservation은 type별 `initial supply = current shared supply + all p
 | Command | Canonical fingerprint input |
 | --- | --- |
 | `gem:collect` | action kind + expected revision + turn ID + canonical resource selection |
-| `gem:purchase` | action kind + expected revision + turn ID + source kind + referenced card ID |
-| `gem:reserve` | action kind + expected revision + turn ID + `MARKET` source + public card ID |
+| `gem:purchase` | action kind + expected revision + turn ID + source kind + MARKET tier/slotIndex 또는 RESERVED cardId |
+| `gem:reserve` | action kind + expected revision + turn ID + tier + slotIndex |
 | `gem:yield` | action kind + expected revision + turn ID |
 
 Scope는 existing Room/player command scope를 재사용한다. Hidden refill card, RNG outcome와 server-computed payment/result는 request fingerprint에 넣지 않는다. Accepted replay는 추가 mutation 없이 stored non-secret terminal result를 재사용하고 transport는 current canonical Room에서 viewer별 snapshot을 다시 project한다. 같은 scope/request ID의 다른 fingerprint는 `REQUEST_ID_REUSED`다.
@@ -240,26 +239,26 @@ Finished(GEM_CARD)
 
 Existing Room-scoped ack와 `state:snapshot` event envelope은 유지한다. V2 `versions`에는 현재처럼 `roomRevision`과 `presenceVersion`만 있고, game revision은 PLAYING/FINISHED의 exact GEM `game.gameRevision` numeric field에 둔다. GEM Lobby의 `game`은 `null`이므로 game revision field도 없다. Legacy V1의 `versions.gameRevision` representation은 변경하지 않는다. Room/presence revisions는 계속 platform mutation 의미이며 GEM action rule이 직접 계산하지 않는다.
 
-Confirmed conceptual PLAYING projection:
+P11B exact PLAYING projection (basic count object의 keys는 DAWN/TIDE/GROVE/EMBER/ECHO, resource count object는 PRISM 추가):
 
 ```ts
 type GemCardPlayingProjectionConcept = {
   gameType: "GEM_CARD";
   gameId: GameId;
   gameRevision: GameRevision;
-  market: readonly {
-    category: GemCardCategory;
-    cards: readonly PublicGemCardView[];
+  rulesVersion: "gem-rules-v1";
+  cardSetVersion: "gem-cardset-v1";
+  turnOrder: readonly PlayerId[];
+  market: readonly { // exactly tiers 1, 2, 3
+    tier: 1 | 2 | 3;
+    slots: readonly [PublicGemCardView | null, PublicGemCardView | null, PublicGemCardView | null];
     remainingDeckCount: number;
   }[];
-  resourceSupply: readonly {
-    resourceType: GemResourceType;
-    count: number;
-  }[];
+  supply: GemResourceCounts;
   playerStates: readonly {
     playerId: PlayerId;
-    resources: readonly GemResourceCount[];
-    production: readonly GemProductionCount[];
+    resources: GemResourceCounts;
+    production: GemBasicCounts;
     purchasedCards: readonly PublicGemCardView[];
     reservedCards: readonly PublicGemCardView[];
     score: number;
@@ -269,30 +268,31 @@ type GemCardPlayingProjectionConcept = {
     turnId: TurnId;
     turnNumber: number;
     activePlayerId: PlayerId;
+    startedAt: ServerTime;
     deadlineAt: ServerTime;
   };
   fairRound: null | {
-    finishReason:
+    reason:
       | "SCORE_THRESHOLD_ROUND_END"
       | "MARKET_EXHAUSTED_ROUND_END";
   };
 };
 ```
 
-`resourceSupply`, 모든 player의 exact `resources`, purchased cards와 reserved cards는 public이다. GEM game projection에는 viewer-private holdings section이 없다. Outer platform `self.playerId`는 계속 현재 viewer identity를 나타내지만 game information 자체는 viewer별로 달라지지 않는다. Public card view는 original v1의 card ID, tier, basic cost vector, one discount type과 points만 포함한다. Special ability와 objective field는 존재하지 않는다.
+`supply`, 모든 player의 exact `resources`, purchased cards와 reserved cards는 public이다. GEM game projection에는 viewer-private holdings section이 없다. Outer platform `self.playerId`는 계속 현재 viewer identity를 나타내지만 game information 자체는 viewer별로 달라지지 않는다. Public card view는 original v1의 card ID, tier, basic cost vector, one discount type과 points만 포함한다. Special ability와 objective field는 존재하지 않는다.
 
 `fairRound`는 round-end 진행 여부와 최종 finish reason을 UI가 표시하는 최소 public 상태다. Internal round cursor, no-progress record set, offline-timeout streak와 scheduler descriptor는 노출하지 않는다. Exact field spelling과 boundary representation은 P11B strict schema에서 확정하되 이 privacy/semantic 범위를 바꾸지 않는다.
 
 FINISHED projection은 final public market/supply/player state와 concrete GEM result를 포함하고 active turn은 없다. Confirmed finish reasons는 `SCORE_THRESHOLD_ROUND_END`, `MARKET_EXHAUSTED_ROUND_END`, `NO_PROGRESS`, `LAST_PLAYER_STANDING`이다. `TIME_LIMIT`, `ALL_PLAYERS_FORFEITED`와 tile-game finish reason을 넣지 않는다. 일반 finish에서는 non-forfeited players를 score 내림차순으로 먼저 competition-rank하고 최고점 동점을 공동 winner로 둔다. Forfeited players는 모든 non-forfeited player 뒤에서 score 내림차순과 competition ranking을 적용한다. `LAST_PLAYER_STANDING`은 유일한 non-forfeited player만 winner/rank 1이다. 각 score는 자기 purchased-card points 그대로이며 score transfer는 없다. Result를 `GenericResult` 또는 Hangul/Number result shape로 일반화하지 않는다.
 
-Canonical start state는 immutable `rulesVersion = "gem-rules-v1"`과 `cardSetVersion = "gem-cardset-v1"`을 보유한다. 이 값은 persistence validation과 original 45-card dataset provenance에 필요하다. Wire projection에 실제 client compatibility requirement가 입증되지 않으면 자동 노출하지 않으며, P11B가 노출을 선택하더라도 exact closed literals로 검증한다.
+Canonical start state는 immutable `rulesVersion = "gem-rules-v1"`과 `cardSetVersion = "gem-cardset-v1"`을 보유한다. 이 값은 persistence validation과 original 45-card dataset provenance에 필요하다. P11B wire는 이 두 값을 exact closed literals로 노출/검증하여 client가 rules/cardset identity를 명시적으로 확인할 수 있다.
 
-### Existing V2 blocker
+### P11B rack-free resolution
 
-현재 `PlatformSnapshotV2` outer validator의 `privateRackMatchesSelfCount`는 Hangul/Number `playerStates.rackCount`와 `privateState.rack` 길이 일치를 platform-level invariant처럼 검사한다. GEM에 fake Rack을 추가하면 안 된다. P11B에서는:
+`privateRackMatchesSelfCount`는 Hangul/Number exact phase branches에서만 호출된다. GEM branch에는 적용하지 않는다. P11B 결과:
 
 - Room player와 game player identity-set 일치는 platform shell invariant로 유지하고,
-- Rack correlation은 Hangul/Number exact game schema가 소유하게 하며,
+- Rack correlation은 기존 Hangul/Number exact correlated branches가 계속 소유하고,
 - GEM exact schema는 public resource/reserve shape와 hidden-deck non-exposure를 검사하되 fake `privateState`를 요구하지 않고,
 - V1과 기존 Hangul/Number V2 key set/privacy가 바뀌지 않도록 golden tests를 통과해야 한다.
 
@@ -463,9 +463,9 @@ Confirmed consistency consequences:
 - Forfeit가 eligible set을 바꿀 때 actor의 yield record만 제거한다. Resource return으로 legal collect가 생겼으면 current canonical legality가 stale record보다 우선하여 `NO_PROGRESS`를 막는다.
 - Presence 변화 자체는 eligibility나 yield record를 바꾸지 않는다. Timeout은 legal action 유무에 따라 cycle reset 또는 one no-progress record로 처리한다.
 
-## 18. P11 technical blockers after protocol confirmation
+## 18. P11 implementation gate history
 
-규칙 선택은 확정됐지만 P11A/B/C는 다음 implementation gates를 명시적으로 해소해야 한다. 이 목록은 product-rule 재결정이 아니라 strict implementation work다.
+아래 목록은 P10 시점의 implementation gates다. P11B의 server/shared 항목은 완료했으며 Web decode/render/catalog와 public release는 P11C/P12로 남긴다. 규칙 재결정은 없다.
 
 1. Add `GEM_CARD` to `GameType` and identity-only Registry only with real domain/server support; no placeholder.
 2. Extend exact Room/persistence clone/lifecycle branches without `unknown`, JSON blob or capability-bearing Registry.

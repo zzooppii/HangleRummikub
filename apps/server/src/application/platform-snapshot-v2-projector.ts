@@ -1,3 +1,4 @@
+import type { GemCardV2GameProjector } from "../games/gem-card/compatibility/gem-card-v2-game-projector.js";
 import {
   PLATFORM_SNAPSHOT_VERSION,
   PlatformSnapshotV2Schema,
@@ -18,6 +19,7 @@ export type PlatformSnapshotV2ProjectorDependencies = Readonly<{
   presenceReader: PlayerPresenceReader;
   legacyHangulSnapshotProjector: LobbyStateSnapshotProjector;
   numberTileGameProjector: NumberTileV2GameProjector;
+  gemCardGameProjector: GemCardV2GameProjector;
 }>;
 
 export type ProjectPlatformSnapshotV2Input = Readonly<{
@@ -35,8 +37,10 @@ export class PlatformSnapshotV2Projector {
   readonly #presenceReader: PlayerPresenceReader;
   readonly #legacyHangulSnapshotProjector: LobbyStateSnapshotProjector;
   readonly #numberTileGameProjector: NumberTileV2GameProjector;
+  readonly #gemCardGameProjector: GemCardV2GameProjector;
 
   constructor(dependencies: PlatformSnapshotV2ProjectorDependencies) {
+    this.#gemCardGameProjector = dependencies.gemCardGameProjector;
     this.#clock = dependencies.clock;
     this.#presenceReader = dependencies.presenceReader;
     this.#legacyHangulSnapshotProjector =
@@ -106,6 +110,10 @@ export class PlatformSnapshotV2Projector {
       throw new Error("A non-LOBBY Room must contain a GameState.");
     }
     const playerIds = input.room.players.map((player) => player.playerId);
+    if (input.room.gameType === "GEM_CARD") {
+      const game = this.#gemCardGameProjector({ phase: input.room.phase, playerIds, selfPlayerId: input.selfPlayerId, game: input.room.game });
+      return v.parse(PlatformSnapshotV2Schema, { ...base, room: { ...base.room, phase: input.room.phase }, game });
+    }
     if (input.room.phase === "PLAYING") {
       if (input.room.game.turn === null || input.room.game.result !== null) {
         throw new Error(

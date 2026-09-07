@@ -167,6 +167,7 @@ test("Number Room clone is detached on write/read and FINISHED retention uses re
     Reflect.apply(Map.prototype.clear, firstRead.game?.racks, []),
   );
   const secondRead = await persistence.findById(firstRead.roomId);
+  assert.equal(secondRead?.gameType, "NUMBER_TILE");
   assert.equal(secondRead?.game?.racks.size, source.racks.size);
 
   const terminalPersistence = new InMemoryPersistence();

@@ -1,3 +1,4 @@
+import { GemCardGameStateAdapter, type GemCardGameStateStorage, type GemCardGameLifecycleInspection } from "../games/gem-card/compatibility/gem-card-game-state-adapter.js";
 import type {
   PlayerId,
   RequestId,
@@ -88,15 +89,18 @@ export type InMemoryCommitCheckpoint =
 export type InMemoryPersistenceOptions = Readonly<{
   legacyHangulGameStateAdapter?: LegacyHangulGameStateStorage;
   numberTileGameStateAdapter?: NumberTileGameStateStorage;
+  gemCardGameStateAdapter?: GemCardGameStateStorage;
   onCommitCheckpoint?: (checkpoint: InMemoryCommitCheckpoint) => void;
 }>;
 
 type GameStateStorageAdapters = Readonly<{
   legacyHangul: LegacyHangulGameStateStorage;
   numberTile: NumberTileGameStateStorage;
+  gemCard: GemCardGameStateStorage;
 }>;
 
 type RoomGameLifecycleInspection =
+  | Readonly<{ gameType: "GEM_CARD"; inspection: GemCardGameLifecycleInspection }>
   | Readonly<{
       gameType: "HANGUL_TILE";
       inspection: LegacyHangulGameLifecycleInspection;
@@ -235,6 +239,20 @@ function cloneRoomWriteCandidate(
         game,
       });
     }
+    case "GEM_CARD": {
+      const game =
+        candidate.game === null
+          ? null
+          : adapters.gemCard.cloneAndValidate(candidate.game);
+      validateRoomGameCoherence(shell.phase, shell.players, game, () =>
+        game === null ? null : adapters.gemCard.inspectLifecycle(game),
+      );
+      return Object.freeze({
+        ...shell,
+        gameType: "GEM_CARD" as const,
+        game,
+      });
+    }
   }
 }
 
@@ -244,6 +262,7 @@ function validateRoomGameCoherence(
   game: RoomRecord["game"],
   inspect: () =>
     | LegacyHangulGameLifecycleInspection
+    | GemCardGameLifecycleInspection
     | NumberTileGameLifecycleInspection
     | null,
 ): void {
@@ -287,6 +306,7 @@ function persistRoom(
     case "HANGUL_TILE":
       return Object.freeze({ ...detached, storageRevision: revision });
     case "NUMBER_TILE":
+    case "GEM_CARD":
       return Object.freeze({ ...detached, storageRevision: revision });
   }
 }
@@ -315,6 +335,11 @@ function inspectRoomGame(
       return Object.freeze({
         gameType: room.gameType,
         inspection: adapters.numberTile.inspectLifecycle(room.game),
+      });
+    case "GEM_CARD":
+      return Object.freeze({
+        gameType: room.gameType,
+        inspection: adapters.gemCard.inspectLifecycle(room.game),
       });
   }
 }
@@ -809,7 +834,10 @@ export class InMemoryPersistence
     if (numberTile.gameType !== "NUMBER_TILE") {
       throw new Error("Number Tile storage adapter has an invalid gameType.");
     }
+    const gemCard = options.gemCardGameStateAdapter ?? new GemCardGameStateAdapter();
+    if (gemCard.gameType !== "GEM_CARD") throw new Error("GEM storage adapter has an invalid gameType.");
     this.#gameStateStorageAdapters = Object.freeze({
+      gemCard,
       legacyHangul,
       numberTile,
     });

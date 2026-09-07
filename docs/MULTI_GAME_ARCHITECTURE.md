@@ -1,6 +1,6 @@
 # Multi-game Platform Architecture
 
-> 상태: P0~P11A COMPLETE / PUBLIC TWO-GAME VERIFIED / P11B READY
+> 상태: P0~P11B COMPLETE / PUBLIC TWO-GAME VERIFIED / P11C WEB DEFERRED
 > 작성일: 2026-09-07
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
@@ -1313,3 +1313,25 @@ Platform transport/application
 Previous Joker role may change across GROUP/RUN boundaries. A pre-turn Joker must remain exactly once in the final Table and cannot enter a rack or pool, but no exact ordinary replacement is required. The server remains authoritative; Web classification and role hints are derived convenience only.
 
 The Number command/V2 placement removes assignment fields because inventing a GROUP color would create false canonical state. `protocolVersion = 1`, `snapshotVersion = 2`, event names, capability names, URLs, and all Hangul branches remain unchanged. A strict old Number Web client already open on the old shape must refresh. This is a narrow NUMBER_TILE correction and does not modify GEM_CARD P11A or begin P11B. Detailed contract and examples are in [NUMBER_TILE_JOKER_SEMANTICS_FIX.md](./NUMBER_TILE_JOKER_SEMANTICS_FIX.md).
+
+
+## 39. P11B — GEM server/shared integration
+
+P11B starts at `9e124e4` (1045 tests). It connects the unchanged P11A pure domain through exact GEM application, storage and projection paths. [GEM_CARD_SERVER_INTEGRATION.md](./GEM_CARD_SERVER_INTEGRATION.md) records the concrete contract and evidence. Earlier phase sections above describe their historical checkpoints.
+
+```text
+platform Socket.IO / Room lane / explicit start-lifecycle-scheduled routers
+  -> games/gem-card/application (start, four commands, timeout, leave/resume)
+     -> unchanged games/gem-card/domain
+platform persistence -> GemCardGameStateAdapter (clone/coherence/lifecycle)
+platform V2 shell -> projectGemCardV2Game (public whitelist, no fake rack)
+```
+
+- Server/shared GameType and identity-only Registry now contain exactly Hangul, Number and GEM. RoomRecord is the exact three-member discriminated union, not a generic stored envelope.
+- GEM Lobby/Playing/Finished V2 branches require only platform shell invariants outside the game. Existing Hangul/Number rack correlation remains in their exact branches; GEM has no privateState/rack/rackCount.
+- GEM game projection owns public resources, supply, market slot cards/counts, purchased/reserved cards, production, score, turn and minimal fairRound reason. Future deck IDs/order, internal trackers, credentials, storage and scheduler details remain server-only.
+- GEM admission requires negotiated V2 AND advertised GEM_CARD before membership/session/binding/presence mutation. Current Web still advertises HANGUL_TILE + NUMBER_TILE and Home still has two cards; GEM UI/catalog/decoder is P11C.
+- Four strict additive gem events use exact captured receivedAt, shared Room lane, CAS/UoW and existing idempotency scope. No generic command executor, module, Turn, Result, Card or Resource is introduced.
+- 45-second timeout uses the existing scheduler/sweeper mechanism. GEM has no overall deadline. Explicit leave returns resources; third offline timeout retains them. Domain finish precedence and fair-round queue remain authoritative. No GEM advisory events.
+- P11A domain, Hangul rules/wire, Number bare Joker semantics and dependency manifests are unchanged. Number manual Railway/Chrome verification remains a separate pending item; this user-authorized P11B does not claim that verification.
+- Railway deployment is not required for P11B. Public three-game verification waits for a usable GEM Web client and its later release gate.

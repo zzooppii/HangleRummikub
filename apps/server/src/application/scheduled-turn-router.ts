@@ -7,7 +7,7 @@ export type ScheduledTurnDispatchResult =
   | Readonly<{ status: "FAILED" }>;
 
 type ScheduledTurnCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD",
 > = Readonly<{
   gameType: TGameType;
   handleTurnTimeout(
@@ -17,6 +17,7 @@ type ScheduledTurnCapability<
 
 export type HangulScheduledTurnCapability =
   ScheduledTurnCapability<"HANGUL_TILE">;
+export type GemCardScheduledTurnCapability = ScheduledTurnCapability<"GEM_CARD">;
 export type NumberTileScheduledTurnCapability =
   ScheduledTurnCapability<"NUMBER_TILE">;
 
@@ -24,6 +25,7 @@ export type ScheduledTurnRouterDependencies = Readonly<{
   roomRepository: Pick<RoomRepository, "findById">;
   hangul: HangulScheduledTurnCapability;
   numberTile: NumberTileScheduledTurnCapability;
+  gemCard: GemCardScheduledTurnCapability;
 }>;
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -31,7 +33,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function isCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD",
 >(
   value: unknown,
   gameType: TGameType,
@@ -44,7 +46,7 @@ function isCapability<
 }
 
 function requireCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD",
 >(
   value: unknown,
   gameType: TGameType,
@@ -63,6 +65,7 @@ export class ScheduledTurnRouter {
   readonly #roomRepository: Pick<RoomRepository, "findById">;
   readonly #hangul: HangulScheduledTurnCapability;
   readonly #numberTile: NumberTileScheduledTurnCapability;
+  readonly #gemCard: GemCardScheduledTurnCapability;
 
   constructor(dependencies: ScheduledTurnRouterDependencies) {
     this.#roomRepository = dependencies.roomRepository;
@@ -71,6 +74,7 @@ export class ScheduledTurnRouter {
       dependencies.numberTile,
       "NUMBER_TILE",
     );
+    this.#gemCard = requireCapability(dependencies.gemCard, "GEM_CARD");
     Object.freeze(this);
   }
 
@@ -85,6 +89,8 @@ export class ScheduledTurnRouter {
       switch (room.gameType) {
         case "HANGUL_TILE":
           return await this.#hangul.handleTurnTimeout(input);
+        case "GEM_CARD":
+          return await this.#gemCard.handleTurnTimeout(input);
         case "NUMBER_TILE":
           return await this.#numberTile.handleTurnTimeout(input);
       }

@@ -11,3 +11,6 @@ export * from "./protocol.js";
 export * from "./realtime.js";
 export * from "./snapshot-negotiation.js";
 export * from "./validation.js";
+
+export * from "./games/gem-card/contracts.js";
+export * from "./games/gem-card/v2-projection-contracts.js";

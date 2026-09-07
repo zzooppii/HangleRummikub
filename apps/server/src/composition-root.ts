@@ -1,3 +1,11 @@
+import { createGemCardRegistration } from "./games/gem-card/gem-card-registration.js";
+import { GemCardGameStateAdapter } from "./games/gem-card/compatibility/gem-card-game-state-adapter.js";
+import { projectGemCardV2Game } from "./games/gem-card/compatibility/gem-card-v2-game-projector.js";
+import { GemCardStartService } from "./games/gem-card/application/gem-card-start-service.js";
+import { GemCardCommandService } from "./games/gem-card/application/gem-card-command-service.js";
+import { GemCardCommandRouter } from "./games/gem-card/application/gem-card-command-router.js";
+import { GemCardTimeoutService } from "./games/gem-card/application/gem-card-timeout-service.js";
+import { createGemCardPlayerLifecycleActions } from "./games/gem-card/application/gem-card-player-lifecycle-actions.js";
 import type { PlayerId, RoomId } from "@hangul-rummikub/shared";
 
 import { GameStartService } from "./application/game-start-service.js";
@@ -95,6 +103,8 @@ export type ApplicationRuntime = Readonly<{
   legacyHangulServerActionRouter: LegacyHangulServerActionRouting;
   legacyHangulV1CommandRouter: LegacyHangulV1CommandRouting;
   numberTileCommandRouter: NumberTileCommandRouter;
+  gemCardCommandRouter: GemCardCommandRouter;
+  subscribeGemCardTimeoutApplied(listener: Parameters<GemCardTimeoutService["subscribeApplied"]>[0]): () => void;
   overdueGameDeadlineSweeper: OverdueGameDeadlineSweeper;
   persistence: InMemoryPersistence;
   roomLeaveService: RoomLeaveService;
@@ -175,16 +185,19 @@ export function createApplicationRuntime(
     options.gameRegistrations ?? [
       createLegacyHangulCompatibilityRegistration(),
       createNumberTileRegistration(),
+      createGemCardRegistration(),
     ],
   );
   gameRegistry.getRequired(LEGACY_V1_DEFAULT_GAME_TYPE);
   gameRegistry.getRequired(NUMBER_TILE_GAME_TYPE);
+  gameRegistry.getRequired("GEM_CARD");
 
   const legacyHangulGameStateAdapter = new LegacyHangulGameStateAdapter();
   const numberTileGameStateAdapter = new NumberTileGameStateAdapter();
   const persistence = new InMemoryPersistence({
     legacyHangulGameStateAdapter,
     numberTileGameStateAdapter,
+    gemCardGameStateAdapter: new GemCardGameStateAdapter(),
   });
   const clock = new SystemClock();
   const randomSource = new CryptoRandomSource();
@@ -196,6 +209,7 @@ export function createApplicationRuntime(
   const playerLifecycleActions = new PlayerLifecycleRouter({
     hangul: legacyHangulPlayerLifecycleActions,
     numberTile: numberTilePlayerLifecycleActions,
+    gemCard: createGemCardPlayerLifecycleActions(idGenerator),
   });
   const roomCodeGenerator = new RandomRoomCodeGenerator(randomSource);
   const sessionTokenIssuer = new NodeCryptoSessionTokenIssuer();
@@ -443,6 +457,19 @@ export function createApplicationRuntime(
     turnScheduler,
     onTurnSchedulingFailure: reportTurnSchedulingFailure,
   });
+  const gemCardStartService = new GemCardStartService({
+    roomRepository: persistence,
+    idempotencyRepository: persistence,
+    roomUnitOfWork: persistence,
+    roomMutationExecutor,
+    presenceLeaseReader: presenceReader,
+    clock,
+    idGenerator,
+    randomSource,
+    gameRegistrationReader: gameRegistry,
+    turnScheduler,
+    onTurnSchedulingFailure: reportTurnSchedulingFailure,
+  });
   const turnSubmitService = new TurnSubmitService({
     roomRepository: persistence,
     idempotencyRepository: persistence,
@@ -489,6 +516,7 @@ export function createApplicationRuntime(
     capability: legacyHangulV1CommandCapability,
   });
   const gameStartRouter = new GameStartRouter({
+    gemCard: { gameType: "GEM_CARD", start: input => gemCardStartService.start(input) },
     roomRepository: persistence,
     hangul: {
       gameType: LEGACY_V1_DEFAULT_GAME_TYPE,
@@ -567,7 +595,21 @@ export function createApplicationRuntime(
     onTurnSchedulingFailure: reportTurnSchedulingFailure,
     onGameFinished,
   });
+  const gemCardCommandService = new GemCardCommandService({
+    roomRepository: persistence, idempotencyRepository: persistence, roomUnitOfWork: persistence,
+    roomMutationExecutor, clock, idGenerator, turnScheduler, onTurnSchedulingFailure: reportTurnSchedulingFailure, onGameFinished,
+  });
+  const gemCardCommandRouter = new GemCardCommandRouter({ roomRepository: persistence, capability: {
+    gameType: "GEM_CARD", collect: input => gemCardCommandService.collect(input), purchase: input => gemCardCommandService.purchase(input),
+    reserve: input => gemCardCommandService.reserve(input), yield: input => gemCardCommandService.yield(input),
+  } });
+  const gemCardTimeoutService = new GemCardTimeoutService({
+    roomRepository: persistence, idempotencyRepository: persistence, roomUnitOfWork: persistence,
+    roomMutationExecutor, clock, idGenerator, turnScheduler, onTurnSchedulingFailure: reportTurnSchedulingFailure,
+    onGameFinished, presenceLeaseReader: presenceReader,
+  });
   scheduledTurnRouter = new ScheduledTurnRouter({
+    gemCard: { gameType: "GEM_CARD", handleTurnTimeout: input => gemCardTimeoutService.timeout(input) },
     roomRepository: persistence,
     hangul: {
       gameType: LEGACY_V1_DEFAULT_GAME_TYPE,
@@ -598,6 +640,7 @@ export function createApplicationRuntime(
     presenceReader,
     legacyHangulSnapshotProjector: snapshotProjector,
     numberTileGameProjector: projectNumberTileV2Game,
+    gemCardGameProjector: projectGemCardV2Game,
   });
   const roomLeaveService = new RoomLeaveService({
     roomRepository: persistence,
@@ -624,6 +667,8 @@ export function createApplicationRuntime(
     legacyHangulServerActionRouter,
     legacyHangulV1CommandRouter,
     numberTileCommandRouter,
+    gemCardCommandRouter,
+    subscribeGemCardTimeoutApplied(listener) { return gemCardTimeoutService.subscribeApplied(listener); },
     overdueGameDeadlineSweeper,
     persistence,
     roomLeaveService,
