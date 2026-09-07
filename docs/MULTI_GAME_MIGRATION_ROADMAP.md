@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0~P10 COMPLETE / PUBLIC TWO-GAME VERIFIED / P11A READY
+> 상태: P0~P11A COMPLETE / PUBLIC TWO-GAME VERIFIED / P11B READY
 > 작성일: 2026-09-07
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -25,7 +25,7 @@
 
 production 기준선 573 tests는 shared 55, web 87, server 431로 구성됐다. 이후 추가된 test를 포함한 수는 이유 없이 감소하면 해당 Phase는 완료가 아니다.
 
-P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A checkpoint `a215eaa`는 이 tests를 삭제·skip하지 않고 신규 boundary 6개를 더해 shared 59, web 91, server 453으로 총 603 tests를 통과했다. P3B checkpoint `bc4a62a`는 기존 603개와 신규 command-routing 9개를 포함해 총 612 tests를 통과했다. P3C checkpoint `d21eaad`는 신규 server-action regression 16개를 더해 shared 59, web 91, server 478로 총 628 tests를 통과했다. P3D checkpoint `cedda1a`는 import-boundary regression 3개를 더해 shared 59, web 91, server 481로 총 631 tests를 통과했다. P4 checkpoint `60eb77e`는 새 case 수를 늘리지 않고 production A/B smoke의 behavioral assertions를 강화하며 이 631-test 기준선을 두 번 검증했다. P5A checkpoint `05cac94`는 shared contract 6개와 server mapper/wire-isolation 8개를 더해 shared 65, web 91, server 489로 총 645 tests를 기준선으로 만들었다. P5B checkpoint `e9211bc`는 negotiation/wire contract 4개, Web decode·routing·storage regression 14개, server negotiation·selector·mixed-version regression 14개를 더해 shared 69, web 105, server 503으로 총 677 tests를 통과했다. P5C는 additive create contract, requested-type resolution/atomicity, Web catalog/selection/retry와 mixed legacy/V2 create/join 회귀 8개를 더해 shared 69, web 108, server 508로 총 685 tests를 통과했다. P7B checkpoint `d9329d1`은 P7A domain과 server/shared integration 회귀를 포함해 shared 75, web 109, server 694, 총 878 tests다. P7C는 Web capability/catalog/Number renderer와 local draft·active-control·responsive 회귀 31개를 더해 shared 75, web 140, server 694, 총 909 tests를 기준선으로 만든다. P8 source/local gate는 raw two-game protocol, production-serving과 import/draft boundary 회귀 7개를 더해 shared 75, Web 142, server 699, 총 916 tests를 두 번 연속 통과했다. P9B는 approved primitive unit regression 14개를 추가해 shared 75, Web 151, server 704, 총 930 tests를 통과했다.
+P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3A checkpoint `a215eaa`는 이 tests를 삭제·skip하지 않고 신규 boundary 6개를 더해 shared 59, web 91, server 453으로 총 603 tests를 통과했다. P3B checkpoint `bc4a62a`는 기존 603개와 신규 command-routing 9개를 포함해 총 612 tests를 통과했다. P3C checkpoint `d21eaad`는 신규 server-action regression 16개를 더해 shared 59, web 91, server 478로 총 628 tests를 통과했다. P3D checkpoint `cedda1a`는 import-boundary regression 3개를 더해 shared 59, web 91, server 481로 총 631 tests를 통과했다. P4 checkpoint `60eb77e`는 새 case 수를 늘리지 않고 production A/B smoke의 behavioral assertions를 강화하며 이 631-test 기준선을 두 번 검증했다. P5A checkpoint `05cac94`는 shared contract 6개와 server mapper/wire-isolation 8개를 더해 shared 65, web 91, server 489로 총 645 tests를 기준선으로 만들었다. P5B checkpoint `e9211bc`는 negotiation/wire contract 4개, Web decode·routing·storage regression 14개, server negotiation·selector·mixed-version regression 14개를 더해 shared 69, web 105, server 503으로 총 677 tests를 통과했다. P5C는 additive create contract, requested-type resolution/atomicity, Web catalog/selection/retry와 mixed legacy/V2 create/join 회귀 8개를 더해 shared 69, web 108, server 508로 총 685 tests를 통과했다. P7B checkpoint `d9329d1`은 P7A domain과 server/shared integration 회귀를 포함해 shared 75, web 109, server 694, 총 878 tests다. P7C는 Web capability/catalog/Number renderer와 local draft·active-control·responsive 회귀 31개를 더해 shared 75, web 140, server 694, 총 909 tests를 기준선으로 만든다. P8 source/local gate는 raw two-game protocol, production-serving과 import/draft boundary 회귀 7개를 더해 shared 75, Web 142, server 699, 총 916 tests를 두 번 연속 통과했다. P9B는 approved primitive unit regression 14개를 추가해 shared 75, Web 151, server 704, 총 930 tests를 통과했다. P11A는 production-inert GEM pure-domain regression 76개를 추가해 shared 75, Web 151, server 780, 총 1006 tests를 기준선으로 만든다.
 
 ## 2. Phase 개요
 
@@ -1101,7 +1101,7 @@ Multi-game Platform P10 GEM_CARD rules/IP gate만 수행하라. docs/MULTI_GAME_
 
 ## 14. P11 — Gem/Card implementation
 
-P11은 domain, server/shared integration, web 구현을 각각 독립 stop gate로 수행한다. P10 rules/consistency/IP development gate가 완료되어 P11A가 READY이며, P11A~P11C와 P12 production gate가 끝나기 전에는 production catalog에서 enable하지 않는다.
+P11은 domain, server/shared integration, web 구현을 각각 독립 stop gate로 수행한다. P10 rules/consistency/IP development gate 뒤 P11A pure domain을 완료했으며, P11B~P11C와 P12 production gate가 끝나기 전에는 production catalog에서 enable하지 않는다.
 
 ### 14.1 P11A — Gem/Card domain implementation
 
@@ -1130,6 +1130,10 @@ P10에서 confirmed된 카드·resource 규칙만으로 Tile/Rack 전제 없는 
 - failure가 state를 변경하지 않고 conservation invariant가 항상 유지된다.
 - Hangul/Number game type을 import하지 않는다.
 - 45초 turn/timeout semantics를 검증하며 overall game deadline capability는 없다.
+
+#### 완료 상태
+
+`apps/server/src/games/gem-card/domain/`에 exact resource/card/player/market/GameState와 `gem-cardset-v1`, collect/purchase/reserve, legal-action/YIELD/no-progress, explicit/offline forfeit, timeout, fair-round/market exhaustion, four-reason result를 구현했다. Setup은 P11B가 authority 있게 섞고 생성한 deck/order/ID/time을 받으며 domain 자체는 RNG, Clock, scheduler를 import하지 않는다. Import boundary는 Hangul/Number/platform runtime 의존과 production wiring을 모두 금지한다. 신규 76 cases를 포함한 shared 75 + Web 151 + server 780 = 총 1006 tests가 exact cardset/conservation, action legality, 45초 timeout, forfeit 차이, fair-round/result와 source boundary를 검증한다. Persisted whole-state codec/coherence와 Room/UoW/scheduler 연결은 P11B 책임이다. 상세 contract는 [GEM_CARD_DOMAIN_DESIGN.md](./GEM_CARD_DOMAIN_DESIGN.md)를 따른다. **P11A COMPLETE / P11B READY**.
 
 #### Required tests
 

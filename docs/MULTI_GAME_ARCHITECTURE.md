@@ -1,6 +1,6 @@
 # Multi-game Platform Architecture
 
-> 상태: P0~P10 COMPLETE / PUBLIC TWO-GAME VERIFIED / P11A READY
+> 상태: P0~P11A COMPLETE / PUBLIC TWO-GAME VERIFIED / P11B READY
 > 작성일: 2026-09-07
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
@@ -1295,4 +1295,4 @@ Gameplay-identity comparator는 GEM Web에 local interaction state가 있고 can
 - Current Web `use-lobby-app`과 App routing은 two-game explicit branches다. GEM single-step interaction을 기존 tile drafts에 맞추지 않는다.
 - Result와 server action은 game-specific으로 유지한다. GEM은 45초 turn scheduler를 opt-in하고 overall deadline과 GEM-specific advisory는 추가하지 않는다.
 
-사용자는 `GC-001`~`GC-038`의 A안을 승인하되 explicit PLAYING leave인 `GC-023`만 B를 선택했다. Consistency/IP product development audit에는 blocker가 없으므로 P10은 **COMPLETE**, P11A는 `READY`다. Public title/asset release review는 별도 gate이고 runtime capability나 catalog availability는 아직 추가하지 않는다.
+사용자는 `GC-001`~`GC-038`의 A안을 승인하되 explicit PLAYING leave인 `GC-023`만 B를 선택했다. Consistency/IP product development audit에는 blocker가 없으므로 P10은 **COMPLETE**다. P11A는 [GEM_CARD_DOMAIN_DESIGN.md](./GEM_CARD_DOMAIN_DESIGN.md)의 production-inert namespace에 resource/card/market/player state, immutable 45-card seed, action/payment, YIELD/no-progress, timeout/forfeit, fair-round/finish와 concrete result를 구현했다. 이 domain은 기존 games/platform runtime을 import하지 않고 production source에서도 아직 import되지 않는다. `GameType`, identity-only Registry, exact two-game Room union, protocol/snapshot, catalog와 Web은 그대로다. GEM 신규 76 cases를 포함한 shared 75 + Web 151 + server 780 = 총 1006 tests와 root typecheck/build, production-serving regression, import/source audit를 gate로 삼으므로 **P11A COMPLETE / P11B READY**다. Public title/asset release review는 별도 gate이고 runtime capability나 catalog availability는 아직 추가하지 않는다.
