@@ -96,6 +96,7 @@ type NumberTilePlayingRouteProps = Readonly<{
   submitPending: boolean;
   actionPending: boolean;
   commandRetryKind: ReturnType<typeof useLobbyApp>["numberCommandRetryKind"];
+  actionFeedback: ReturnType<typeof useLobbyApp>["numberActionFeedback"];
   roomLeavePending: boolean;
   draftResetGeneration: number;
   onSubmit: ReturnType<typeof useLobbyApp>["submitNumberTurn"];
@@ -141,6 +142,7 @@ function NumberTilePlayingRoute(props: NumberTilePlayingRouteProps) {
       submitPending={props.submitPending}
       actionPending={props.actionPending}
       commandRetryKind={props.commandRetryKind}
+      actionFeedback={props.actionFeedback}
       roomLeavePending={props.roomLeavePending}
       canSubmit={
         commandCapable &&
@@ -268,6 +270,7 @@ export function App() {
             submitPending={app.turnSubmitPending}
             actionPending={app.turnActionPending}
             commandRetryKind={app.numberCommandRetryKind}
+            actionFeedback={app.numberActionFeedback}
             roomLeavePending={app.roomLeavePending}
             draftResetGeneration={app.turnDraftResetGeneration}
             onSubmit={app.submitNumberTurn}

@@ -285,7 +285,7 @@ test("초기 duplicate tileId 입력은 거절하고 모든 edit는 한 physical
   assert.equal(createNumberTileTurnDraft(duplicateSnapshot), null);
 
   let draft = requireDraft(createNumberTileTurnDraft(authoritative));
-  draft = requireEdit(addNumberTileDraftMeld(draft, "GROUP"));
+  draft = requireEdit(addNumberTileDraftMeld(draft));
   const rackTileId = fixtureTileId(draft, "rack-red-7-a");
   draft = requireEdit(
     placeNumberTileDraftTile(draft, rackTileId, {
@@ -305,13 +305,13 @@ test("초기 duplicate tileId 입력은 거절하고 모든 edit는 한 physical
   assert.equal(draft.availableRackTiles.some((tile) => tile.tileId === rackTileId), false);
 });
 
-test("GROUP/RUN을 empty 상태로 만들 수 있고 오직 empty meld만 삭제한다", () => {
+test("미분류 조합을 empty 상태로 만들 수 있고 오직 empty meld만 삭제한다", () => {
   let draft = requireDraft(createNumberTileTurnDraft(snapshot()));
-  draft = requireEdit(addNumberTileDraftMeld(draft, "GROUP"));
-  draft = requireEdit(addNumberTileDraftMeld(draft, "RUN"));
+  draft = requireEdit(addNumberTileDraftMeld(draft));
+  draft = requireEdit(addNumberTileDraftMeld(draft));
   assert.deepEqual(
     draft.table.melds.slice(1).map((meld) => [meld.kind, meld.tiles.length]),
-    [["GROUP", 0], ["RUN", 0]],
+    [[null, 0], [null, 0]],
   );
 
   const rackTileId = fixtureTileId(draft, "rack-red-7-a");
@@ -330,9 +330,100 @@ test("GROUP/RUN을 empty 상태로 만들 수 있고 오직 empty meld만 삭제
   assert.equal(draft.table.melds.length, 2);
 });
 
+test("rack face만으로 local 조합 kind를 자동 분류하고 Undo/Reset은 같은 physical identity를 복원한다", () => {
+  const authoritative = snapshot({ initialMeldCompleted: false });
+  const blackSeven = {
+    tileId: "rack-black-7-a" as TileId,
+    kind: "ORDINARY" as const,
+    number: 7 as const,
+    color: "BLACK" as const,
+  };
+  const threeColors: NumberTilePlayingPlatformSnapshotV2 = {
+    ...authoritative,
+    game: {
+      ...authoritative.game,
+      privateState: {
+        rack: [
+          authoritative.game.privateState.rack[0]!,
+          authoritative.game.privateState.rack[1]!,
+          blackSeven,
+        ],
+      },
+    },
+  };
+  const baseline = requireDraft(createNumberTileTurnDraft(threeColors));
+  let draft = requireEdit(addNumberTileDraftMeld(baseline));
+  const ids = ["rack-black-7-a", "rack-red-7-a", "rack-blue-7-a"];
+  for (const [index, value] of ids.entries()) {
+    draft = requireEdit(placeNumberTileDraftTile(
+      draft,
+      fixtureTileId(draft, value),
+      { meldIndex: 1, tileIndex: index },
+    ));
+  }
+  assert.equal(draft.table.melds[1]?.kind, "GROUP");
+  assert.deepEqual(
+    draft.table.melds[1]?.tiles.map((tile) => tile.tileId),
+    ["rack-red-7-a", "rack-blue-7-a", "rack-black-7-a"],
+  );
+  for (const value of ids) {
+    assert.equal(tileOccurrences(draft, fixtureTileId(draft, value)), 1);
+  }
+
+  const undone = requireEdit(undoNumberTileTurnDraft(draft));
+  assert.equal(undone.table.melds[1]?.kind, null);
+  assert.equal(undone.table.melds[1]?.tiles.length, 2);
+  const reset = resetNumberTileTurnDraft(draft);
+  assert.deepEqual(reset.table, baseline.table);
+  assert.deepEqual(reset.availableRackTiles, baseline.availableRackTiles);
+});
+
+test("untouched canonical meld order는 empty 조합 add/remove와 same-position move로 바뀌거나 dirty가 되지 않는다", () => {
+  const authoritative = snapshot();
+  const orange = {
+    tileId: "table-orange-7-a" as TileId,
+    kind: "ORDINARY" as const,
+    number: 7 as const,
+    color: "ORANGE" as const,
+  };
+  const red = {
+    ...orange,
+    tileId: "table-red-7-b" as TileId,
+    color: "RED" as const,
+  };
+  const blue = {
+    ...orange,
+    tileId: "table-blue-7-b" as TileId,
+    color: "BLUE" as const,
+  };
+  const nonCanonicalDisplayOrder: NumberTilePlayingPlatformSnapshotV2 = {
+    ...authoritative,
+    game: {
+      ...authoritative.game,
+      table: {
+        melds: [{ kind: "GROUP", tiles: [orange, red, blue] }],
+      },
+    },
+  };
+  const baseline = requireDraft(createNumberTileTurnDraft(nonCanonicalDisplayOrder));
+  let draft = requireEdit(addNumberTileDraftMeld(baseline));
+  draft = requireEdit(removeEmptyNumberTileDraftMeld(draft, 1));
+  assert.deepEqual(draft.table, baseline.table);
+  assert.equal(isNumberTileTurnDraftDirty(draft), false);
+
+  const firstTileId = fixtureTileId(draft, "table-orange-7-a");
+  const samePosition = requireEdit(placeNumberTileDraftTile(
+    draft,
+    firstTileId,
+    { meldIndex: 0, tileIndex: 0 },
+  ));
+  assert.equal(samePosition, draft);
+  assert.equal(isNumberTileTurnDraftDirty(samePosition), false);
+});
+
 test("Table Tile은 meld 사이를 이동하지만 pre-turn Table Tile은 rack으로 갈 수 없다", () => {
   let draft = requireDraft(createNumberTileTurnDraft(snapshot()));
-  draft = requireEdit(addNumberTileDraftMeld(draft, "RUN"));
+  draft = requireEdit(addNumberTileDraftMeld(draft));
   const canonicalTileId = fixtureTileId(draft, "table-red-3-a");
   draft = requireEdit(
     placeNumberTileDraftTile(draft, canonicalTileId, {
@@ -353,7 +444,7 @@ test("initial meld draft는 canonical Table을 수정하지 않고 local meld만
   let draft = requireDraft(
     createNumberTileTurnDraft(snapshot({ initialMeldCompleted: false })),
   );
-  draft = requireEdit(addNumberTileDraftMeld(draft, "GROUP"));
+  draft = requireEdit(addNumberTileDraftMeld(draft));
   const canonicalTileId = fixtureTileId(draft, "table-red-3-a");
   const rackTileId = fixtureTileId(draft, "rack-red-7-a");
   expectEditError(
@@ -383,7 +474,7 @@ test("initial meld draft는 canonical Table을 수정하지 않고 local meld만
 
 test("rack-origin Tile만 원래 rack 순서로 돌아갈 수 있다", () => {
   let draft = requireDraft(createNumberTileTurnDraft(snapshot()));
-  draft = requireEdit(addNumberTileDraftMeld(draft, "GROUP"));
+  draft = requireEdit(addNumberTileDraftMeld(draft));
   const red = fixtureTileId(draft, "rack-red-7-a");
   const blue = fixtureTileId(draft, "rack-blue-7-a");
   draft = requireEdit(
@@ -404,7 +495,7 @@ test("rack-origin Tile만 원래 rack 순서로 돌아갈 수 있다", () => {
 
 test("Joker는 unassigned 임시 상태를 거쳐 assignment와 reassignment를 지원한다", () => {
   let draft = requireDraft(createNumberTileTurnDraft(snapshot()));
-  draft = requireEdit(addNumberTileDraftMeld(draft, "GROUP"));
+  draft = requireEdit(addNumberTileDraftMeld(draft));
   const jokerId = fixtureTileId(draft, "rack-joker-a");
   draft = requireEdit(
     placeNumberTileDraftTile(draft, jokerId, {
@@ -448,7 +539,7 @@ test("Joker는 unassigned 임시 상태를 거쳐 assignment와 reassignment를 
   );
 });
 
-test("canonical Joker reassignment은 rearrangement에서만 허용한다", () => {
+test("canonical Joker reassignment은 rearrangement에서만 허용하고 unique face를 다시 추론한다", () => {
   const rearrangement = requireDraft(
     createNumberTileTurnDraft(snapshot({ canonicalJoker: true })),
   );
@@ -463,7 +554,8 @@ test("canonical Joker reassignment은 rearrangement에서만 허용한다", () =
   if (located?.source !== "TABLE" || located.tile.kind !== "JOKER") {
     throw new Error("Expected a canonical Joker.");
   }
-  assert.deepEqual(located.tile.assignment, { number: 8, color: "BLUE" });
+  assert.deepEqual(located.tile.assignment, { number: 4, color: "RED" });
+  assert.equal(located.tile.assignmentSource, "INFERRED");
 
   const initial = requireDraft(
     createNumberTileTurnDraft(
@@ -481,7 +573,7 @@ test("canonical Joker reassignment은 rearrangement에서만 허용한다", () =
 
 test("undo/reset/dirty는 local history만 변경하고 baseline을 복원한다", () => {
   const baseline = requireDraft(createNumberTileTurnDraft(snapshot()));
-  const changed = requireEdit(addNumberTileDraftMeld(baseline, "GROUP"));
+  const changed = requireEdit(addNumberTileDraftMeld(baseline));
   assert.equal(isNumberTileTurnDraftDirty(changed), true);
 
   const undone = requireEdit(undoNumberTileTurnDraft(changed));
@@ -489,7 +581,7 @@ test("undo/reset/dirty는 local history만 변경하고 baseline을 복원한다
   assert.equal(isNumberTileTurnDraftDirty(undone), false);
   expectEditError(undoNumberTileTurnDraft(undone), "NO_UNDO_HISTORY");
 
-  const changedAgain = requireEdit(addNumberTileDraftMeld(undone, "RUN"));
+  const changedAgain = requireEdit(addNumberTileDraftMeld(undone));
   const reset = resetNumberTileTurnDraft(changedAgain);
   assert.deepEqual(reset.table, baseline.table);
   assert.deepEqual(reset.availableRackTiles, baseline.availableRackTiles);
@@ -501,7 +593,7 @@ test("edit history는 최근 50개 상태만 유지한다", () => {
   let draft = requireDraft(createNumberTileTurnDraft(snapshot()));
   for (let index = 0; index < 55; index += 1) {
     draft = requireEdit(
-      addNumberTileDraftMeld(draft, index % 2 === 0 ? "GROUP" : "RUN"),
+      addNumberTileDraftMeld(draft),
     );
   }
   assert.equal(

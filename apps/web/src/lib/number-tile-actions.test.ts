@@ -40,11 +40,19 @@ function draft(jokerAssigned = true): NumberTileTurnDraft {
             origin: "SELF_RACK" as const,
           },
           {
+            tileId: "number-black-seven" as TileId,
+            kind: "ORDINARY" as const,
+            number: 7 as const,
+            color: "BLACK" as const,
+            origin: "SELF_RACK" as const,
+          },
+          {
             tileId: "number-joker" as TileId,
             kind: "JOKER" as const,
             assignment: jokerAssigned
               ? { number: 7 as const, color: "BLUE" as const }
               : null,
+            assignmentSource: jokerAssigned ? "USER" as const : null,
             origin: "SELF_RACK" as const,
           },
         ],
@@ -66,6 +74,13 @@ function draft(jokerAssigned = true): NumberTileTurnDraft {
   return value;
 }
 
+function withMelds(
+  value: NumberTileTurnDraft,
+  melds: NumberTileTurnDraft["table"]["melds"],
+): NumberTileTurnDraft {
+  return { ...value, table: { melds } };
+}
+
 test("Number draft는 ordinary identity와 Joker assignment만 exact proposedTable로 serialize한다", () => {
   assert.deepEqual(serializeNumberTileTurnDraft(draft()), {
     melds: [
@@ -79,11 +94,65 @@ test("Number draft는 ordinary identity와 Joker assignment만 exact proposedTab
             assignedNumber: 7,
             assignedColor: "BLUE",
           },
+          { tileId: "number-black-seven", kind: "ORDINARY" },
         ],
       },
     ],
   });
   assert.equal(serializeNumberTileTurnDraft(draft(false)), null);
+});
+
+test("Number draft serializer는 user-selected kind 대신 physical face로 kind와 RUN order를 derive한다", () => {
+  const base = draft();
+  const red4 = {
+    tileId: "number-red-four" as TileId,
+    kind: "ORDINARY" as const,
+    number: 4 as const,
+    color: "RED" as const,
+    origin: "SELF_RACK" as const,
+  };
+  const red5 = {
+    ...red4,
+    tileId: "number-red-five" as TileId,
+    number: 5 as const,
+  };
+  const red6 = {
+    ...red4,
+    tileId: "number-red-six" as TileId,
+    number: 6 as const,
+  };
+  const proposed = serializeNumberTileTurnDraft(withMelds(base, [{
+    kind: "GROUP",
+    origin: "LOCAL",
+    tiles: [red6, red4, red5],
+  }]));
+  assert.deepEqual(proposed, {
+    melds: [{
+      kind: "RUN",
+      tiles: [
+        { tileId: "number-red-four", kind: "ORDINARY" },
+        { tileId: "number-red-five", kind: "ORDINARY" },
+        { tileId: "number-red-six", kind: "ORDINARY" },
+      ],
+    }],
+  });
+});
+
+test("Number draft serializer는 incomplete/invalid/ambiguous Joker와 cross-meld duplicate identity를 거절한다", () => {
+  const base = draft();
+  const first = base.table.melds[0]!;
+  assert.equal(
+    serializeNumberTileTurnDraft(withMelds(base, [{
+      ...first,
+      tiles: first.tiles.slice(0, 2),
+    }])),
+    null,
+  );
+  assert.equal(serializeNumberTileTurnDraft(draft(false)), null);
+  assert.equal(
+    serializeNumberTileTurnDraft(withMelds(base, [first, first])),
+    null,
+  );
 });
 
 test("Number Submit/Draw/Pass는 revision, turnId, requestId와 empty action payload를 보존한다", () => {

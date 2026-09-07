@@ -13,6 +13,10 @@ import {
 
 import type { NumberTileTurnDraft } from "../features/number-tile/number-tile-turn-draft.js";
 import {
+  classifyNumberTileDraftMeld,
+  normalizeNumberTileDraftMeld,
+} from "../features/number-tile/number-tile-ux.js";
+import {
   runAsyncSingleFlight,
   type AsyncSingleFlightRef,
 } from "./async-single-flight.js";
@@ -41,24 +45,36 @@ export function serializeNumberTileTurnDraft(
   draft: NumberTileTurnDraft,
 ): NumberTileProposedTable | null {
   const melds: NumberTileProposedTable["melds"] = [];
+  const serializedTileIds = new Set<string>();
   for (const meld of draft.table.melds) {
+    const normalizedMeld = normalizeNumberTileDraftMeld(meld);
+    const classification = classifyNumberTileDraftMeld(normalizedMeld);
+    if (classification.status !== "VALID") {
+      return null;
+    }
     const tiles: NumberTileProposedTable["melds"][number]["tiles"] = [];
-    for (const tile of meld.tiles) {
+    for (const tile of normalizedMeld.tiles) {
+      if (serializedTileIds.has(tile.tileId)) {
+        return null;
+      }
+      serializedTileIds.add(tile.tileId);
       if (tile.kind === "JOKER") {
-        if (tile.assignment === null) {
+        const assignment =
+          tile.assignment ?? classification.interpretation.jokerAssignment;
+        if (assignment === null) {
           return null;
         }
         tiles.push({
           tileId: tile.tileId,
           kind: "JOKER",
-          assignedNumber: tile.assignment.number,
-          assignedColor: tile.assignment.color,
+          assignedNumber: assignment.number,
+          assignedColor: assignment.color,
         });
       } else {
         tiles.push({ tileId: tile.tileId, kind: "ORDINARY" });
       }
     }
-    melds.push({ kind: meld.kind, tiles });
+    melds.push({ kind: classification.interpretation.kind, tiles });
   }
   return { melds };
 }

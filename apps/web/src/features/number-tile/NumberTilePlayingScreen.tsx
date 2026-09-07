@@ -1,11 +1,22 @@
 import type { NumberTilePlayingPlatformSnapshotV2 } from "@hangul-rummikub/shared";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   calculateServerClockOffset,
   calculateTurnCountdown,
 } from "../../lib/turn-countdown.js";
 import { NumberTileTurnDraftEditor } from "./NumberTileTurnDraftEditor.js";
+import {
+  formatNumberTileCountdown,
+  numberTileTurnSoundStorageKey,
+  playNumberTileSound,
+  readLastAnnouncedNumberTileTurn,
+  readNumberTileSoundEnabled,
+  shouldAnnounceNumberTileTurn,
+  writeLastAnnouncedNumberTileTurn,
+  writeNumberTileSoundEnabled,
+  type NumberTileActionFeedback,
+} from "./number-tile-sound.js";
 import type { NumberTileTurnDraft } from "./number-tile-turn-draft.js";
 import type { NumberTileTurnDraftController } from "./use-number-tile-turn-draft.js";
 
@@ -19,6 +30,7 @@ export type NumberTilePlayingScreenProps = Readonly<{
   submitPending: boolean;
   actionPending: boolean;
   commandRetryKind: "SUBMIT" | "DRAW" | "PASS" | null;
+  actionFeedback: NumberTileActionFeedback | null;
   roomLeavePending: boolean;
   canSubmit: boolean;
   canAct: boolean;
@@ -51,6 +63,60 @@ export function NumberTilePlayingScreen(
   const activePlayer = room.players.find(
     (player) => player.playerId === game.turn.activePlayerId,
   );
+  const isMyTurn = game.turn.activePlayerId === self.playerId;
+  const [soundEnabled, setSoundEnabled] = useState(() =>
+    readNumberTileSoundEnabled(window.localStorage)
+  );
+  const turnSoundTrackerRef = useRef<{
+    scope: string;
+    lastAnnouncedTurnId: typeof game.turn.turnId | null;
+  }>({ scope: "", lastAnnouncedTurnId: null });
+  const turnSoundKey = numberTileTurnSoundStorageKey(room.roomId, self.playerId);
+
+  useEffect(() => {
+    const tracker = turnSoundTrackerRef.current;
+    if (tracker.scope !== turnSoundKey) {
+      tracker.scope = turnSoundKey;
+      tracker.lastAnnouncedTurnId = readLastAnnouncedNumberTileTurn(
+        window.sessionStorage,
+        turnSoundKey,
+      );
+    }
+    if (
+      !shouldAnnounceNumberTileTurn(
+        tracker.lastAnnouncedTurnId,
+        game.turn.turnId,
+        game.turn.activePlayerId,
+        self.playerId,
+      )
+    ) {
+      return;
+    }
+
+    tracker.lastAnnouncedTurnId = game.turn.turnId;
+    writeLastAnnouncedNumberTileTurn(
+      window.sessionStorage,
+      turnSoundKey,
+      game.turn.turnId,
+    );
+    if (soundEnabled) {
+      playNumberTileSound("TURN_START");
+    }
+  }, [
+    game.turn.activePlayerId,
+    game.turn.turnId,
+    self.playerId,
+    soundEnabled,
+    turnSoundKey,
+  ]);
+
+  function toggleSound(): void {
+    setSoundEnabled((current) => {
+      const next = !current;
+      writeNumberTileSoundEnabled(window.localStorage, next);
+      return next;
+    });
+  }
 
   return (
     <main className="app-shell playing-shell number-playing-shell">
@@ -95,39 +161,63 @@ export function NumberTilePlayingScreen(
         </p>
       ) : null}
 
-      <section className="game-summary" aria-label="현재 숫자 타일 게임 상태">
-        <article className="summary-card turn-summary">
+      <section
+        className={`number-turn-banner${isMyTurn ? " is-self" : ""}${
+          countdown.remainingSeconds <= 10 ? " warning" : ""
+        }`}
+        aria-label="현재 숫자 타일 게임 상태"
+      >
+        <div className="number-turn-copy">
           <p className="step-label">CURRENT TURN</p>
-          <h2>현재 차례</h2>
-          <strong className="summary-value">
-            {activePlayer?.nickname ?? "참가자 확인 중"}
-          </strong>
-          <span
-            className={`turn-countdown${countdown.expired ? " expired" : ""}`}
+          <h2>
+            {isMyTurn
+              ? "내 차례입니다"
+              : `${activePlayer?.nickname ?? "다른 참가자"}님의 차례입니다`}
+          </h2>
+          <p>
+            {isMyTurn
+              ? game.remainingPoolCount > 0
+                ? "타일을 조합하거나 1개 가져오세요."
+                : "조합을 제출하거나 패스하세요."
+              : "테이블을 살펴보며 다음 차례를 준비하세요."}
+          </p>
+        </div>
+        <div className="number-turn-controls">
+          <time
+            className={`number-countdown${countdown.expired ? " expired" : ""}`}
             role="timer"
+            aria-label={countdown.expired
+              ? "턴 제한 시간 종료 처리 중"
+              : `남은 시간 ${countdown.remainingSeconds}초`}
             aria-live="off"
           >
             {countdown.expired
-              ? "시간 종료 처리 중..."
-              : `남은 시간 ${countdown.remainingSeconds}초`}
-          </span>
-        </article>
-        <article className="summary-card">
-          <p className="step-label">POOL</p>
-          <h2>남은 풀</h2>
-          <strong className="summary-value">{game.remainingPoolCount}개</strong>
-        </article>
-        <article className="summary-card">
-          <p className="step-label">TABLE</p>
-          <h2>공개 조합</h2>
-          <strong className="summary-value">{game.table.melds.length}개</strong>
-        </article>
-        <article className="summary-card rack-summary">
-          <p className="step-label">MY RACK</p>
-          <h2>내 타일</h2>
-          <strong className="summary-value">{game.privateState.rack.length}개</strong>
-        </article>
+              ? "00:00"
+              : formatNumberTileCountdown(countdown.remainingSeconds)}
+          </time>
+          <button
+            className="text-button number-sound-toggle"
+            type="button"
+            aria-pressed={soundEnabled}
+            onClick={toggleSound}
+          >
+            {soundEnabled ? "사운드 켜짐" : "사운드 꺼짐"}
+          </button>
+        </div>
+        <p className="number-game-stats">
+          남은 풀 <strong>{game.remainingPoolCount}</strong>
+          <span aria-hidden="true"> · </span>
+          내 타일 <strong>{game.privateState.rack.length}</strong>
+          <span aria-hidden="true"> · </span>
+          공개 조합 <strong>{game.table.melds.length}</strong>
+        </p>
       </section>
+
+      {props.actionFeedback !== null ? (
+        <p className="number-action-feedback" role="status">
+          {props.actionFeedback.message}
+        </p>
+      ) : null}
 
       <section className="playing-participants" aria-label="참가자 상태">
         {room.players.map((player) => {
@@ -144,16 +234,18 @@ export function NumberTilePlayingScreen(
               }`}
               key={player.playerId}
             >
-              <strong>{player.nickname}</strong>
-              <span>
-                {player.playerId === self.playerId ? "나 · " : ""}
-                {player.isHost ? "방장 · " : ""}
-                {player.connectionStatus === "CONNECTED" ? "접속 중" : "오프라인"}
-                {playerState?.forfeited ? " · 기권" : ""}
+              <span className="number-player-identity">
+                <strong>{player.nickname}</strong>
+                <small>
+                  {player.playerId === self.playerId ? "나 · " : ""}
+                  {player.isHost ? "방장 · " : ""}
+                  {player.connectionStatus === "CONNECTED" ? "접속 중" : "오프라인"}
+                  {playerState?.forfeited ? " · 기권" : ""}
+                </small>
               </span>
-              <small>
-                랙 {playerState?.rackCount ?? 0}개 · 첫 등록 {playerState?.initialMeldCompleted ? "완료" : "대기"}
-              </small>
+              <span className="number-player-stats">
+                랙 {playerState?.rackCount ?? 0} · 첫 등록 {playerState?.initialMeldCompleted ? "완료" : "대기"}
+              </span>
             </div>
           );
         })}

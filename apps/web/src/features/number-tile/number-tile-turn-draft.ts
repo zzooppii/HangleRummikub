@@ -13,6 +13,7 @@ import type {
 } from "@hangul-rummikub/shared";
 
 import { isSameGameplayIdentity } from "../../lib/gameplay-identity.js";
+import { normalizeNumberTileDraftMeld } from "./number-tile-ux.js";
 
 export const NUMBER_TILE_TURN_DRAFT_HISTORY_LIMIT = 50;
 
@@ -38,6 +39,7 @@ export type NumberTileDraftJokerPlacement = Readonly<{
   kind: "JOKER";
   /** Null is intentionally allowed while the browser draft is incomplete. */
   assignment: NumberTileJokerAssignment | null;
+  assignmentSource: "CANONICAL" | "INFERRED" | "USER" | null;
   origin: NumberTileDraftTileOrigin;
 }>;
 
@@ -46,7 +48,8 @@ export type NumberTileDraftPlacement =
   | NumberTileDraftJokerPlacement;
 
 export type NumberTileDraftMeld = Readonly<{
-  kind: NumberTileDraftMeldKind;
+  /** Canonical melds arrive classified; local/in-progress melds may be null. */
+  kind: NumberTileDraftMeldKind | null;
   origin: "CANONICAL_TABLE" | "LOCAL";
   /** May be empty, short, or otherwise invalid until the server validates Submit. */
   tiles: readonly NumberTileDraftPlacement[];
@@ -163,6 +166,7 @@ function canonicalPlacement(
         number: placement.assignedNumber,
         color: placement.assignedColor,
       },
+      assignmentSource: "CANONICAL",
       origin: "CANONICAL_TABLE",
     };
   }
@@ -273,10 +277,28 @@ function presentFingerprint(present: NumberTileDraftPresent): string {
 function commitEdit(
   draft: NumberTileTurnDraft,
   nextPresent: NumberTileDraftPresent,
+  meldIndexesToNormalize: readonly number[] = [],
 ): NumberTileTurnDraft {
   if (
     presentFingerprint(currentPresent(draft)) ===
     presentFingerprint(nextPresent)
+  ) {
+    return draft;
+  }
+  const normalizedIndexes = new Set(meldIndexesToNormalize);
+  const normalizedPresent: NumberTileDraftPresent = {
+    ...nextPresent,
+    table: {
+      melds: nextPresent.table.melds.map((meld, meldIndex) =>
+        normalizedIndexes.has(meldIndex)
+          ? normalizeNumberTileDraftMeld(meld)
+          : meld
+      ),
+    },
+  };
+  if (
+    presentFingerprint(currentPresent(draft)) ===
+    presentFingerprint(normalizedPresent)
   ) {
     return draft;
   }
@@ -285,7 +307,7 @@ function commitEdit(
     ...draft.history,
     clonePresent(currentPresent(draft)),
   ].slice(-NUMBER_TILE_TURN_DRAFT_HISTORY_LIMIT);
-  const next = clonePresent(nextPresent);
+  const next = clonePresent(normalizedPresent);
   return {
     ...draft,
     table: next.table,
@@ -296,14 +318,13 @@ function commitEdit(
 
 export function addNumberTileDraftMeld(
   draft: NumberTileTurnDraft,
-  kind: NumberTileDraftMeldKind,
 ): NumberTileTurnDraftEditResult {
   return succeed(
     commitEdit(draft, {
       table: {
         melds: [
           ...draft.table.melds,
-          { kind, origin: "LOCAL", tiles: [] },
+          { kind: null, origin: "LOCAL", tiles: [] },
         ],
       },
       availableRackTiles: draft.availableRackTiles,
@@ -390,6 +411,7 @@ function rackPlacement(
         tileId: tile.tileId,
         kind: "JOKER",
         assignment: null,
+        assignmentSource: null,
         origin: "SELF_RACK",
       }
     : { ...tile, origin: "SELF_RACK" };
@@ -477,7 +499,10 @@ export function placeNumberTileDraftTile(
     commitEdit(draft, {
       table: nextTable,
       availableRackTiles: nextRack,
-    }),
+    }, [
+      ...(source.source === "TABLE" ? [source.meldIndex] : []),
+      target.meldIndex,
+    ]),
   );
 }
 
@@ -507,7 +532,7 @@ export function returnNumberTileDraftTileToRack(
     commitEdit(draft, {
       table: removeTableTile(draft.table, source),
       availableRackTiles: restoredRack,
-    }),
+    }, [source.meldIndex]),
   );
 }
 
@@ -537,6 +562,7 @@ export function assignNumberTileDraftJoker(
   const updated: NumberTileDraftJokerPlacement = {
     ...source.tile,
     assignment: { ...assignment },
+    assignmentSource: "USER",
   };
   const tableWithoutSource = removeTableTile(draft.table, source);
   return succeed(
@@ -547,7 +573,7 @@ export function assignNumberTileDraftJoker(
         updated,
       ),
       availableRackTiles: draft.availableRackTiles,
-    }),
+    }, [source.meldIndex]),
   );
 }
 

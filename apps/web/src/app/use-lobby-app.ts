@@ -9,6 +9,7 @@ import {
   type Nickname,
   type NumberSubmitCommand,
   type NumberTilePlayingPlatformSnapshotV2,
+  type RequestId,
   type RoomCode,
   type RoomCreateWireAck,
   type RoomJoinWireAck,
@@ -102,6 +103,14 @@ import {
 } from "../lib/turn-submit.js";
 import type { TurnDraft } from "../lib/turn-draft.js";
 import type { NumberTileTurnDraft } from "../features/number-tile/number-tile-turn-draft.js";
+import {
+  markNumberTileActionFeedback,
+  numberTileActionSoundCue,
+  playNumberTileSound,
+  readNumberTileSoundEnabled,
+  type NumberTileActionFeedback,
+  type NumberTileActionFeedbackKind,
+} from "../features/number-tile/number-tile-sound.js";
 
 const STALE_SESSION_MESSAGE =
   "재접속 유예 시간이 만료되었거나 방이 종료되어 연결 정보가 더 이상 유효하지 않습니다. 새 방을 만들거나 다시 참가해주세요.";
@@ -152,6 +161,7 @@ export type LobbyAppState = Readonly<{
   turnSubmitPending: boolean;
   turnActionPending: boolean;
   numberCommandRetryKind: NumberTileCommandRetryKind;
+  numberActionFeedback: NumberTileActionFeedback | null;
   roomLeavePending: boolean;
   turnDraftResetGeneration: number;
   setNickname: (value: string) => void;
@@ -258,6 +268,8 @@ export function useLobbyApp(): LobbyAppState {
   const [turnActionPending, setTurnActionPending] = useState(false);
   const [numberCommandRetryKind, setNumberCommandRetryKind] =
     useState<NumberTileCommandRetryKind>(null);
+  const [numberActionFeedback, setNumberActionFeedback] =
+    useState<NumberTileActionFeedback | null>(null);
   const [roomLeavePending, setRoomLeavePending] = useState(false);
   const [turnDraftResetGeneration, setTurnDraftResetGeneration] = useState(0);
 
@@ -288,6 +300,7 @@ export function useLobbyApp(): LobbyAppState {
   const pendingNumberActionCommandRef =
     useRef<PendingNumberTileActionCommand | null>(null);
   const numberActionRetryRequestedRef = useRef(false);
+  const announcedNumberActionRequestIdsRef = useRef<Set<RequestId>>(new Set());
   const roomLeaveFlightRef = useRef<Promise<void> | null>(null);
   const pendingRoomLeaveCommandRef = useRef<RoomLeaveCommand | null>(null);
   const roomLeaveRetryRequestedRef = useRef(false);
@@ -303,6 +316,37 @@ export function useLobbyApp(): LobbyAppState {
             ? "PASS"
             : null,
     );
+  }
+
+  function publishNumberActionFeedback(
+    kind: NumberTileActionFeedbackKind,
+    requestId: RequestId,
+  ): void {
+    if (
+      !markNumberTileActionFeedback(
+        announcedNumberActionRequestIdsRef.current,
+        requestId,
+      )
+    ) {
+      return;
+    }
+    setNumberActionFeedback({
+      kind,
+      requestId,
+      message: kind === "SUBMIT"
+        ? "조합을 제출했습니다."
+        : kind === "DRAW"
+          ? "타일 1개를 가져왔습니다."
+          : "패스했습니다.",
+    });
+    if (readNumberTileSoundEnabled(window.localStorage)) {
+      playNumberTileSound(numberTileActionSoundCue(kind));
+    }
+  }
+
+  function clearNumberActionFeedbackState(): void {
+    setNumberActionFeedback(null);
+    announcedNumberActionRequestIdsRef.current.clear();
   }
 
   function currentLegacyHangulSnapshot(): StateSnapshot | null {
@@ -427,6 +471,7 @@ export function useLobbyApp(): LobbyAppState {
     resetTurnDraftFromAuthority();
     setOperationLabel(null);
     setCopyMessage(null);
+    clearNumberActionFeedbackState();
     setErrorMessage(message);
 
     if (sessionReplacedRef.current) {
@@ -991,6 +1036,7 @@ export function useLobbyApp(): LobbyAppState {
 
     pendingNumberSubmitCommandRef.current = command;
     setNumberCommandRetryKind(null);
+    setNumberActionFeedback(null);
     setTurnSubmitPending(true);
     setOperationLabel("숫자 타일 배치 제출 중...");
     setErrorMessage(null);
@@ -1025,6 +1071,7 @@ export function useLobbyApp(): LobbyAppState {
           );
           if (application === "CURRENT") {
             setErrorMessage(null);
+            publishNumberActionFeedback("SUBMIT", command.requestId);
           } else {
             resetTurnDraftFromAuthority();
             void requestLatestSnapshot();
@@ -1087,6 +1134,7 @@ export function useLobbyApp(): LobbyAppState {
 
     pendingNumberActionCommandRef.current = command;
     setNumberCommandRetryKind(null);
+    setNumberActionFeedback(null);
     setTurnActionPending(true);
     setOperationLabel(
       command.kind === "number:draw"
@@ -1127,6 +1175,10 @@ export function useLobbyApp(): LobbyAppState {
           );
           if (application === "CURRENT") {
             setErrorMessage(null);
+            publishNumberActionFeedback(
+              command.kind === "number:draw" ? "DRAW" : "PASS",
+              command.requestId,
+            );
           } else {
             resetTurnDraftFromAuthority();
             void requestLatestSnapshot();
@@ -1377,6 +1429,7 @@ export function useLobbyApp(): LobbyAppState {
     clearPendingGameStartRequest();
     clearPendingTurnSubmitRequest();
     clearPendingTurnActionRequest();
+    clearNumberActionFeedbackState();
 
     const sessionStored = writeStoredPlayerSession(
       window.sessionStorage,
@@ -2307,6 +2360,7 @@ export function useLobbyApp(): LobbyAppState {
     clearPendingTurnSubmitRequest();
     clearPendingTurnActionRequest();
     clearPendingRoomLeaveRequest();
+    clearNumberActionFeedbackState();
     setErrorMessage(null);
     setCopyMessage(null);
     if (window.location.pathname !== "/") {
@@ -2338,6 +2392,7 @@ export function useLobbyApp(): LobbyAppState {
     turnSubmitPending,
     turnActionPending,
     numberCommandRetryKind,
+    numberActionFeedback,
     roomLeavePending,
     turnDraftResetGeneration,
     setNickname,

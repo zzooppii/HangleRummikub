@@ -18,7 +18,6 @@ import {
   resetNumberTileTurnDraft,
   returnNumberTileDraftTileToRack,
   undoNumberTileTurnDraft,
-  type NumberTileDraftMeldKind,
   type NumberTileDraftTarget,
   type NumberTileTurnDraft,
   type NumberTileTurnDraftEditErrorCode,
@@ -56,7 +55,7 @@ export type NumberTileTurnDraftController = Readonly<{
   editErrorMessage: string | null;
   isDirty: boolean;
   canEdit: boolean;
-  addMeld: (kind: NumberTileDraftMeldKind) => void;
+  addMeld: () => void;
   removeEmptyMeld: (meldIndex: number) => void;
   placeTile: (tileId: TileId, target: NumberTileDraftTarget) => void;
   returnTileToRack: (tileId: TileId) => void;
@@ -183,7 +182,7 @@ export function useNumberTileTurnDraft(
       snapshot,
       currentCommandSession,
     ),
-    addMeld: (kind) => applyEdit((draft) => addNumberTileDraftMeld(draft, kind)),
+    addMeld: () => applyEdit(addNumberTileDraftMeld),
     removeEmptyMeld: (meldIndex) =>
       applyEdit((draft) => removeEmptyNumberTileDraftMeld(draft, meldIndex)),
     placeTile: (tileId, target) =>

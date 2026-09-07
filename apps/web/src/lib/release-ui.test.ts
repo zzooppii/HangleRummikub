@@ -44,9 +44,23 @@ const numberPlayingSource = readFileSync(
   ),
   "utf8",
 );
+const numberUxSource = readFileSync(
+  new URL(
+    "../../src/features/number-tile/number-tile-ux.ts",
+    import.meta.url,
+  ),
+  "utf8",
+);
 const numberDraftControllerSource = readFileSync(
   new URL(
     "../../src/features/number-tile/use-number-tile-turn-draft.ts",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const numberSoundSource = readFileSync(
+  new URL(
+    "../../src/features/number-tile/number-tile-sound.ts",
     import.meta.url,
   ),
   "utf8",
@@ -161,15 +175,65 @@ test("Number editor는 keyboard/touch controls와 색상 외 marker를 제공한
   assert.match(numberEditorSource, /type="button"/u);
   assert.match(numberEditorSource, /aria-pressed=\{props\.selected\}/u);
   assert.match(numberEditorSource, /className="number-tile-marker"/u);
-  assert.match(numberEditorSource, /RED:\s*"R"/u);
-  assert.match(numberEditorSource, /BLUE:\s*"B"/u);
-  assert.match(numberEditorSource, /BLACK:\s*"K"/u);
-  assert.match(numberEditorSource, /ORANGE:\s*"O"/u);
+  assert.match(numberUxSource, /RED:\s*"R"/u);
+  assert.match(numberUxSource, /BLUE:\s*"B"/u);
+  assert.match(numberUxSource, /BLACK:\s*"K"/u);
+  assert.match(numberUxSource, /ORANGE:\s*"O"/u);
   assert.match(numberEditorSource, /confirmationButtonRef\.current\?\.focus\(\)/u);
   assert.match(numberEditorSource, /drawButtonRef\.current/u);
   assert.match(numberEditorSource, /passButtonRef\.current/u);
   assert.match(numberEditorSource, /"assignedNumber" in props\.tile/u);
   assert.match(numberEditorSource, /props\.tile\.assignedColor/u);
+});
+
+test("Number rack은 horizontal scroll 대신 responsive grid로 감싸고 view-only 정렬을 제공한다", () => {
+  const rackRule = ruleFor(".number-rack-tiles");
+  assert.match(rackRule, /display:\s*grid/u);
+  assert.match(rackRule, /grid-template-columns:\s*repeat\(auto-fill/u);
+  assert.doesNotMatch(rackRule, /overflow-x:\s*auto|white-space:\s*nowrap/u);
+  assert.match(numberEditorSource, /\["DEFAULT",\s*"기본"\]/u);
+  assert.match(numberEditorSource, /\["NUMBER",\s*"숫자순"\]/u);
+  assert.match(numberEditorSource, /\["COLOR",\s*"색상순"\]/u);
+  assert.match(numberEditorSource, /aria-pressed=\{rackSortMode === mode\}/u);
+});
+
+test("Number 조합 UX는 하나의 생성 action과 derived classification만 노출한다", () => {
+  assert.match(numberEditorSource, /\+ 새 조합 만들기/u);
+  assert.doesNotMatch(numberEditorSource, /GROUP 추가|RUN 추가/u);
+  assert.match(numberEditorSource, /✓ 같은 숫자 조합/u);
+  assert.match(numberEditorSource, /✓ 연속 숫자 조합/u);
+  assert.match(numberEditorSource, /최종 유효성은 서버가 판정합니다/u);
+  assert.match(numberUxSource, /classifyNumberTileDraftMeld/u);
+  assert.match(numberUxSource, /status:\s*"AMBIGUOUS_JOKER"/u);
+});
+
+test("Number turn awareness는 prominent countdown과 exact-turn/action sound guard를 사용한다", () => {
+  assert.match(numberPlayingSource, /내 차례입니다/u);
+  assert.match(numberPlayingSource, /formatNumberTileCountdown/u);
+  assert.match(numberPlayingSource, /remainingSeconds <= 10/u);
+  assert.match(numberPlayingSource, /aria-pressed=\{soundEnabled\}/u);
+  assert.match(numberSoundSource, /shouldAnnounceNumberTileTurn/u);
+  assert.match(numberSoundSource, /markNumberTileActionFeedback/u);
+  assert.match(numberSoundSource, /AudioContext/u);
+  assert.match(appControllerSource, /publishNumberActionFeedback\("SUBMIT", command\.requestId\)/u);
+  assert.match(appControllerSource, /publishNumberActionFeedback\([\s\S]*"DRAW"[\s\S]*"PASS"/u);
+  assert.match(appControllerSource, /playNumberTileSound\(numberTileActionSoundCue\(kind\)\)/u);
+  assert.doesNotMatch(numberPlayingSource, /SUBMIT_SUCCESS|DRAW_SUCCESS|PASS_SUCCESS/u);
+});
+
+test("Number action feedback는 room entry와 Home 전환에서 scope를 초기화한다", () => {
+  assert.match(
+    appControllerSource,
+    /function finalizeEntry\([\s\S]*?clearNumberActionFeedbackState\(\);[\s\S]*?const sessionStored/u,
+  );
+  assert.match(
+    appControllerSource,
+    /function goHome\(\): void \{[\s\S]*?clearNumberActionFeedbackState\(\);[\s\S]*?setErrorMessage\(null\)/u,
+  );
+  assert.match(
+    appControllerSource,
+    /function clearNumberActionFeedbackState\(\): void \{[\s\S]*?setNumberActionFeedback\(null\);[\s\S]*?announcedNumberActionRequestIdsRef\.current\.clear\(\)/u,
+  );
 });
 
 test("Number 화면은 display-only 90초 countdown과 authoritative snapshot을 사용한다", () => {

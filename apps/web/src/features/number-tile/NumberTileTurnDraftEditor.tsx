@@ -8,28 +8,26 @@ import {
   type NumberTileTablePlacementV2,
   type TileId,
 } from "@hangul-rummikub/shared";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   findNumberTileDraftTile,
+  type NumberTileDraftMeld,
   type NumberTileDraftPlacement,
   type NumberTileTurnDraft,
 } from "./number-tile-turn-draft.js";
+import {
+  NUMBER_TILE_COLOR_LABELS,
+  NUMBER_TILE_COLOR_MARKERS,
+  classifyNumberTileDraftMeld,
+  interpretationKey,
+  numberTileDraftMeldIsValid,
+  numberTilePlacementLabel,
+  sortNumberTileRackTiles,
+  type NumberTileMeldClassification,
+  type NumberTileRackSortMode,
+} from "./number-tile-ux.js";
 import type { NumberTileTurnDraftController } from "./use-number-tile-turn-draft.js";
-
-const COLOR_LABELS: Readonly<Record<NumberTileColor, string>> = {
-  RED: "빨강",
-  BLUE: "파랑",
-  BLACK: "검정",
-  ORANGE: "주황",
-};
-
-const COLOR_MARKERS: Readonly<Record<NumberTileColor, string>> = {
-  RED: "R",
-  BLUE: "B",
-  BLACK: "K",
-  ORANGE: "O",
-};
 
 type ConfirmAction = "DRAW" | "PASS";
 
@@ -63,15 +61,13 @@ function TileButton(props: TileButtonProps) {
     props.tile.kind === "ORDINARY"
       ? props.tile.number
       : jokerAssignment?.number ?? null;
-  const label = props.tile.kind === "JOKER"
-    ? jokerAssignment !== null
-      ? `조커, ${COLOR_LABELS[jokerAssignment.color]} ${jokerAssignment.number}로 지정됨`
-      : "조커, 숫자와 색상 미지정"
-    : `${COLOR_LABELS[props.tile.color]} ${props.tile.number} 타일`;
+  const label = numberTilePlacementLabel(props.tile);
 
   return (
     <button
-      className={`number-tile${color === null ? " joker" : ` ${color.toLowerCase()}`}${
+      className={`number-tile${props.tile.kind === "JOKER" ? " joker" : ""}${
+        color === null ? "" : ` ${color.toLowerCase()}`
+      }${
         props.selected ? " selected" : ""
       }`}
       type="button"
@@ -81,7 +77,9 @@ function TileButton(props: TileButtonProps) {
       onClick={props.onSelect}
     >
       <span className="number-tile-marker" aria-hidden="true">
-        {color === null ? "★" : COLOR_MARKERS[color]}
+        {props.tile.kind === "JOKER"
+          ? "★"
+          : NUMBER_TILE_COLOR_MARKERS[props.tile.color]}
       </span>
       <strong aria-hidden="true">{number ?? "J"}</strong>
       {props.tile.kind === "JOKER" ? (
@@ -89,6 +87,32 @@ function TileButton(props: TileButtonProps) {
       ) : null}
     </button>
   );
+}
+
+function meldStatusLabel(classification: NumberTileMeldClassification): string {
+  switch (classification.status) {
+    case "VALID":
+      return classification.interpretation.kind === "GROUP"
+        ? "✓ 같은 숫자 조합"
+        : "✓ 연속 숫자 조합";
+    case "INCOMPLETE":
+      return "● 조합을 만드는 중";
+    case "AMBIGUOUS_JOKER":
+      return "! 조커 값을 선택해주세요";
+    case "INVALID":
+      return "! 아직 유효한 조합이 아닙니다";
+  }
+}
+
+function canonicalMeldClassification(
+  meld: { kind: "GROUP" | "RUN" | null },
+): NumberTileMeldClassification {
+  return meld.kind === null
+    ? { status: "INVALID" }
+    : {
+    status: "VALID",
+    interpretation: { kind: meld.kind, jokerAssignment: null },
+  };
 }
 
 function initialMeldHint(draft: NumberTileTurnDraft): number {
@@ -163,6 +187,9 @@ export function NumberTileTurnDraftEditor(
 ) {
   const [selectedTileId, setSelectedTileId] = useState<TileId | null>(null);
   const [confirmation, setConfirmation] = useState<ConfirmAction | null>(null);
+  const [rackSortMode, setRackSortMode] =
+    useState<NumberTileRackSortMode>("DEFAULT");
+  const [editingAssignedJoker, setEditingAssignedJoker] = useState(false);
   const drawButtonRef = useRef<HTMLButtonElement>(null);
   const passButtonRef = useRef<HTMLButtonElement>(null);
   const confirmationButtonRef = useRef<HTMLButtonElement>(null);
@@ -189,6 +216,10 @@ export function NumberTileTurnDraftEditor(
       setSelectedTileId(null);
     }
   }, [draft, selectedTileId]);
+
+  useEffect(() => {
+    setEditingAssignedJoker(false);
+  }, [selectedTileId]);
 
   function selectTile(tileId: TileId): void {
     setSelectedTileId((current) => current === tileId ? null : tileId);
@@ -246,6 +277,19 @@ export function NumberTileTurnDraftEditor(
     selected?.source === "TABLE" && selected.tile.kind === "JOKER"
       ? selected.tile
       : null;
+  const selectedJokerMeld: NumberTileDraftMeld | null =
+    selected?.source === "TABLE" && draft !== null
+      ? draft.table.melds[selected.meldIndex] ?? null
+      : null;
+  const selectedJokerClassification = selectedJokerMeld === null
+    ? null
+    : classifyNumberTileDraftMeld(selectedJokerMeld);
+  const rackTiles =
+    draft?.availableRackTiles ?? props.snapshot.game.privateState.rack;
+  const displayedRackTiles = useMemo(
+    () => sortNumberTileRackTiles(rackTiles, rackSortMode),
+    [rackSortMode, rackTiles],
+  );
   const canDraw =
     props.canAct &&
     !props.actionPending &&
@@ -261,7 +305,8 @@ export function NumberTileTurnDraftEditor(
     props.canSubmit &&
     !props.submitPending &&
     props.controller.isDirty &&
-    !hasUnassignedJoker(draft);
+    draft.table.melds.length > 0 &&
+    draft.table.melds.every(numberTileDraftMeldIsValid);
 
   return (
     <section className="number-editor" aria-labelledby="number-editor-heading">
@@ -281,6 +326,10 @@ export function NumberTileTurnDraftEditor(
         )}
       </header>
 
+      <p className="number-editor-guide">
+        <strong>조합 만들기:</strong> 새 조합을 만든 뒤, 내 랙 타일을 선택하고 원하는 + 위치를 누르세요.
+      </p>
+
       {props.controller.noticeMessage !== null ? (
         <p className="notice" role="status">
           {props.controller.noticeMessage}
@@ -294,7 +343,8 @@ export function NumberTileTurnDraftEditor(
 
       {draft?.mode === "INITIAL_MELD" ? (
         <p className="number-rule-hint">
-          첫 등록은 내 랙 타일만 사용해 합계 30 이상이어야 합니다. 현재 참고 합계: {initialMeldHint(draft)}
+          첫 등록: 내 타일만 사용해 합계 30점 이상
+          <strong>현재 조합 점수 {initialMeldHint(draft)} / 30</strong>
           <small>최종 유효성은 서버가 판정합니다.</small>
         </p>
       ) : draft?.mode === "REARRANGEMENT" ? (
@@ -308,6 +358,9 @@ export function NumberTileTurnDraftEditor(
         {(draft?.table.melds ?? props.snapshot.game.table.melds).map(
           (meld, meldIndex) => {
             const draftMeld = draft?.table.melds[meldIndex];
+            const classification = draftMeld === undefined
+              ? canonicalMeldClassification(meld)
+              : classifyNumberTileDraftMeld(draftMeld);
             const locked =
               draft === null ||
               !props.controller.canEdit ||
@@ -321,7 +374,11 @@ export function NumberTileTurnDraftEditor(
                 <header>
                   <div>
                     <span className="group-number">조합 {meldIndex + 1}</span>
-                    <strong>{meld.kind === "GROUP" ? "GROUP" : "RUN"}</strong>
+                    <strong
+                      className={`number-meld-status ${classification.status.toLowerCase()}`}
+                    >
+                      {meldStatusLabel(classification)}
+                    </strong>
                   </div>
                   {draftMeld !== undefined && !locked ? (
                     <button
@@ -386,17 +443,22 @@ export function NumberTileTurnDraftEditor(
           },
         )}
         {(draft?.table.melds.length ?? props.snapshot.game.table.melds.length) === 0 ? (
-          <p className="empty-board-copy">아직 테이블에 조합이 없습니다.</p>
+          <div className="empty-board-copy number-empty-table-copy">
+            <strong>아직 공개된 조합이 없습니다.</strong>
+            <span>첫 등록을 기다리고 있습니다.</span>
+            <span>내 타일만 사용해 합계 30점 이상의 조합을 만들어 제출하세요.</span>
+          </div>
         ) : null}
       </div>
 
       {draft !== null ? (
-        <div className="number-editor-toolbar">
-          <button className="secondary-button" type="button" disabled={!props.controller.canEdit} onClick={() => props.controller.addMeld("GROUP")}>
-            GROUP 추가
-          </button>
-          <button className="secondary-button" type="button" disabled={!props.controller.canEdit} onClick={() => props.controller.addMeld("RUN")}>
-            RUN 추가
+        <div
+          className="number-editor-toolbar"
+          role="group"
+          aria-label="조합 편집 도구"
+        >
+          <button className="secondary-button number-add-meld" type="button" disabled={!props.controller.canEdit} onClick={props.controller.addMeld}>
+            + 새 조합 만들기
           </button>
           <button className="secondary-button" type="button" disabled={!props.controller.canEdit || draft.history.length === 0} onClick={props.controller.undo}>
             실행 취소
@@ -409,13 +471,30 @@ export function NumberTileTurnDraftEditor(
 
       <section className="number-rack" aria-labelledby="number-rack-heading">
         <div className="number-rack-heading">
-          <h3 id="number-rack-heading">내 랙</h3>
-          <span>
-            {(draft?.availableRackTiles ?? props.snapshot.game.privateState.rack).length}개
-          </span>
+          <div>
+            <h3 id="number-rack-heading">내 랙</h3>
+            <span className="number-rack-count">{rackTiles.length}개</span>
+          </div>
+          <div className="number-rack-sort" role="group" aria-label="내 랙 정렬">
+            {([
+              ["DEFAULT", "기본"],
+              ["NUMBER", "숫자순"],
+              ["COLOR", "색상순"],
+            ] as const).map(([mode, label]) => (
+              <button
+                className="compact-button"
+                type="button"
+                key={mode}
+                aria-pressed={rackSortMode === mode}
+                onClick={() => setRackSortMode(mode)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="number-rack-tiles">
-          {(draft?.availableRackTiles ?? props.snapshot.game.privateState.rack).map((tile) => (
+          {displayedRackTiles.map((tile) => (
             <TileButton
               key={tile.tileId}
               tile={tile}
@@ -424,7 +503,7 @@ export function NumberTileTurnDraftEditor(
               onSelect={() => selectTile(tile.tileId)}
             />
           ))}
-          {(draft?.availableRackTiles ?? props.snapshot.game.privateState.rack).length === 0 ? (
+          {rackTiles.length === 0 ? (
             <p>랙에 남은 타일이 없습니다.</p>
           ) : null}
         </div>
@@ -444,36 +523,81 @@ export function NumberTileTurnDraftEditor(
       {selectedJoker !== null ? (
         <fieldset className="joker-assignment" disabled={!props.controller.canEdit}>
           <legend>선택한 조커가 나타내는 값</legend>
-          <label>
-            숫자
-            <select
-              value={selectedJoker.assignment?.number ?? 1}
-              onChange={(event) => props.controller.assignJoker(
-                selectedJoker.tileId,
-                numberFromControl(event.target.value),
-                selectedJoker.assignment?.color ?? "RED",
-              )}
+          {selectedJoker.assignmentSource === "INFERRED" &&
+          selectedJoker.assignment !== null ? (
+            <p className="joker-inference-note">
+              자동 지정: {NUMBER_TILE_COLOR_LABELS[selectedJoker.assignment.color]} {selectedJoker.assignment.number}
+            </p>
+          ) : selectedJoker.assignment !== null ? (
+            <p className="joker-inference-note">
+              현재 값: {NUMBER_TILE_COLOR_LABELS[selectedJoker.assignment.color]} {selectedJoker.assignment.number}
+            </p>
+          ) : selectedJokerClassification?.status === "AMBIGUOUS_JOKER" ? (
+            <div className="joker-candidate-picker" role="group" aria-label="가능한 조커 값">
+              <p>가능한 값이 여러 개입니다. 하나를 선택하세요.</p>
+              {selectedJokerClassification.interpretations.map((interpretation) => {
+                const assignment = interpretation.jokerAssignment;
+                return assignment === null ? null : (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    key={interpretationKey(interpretation)}
+                    onClick={() => props.controller.assignJoker(
+                      selectedJoker.tileId,
+                      assignment.number,
+                      assignment.color,
+                    )}
+                  >
+                    {NUMBER_TILE_COLOR_LABELS[assignment.color]} {assignment.number}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="joker-inference-note">
+              타일을 더 놓으면 가능한 값이 하나일 때 자동으로 지정됩니다.
+            </p>
+          )}
+
+          {selectedJoker.assignment !== null ? (
+            <button
+              className="text-button"
+              type="button"
+              aria-expanded={editingAssignedJoker}
+              onClick={() => setEditingAssignedJoker((current) => !current)}
             >
-              {NUMBER_TILE_NUMBERS.map((number) => <option key={number} value={number}>{number}</option>)}
-            </select>
-          </label>
-          <label>
-            색상
-            <select
-              value={selectedJoker.assignment?.color ?? "RED"}
-              onChange={(event) => props.controller.assignJoker(
-                selectedJoker.tileId,
-                selectedJoker.assignment?.number ?? 1,
-                colorFromControl(event.target.value),
-              )}
-            >
-              {NUMBER_TILE_COLORS.map((color) => <option key={color} value={color}>{COLOR_LABELS[color]}</option>)}
-            </select>
-          </label>
-          {selectedJoker.assignment === null ? (
-            <button className="secondary-button" type="button" onClick={() => props.controller.assignJoker(selectedJoker.tileId, 1, "RED")}>
-              조커 값 적용
+              조커 값 직접 변경
             </button>
+          ) : null}
+          {selectedJoker.assignment !== null && editingAssignedJoker ? (
+            <div className="joker-manual-picker">
+              <label>
+                숫자
+                <select
+                  value={selectedJoker.assignment.number}
+                  onChange={(event) => props.controller.assignJoker(
+                    selectedJoker.tileId,
+                    numberFromControl(event.target.value),
+                    selectedJoker.assignment?.color ?? "RED",
+                  )}
+                >
+                  {NUMBER_TILE_NUMBERS.map((number) => <option key={number} value={number}>{number}</option>)}
+                </select>
+              </label>
+              <label>
+                색상
+                <select
+                  value={selectedJoker.assignment.color}
+                  onChange={(event) => props.controller.assignJoker(
+                    selectedJoker.tileId,
+                    selectedJoker.assignment?.number ?? 1,
+                    colorFromControl(event.target.value),
+                  )}
+                >
+                  {NUMBER_TILE_COLORS.map((color) => <option key={color} value={color}>{NUMBER_TILE_COLOR_LABELS[color]}</option>)}
+                </select>
+              </label>
+            </div>
           ) : null}
         </fieldset>
       ) : null}
@@ -487,9 +611,15 @@ export function NumberTileTurnDraftEditor(
             aria-busy={props.submitPending}
             onClick={() => props.onSubmit(draft)}
           >
-            {props.submitPending ? "제출 중..." : "테이블 제출"}
+            {props.submitPending ? "제출 중..." : "조합 제출"}
           </button>
-          {hasUnassignedJoker(draft) ? <p>모든 조커의 숫자와 색상을 지정해주세요.</p> : null}
+          {!draft.table.melds.every(numberTileDraftMeldIsValid) ? (
+            <p>
+              {hasUnassignedJoker(draft)
+                ? "조커 값을 정하고 모든 조합을 완성해주세요."
+                : "모든 조합을 유효하게 완성해주세요."}
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -520,7 +650,7 @@ export function NumberTileTurnDraftEditor(
               ? "처리 중..."
               : props.commandRetryKind === "PASS"
                 ? "턴 넘기기 다시 시도"
-                : "턴 넘기기"}
+                : "패스"}
           </button>
         )}
       </div>
@@ -528,7 +658,7 @@ export function NumberTileTurnDraftEditor(
       {confirmation !== null ? (
         <section className="draw-confirmation" aria-labelledby="number-action-confirmation">
           <p id="number-action-confirmation" role="status">
-            편집 중인 배치는 저장되지 않습니다. {confirmation === "DRAW" ? "타일을 가져올까요?" : "턴을 넘길까요?"}
+            편집 중인 배치는 저장되지 않습니다. {confirmation === "DRAW" ? "타일을 가져올까요?" : "패스할까요?"}
           </p>
           <div>
             <button ref={confirmationButtonRef} className="primary-button" type="button" disabled={!props.canAct || props.actionPending} onClick={confirmTurnEndingAction}>
