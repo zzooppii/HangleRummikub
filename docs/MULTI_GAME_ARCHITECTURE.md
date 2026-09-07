@@ -1,6 +1,6 @@
 # Multi-game Platform Architecture
 
-> 상태: P0~P7C COMPLETE / P8 SOURCE E2E COMPLETE / PUBLIC DEPLOYMENT VERIFICATION PENDING
+> 상태: P0~P8 COMPLETE / PUBLIC TWO-GAME VERIFIED / P9A READY
 > 작성일: 2026-09-07
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
@@ -1158,7 +1158,7 @@ Common Turn scheduler callback은 `ScheduledTurnRouter`로 Hangul/Number timeout
 
 ### 32.5 남은 의도적 경계
 
-- Current Web은 exact Hangul/Number capability, strict V2 Number decoder/renderer와 Number-local draft를 제공한다. Public deployment 여부는 별도 release gate다.
+- Current Web은 exact Hangul/Number capability, strict V2 Number decoder/renderer와 Number-local draft를 제공한다. P8 public release gate에서 실제 deployed bundle과 두 게임 A/B 흐름을 검증했다.
 - Start, command, timeout, lifecycle과 projection은 두 concrete implementation으로 유지한다. 유사 부분의 platform 승격 여부는 P9에서 실제 호출을 비교한 뒤 결정한다.
 - In-memory single-process storage, one replica와 `test-dictionary-v1` 제약은 해결하지 않았다.
 - 상세 contract와 rollout gate는 [NUMBER_TILE_SERVER_INTEGRATION.md](./NUMBER_TILE_SERVER_INTEGRATION.md)를 따른다.
@@ -1201,4 +1201,4 @@ wrong command or cross-shaped payload
 
 새 raw Socket.IO gate는 deterministic exact-29 reject와 exact-30 GROUP/RUN commit, exact Joker replacement와 same-Submit reuse, 별도 Hangul/Number Room의 양방향 wrong command, parallel Draw와 replay, recovery deadline 격리를 한 runtime에서 확인한다. Production-serving gate는 실제 Number A/B create/join/start/Draw/privacy/resume를 추가했다. Web/source boundary gate는 두 feature 및 shared game namespace의 상호 import를 금지한다.
 
-이 검증은 기존 구체 router/adapter/result를 공통 `GameModule`로 승격할 근거로 사용하지 않는다. P8 상세 결과와 public pending 조건은 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)에 기록한다. Railway에서 최신 P7C/P8 checkpoint가 Active/Successful/master/1 Replica라는 사용자 확인과 public 두 게임 smoke 전에는 P9A를 시작하지 않는다.
+이 검증은 기존 구체 router/adapter/result를 공통 `GameModule`로 승격할 근거로 사용하지 않는다. 사용자가 `deafc39`의 Active/Successful/master/1 Replica를 확인했고, 해당 public deployment에서 exact Web capability, Home 두 card, Hangul/Number A/B create·join·start·Draw·resume, privacy, wrong-client/cross-game rejection, 390×844·320×568 responsive와 clean browser console을 검증했다. 상세 증거는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)에 있으며 P9A는 분석-only 별도 Phase로 `READY`다.

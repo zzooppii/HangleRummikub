@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0~P7C COMPLETE / P8 SOURCE E2E COMPLETE / PUBLIC DEPLOYMENT VERIFICATION PENDING
+> 상태: P0~P8 COMPLETE / PUBLIC TWO-GAME VERIFIED / P9A READY
 > 작성일: 2026-09-07
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -913,14 +913,16 @@ Multi-game Platform P7C만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의
 - unsupported type/version UI와 server rejection
 - 전체 unit/integration/E2E, typecheck/build/diff-check
 
-### 2026-09-07 source/local gate 결과
+### 2026-09-07 final gate 결과
 
 - P7C의 909 tests를 보존하고 shared 75, Web 142, server 699, 총 916 tests를 통과했다.
 - Deterministic raw protocol로 Number exact-29 reject, exact-30 GROUP/RUN commit과 Joker exact replacement/same-Submit reuse를 확인했다.
 - 같은 runtime의 Hangul V1 Room과 Number V2 Room에서 양방향 wrong command, cross-shaped payload, parallel Draw/replay, privacy, 60초/90초 Turn recovery와 Hangul-only overall deadline을 확인했다.
 - Fresh production server와 실제 browser A/B에서 두 card, 양 game create/join/start/Draw/resume, Number invalid-submit draft UX, privacy와 390×844/320×568 responsive gate를 확인했다.
 - Production source, public wire, rule와 dependency 변경은 없다. 자세한 증거는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)를 따른다.
-- 이 요청에는 Railway의 최신 P7C/P8 Active deployment와 1 Replica 사용자 확인이 없다. 따라서 P8은 `SOURCE_E2E_COMPLETE / DEPLOYMENT_PENDING_USER_ACTION`이며 P9A는 아직 `NOT READY`다.
+- 사용자가 Railway Dashboard에서 `deafc39`가 master의 Active/Successful deployment이며 1 Replica라고 확인했다.
+- 해당 public deployment에서 exact Web capability `[2,1]` + `[HANGUL_TILE, NUMBER_TILE]`, Home 두 card, Hangul/Number A/B create·join·start·Draw·resume, Legacy V1, Number V2/game type, viewer privacy, wrong-client/cross-game rejection, 390×844·320×568 responsive와 clean browser console을 검증했다.
+- P8 최종 판정은 `COMPLETE / PUBLIC TWO-GAME VERIFIED`이며 P9A analysis-only Phase는 `READY`다.
 
 ### Codex 실행 명령
 

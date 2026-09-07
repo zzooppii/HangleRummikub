@@ -1,6 +1,6 @@
 # Number Tile Protocol Gate
 
-> 상태: `IMPLEMENTED` — P6/P7A/P7B/P7C COMPLETE / P8 READY
+> 상태: `IMPLEMENTED` — P6/P7A/P7B/P7C/P8 COMPLETE / PUBLIC TWO-GAME VERIFIED / P9A READY
 > 확정일: 2026-09-06
 > 사용자 결정: `ALL:A` + consistency blocker clarification A/A/A
 > 범위: `NUMBER_TILE`의 confirmed wire·projection·compatibility contract와 P7B 구현 결과
@@ -391,6 +391,6 @@ P7C는 Web capability, Number V2 renderer와 독립 TurnDraft/editor를 연결�
 - P7B는 shared/server runtime integration을 완료했다.
 - P7C Current Web은 exact `[HANGUL_TILE, NUMBER_TILE]` capability를 광고하고 strict Number V2 projection만 Number renderer로 전달한다.
 - Home catalog는 구현된 두 game을 공개하며 join과 URL에는 game type을 추가하지 않았다.
-- Number-local draft/editor와 `number:submit/draw/pass` client가 준비됐고 P8 two-game E2E/deployment gate가 다음 단계다.
+- Number-local draft/editor와 `number:submit/draw/pass` client가 준비됐고 P8 public two-game gate까지 완료했다. 다음 별도 단계는 P9A two-game abstraction analysis다.
 
 구체 Web 구조와 reconnect/accessibility 제한은 [NUMBER_TILE_WEB_IMPLEMENTATION.md](./NUMBER_TILE_WEB_IMPLEMENTATION.md)를 따른다.

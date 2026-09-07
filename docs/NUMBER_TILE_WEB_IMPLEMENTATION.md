@@ -1,6 +1,6 @@
 # Number Tile Web Implementation
 
-> 상태: P7C IMPLEMENTED / P8 SOURCE E2E VERIFIED / PUBLIC DEPLOYMENT PENDING
+> 상태: P7C IMPLEMENTED / P8 COMPLETE / PUBLIC TWO-GAME VERIFIED / P9A READY
 > Canonical ruleset: `number-tile-rules-v1`
 > Wire: protocol v1 additive Number commands + `PlatformSnapshotV2` only
 
@@ -69,4 +69,4 @@ Actual local production build의 independent A/B browser에서 Number card 선�
 
 Web test는 same identity의 transient update에서 draft/pending command를 유지하고 newer revision 또는 changed Turn에서 supersede하는 경계를 강화했다. 또한 Hangul/Number Web feature와 shared contract namespace가 서로 import하지 않음을 고정했다. Browser console의 Hangul/Number A/B warn/error log는 비어 있었다.
 
-Random browser rack의 valid 30/Joker recovery와 pool-empty Pass는 production cheat 없이 deterministic raw protocol/application test로 검증했다. Public Railway에서 최신 P7C/P8 bundle이 Active라는 사용자 확인 전에는 public Number UI를 검증됐다고 간주하지 않는다. 상세는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)를 따른다.
+Random browser rack의 valid 30/Joker recovery와 pool-empty Pass는 production cheat 없이 deterministic raw protocol/application test로 검증했다. 사용자가 Railway의 `deafc39` deployment와 1 Replica를 확인한 뒤 public Number UI, A/B create·join·start·Draw·resume, privacy, responsive와 clean browser console을 검증했다. 상세는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)를 따른다.

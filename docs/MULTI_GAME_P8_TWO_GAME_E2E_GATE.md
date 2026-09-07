@@ -1,8 +1,8 @@
 # Multi-game Platform P8 Two-game E2E Gate
 
-> 상태: SOURCE E2E COMPLETE / PUBLIC DEPLOYMENT VERIFICATION PENDING
+> 상태: P8 COMPLETE / PUBLIC TWO-GAME VERIFIED
 > 검증일: 2026-09-07
-> 기준 checkpoint: `458ddfe feat: add number tile web gameplay`
+> 배포·검증 checkpoint: `deafc39 test: complete two-game platform e2e gate`
 > 대상: `HANGUL_TILE` + `NUMBER_TILE`
 
 ## 1. 판정 범위
@@ -88,22 +88,29 @@ Tracked source가 아닌 git-ignored shared/Web/server dist만 제거한 뒤 roo
 
 ## 9. Public Railway status
 
-이 P8 요청에는 P7C checkpoint `458ddfe`가 Railway의 Active/Successful/master/1 Replica라는 사용자 확인이 없다. 마지막으로 사용자에게 확인된 public checkpoint는 P5C였으므로 public endpoint의 현재 정상 여부를 P7C/P8 production 성공으로 추정하지 않는다.
+사용자가 Railway Dashboard에서 `deafc39 test: complete two-game platform e2e gate`가 master의 Active/Successful deployment이며 1 Replica라고 확인했다. 이는 `USER_CONFIRMED_DEPLOYED_COMMIT` 및 `USER_CONFIRMED: 1 Replica`로 기록하며, Codex가 Dashboard를 직접 확인한 것으로 해석하지 않는다.
 
-따라서 현재 판정은 다음과 같다.
+해당 public deployment에서 다음을 직접 검증했다.
 
-- source/local: `SOURCE_E2E_COMPLETE`
-- public: `DEPLOYMENT_PENDING_USER_ACTION`
-- P9A: public P8 verification 전에는 `NOT READY`
+- HTTPS `/health`는 HTTP/2 200과 exact `{"ok":true}`를 반환하고 same-origin WebSocket이 연결됐다.
+- Deployed Web asset은 local P8 build와 byte-identical하며 Socket.IO auth에서 `supportedSnapshotVersions: [2, 1]`, `supportedGameTypes: [HANGUL_TILE, NUMBER_TILE]`을 전송한다.
+- Home은 선택 가능한 한글 타일·숫자 타일 두 card만 제공하며 `GEM_CARD`, 준비중 placeholder와 game-type URL/query가 없다.
+- Hangul A/B는 create, game-type 없는 invitation join, shared start, rack 14×2, bag 81/47, Draw와 refresh/resume를 통과했다. Capability 없는 raw client는 기존 V1을 받고 `snapshotVersion`과 `gameType`을 받지 않았다.
+- Number A/B는 explicit create, game-type 없는 join, V2 `NUMBER_TILE`, shared start, rack 14×2, pool 78, empty Table, 90초 Turn, Draw 뒤 actor rack 15·pool 77·revision 1·next Turn과 exact rack resume를 통과했다.
+- A/B projection은 각 viewer own rack만 상세 공개하고 상대 rack은 count만 제공했다. Draw tile ID는 상대 snapshot 전체에 없고 pool은 count만 공개됐다.
+- Capability omission Number create와 V1-only Number join은 mutation 없이 `INCOMPATIBLE_GAME_CAPABILITY`로 거절됐다. Hangul Room의 `number:draw`와 Number Room의 `turn:draw`는 state/revision/turn을 바꾸지 않고 fail-closed했다.
+- Public Number UI에서 GROUP/RUN, rack-to-meld, Undo/Reset과 실제 Joker number/color assignment를 확인했다.
+- 390×844와 320×568에서 Home과 두 game은 document-level horizontal overflow가 없었다. Number rack만 내부 `overflow-x: auto`를 사용했고 action controls는 48px 높이로 viewport 안에 있었다.
+- Public 검증에 사용한 모든 browser tab의 warn/error console log는 비어 있어 runtime/schema/reconnect/CORS/mixed-content warning을 관찰하지 않았다.
 
-사용자가 Railway Dashboard에서 P8 checkpoint 또는 최소 P7C `458ddfe`의 Active/Successful/master/1 Replica를 확인한 뒤, Home 두 card와 Hangul/Number public A/B smoke, Number V2/gameType, privacy와 console을 별도 검증해야 한다. Push/redeploy는 process-memory Room/Game/session을 모두 잃게 할 수 있다.
+따라서 source/local gate와 public gate가 모두 충족됐으며 최종 판정은 `P8 COMPLETE / PUBLIC TWO-GAME VERIFIED`다. P9A two-game abstraction analysis는 `READY`다.
 
 ## 10. Known limitations
 
 - single-process in-memory Room/Game/session은 restart/deploy 때 사라진다.
-- Railway는 one replica 전제가 필요하지만 이번 요청에서 현재 replica를 직접 또는 사용자 확인으로 재검증하지 않았다.
+- Railway의 현재 1 Replica는 사용자가 Dashboard에서 확인했으며 Codex가 Dashboard를 직접 조회하지 않았다.
 - Hangul production dictionary는 계속 `test-dictionary-v1`이다.
 - 실제 Safari/Firefox/device/screen reader 전체 journey는 미검증이다.
 - Number random browser rack의 valid 30/Joker recovery와 pool-empty browser Pass는 deterministic protocol/application test로 대체했다.
 
-P8 public gate가 완료되기 전에는 P9A abstraction analysis를 시작하지 않는다.
+P8이 완전히 종료됐으므로 다음 별도 Phase는 P9A two-game abstraction analysis다.

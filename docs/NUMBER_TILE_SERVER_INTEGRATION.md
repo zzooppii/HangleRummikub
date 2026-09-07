@@ -1,6 +1,6 @@
 # Number Tile Server Integration
 
-> 상태: P7B IMPLEMENTED / P7C WEB INTEGRATED / P8 SOURCE E2E VERIFIED / PUBLIC DEPLOYMENT PENDING
+> 상태: P7B IMPLEMENTED / P7C WEB INTEGRATED / P8 COMPLETE / PUBLIC TWO-GAME VERIFIED / P9A READY
 > 기준 규칙: `number-tile-rules-v1`
 > 적용 범위: shared wire, server application, persistence, projection, scheduling, admission
 
@@ -117,4 +117,4 @@ P8은 production implementation을 바꾸지 않고 다음 누락된 integration
 - Recovery scan은 Hangul 60초와 Number 90초 active Turn을 각각 반환하며 overall game deadline은 Hangul만 반환한다.
 - Production-serving harness는 Number A/B explicit create, gameType 없는 join, shared start, idempotent Draw, private rack과 stable-player resume를 실제 HTTP/Socket.IO runtime에서 수행한다.
 
-P8 source/local gate 결과는 shared 75, Web 142, server 699, 총 916 tests다. Railway 최신 deployment 확인 전 최종 상태는 `SOURCE_E2E_COMPLETE / DEPLOYMENT_PENDING_USER_ACTION`이다. 상세 matrix는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)에 있다.
+P8 source/local gate 결과는 shared 75, Web 142, server 699, 총 916 tests다. 사용자가 Railway의 `deafc39` Active/Successful/master/1 Replica를 확인했고, public Hangul/Number create·join·start·Draw·resume, privacy, capability admission과 cross-game isolation을 검증했다. 최종 상태는 `P8 COMPLETE / PUBLIC TWO-GAME VERIFIED`이며 상세 matrix는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)에 있다.
