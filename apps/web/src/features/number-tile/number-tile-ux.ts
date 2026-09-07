@@ -1,6 +1,5 @@
 import {
   NUMBER_TILE_COLORS,
-  NUMBER_TILE_NUMBERS,
   type NumberTileColor,
   type NumberTileNumber,
   type NumberTilePrivateRackTileViewV2,
@@ -8,11 +7,9 @@ import {
 } from "@hangul-rummikub/shared";
 
 import type {
-  NumberTileDraftJokerPlacement,
   NumberTileDraftMeld,
   NumberTileDraftMeldKind,
   NumberTileDraftPlacement,
-  NumberTileJokerAssignment,
 } from "./number-tile-turn-draft.js";
 
 export const NUMBER_TILE_COLOR_LABELS: Readonly<
@@ -41,16 +38,16 @@ export type NumberTileRackSortMode = "DEFAULT" | "NUMBER" | "COLOR";
 
 export type NumberTileMeldInterpretation = Readonly<{
   kind: NumberTileDraftMeldKind;
-  jokerAssignment: NumberTileJokerAssignment | null;
+  /** Derived preview only. GROUP colors remain existential and are never stored. */
+  jokerRole: Readonly<{
+    number: NumberTileNumber;
+    color: NumberTileColor | null;
+  }> | null;
 }>;
 
 export type NumberTileMeldClassification =
   | Readonly<{ status: "INCOMPLETE" }>
   | Readonly<{ status: "INVALID" }>
-  | Readonly<{
-      status: "AMBIGUOUS_JOKER";
-      interpretations: readonly NumberTileMeldInterpretation[];
-    }>
   | Readonly<{
       status: "VALID";
       interpretation: NumberTileMeldInterpretation;
@@ -65,79 +62,80 @@ function colorIndex(color: NumberTileColor): number {
   return COLOR_ORDER.get(color) ?? NUMBER_TILE_COLORS.length;
 }
 
-function effectiveFace(
-  placement: NumberTileDraftPlacement,
-  inferredAssignment: NumberTileJokerAssignment | null,
-): EffectiveFace | null {
-  if (placement.kind === "ORDINARY") {
-    return { number: placement.number, color: placement.color };
-  }
-  const assignment = placement.assignment ?? inferredAssignment;
-  return assignment === null ? null : assignment;
-}
-
-function isGroup(faces: readonly EffectiveFace[]): boolean {
-  return (
-    faces.length >= 3 &&
-    faces.length <= 4 &&
-    faces.every((face) => face.number === faces[0]?.number) &&
-    new Set(faces.map((face) => face.color)).size === faces.length
-  );
-}
-
-function isRun(faces: readonly EffectiveFace[]): boolean {
-  if (faces.length < 3) {
-    return false;
-  }
-  const sorted = [...faces].sort((left, right) => left.number - right.number);
-  return (
-    sorted.every((face) => face.color === sorted[0]?.color) &&
-    sorted.every(
-      (face, index) =>
-        index === 0 || face.number === sorted[index - 1]!.number + 1,
-    )
-  );
-}
-
-function interpretationsFor(
+function groupInterpretation(
   meld: NumberTileDraftMeld,
-  jokerAssignment: NumberTileJokerAssignment | null,
-): readonly NumberTileMeldInterpretation[] {
-  const faces = meld.tiles.map((tile) => effectiveFace(tile, jokerAssignment));
-  if (faces.some((face) => face === null)) {
-    return [];
+): NumberTileMeldInterpretation | null {
+  if (meld.tiles.length < 3 || meld.tiles.length > 4) {
+    return null;
   }
-  const resolvedFaces = faces as readonly EffectiveFace[];
-  const interpretations: NumberTileMeldInterpretation[] = [];
-  if (isGroup(resolvedFaces)) {
-    interpretations.push({ kind: "GROUP", jokerAssignment });
+  const ordinary = meld.tiles.filter((tile) => tile.kind === "ORDINARY");
+  const jokerCount = meld.tiles.length - ordinary.length;
+  const number = ordinary[0]?.number;
+  if (
+    number === undefined ||
+    jokerCount > 1 ||
+    ordinary.some((tile) => tile.number !== number) ||
+    new Set(ordinary.map((tile) => tile.color)).size !== ordinary.length ||
+    (jokerCount === 1 && ordinary.length >= NUMBER_TILE_COLORS.length)
+  ) {
+    return null;
   }
-  if (isRun(resolvedFaces)) {
-    interpretations.push({ kind: "RUN", jokerAssignment });
-  }
-  return interpretations;
-}
-
-function allJokerInterpretations(
-  meld: NumberTileDraftMeld,
-): readonly NumberTileMeldInterpretation[] {
-  const withoutClaimedAssignment: NumberTileDraftMeld = {
-    ...meld,
-    tiles: meld.tiles.map((tile) =>
-      tile.kind === "JOKER"
-        ? { ...tile, assignment: null, assignmentSource: null }
-        : tile
-    ),
+  return {
+    kind: "GROUP",
+    jokerRole: jokerCount === 1 ? { number, color: null } : null,
   };
-  const interpretations: NumberTileMeldInterpretation[] = [];
-  for (const color of NUMBER_TILE_COLORS) {
-    for (const number of NUMBER_TILE_NUMBERS) {
-      interpretations.push(
-        ...interpretationsFor(withoutClaimedAssignment, { color, number }),
-      );
-    }
+}
+
+function runInterpretation(
+  meld: NumberTileDraftMeld,
+): NumberTileMeldInterpretation | null {
+  if (meld.tiles.length < 3) {
+    return null;
   }
-  return interpretations;
+  const ordinaryByIndex = meld.tiles.flatMap((tile, index) =>
+    tile.kind === "ORDINARY" ? [{ tile, index }] : [],
+  );
+  const jokerCount = meld.tiles.length - ordinaryByIndex.length;
+  if (jokerCount > 1 || ordinaryByIndex.length < 2) {
+    return null;
+  }
+
+  if (jokerCount === 0) {
+    const sorted = [...ordinaryByIndex].sort(
+      (left, right) => left.tile.number - right.tile.number,
+    );
+    if (
+      sorted.some(({ tile }) => tile.color !== sorted[0]?.tile.color) ||
+      sorted.some(
+        ({ tile }, index) =>
+          index > 0 && tile.number !== sorted[index - 1]!.tile.number + 1,
+      )
+    ) {
+      return null;
+    }
+    return { kind: "RUN", jokerRole: null };
+  }
+
+  const first = ordinaryByIndex[0]!;
+  const start = first.tile.number - first.index;
+  if (
+    start < 1 ||
+    start + meld.tiles.length - 1 > 13 ||
+    ordinaryByIndex.some(
+      ({ tile, index }) =>
+        tile.color !== first.tile.color || tile.number !== start + index,
+    )
+  ) {
+    return null;
+  }
+  const jokerIndex = meld.tiles.findIndex((tile) => tile.kind === "JOKER");
+  return {
+    kind: "RUN",
+    jokerRole: {
+      number: (start + jokerIndex) as NumberTileNumber,
+      color: first.tile.color,
+    },
+  };
 }
 
 /**
@@ -147,12 +145,10 @@ function allJokerInterpretations(
 export function classifyNumberTileDraftMeld(
   meld: NumberTileDraftMeld,
 ): NumberTileMeldClassification {
-  const jokers = meld.tiles.filter(
-    (tile): tile is NumberTileDraftJokerPlacement => tile.kind === "JOKER",
-  );
+  const jokerCount = meld.tiles.filter((tile) => tile.kind === "JOKER").length;
   if (
     new Set(meld.tiles.map((tile) => tile.tileId)).size !== meld.tiles.length ||
-    jokers.length > 1
+    jokerCount > 1
   ) {
     return { status: "INVALID" };
   }
@@ -160,49 +156,27 @@ export function classifyNumberTileDraftMeld(
     return { status: "INCOMPLETE" };
   }
 
-  const joker = jokers[0];
-  if (joker === undefined) {
-    const interpretations = interpretationsFor(meld, null);
-    return interpretations.length === 1
-      ? { status: "VALID", interpretation: interpretations[0]! }
-      : { status: "INVALID" };
-  }
-
-  if (joker.assignment !== null) {
-    const assignedInterpretations = interpretationsFor(
-      meld,
-      joker.assignment,
-    );
-    if (assignedInterpretations.length === 1) {
-      return {
-        status: "VALID",
-        interpretation: assignedInterpretations[0]!,
-      };
-    }
-  }
-
-  const interpretations = allJokerInterpretations(meld);
-  if (interpretations.length === 0) {
-    return { status: "INVALID" };
-  }
-  if (interpretations.length === 1) {
-    return { status: "VALID", interpretation: interpretations[0]! };
-  }
-  return {
-    status: "AMBIGUOUS_JOKER",
-    interpretations: Object.freeze(interpretations),
-  };
+  const interpretation = groupInterpretation(meld) ?? runInterpretation(meld);
+  return interpretation === null
+    ? { status: "INVALID" }
+    : { status: "VALID", interpretation };
 }
 
 function placementFaceForOrdering(
   placement: NumberTileDraftPlacement,
   interpretation: NumberTileMeldInterpretation,
 ): EffectiveFace {
-  const face = effectiveFace(placement, interpretation.jokerAssignment);
-  if (face === null) {
-    throw new Error("A valid Number Tile interpretation must resolve every face.");
+  if (placement.kind === "ORDINARY") {
+    return { number: placement.number, color: placement.color };
   }
-  return face;
+  const role = interpretation.jokerRole;
+  if (role === null || role.color === null) {
+    throw new Error("A valid Number Tile RUN Joker must have a derived face.");
+  }
+  return {
+    number: role.number,
+    color: role.color,
+  };
 }
 
 function comparePlacement(
@@ -210,6 +184,14 @@ function comparePlacement(
   right: NumberTileDraftPlacement,
   interpretation: NumberTileMeldInterpretation,
 ): number {
+  if (interpretation.kind === "GROUP") {
+    if (left.kind === "JOKER" || right.kind === "JOKER") {
+      if (left.kind === right.kind) {
+        return String(left.tileId).localeCompare(String(right.tileId));
+      }
+      return left.kind === "JOKER" ? 1 : -1;
+    }
+  }
   const leftFace = placementFaceForOrdering(left, interpretation);
   const rightFace = placementFaceForOrdering(right, interpretation);
   const primary = interpretation.kind === "RUN"
@@ -226,54 +208,24 @@ function comparePlacement(
     : String(left.tileId).localeCompare(String(right.tileId));
 }
 
-/** Clears stale inferred values, applies only a unique Joker inference, and
- * orders valid melds for readable display and the existing RUN wire contract. */
+/** Derives the current meld role and orders valid melds without persisting a
+ * Joker assignment. RUN order is canonical; GROUP Joker color stays neutral. */
 export function normalizeNumberTileDraftMeld(
   meld: NumberTileDraftMeld,
 ): NumberTileDraftMeld {
-  const withoutStaleInference: NumberTileDraftMeld = {
-    ...meld,
-    tiles: meld.tiles.map((tile) =>
-      tile.kind === "JOKER" && tile.assignmentSource === "INFERRED"
-        ? { ...tile, assignment: null, assignmentSource: null }
-        : tile,
-    ),
-  };
-  const classification = classifyNumberTileDraftMeld(withoutStaleInference);
+  const classification = classifyNumberTileDraftMeld(meld);
   if (classification.status !== "VALID") {
-    const shouldClearInvalidAssignment =
-      classification.status === "AMBIGUOUS_JOKER" ||
-      classification.status === "INVALID";
     return {
-      ...withoutStaleInference,
+      ...meld,
       kind: null,
-      tiles: shouldClearInvalidAssignment
-        ? withoutStaleInference.tiles.map((tile) =>
-            tile.kind === "JOKER"
-              ? { ...tile, assignment: null, assignmentSource: null }
-              : tile
-          )
-        : withoutStaleInference.tiles,
     };
   }
 
   const interpretation = classification.interpretation;
-  const withInference = withoutStaleInference.tiles.map((tile) =>
-    tile.kind !== "JOKER" || interpretation.jokerAssignment === null
-      ? tile
-      : tile.assignment?.number === interpretation.jokerAssignment.number &&
-          tile.assignment.color === interpretation.jokerAssignment.color
-        ? tile
-        : {
-            ...tile,
-            assignment: { ...interpretation.jokerAssignment },
-            assignmentSource: "INFERRED" as const,
-          },
-  );
   return {
-    ...withoutStaleInference,
+    ...meld,
     kind: interpretation.kind,
-    tiles: [...withInference].sort((left, right) =>
+    tiles: [...meld.tiles].sort((left, right) =>
       comparePlacement(left, right, interpretation)
     ),
   };
@@ -283,6 +235,24 @@ export function numberTileDraftMeldIsValid(
   meld: NumberTileDraftMeld,
 ): boolean {
   return classifyNumberTileDraftMeld(meld).status === "VALID";
+}
+
+/** Display-only initial contribution hint. The server remains authoritative. */
+export function numberTileInitialMeldValueHint(
+  melds: readonly NumberTileDraftMeld[],
+): number {
+  return melds.reduce((total, meld) => {
+    const classification = classifyNumberTileDraftMeld(meld);
+    const jokerNumber = classification.status === "VALID"
+      ? classification.interpretation.jokerRole?.number ?? 0
+      : 0;
+    return total + meld.tiles.reduce((meldTotal, tile) => {
+      if (tile.origin !== "SELF_RACK") {
+        return meldTotal;
+      }
+      return meldTotal + (tile.kind === "ORDINARY" ? tile.number : jokerNumber);
+    }, 0);
+  }, 0);
 }
 
 export function sortNumberTileRackTiles(
@@ -328,22 +298,5 @@ export function numberTilePlacementLabel(
   if (tile.kind === "ORDINARY") {
     return `${NUMBER_TILE_COLOR_LABELS[tile.color]} ${tile.number}`;
   }
-  const assignment = "assignment" in tile
-    ? tile.assignment
-    : "assignedNumber" in tile
-      ? { number: tile.assignedNumber, color: tile.assignedColor }
-      : null;
-  if (assignment === null) {
-    return "조커";
-  }
-  return `조커, ${NUMBER_TILE_COLOR_LABELS[assignment.color]} ${assignment.number}으로 사용 중`;
-}
-
-export function interpretationKey(
-  interpretation: NumberTileMeldInterpretation,
-): string {
-  const assignment = interpretation.jokerAssignment;
-  return assignment === null
-    ? interpretation.kind
-    : `${interpretation.kind}:${assignment.color}:${assignment.number}`;
+  return "조커";
 }

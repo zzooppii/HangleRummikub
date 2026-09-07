@@ -6550,7 +6550,7 @@ test(
     );
 
     await context.test(
-      "raw number:submit rejects non-rack Joker replacement then commits exact replacement and same-Submit reuse",
+      "raw number:submit accepts final-state Joker role changes without old-face rack replacement",
       async () => {
         const deterministic = createDeterministicRuntime();
         const harness = await startServer(deterministic.runtime);
@@ -6662,8 +6662,6 @@ test(
                   {
                     tileId: joker,
                     kind: "JOKER",
-                    assignedColor: "RED",
-                    assignedNumber: 6,
                   },
                   numberOrdinaryPlacement(red7),
                 ],
@@ -6706,10 +6704,8 @@ test(
           const reusedJoker = {
             tileId: joker,
             kind: "JOKER" as const,
-            assignedColor: "ORANGE" as const,
-            assignedNumber: 9 as const,
           };
-          const wrongTable: NumberTileProposedTable = {
+          const rearrangedTable: NumberTileProposedTable = {
             melds: [
               {
                 kind: "RUN",
@@ -6737,67 +6733,20 @@ test(
               },
             ],
           };
-          const beforeWrong = await deterministic.runtime.persistence.findById(
-            seeded.roomId,
-          );
-          const wrongRequestId = requestId("p8-number-joker-wrong");
-          const wrongAck = await emitNumberSubmit(actor.socket, {
+          const submitAck = await emitNumberSubmit(actor.socket, {
             kind: "number:submit",
             protocolVersion: PROTOCOL_VERSION,
-            requestId: wrongRequestId,
+            requestId: requestId("number-joker-final-state"),
             expectedGameRevision: seeded.game.gameRevision,
             turnId: seeded.game.turn.turnId,
-            payload: { proposedTable: wrongTable },
+            payload: { proposedTable: rearrangedTable },
           });
-          assert.equal(wrongAck.ok, false);
-          if (wrongAck.ok) {
-            throw new Error("Expected invalid Joker recovery rejection.");
-          }
-          assert.equal(wrongAck.error.code, "INVALID_JOKER_RECOVERY");
-          assert.deepEqual(
-            await deterministic.runtime.persistence.findById(seeded.roomId),
-            beforeWrong,
-          );
-          assert.deepEqual(
-            await deterministic.runtime.persistence.classify(
-              `room-player:${seeded.roomId}:${actorPlayerId}`,
-              wrongRequestId,
-              "rejected-command-has-no-record",
-            ),
-            { status: "MISS" },
-          );
-
-          const validTable: NumberTileProposedTable = {
-            melds: [
-              {
-                kind: "RUN",
-                tiles: [red5, actorRed6, red7].map(numberOrdinaryPlacement),
-              },
-              canonicalTable.melds[1]!,
-              {
-                kind: "GROUP",
-                tiles: [
-                  numberOrdinaryPlacement(blue9),
-                  numberOrdinaryPlacement(black9),
-                  reusedJoker,
-                ],
-              },
-            ],
-          };
-          const validAck = await emitNumberSubmit(actor.socket, {
-            kind: "number:submit",
-            protocolVersion: PROTOCOL_VERSION,
-            requestId: requestId("p8-number-joker-valid"),
-            expectedGameRevision: seeded.game.gameRevision,
-            turnId: seeded.game.turn.turnId,
-            payload: { proposedTable: validTable },
-          });
-          assert.equal(validAck.ok, true);
-          if (!validAck.ok) {
-            throw new Error("Expected exact Joker recovery success.");
+          assert.equal(submitAck.ok, true);
+          if (!submitAck.ok) {
+            throw new Error("Expected final-state Joker rearrangement success.");
           }
           const projection = requireNumberTilePlayingSnapshotV2(
-            validAck.data.snapshot,
+            submitAck.data.snapshot,
           );
           const publicJokers = projection.game.table.melds
             .flatMap((meld) => meld.tiles)
@@ -6819,7 +6768,8 @@ test(
               .filter((tile) => tile.tileId === joker).length,
             1,
           );
-          assert.equal(stored.game.racks.get(actorPlayerId)?.includes(actorRed6), false);
+          assert.equal(stored.game.racks.get(actorPlayerId)?.includes(actorRed6), true);
+          assert.equal(stored.game.racks.get(actorPlayerId)?.includes(wrongBlue6), false);
           assert.equal(stored.game.racks.get(actorPlayerId)?.includes(joker), false);
         } finally {
           await stopServer(harness);

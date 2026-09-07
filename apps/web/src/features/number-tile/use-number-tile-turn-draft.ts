@@ -1,6 +1,4 @@
 import type {
-  NumberTileColor,
-  NumberTileNumber,
   NumberTilePlayingPlatformSnapshotV2,
   TileId,
 } from "@hangul-rummikub/shared";
@@ -9,7 +7,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   addNumberTileDraftMeld,
   appendNumberTileDraftTileToMeld,
-  assignNumberTileDraftJoker,
   canEditNumberTileTurnDraft,
   createNumberTileTurnDraft,
   decideNumberTileTurnDraftReconciliation,
@@ -36,8 +33,6 @@ const EDIT_ERROR_MESSAGES: Readonly<
   MELD_NOT_EMPTY: "타일이 남은 조합은 삭제할 수 없습니다.",
   INVALID_TARGET: "선택한 위치에 타일을 놓을 수 없습니다.",
   TILE_NOT_FOUND: "선택한 타일을 현재 편집 상태에서 찾을 수 없습니다.",
-  TILE_NOT_JOKER: "조커 타일만 대체 숫자와 색상을 지정할 수 있습니다.",
-  JOKER_NOT_ON_TABLE: "테이블에 놓은 조커의 값을 지정해주세요.",
   INITIAL_MELD_TABLE_LOCKED:
     "첫 등록을 마치기 전에는 기존 테이블을 변경할 수 없습니다.",
   CANONICAL_TILE_CANNOT_RETURN_TO_RACK:
@@ -63,11 +58,6 @@ export type NumberTileTurnDraftController = Readonly<{
   appendTileToMeld: (tileId: TileId, meldIndex: number) => void;
   placeTileInNewMeld: (tileId: TileId) => void;
   returnTileToRack: (tileId: TileId) => void;
-  assignJoker: (
-    tileId: TileId,
-    number: NumberTileNumber,
-    color: NumberTileColor,
-  ) => void;
   undo: () => void;
   reset: () => void;
   clearFeedback: () => void;
@@ -199,10 +189,6 @@ export function useNumberTileTurnDraft(
       applyEdit((draft) => placeNumberTileDraftTileInNewMeld(draft, tileId)),
     returnTileToRack: (tileId) =>
       applyEdit((draft) => returnNumberTileDraftTileToRack(draft, tileId)),
-    assignJoker: (tileId, number, color) =>
-      applyEdit((draft) =>
-        assignNumberTileDraftJoker(draft, tileId, { number, color }),
-      ),
     undo: () => applyEdit(undoNumberTileTurnDraft),
     reset: () => {
       setState((current) => {

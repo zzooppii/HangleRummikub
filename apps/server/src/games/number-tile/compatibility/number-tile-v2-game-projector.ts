@@ -75,8 +75,6 @@ function projectTablePlacement(
     return {
       tileId: placement.tileId,
       kind: placement.kind,
-      assignedNumber: placement.assignedNumber,
-      assignedColor: placement.assignedColor,
     };
   }
   if (tile.kind !== "ORDINARY") {

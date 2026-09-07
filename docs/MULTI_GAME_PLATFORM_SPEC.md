@@ -1,6 +1,6 @@
 # Multi-game Platform Specification
 
-> 상태: P0~P10 COMPLETE / PUBLIC TWO-GAME VERIFIED / P11A READY
+> 상태: P0~P11A COMPLETE / PUBLIC TWO-GAME VERIFIED / P11B NOT STARTED
 > 작성일: 2026-09-07
 > 적용 범위: 현재 production 한글 타일 게임을 보존하면서 여러 턴제 보드게임을 수용하기 위한 제품 경계  
 > 비고: 이 문서는 구현 계약이 아니라 후속 Phase의 의사결정 기준이다.
@@ -49,7 +49,7 @@ P0 및 초기 migration의 비목표는 다음과 같다.
 | --- | --- | --- |
 | `HANGUL_TILE` | 기존 한글 타일 게임 | production 기준 implementation |
 | `NUMBER_TILE` | 숫자 타일 게임 | P7A domain + P7B server/shared + P7C Web + P8 source/local/public E2E 완료 |
-| `GEM_CARD` | 보석·카드형 게임 | P10 rules/IP/cardset 완료, P11A READY; runtime 미구현 |
+| `GEM_CARD` | 보석·카드형 게임 | P10 rules/IP/cardset + P11A pure domain 완료; P11B 미착수, runtime 미연결 |
 
 세 ID는 중립 내부 식별자로 확정했다. 장기적으로 protocol, persistence, registry, telemetry에서 일관되게 사용하되 공개 UI 명칭과 licensing은 별도 결정하며, 특정 상용 게임 브랜드나 asset 이름을 결합하지 않는다.
 
@@ -293,7 +293,7 @@ P0 문서는 이 결정들을 위한 seam과 검증 기준만 제공한다. Numb
 P6는 runtime 구현 전에 다음 경계를 확정했다.
 
 - 사용자가 `ALL:A`와 consistency clarification A/A/A를 승인해 `NT-001`~`NT-044`를 `CONFIRMED`로 만들고 `number-tile-rules-v1`을 canonical ruleset으로 기록했다.
-- Inventory 106장, 2~4명, rack 14장, GROUP/RUN, initial 30, whole-table rearrangement, exact Joker recovery, single-pool Draw/Pass, 90초 timer와 no overall deadline을 확정했다.
+- Inventory 106장, 2~4명, rack 14장, GROUP/RUN, initial 30, whole-table rearrangement, 당시 exact Joker recovery, single-pool Draw/Pass, 90초 timer와 no overall deadline을 확정했다. Exact-recovery 부분은 이후 actual-play correction으로 superseded됐으며 current canonical rule은 colorless GROUP, ordered-role RUN과 previous-role-independent final-state conservation이다.
 - Finish reason은 `RACK_EMPTY`, `STALEMATE`, `LAST_PLAYER_STANDING`이며 Number에는 `ALL_PLAYERS_FORFEITED`와 `TIME_LIMIT`이 없다.
 - STALEMATE는 eligible/non-forfeited full no-play cycle로 판정하고 forfeited result entry는 non-forfeited 뒤에 별도 competition ranking하며 모두 `score = -penalty`를 사용한다.
 - Number 전용 `Table`/`Meld`/`ProposedTable`과 player-private projection을 확정 방향으로 두고 Hangul Board/RuleEngine/TurnDraft reuse를 금지했다.
@@ -303,6 +303,8 @@ P6는 runtime 구현 전에 다음 경계를 확정했다.
 - P7A, P7B와 P7C가 완료됐고 P8 source/local 및 public stop gate도 통과했다.
 
 현재 P6/P7A/P7B/P7C/P8 판정은 `COMPLETE`다. 사용자가 Railway의 `deafc39` Active/Successful/master/1 Replica를 확인했고, Current Web bundle의 exact capability와 catalog, 두 game의 public create·join·start·Draw·resume, privacy, admission/isolation, responsive와 console을 검증했다. P8 최종 상태는 `PUBLIC TWO-GAME VERIFIED`다. P9A analysis-only Phase도 완료됐으며 사용자는 `P9A-001`~`004`만 승인했다. P9B는 pure GameRevision successor, frozen Fisher–Yates, Web async single-flight와 gameplay identity comparator만 구현했고 다른 후보는 계속 보류했다. Shared 75, Web 151, server 704로 총 930 tests와 build/production-serving gate를 통과해 **P9B COMPLETE / P10 READY**다. 상세 production 결과는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md), abstraction 판정은 [MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md](./MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md), 구현 record는 [MULTI_GAME_P9B_SMALL_ABSTRACTIONS.md](./MULTI_GAME_P9B_SMALL_ABSTRACTIONS.md)에 있다.
+
+NUMBER_TILE Joker correction은 physical Joker `tileId`와 current meld role을 분리한다. GROUP은 unused-color existence만 검사하고 arbitrary color assignment를 저장하지 않으며, RUN은 submitted array order에서 number/color role을 derive한다. Previous role은 rearrangement를 제한하지 않고 every pre-turn Joker는 final Table에 정확히 한 번 남아야 하며 rack 이동은 금지된다. Number command/V2 placement만 bare Joker로 좁혔고 `protocolVersion`, `snapshotVersion`, event/capability 이름, Hangul contracts와 GEM_CARD P11A는 바꾸지 않았다. Old strict Number browser는 corrected bundle refresh가 필요하다. 상세는 [NUMBER_TILE_JOKER_SEMANTICS_FIX.md](./NUMBER_TILE_JOKER_SEMANTICS_FIX.md)를 따른다.
 
 ## 16. P7B Number Tile server/shared integration
 

@@ -2,8 +2,6 @@ import type { TileId } from "@hangul-rummikub/shared";
 
 import {
   cloneNumberTile,
-  isNumberTileColor,
-  isNumberTileNumber,
   type NumberTile,
   type NumberTileColor,
   type NumberTileNumber,
@@ -28,7 +26,6 @@ export const NUMBER_TILE_RULE_FAILURE_CODES = [
   "TABLE_REARRANGEMENT_NOT_ALLOWED",
   "NO_NEW_RACK_TILE",
   "INVALID_JOKER_ASSIGNMENT",
-  "INVALID_JOKER_RECOVERY",
 ] as const;
 
 export type NumberTileRuleFailureCode =
@@ -58,7 +55,6 @@ export type ValidatedNumberTileSubmit = Readonly<{
   table: NumberTileTable;
   newlyUsedRackTileIds: readonly TileId[];
   remainingRackTileIds: readonly TileId[];
-  recoveredJokerTileIds: readonly TileId[];
   completesInitialMeld: boolean;
   initialMeldValue: number | null;
 }>;
@@ -84,10 +80,10 @@ function tileIdsInTable(table: NumberTileTable | NumberTileProposedTable) {
   );
 }
 
-function placementFace(
+function canonicalTileForPlacement(
   placement: NumberTilePlacement,
   tilesById: ReadonlyMap<TileId, NumberTile>,
-): NumberTileRuleResult<EffectiveFace> {
+): NumberTileRuleResult<NumberTile> {
   const tile = tilesById.get(placement.tileId);
   if (tile === undefined) {
     return failure("INVALID_TILE_ACCESS");
@@ -98,36 +94,14 @@ function placementFace(
   }
   const canonicalTile = cloneNumberTile(tile);
 
-  if (canonicalTile.kind === "ORDINARY") {
-    if (
-      placement.kind !== "ORDINARY" ||
-      "assignedNumber" in placement ||
-      "assignedColor" in placement
-    ) {
-      return failure("INVALID_JOKER_ASSIGNMENT");
-    }
-    return success(
-      Object.freeze({
-        number: canonicalTile.number,
-        color: canonicalTile.color,
-      }),
-    );
-  }
-
   if (
-    placement.kind !== "JOKER" ||
-    !isNumberTileNumber(placement.assignedNumber) ||
-    !isNumberTileColor(placement.assignedColor)
+    placement.kind !== canonicalTile.kind ||
+    "assignedNumber" in placement ||
+    "assignedColor" in placement
   ) {
     return failure("INVALID_JOKER_ASSIGNMENT");
   }
-
-  return success(
-    Object.freeze({
-      number: placement.assignedNumber,
-      color: placement.assignedColor,
-    }),
-  );
+  return success(canonicalTile);
 }
 
 export function validateNumberTileMeld(
@@ -150,46 +124,71 @@ export function validateNumberTileMeld(
     return failure("INVALID_MELD");
   }
 
-  const faces: EffectiveFace[] = [];
-  for (const placement of meld.tiles) {
-    const faceResult = placementFace(placement, tilesById);
-    if (!faceResult.ok) {
-      return faceResult;
+  const ordinaryByIndex: Array<
+    Readonly<{ index: number; face: EffectiveFace }>
+  > = [];
+  for (const [index, placement] of meld.tiles.entries()) {
+    const tileResult = canonicalTileForPlacement(placement, tilesById);
+    if (!tileResult.ok) {
+      return tileResult;
     }
-    faces.push(faceResult.value);
+    if (tileResult.value.kind === "ORDINARY") {
+      ordinaryByIndex.push(Object.freeze({
+        index,
+        face: Object.freeze({
+          number: tileResult.value.number,
+          color: tileResult.value.color,
+        }),
+      }));
+    }
   }
 
   if (meld.kind === "GROUP") {
-    if (faces.length < 3 || faces.length > 4) {
-      return failure("INVALID_MELD");
-    }
-    const expectedNumber = faces[0]!.number;
     if (
-      faces.some((face) => face.number !== expectedNumber) ||
-      new Set(faces.map((face) => face.color)).size !== faces.length
+      meld.tiles.length < 3 ||
+      meld.tiles.length > 4 ||
+      ordinaryByIndex.length === 0
     ) {
       return failure("INVALID_MELD");
     }
+    const expectedNumber = ordinaryByIndex[0]!.face.number;
+    if (
+      ordinaryByIndex.some(({ face }) => face.number !== expectedNumber) ||
+      new Set(ordinaryByIndex.map(({ face }) => face.color)).size !==
+        ordinaryByIndex.length
+    ) {
+      return failure("INVALID_MELD");
+    }
+    return success(
+      Object.freeze({ value: expectedNumber * meld.tiles.length }),
+    );
   } else {
-    if (faces.length < 3) {
+    if (meld.tiles.length < 3 || ordinaryByIndex.length === 0) {
       return failure("INVALID_MELD");
     }
-    const expectedColor = faces[0]!.color;
-    if (faces.some((face) => face.color !== expectedColor)) {
+    const expectedColor = ordinaryByIndex[0]!.face.color;
+    if (ordinaryByIndex.some(({ face }) => face.color !== expectedColor)) {
       return failure("INVALID_MELD");
     }
-    for (let index = 1; index < faces.length; index += 1) {
-      if (faces[index]!.number !== faces[index - 1]!.number + 1) {
-        return failure("INVALID_MELD");
-      }
+    const start = ordinaryByIndex[0]!.face.number - ordinaryByIndex[0]!.index;
+    if (
+      start < 1 ||
+      start + meld.tiles.length - 1 > 13 ||
+      ordinaryByIndex.some(
+        ({ index, face }) => face.number !== start + index,
+      )
+    ) {
+      return failure("INVALID_MELD");
     }
+    return success(
+      Object.freeze({
+        value: meld.tiles.reduce(
+          (total, _placement, index) => total + start + index,
+          0,
+        ),
+      }),
+    );
   }
-
-  return success(
-    Object.freeze({
-      value: faces.reduce((total, face) => total + face.number, 0),
-    }),
-  );
 }
 
 function validateCompleteTable(
@@ -248,14 +247,7 @@ function assertCanonicalInput(input: ValidateNumberTileSubmitInput): void {
 }
 
 function placementSignature(placement: NumberTilePlacement): string {
-  return placement.kind === "JOKER"
-    ? JSON.stringify([
-        placement.kind,
-        placement.tileId,
-        placement.assignedColor,
-        placement.assignedNumber,
-      ])
-    : JSON.stringify([placement.kind, placement.tileId]);
+  return JSON.stringify([placement.kind, placement.tileId]);
 }
 
 function meldSignature(meld: NumberTileMeld): string {
@@ -293,63 +285,6 @@ function initialNewMelds(
   return [...remainingSignatures.values()].some((count) => count !== 0)
     ? null
     : newMelds;
-}
-
-function faceKey(face: EffectiveFace): string {
-  return `${face.color}:${face.number}`;
-}
-
-function validateJokerRecovery(
-  canonicalTable: NumberTileTable,
-  proposedTable: NumberTileProposedTable,
-  tilesById: ReadonlyMap<TileId, NumberTile>,
-  newlyUsedRackTileIds: readonly TileId[],
-): NumberTileRuleResult<readonly TileId[]> {
-  const finalPlacementsById = new Map(
-    proposedTable.melds.flatMap((meld) =>
-      meld.tiles.map((placement) => [placement.tileId, placement] as const),
-    ),
-  );
-  const replacementSupply = new Map<string, number>();
-  for (const tileId of newlyUsedRackTileIds) {
-    const tile = tilesById.get(tileId);
-    if (tile?.kind === "ORDINARY") {
-      const key = faceKey(tile);
-      replacementSupply.set(key, (replacementSupply.get(key) ?? 0) + 1);
-    }
-  }
-
-  const recoveredJokerTileIds: TileId[] = [];
-  for (const oldPlacement of canonicalTable.melds.flatMap(
-    (meld) => meld.tiles,
-  )) {
-    if (oldPlacement.kind !== "JOKER") {
-      continue;
-    }
-    const finalPlacement = finalPlacementsById.get(oldPlacement.tileId);
-    if (finalPlacement?.kind !== "JOKER") {
-      return failure("INVALID_JOKER_RECOVERY");
-    }
-    if (
-      finalPlacement.assignedNumber === oldPlacement.assignedNumber &&
-      finalPlacement.assignedColor === oldPlacement.assignedColor
-    ) {
-      continue;
-    }
-
-    const oldFaceKey = faceKey({
-      number: oldPlacement.assignedNumber,
-      color: oldPlacement.assignedColor,
-    });
-    const available = replacementSupply.get(oldFaceKey) ?? 0;
-    if (available === 0) {
-      return failure("INVALID_JOKER_RECOVERY");
-    }
-    replacementSupply.set(oldFaceKey, available - 1);
-    recoveredJokerTileIds.push(oldPlacement.tileId);
-  }
-
-  return success(Object.freeze(recoveredJokerTileIds));
 }
 
 export function validateNumberTileSubmit(
@@ -398,7 +333,6 @@ export function validateNumberTileSubmit(
   );
 
   let initialMeldValue: number | null = null;
-  let recoveredJokerTileIds: readonly TileId[] = Object.freeze([]);
   if (!input.initialMeldCompleted) {
     const newMelds = initialNewMelds(
       input.canonicalTable,
@@ -431,20 +365,8 @@ export function validateNumberTileSubmit(
     if (initialMeldValue < NUMBER_TILE_INITIAL_MELD_MINIMUM_VALUE) {
       return failure("INITIAL_MELD_TOO_LOW");
     }
-  } else {
-    const recoveryResult = validateJokerRecovery(
-      input.canonicalTable,
-      input.proposedTable,
-      input.tilesById,
-      newlyUsedRackTileIds,
-    );
-    if (!recoveryResult.ok) {
-      return recoveryResult;
-    }
-    recoveredJokerTileIds = recoveryResult.value;
-    if (newlyUsedRackTileIds.length === 0) {
-      return failure("NO_NEW_RACK_TILE");
-    }
+  } else if (newlyUsedRackTileIds.length === 0) {
+    return failure("NO_NEW_RACK_TILE");
   }
 
   return success(
@@ -452,7 +374,6 @@ export function validateNumberTileSubmit(
       table: cloneNumberTileTable(input.proposedTable),
       newlyUsedRackTileIds,
       remainingRackTileIds,
-      recoveredJokerTileIds,
       completesInitialMeld: !input.initialMeldCompleted,
       initialMeldValue,
     }),

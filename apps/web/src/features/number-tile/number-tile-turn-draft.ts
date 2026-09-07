@@ -29,17 +29,9 @@ export type NumberTileDraftOrdinaryPlacement = Readonly<{
   origin: NumberTileDraftTileOrigin;
 }>;
 
-export type NumberTileJokerAssignment = Readonly<{
-  number: NumberTileNumber;
-  color: NumberTileColor;
-}>;
-
 export type NumberTileDraftJokerPlacement = Readonly<{
   tileId: TileId;
   kind: "JOKER";
-  /** Null is intentionally allowed while the browser draft is incomplete. */
-  assignment: NumberTileJokerAssignment | null;
-  assignmentSource: "CANONICAL" | "INFERRED" | "USER" | null;
   origin: NumberTileDraftTileOrigin;
 }>;
 
@@ -103,8 +95,6 @@ export type NumberTileTurnDraftEditErrorCode =
   | "MELD_NOT_EMPTY"
   | "INVALID_TARGET"
   | "TILE_NOT_FOUND"
-  | "TILE_NOT_JOKER"
-  | "JOKER_NOT_ON_TABLE"
   | "INITIAL_MELD_TABLE_LOCKED"
   | "CANONICAL_TILE_CANNOT_RETURN_TO_RACK"
   | "NO_UNDO_HISTORY";
@@ -126,18 +116,10 @@ function cloneRackTile(
   return { ...tile };
 }
 
-function cloneAssignment(
-  assignment: NumberTileJokerAssignment | null,
-): NumberTileJokerAssignment | null {
-  return assignment === null ? null : { ...assignment };
-}
-
 function clonePlacement(
   placement: NumberTileDraftPlacement,
 ): NumberTileDraftPlacement {
-  return placement.kind === "JOKER"
-    ? { ...placement, assignment: cloneAssignment(placement.assignment) }
-    : { ...placement };
+  return { ...placement };
 }
 
 function cloneMeld(meld: NumberTileDraftMeld): NumberTileDraftMeld {
@@ -162,11 +144,6 @@ function canonicalPlacement(
     return {
       tileId: placement.tileId,
       kind: "JOKER",
-      assignment: {
-        number: placement.assignedNumber,
-        color: placement.assignedColor,
-      },
-      assignmentSource: "CANONICAL",
       origin: "CANONICAL_TABLE",
     };
   }
@@ -461,8 +438,6 @@ function rackPlacement(
     ? {
         tileId: tile.tileId,
         kind: "JOKER",
-        assignment: null,
-        assignmentSource: null,
         origin: "SELF_RACK",
       }
     : { ...tile, origin: "SELF_RACK" };
@@ -704,47 +679,6 @@ export function returnNumberTileDraftTileToRack(
       { table: nextTable, availableRackTiles: restoredRack },
       shouldPruneSource ? [] : [source.meldIndex],
     ),
-  );
-}
-
-export function assignNumberTileDraftJoker(
-  draft: NumberTileTurnDraft,
-  tileId: TileId,
-  assignment: NumberTileJokerAssignment,
-): NumberTileTurnDraftEditResult {
-  const source = findNumberTileDraftTile(draft, tileId);
-  if (source === null) {
-    return fail("TILE_NOT_FOUND");
-  }
-  if (source.tile.kind !== "JOKER") {
-    return fail("TILE_NOT_JOKER");
-  }
-  if (source.source !== "TABLE") {
-    return fail("JOKER_NOT_ON_TABLE");
-  }
-  const meld = draft.table.melds[source.meldIndex];
-  if (meld === undefined) {
-    return fail("MELD_NOT_FOUND");
-  }
-  if (isCanonicalMeldLocked(draft, meld)) {
-    return fail("INITIAL_MELD_TABLE_LOCKED");
-  }
-
-  const updated: NumberTileDraftJokerPlacement = {
-    ...source.tile,
-    assignment: { ...assignment },
-    assignmentSource: "USER",
-  };
-  const tableWithoutSource = removeTableTile(draft.table, source);
-  return succeed(
-    commitEdit(draft, {
-      table: insertTableTile(
-        tableWithoutSource,
-        { meldIndex: source.meldIndex, tileIndex: source.tileIndex },
-        updated,
-      ),
-      availableRackTiles: draft.availableRackTiles,
-    }, [source.meldIndex]),
   );
 }
 

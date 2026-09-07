@@ -150,12 +150,7 @@ export const NUMBER_TILE_COMMAND_ERRORS = Object.freeze({
   }),
   INVALID_JOKER_ASSIGNMENT: Object.freeze({
     code: "INVALID_JOKER_ASSIGNMENT",
-    message: "A Joker assignment is invalid.",
-    recoverable: true,
-  }),
-  INVALID_JOKER_RECOVERY: Object.freeze({
-    code: "INVALID_JOKER_RECOVERY",
-    message: "A Joker recovery is invalid.",
+    message: "A Joker placement is invalid.",
     recoverable: true,
   }),
   POOL_EMPTY: Object.freeze({

@@ -5,6 +5,8 @@
 > 배포·검증 checkpoint: `deafc39 test: complete two-game platform e2e gate`
 > 대상: `HANGUL_TILE` + `NUMBER_TILE`
 
+> Historical note: this gate recorded the P8-era NUMBER_TILE Joker assignment/exact-replacement behavior. That narrow behavior is superseded by the later Joker semantics correction: bare physical Joker placement, colorless GROUP validity, ordered RUN role derivation, previous-role-independent rearrangement and final-Table exact-once conservation. The rest of the P8 two-game evidence remains valid.
+
 ## 1. 판정 범위
 
 P8은 새 기능이나 공통 abstraction을 추가하지 않고, P7C까지 완성된 두 concrete game이 하나의 Room/session/realtime runtime에서 서로 침범하지 않는지 검증하는 release gate다. 검증 기준은 기존 unit/application/integration/security test, 새 raw Socket.IO two-game test, clean production build와 실제 로컬 production browser A/B smoke다.
@@ -18,7 +20,7 @@ P8은 새 기능이나 공통 abstraction을 추가하지 않고, P7C까지 완�
 새 regression coverage는 다음을 고정한다.
 
 - raw `number:submit`: deterministic exact 29 initial meld는 canonical state와 idempotency record를 남기지 않고 거절하며, exact 30의 RUN + GROUP은 Table, rack, `initialMeldCompleted`, revision과 next Turn을 한 번만 commit한다.
-- raw Joker recovery: actor rack에서 오지 않은 replacement는 `INVALID_JOKER_RECOVERY`로 atomic reject한다. Exact color/number ordinary replacement와 같은 Submit의 동일 Joker `tileId` 재사용은 성공하고 assignment와 physical identity가 보존된다.
+- raw Joker recovery (historical, superseded): actor rack에서 오지 않은 replacement를 `INVALID_JOKER_RECOVERY`로 reject하고 exact replacement/same-Submit reuse를 성공시켰던 P8-era contract를 기록했다. Current authority is the later final-state Joker semantics regression.
 - simultaneous rooms: 별도 Hangul V1 Room과 Number V2 Room을 같은 runtime에 두고 양방향 wrong command와 cross-shaped payload를 fail-closed한다. 같은 request ID를 각 Room에서 사용한 parallel Draw와 replay는 Room별로 한 번만 mutate한다.
 - scheduler/recovery isolation: Hangul 60초, Number 90초 Turn deadline을 각각 읽고 overall game deadline은 Hangul만 복구한다.
 - production-serving: capable A/B client가 explicit Number Room create, gameType 없는 join, shared start, idempotent Draw, viewer privacy와 stable-player resume를 실제 HTTP/Socket.IO production server surface에서 수행한다. Number advisory는 0이다.
@@ -31,7 +33,7 @@ P8은 새 기능이나 공통 abstraction을 추가하지 않고, P7C까지 완�
 | --- | --- | --- |
 | lifecycle | create/join, 2~4인 start, Submit/Draw/Pass, timeout, reconnect, leave/forfeit, 모든 기존 finish reason | create/join, 2~4인 start, Submit/Draw/Pass, timeout, offline streak/resume, leave/forfeit, `RACK_EMPTY`/`STALEMATE`/`LAST_PLAYER_STANDING` |
 | state | concrete Hangul Room state, 60초 Turn, 25분 deadline | concrete Number Room state, 90초 Turn, overall deadline 없음 |
-| projection | V1과 V2, own rack only, bag count only | V2 only, own rack only, pool count only, public Table/Joker assignment |
+| projection | V1과 V2, own rack only, bag count only | V2 only, own rack only, pool count only; P8 당시 public Table/Joker assignment shape는 later bare-Joker correction으로 superseded |
 | admission | legacy omission과 modern Hangul V2 | V2 선택 + exact `NUMBER_TILE` capability가 create/join/resume 전에 필수 |
 | delivery | existing `turn:started`/`game:finished` | authoritative snapshot only, Number advisory 없음 |
 | persistence | exact Hangul adapter, CAS/UoW/immutable game type | exact Number adapter, CAS/UoW/immutable game type |
@@ -58,7 +60,7 @@ Home selection, URL, invitation state와 event name은 renderer/dispatch authori
 
 ## 5. Privacy와 security
 
-두 게임 모두 viewer own rack만 physical descriptor와 `tileId`를 제공한다. 상대는 rack count만 보며 bag/pool order와 IDs, session token, verification/hash, socket/generation, storage/idempotency, scheduler/offline tracker는 projection에 없다. Number Table 위 ordinary face와 Joker assignment만 public이며 FINISHED에서도 상대 rack detail을 공개하지 않는다.
+두 게임 모두 viewer own rack만 physical descriptor와 `tileId`를 제공한다. 상대는 rack count만 보며 bag/pool order와 IDs, session token, verification/hash, socket/generation, storage/idempotency, scheduler/offline tracker는 projection에 없다. Number Table 위 ordinary face와 physical Joker identity는 public이며 current role은 containing meld에서 derive된다. FINISHED에서도 상대 rack detail을 공개하지 않는다.
 
 기존 malformed/security matrix는 oversized/extra-field input, stale revision, reused request conflict, non-primary/replaced session, unauthorized Tile probe normalization, unsupported capability, cross-origin production Socket.IO와 secret-free health를 계속 검증한다.
 
@@ -74,7 +76,7 @@ Fresh production output을 `npm start`로 실행한 실제 browser A/B smoke에�
 - A/B Number projection에서 actor만 15개 tile descriptor를 보고 상대는 rack count 15만 본다. FINISHED 화면도 rack tile detail을 공개하지 않는다.
 - Hangul/Number 두 A/B tab의 browser warn/error log는 비어 있었다.
 
-Random browser rack으로 valid 30/Joker recovery를 만들지 않았다. 그 규칙은 production debug/cheat 없이 deterministic raw protocol test에서 검증했다. Pool-empty Pass/STALEMATE도 browser state를 조작하지 않고 existing application/integration gate로 검증했다.
+Random browser rack으로 valid 30과 당시 Joker recovery를 만들지 않았다. 당시 규칙은 production debug/cheat 없이 deterministic raw protocol test에서 검증했으며 Joker 부분은 later correction으로 superseded됐다. Pool-empty Pass/STALEMATE도 browser state를 조작하지 않고 existing application/integration gate로 검증했다.
 
 ## 7. Responsive와 accessibility
 
@@ -99,7 +101,7 @@ Tracked source가 아닌 git-ignored shared/Web/server dist만 제거한 뒤 roo
 - Number A/B는 explicit create, game-type 없는 join, V2 `NUMBER_TILE`, shared start, rack 14×2, pool 78, empty Table, 90초 Turn, Draw 뒤 actor rack 15·pool 77·revision 1·next Turn과 exact rack resume를 통과했다.
 - A/B projection은 각 viewer own rack만 상세 공개하고 상대 rack은 count만 제공했다. Draw tile ID는 상대 snapshot 전체에 없고 pool은 count만 공개됐다.
 - Capability omission Number create와 V1-only Number join은 mutation 없이 `INCOMPATIBLE_GAME_CAPABILITY`로 거절됐다. Hangul Room의 `number:draw`와 Number Room의 `turn:draw`는 state/revision/turn을 바꾸지 않고 fail-closed했다.
-- Public Number UI에서 GROUP/RUN, rack-to-meld, Undo/Reset과 실제 Joker number/color assignment를 확인했다.
+- Public Number UI에서 GROUP/RUN, rack-to-meld, Undo/Reset과 당시 Joker number/color assignment UI를 확인했다. 해당 assignment UI evidence는 historical이며 later correction으로 superseded됐다.
 - 390×844와 320×568에서 Home과 두 game은 document-level horizontal overflow가 없었다. Number rack만 내부 `overflow-x: auto`를 사용했고 action controls는 48px 높이로 viewport 안에 있었다.
 - Public 검증에 사용한 모든 browser tab의 warn/error console log는 비어 있어 runtime/schema/reconnect/CORS/mixed-content warning을 관찰하지 않았다.
 
@@ -111,6 +113,6 @@ Tracked source가 아닌 git-ignored shared/Web/server dist만 제거한 뒤 roo
 - Railway의 현재 1 Replica는 사용자가 Dashboard에서 확인했으며 Codex가 Dashboard를 직접 조회하지 않았다.
 - Hangul production dictionary는 계속 `test-dictionary-v1`이다.
 - 실제 Safari/Firefox/device/screen reader 전체 journey는 미검증이다.
-- Number random browser rack의 valid 30/Joker recovery와 pool-empty browser Pass는 deterministic protocol/application test로 대체했다.
+- Number random browser rack의 valid 30과 당시 Joker recovery, pool-empty browser Pass는 deterministic protocol/application test로 대체했다. Joker recovery 부분은 later correction의 final-state test가 대체한다.
 
 P8이 완전히 종료됐으므로 다음 별도 Phase는 P9A two-game abstraction analysis다.

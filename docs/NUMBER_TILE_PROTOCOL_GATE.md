@@ -64,13 +64,8 @@ type NumberSubmitCommandCandidate = {
       melds: Array<{
         kind: "GROUP" | "RUN";
         tiles: Array<
-          | { tileId: TileId; kind: "NUMBER" }
-          | {
-              tileId: TileId;
-              kind: "JOKER";
-              assignedNumber: number;
-              assignedColor: NumberTileColor;
-            }
+          | { tileId: TileId; kind: "ORDINARY" }
+          | { tileId: TileId; kind: "JOKER" }
         >;
       }>;
     };
@@ -96,7 +91,19 @@ type NumberPassCommandCandidate = {
 };
 ```
 
-Stable meld identity는 도입하지 않는다. Array ordering과 GROUP fingerprint canonicalization, Joker assignment의 concrete representation은 P7A domain shape를 본 뒤 P7B에서 정하되 gameplay rule을 바꾸지 않는다. Client가 ordinary tile face value를 보내고 서버가 믿는 구조는 금지한다. 서버는 `tileId`로 canonical tile을 찾고 Joker의 claimed number/color assignment를 meld context와 함께 검증한다.
+Stable meld identity는 도입하지 않는다. Client가 ordinary tile face value나 Joker의 number/color를 보내고 서버가 믿는 구조는 금지한다. 서버는 `tileId`로 canonical physical tile을 찾고 containing meld에서 Joker role을 derive한다. GROUP은 ordinary common number와 unused-color existence로 검증하므로 Joker color를 wire fact로 만들지 않는다. RUN은 submitted `tiles` array order가 canonical role intent이며 ordinary faces와 Joker index로 color/number를 derive한다.
+
+### 4.1 Number V2 Joker contract correction
+
+Joker placement의 old Number-only shape에 있던 `assignedNumber`/`assignedColor`는 canonical fact가 아니므로 command와 Number V2 Table projection에서 제거한다. 이 좁은 correction은 다음 outer contract를 바꾸지 않는다.
+
+- realtime `protocolVersion = 1`
+- `snapshotVersion = 2` 및 `PlatformSnapshotV2` 이름
+- `number:submit`, `number:draw`, `number:pass`, `state:snapshot` event 이름
+- Hangul flat V1과 Hangul V2 branch
+- Room URL, capability와 command envelope
+
+Strict old Number client가 이전 Joker assignment-required schema를 이미 로드한 채 열려 있으면 corrected Number V2 snapshot/ack을 거절할 수 있고, old assignment fields를 보내는 `number:submit`은 corrected strict server에서 payload rejection된다. Fake color/number를 다시 넣어 겉보기 호환성을 만들지 않고, 해당 open client는 새 Web bundle로 refresh해야 한다. Persisted process-memory Room은 deployment/restart 때 사라지는 기존 limitation이 있으며 durable schema migration을 주장하지 않는다.
 
 ## 5. Atomic Submit direction
 
@@ -109,7 +116,7 @@ wire strict validation
   -> Room lane / phase / revision / turn / deadline validation
   -> detached candidate
   -> ownership + physical conservation
-  -> every final GROUP/RUN + Joker assignment
+  -> every final GROUP/RUN + meld-derived Joker role
   -> initial-meld or normal-turn legality
   -> terminal/result calculation
   -> one Room/game/idempotency commit
@@ -237,7 +244,7 @@ Projection과 command error 모두 private tile 존재를 누설하지 않아야
 - own rack: exact tile ID와 face/Joker detail
 - other racks in PLAYING: `rackCount` only
 - other racks in FINISHED: rack tile detail 없이 `remainingRackCount`, `remainingRackValue`, score 같은 result summary only
-- table: placed physical tile과 public Joker assignment
+- table: placed physical tile; Joker는 bare physical identity이며 public role은 containing meld/order에서 derive
 - pool: count only
 - forbidden: pool order/IDs, opponent rack IDs, RNG state, credential/token hash, socket ID, connection generation, storage revision, idempotency data, scheduler descriptors, offline-timeout streak, full-no-play tracker internals
 - unauthorized tile reference는 “그 tile이 존재하지만 네 것이 아님”을 구별하지 않는 normalized gameplay error로 반환
@@ -269,7 +276,7 @@ Conceptual 분류이며 shared error code 추가가 아니다.
 | Host/phase/current-primary | initial meld below threshold |
 | not your turn/expired turn | initial meld own tiles only |
 | stale Room/game revision | no new rack tile |
-| request ID reused | invalid Joker assignment/recovery |
+| request ID reused | invalid Joker meld / final Table conservation |
 | incompatible client capability | invalid proposed table / conservation |
 | internal/configuration failure | pool empty / pass not allowed |
 

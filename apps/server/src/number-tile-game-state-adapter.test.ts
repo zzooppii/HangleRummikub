@@ -88,8 +88,6 @@ function withJokerGroup(
     {
       tileId: joker.tileId,
       kind: "JOKER",
-      assignedColor: "BLACK",
-      assignedNumber: 1,
     },
   ];
   return {
@@ -178,6 +176,40 @@ test("Number state adapter reconstructs a canonical terminal result and keeps it
     gameId: cloned.gameId,
     finishedAt: serverTime(20_000),
   });
+});
+
+test("Number state adapter rejects obsolete persisted Joker assignment fields instead of normalizing them", () => {
+  const adapter = new NumberTileGameStateAdapter();
+  const game = withJokerGroup(createGame());
+  const meld = game.table.melds[0]!;
+  const joker = meld.tiles.find((placement) => placement.kind === "JOKER");
+  if (joker === undefined) {
+    throw new Error("Expected a persisted Joker placement fixture.");
+  }
+  const staleState = {
+    ...game,
+    table: {
+      melds: [{
+        ...meld,
+        tiles: meld.tiles.map((placement) =>
+          placement.tileId === joker.tileId
+            ? {
+                ...placement,
+                assignedNumber: 1,
+                assignedColor: "BLACK",
+              }
+            : placement,
+        ),
+      }],
+    },
+  } as unknown as NumberTileGameState;
+
+  assert.throws(
+    () => adapter.cloneAndValidate(staleState),
+    /placement shape/u,
+  );
+  assert.equal("assignedNumber" in joker, false);
+  assert.equal("assignedColor" in joker, false);
 });
 
 test("Number state adapter rejects corrupt conservation, lifecycle, tracker, and result state", () => {

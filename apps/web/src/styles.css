@@ -1645,67 +1645,6 @@ button.game-tile:hover:not(:disabled) {
   color: #8f2f24;
 }
 
-.joker-assignment {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 12px;
-  margin-top: 16px;
-  border: 1px solid #bfa7d4;
-  border-radius: 14px;
-  padding: 14px;
-  background: #fbf5ff;
-}
-
-.joker-assignment legend {
-  padding-inline: 6px;
-  color: #5f347f;
-  font-weight: 850;
-}
-
-.joker-assignment label {
-  display: grid;
-  min-width: 120px;
-  gap: 6px;
-  font-size: 0.82rem;
-  font-weight: 800;
-}
-
-.joker-assignment select {
-  min-height: 48px;
-  border: 1px solid #aeb5ba;
-  border-radius: 10px;
-  padding: 8px 10px;
-  background: #fff;
-  font: inherit;
-}
-
-.joker-assignment select:focus-visible {
-  outline: 3px solid #2563eb;
-  outline-offset: 2px;
-}
-
-.joker-inference-note,
-.joker-candidate-picker p {
-  margin: 0;
-  color: #5f347f;
-  line-height: 1.45;
-}
-
-.joker-candidate-picker,
-.joker-manual-picker {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 9px;
-}
-
-.joker-candidate-picker p {
-  flex-basis: 100%;
-}
-
 .number-submit-panel,
 .number-turn-actions {
   display: flex;
@@ -1975,8 +1914,7 @@ button.game-tile:hover:not(:disabled) {
   }
 
   .number-submit-panel .primary-button,
-  .number-turn-actions .secondary-button,
-  .joker-assignment .secondary-button {
+  .number-turn-actions .secondary-button {
     width: 100%;
   }
 }

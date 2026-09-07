@@ -12,7 +12,6 @@ import {
   NUMBER_TILE_TURN_DRAFT_HISTORY_LIMIT,
   addNumberTileDraftMeld,
   appendNumberTileDraftTileToMeld,
-  assignNumberTileDraftJoker,
   canEditNumberTileTurnDraft,
   createNumberTileTurnDraft,
   decideNumberTileTurnDraftReconciliation,
@@ -29,6 +28,7 @@ import {
   type NumberTileTurnDraftEditErrorCode,
   type NumberTileTurnDraftEditResult,
 } from "./number-tile-turn-draft.js";
+import { serializeNumberTileTurnDraft } from "../../lib/number-tile-actions.js";
 
 type SnapshotOptions = Readonly<{
   selfIsActive?: boolean;
@@ -67,8 +67,6 @@ function snapshot(
         {
           tileId: "table-joker-a",
           kind: "JOKER",
-          assignedNumber: 4,
-          assignedColor: "RED",
         },
         {
           tileId: "table-red-5-a",
@@ -638,7 +636,7 @@ test("rack-origin Tile만 원래 rack 순서로 돌아갈 수 있다", () => {
   assert.equal(tileOccurrences(draft, blue), 1);
 });
 
-test("Joker는 unassigned 임시 상태를 거쳐 assignment와 reassignment를 지원한다", () => {
+test("Joker는 physical identity만 유지한 채 local 조합 사이를 이동한다", () => {
   let draft = requireDraft(createNumberTileTurnDraft(snapshot()));
   draft = requireEdit(addNumberTileDraftMeld(draft));
   const jokerId = fixtureTileId(draft, "rack-joker-a");
@@ -654,53 +652,98 @@ test("Joker는 unassigned 임시 상태를 거쳐 assignment와 reassignment를 
   if (located?.source !== "TABLE" || located.tile.kind !== "JOKER") {
     throw new Error("Expected a placed Joker.");
   }
-  assert.equal(located.tile.assignment, null);
-
+  assert.deepEqual(located.tile, {
+    tileId: jokerId,
+    kind: "JOKER",
+    origin: "SELF_RACK",
+  });
+  draft = requireEdit(addNumberTileDraftMeld(draft));
   draft = requireEdit(
-    assignNumberTileDraftJoker(draft, jokerId, {
-      number: 7,
-      color: "RED",
-    }),
+    appendNumberTileDraftTileToMeld(draft, jokerId, 2),
   );
-  draft = requireEdit(
-    assignNumberTileDraftJoker(draft, jokerId, {
-      number: 9,
-      color: "BLUE",
-    }),
-  );
-  located = findNumberTileDraftTile(draft, jokerId);
-  if (located?.source !== "TABLE" || located.tile.kind !== "JOKER") {
-    throw new Error("Expected a reassigned Joker.");
-  }
-  assert.deepEqual(located.tile.assignment, { number: 9, color: "BLUE" });
-
-  expectEditError(
-    assignNumberTileDraftJoker(
-      draft,
-      fixtureTileId(draft, "rack-red-7-a"),
-      { number: 7, color: "RED" },
-    ),
-    "TILE_NOT_JOKER",
-  );
+  assert.equal(findNumberTileDraftTile(draft, jokerId)?.source, "TABLE");
+  assert.equal(tileOccurrences(draft, jokerId), 1);
 });
 
-test("canonical Joker reassignment은 rearrangement에서만 허용하고 unique face를 다시 추론한다", () => {
-  const rearrangement = requireDraft(
+test("canonical Joker는 valid whole-draft RUN role을 바꿔도 stale role 없이 serialize된다", () => {
+  let rearrangement = requireDraft(
     createNumberTileTurnDraft(snapshot({ canonicalJoker: true })),
   );
   const jokerId = fixtureTileId(rearrangement, "table-joker-a");
-  const changed = requireEdit(
-    assignNumberTileDraftJoker(rearrangement, jokerId, {
-      number: 8,
-      color: "BLUE",
+  const blueEightId = fixtureTileId(rearrangement, "rack-red-7-a");
+  const blueTenId = fixtureTileId(rearrangement, "rack-blue-7-a");
+  const rackJokerId = fixtureTileId(rearrangement, "rack-joker-a");
+  const remapRackFace = (
+    tile: NumberTileTurnDraft["rackTiles"][number],
+  ): NumberTileTurnDraft["rackTiles"][number] => {
+    if (tile.tileId === blueEightId) {
+      return { ...tile, kind: "ORDINARY", number: 8, color: "BLUE" };
+    }
+    if (tile.tileId === blueTenId) {
+      return { ...tile, kind: "ORDINARY", number: 10, color: "BLUE" };
+    }
+    return tile;
+  };
+  rearrangement = {
+    ...rearrangement,
+    rackTiles: rearrangement.rackTiles.map(remapRackFace),
+    availableRackTiles: rearrangement.availableRackTiles.map(remapRackFace),
+  };
+  rearrangement = requireEdit(addNumberTileDraftMeld(rearrangement));
+  rearrangement = requireEdit(
+    placeNumberTileDraftTile(rearrangement, jokerId, {
+      meldIndex: 1,
+      tileIndex: 0,
     }),
   );
-  const located = findNumberTileDraftTile(changed, jokerId);
+  rearrangement = requireEdit(
+    placeNumberTileDraftTile(rearrangement, rackJokerId, {
+      meldIndex: 0,
+      tileIndex: 1,
+    }),
+  );
+  rearrangement = requireEdit(
+    placeNumberTileDraftTile(rearrangement, blueEightId, {
+      meldIndex: 1,
+      tileIndex: 0,
+    }),
+  );
+  rearrangement = requireEdit(
+    placeNumberTileDraftTile(rearrangement, blueTenId, {
+      meldIndex: 1,
+      tileIndex: 2,
+    }),
+  );
+  const located = findNumberTileDraftTile(rearrangement, jokerId);
   if (located?.source !== "TABLE" || located.tile.kind !== "JOKER") {
     throw new Error("Expected a canonical Joker.");
   }
-  assert.deepEqual(located.tile.assignment, { number: 4, color: "RED" });
-  assert.equal(located.tile.assignmentSource, "INFERRED");
+  assert.deepEqual(located.tile, {
+    tileId: jokerId,
+    kind: "JOKER",
+    origin: "CANONICAL_TABLE",
+  });
+  assert.equal(tileOccurrences(rearrangement, jokerId), 1);
+  assert.deepEqual(serializeNumberTileTurnDraft(rearrangement), {
+    melds: [
+      {
+        kind: "RUN",
+        tiles: [
+          { tileId: "table-red-3-a", kind: "ORDINARY" },
+          { tileId: "rack-joker-a", kind: "JOKER" },
+          { tileId: "table-red-5-a", kind: "ORDINARY" },
+        ],
+      },
+      {
+        kind: "RUN",
+        tiles: [
+          { tileId: "rack-red-7-a", kind: "ORDINARY" },
+          { tileId: "table-joker-a", kind: "JOKER" },
+          { tileId: "rack-blue-7-a", kind: "ORDINARY" },
+        ],
+      },
+    ],
+  });
 
   const initial = requireDraft(
     createNumberTileTurnDraft(
@@ -708,9 +751,9 @@ test("canonical Joker reassignment은 rearrangement에서만 허용하고 unique
     ),
   );
   expectEditError(
-    assignNumberTileDraftJoker(initial, fixtureTileId(initial, "table-joker-a"), {
-      number: 8,
-      color: "BLUE",
+    placeNumberTileDraftTile(initial, fixtureTileId(initial, "table-joker-a"), {
+      meldIndex: 0,
+      tileIndex: 0,
     }),
     "INITIAL_MELD_TABLE_LOCKED",
   );

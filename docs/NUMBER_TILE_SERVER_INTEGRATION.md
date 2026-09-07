@@ -29,7 +29,7 @@ NumberTileRoomRecord { gameType: NUMBER_TILE, game: NumberTileGameState | null }
 
 `RoomWriteCandidate`도 distributive union이므로 game type과 state의 상관관계를 유지한다. In-memory persistence는 canonical `Room.gameType`으로 exact state adapter를 고르고 silent fallback하지 않는다. 양쪽 adapter가 clone, structural validation과 최소 lifecycle inspection을 소유한다. Persistence는 Room identity, phase coherence, player set, CAS, storage revision, immutable game type과 atomic UoW만 소유한다.
 
-Number adapter는 tiles, pool order, racks, Table/Joker placements, player maps/set, no-play tracker, Turn과 result를 detached clone하고 exact 106-tile conservation과 canonical result를 검증한다. Inspector는 RUNNING의 game/revision/turn/deadline 또는 FINISHED의 game/finishedAt만 반환한다. Number에는 overall game deadline 정보가 없다.
+Number adapter는 tiles, pool order, racks, Table/Joker placements, player maps/set, no-play tracker, Turn과 result를 detached clone하고 exact 106-tile conservation과 canonical result를 검증한다. Joker placement는 bare physical `tileId`/kind만 저장하며 current role은 containing meld에서 derive한다. Obsolete assignment field가 붙은 stored placement는 clone 과정에서 제거해 수용하지 않고 `cloneAndValidate` 경계에서 fail-closed한다. Inspector는 RUNNING의 game/revision/turn/deadline 또는 FINISHED의 game/finishedAt만 반환한다. Number에는 overall game deadline 정보가 없다.
 
 ## 3. Connection capability와 admission
 
@@ -88,7 +88,7 @@ Successful Number resume은 Number-owned offline timeout streak만 0으로 reset
 
 V2는 phase와 game type이 상관된 여섯 branch를 strict하게 검증한다: Hangul/Number 각각 LOBBY, PLAYING, FINISHED. Number LOBBY는 `game = null`; PLAYING은 Number turn; FINISHED는 Number-specific result를 가진다.
 
-Number public game projection은 game ID/revision, Table, pool count, Turn, player별 rack count/initial-meld/forfeit summary를 제공한다. Table ordinary face와 Joker assignment는 공개한다. Viewer private state에는 자기 rack physical descriptors만 있다. Pool Tile IDs/order, 상대 rack Tile IDs, session/persistence/idempotency/scheduler 내부 값은 PLAYING과 FINISHED 모두 노출하지 않는다.
+Number public game projection은 game ID/revision, Table, pool count, Turn, player별 rack count/initial-meld/forfeit summary를 제공한다. Table ordinary face와 bare Joker physical identity는 공개하고, GROUP/RUN의 current role은 public containing meld에서 derive할 수 있다. Arbitrary GROUP color assignment는 projection하지 않는다. Viewer private state에는 자기 rack physical descriptors만 있다. Pool Tile IDs/order, 상대 rack Tile IDs, session/persistence/idempotency/scheduler 내부 값은 PLAYING과 FINISHED 모두 노출하지 않는다.
 
 Number command success와 timeout은 player별 authoritative V2 snapshot을 fan-out한다. Number용 `turn:started`, `game:finished` 또는 새 advisory는 emit하지 않는다. Hangul advisory ordering은 변경하지 않는다.
 
@@ -111,10 +111,22 @@ Number-local TurnDraft/editor는 P7B projection/command를 그대로 사용한�
 P8은 production implementation을 바꾸지 않고 다음 누락된 integration evidence를 추가했다.
 
 - Raw `number:submit`의 exact-29 atomic rejection과 exact-30 RUN/GROUP success를 실제 transport → router → application → domain → UoW → viewer projection 경로로 검증한다.
-- Pre-turn Table의 wrong ordinary Tile로 Joker 역할을 대체하면 atomic reject하고, actor rack의 exact ordinary replacement와 final Table의 동일 Joker `tileId` 재사용은 성공한다.
+- P8 당시에는 pre-turn Joker role의 exact ordinary replacement와 same-Submit reuse를 검증했다. 이 historical contract는 이후 NUMBER_TILE Joker semantics correction으로 superseded됐다. 현재 server는 previous role을 비교하지 않고 final Table의 동일 Joker `tileId` exact-once conservation, rack 이동 금지와 모든 final meld validity를 검증한다.
 - 한 runtime에 Hangul V1 Room과 Number V2 Room을 동시에 두고 `turn:*`/`number:*` 양방향 wrong command와 cross-shaped payload가 상태, revision, idempotency와 advisory를 만들지 않음을 고정한다.
 - 두 Room의 same-request-ID parallel Draw와 replay는 각 Room에서 한 번씩만 commit한다. Hangul은 기존 advisory를 유지하고 Number advisory는 0이다.
 - Recovery scan은 Hangul 60초와 Number 90초 active Turn을 각각 반환하며 overall game deadline은 Hangul만 반환한다.
 - Production-serving harness는 Number A/B explicit create, gameType 없는 join, shared start, idempotent Draw, private rack과 stable-player resume를 실제 HTTP/Socket.IO runtime에서 수행한다.
 
 P8 source/local gate 결과는 shared 75, Web 142, server 699, 총 916 tests다. 사용자가 Railway의 `deafc39` Active/Successful/master/1 Replica를 확인했고, public Hangul/Number create·join·start·Draw·resume, privacy, capability admission과 cross-game isolation을 검증했다. 최종 상태는 `P8 COMPLETE / PUBLIC TWO-GAME VERIFIED`이며 상세 matrix는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)에 있다.
+
+## 11. NUMBER_TILE Joker semantics correction
+
+The Number Submit domain now treats Joker face as a derived property of the submitted final meld rather than persisted recovery state.
+
+- GROUP: ordinary number equality, distinct ordinary colors and unused-color existence; no `assignedColor`/`assignedNumber` input.
+- RUN: common ordinary color and ordered position derive the Joker role deterministically.
+- Rearrangement: previous role may change freely; exact replacement is not required.
+- Conservation: every pre-turn Joker `tileId` must remain exactly once in the final Table and may not move to a rack or pool.
+- Authority: transport/application pass the strict proposed Table through; Number RuleEngine independently resolves physical IDs and validates every final meld.
+
+The Number command/V2 DTO therefore uses a bare Joker placement. Protocol/event/snapshot version names and all Hangul branches remain unchanged. A strict old Number client that has already loaded the assignment-required schema must refresh to the corrected Web bundle; the server does not synthesize a fake GROUP color for compatibility.

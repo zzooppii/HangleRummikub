@@ -30,7 +30,7 @@ This checkpoint improves the existing `NUMBER_TILE` Web experience without chang
   - shorter melds remain incomplete; other shapes remain invalid.
 - User-facing status uses Korean descriptions (`같은 숫자 조합`, `연속 숫자 조합`) instead of requiring rules terminology first.
 - Valid RUNs are displayed and serialized in ascending number order; valid GROUPs use deterministic color order. Only touched source/target melds are normalized, so unrelated canonical Table order cannot create a dirty draft.
-- A Joker with exactly one valid interpretation is assigned automatically. Multiple interpretations expose a picker; stale assignments are re-evaluated after a move. Physical Joker identity is never replaced or duplicated.
+- Joker is a bare physical `tileId`; its current role is derived from the containing meld. GROUP Joker is colorless and never opens a color/number picker. RUN color comes from ordinary tiles and the ordered position derives its number. A move simply re-derives the role, while physical identity is never replaced or duplicated.
 - Undo keeps the existing 50-entry limit, inference/order changes share the same atomic edit history entry, and Reset restores the authoritative baseline. Rack sorting is not draft state.
 
 ## Direct interaction polish
@@ -48,8 +48,8 @@ This checkpoint improves the existing `NUMBER_TILE` Web experience without chang
 
 - An empty Table explains that the first registration must use only the player’s own Tiles and total at least 30 points.
 - Initial-meld mode displays a client-side contribution hint while explicitly stating that the server makes the final decision.
-- Client classification only derives the existing required `meld.kind` for the existing `number:submit` payload. The server still resolves `tileId` against canonical inventory and independently validates meld kind, Joker assignment/recovery, Table conservation, initial-meld threshold, and rack contribution.
-- Duplicate identities, incomplete/invalid melds, and unresolved Joker ambiguity fail closed before serialization. This adds no event, protocol version, or snapshot field.
+- Client classification derives `meld.kind` and ordered RUN intent for the existing `number:submit` payload. The server still resolves `tileId` against canonical inventory and independently validates meld kind, meld-derived Joker role, Table conservation, initial-meld threshold, and rack contribution.
+- Duplicate identities and incomplete/invalid melds fail closed before serialization. Under the canonical ordered RUN representation, Joker position resolves edge meaning (`J,5,6` versus `5,6,J`) without a picker. This adds no event or protocol/snapshot version name.
 
 ## Compatibility boundaries
 
@@ -62,7 +62,7 @@ This checkpoint improves the existing `NUMBER_TILE` Web experience without chang
 
 - An independent A/B production-build flow covered create, invitation/direct join, start, Draw, refresh/resume, own-rack privacy, and opponent rack-count-only projection.
 - Real canonical Draw actions grew both racks through 14, 19, 24, and 30 Tiles. At both 390×844 and 320×568, every checkpoint had zero document/rack horizontal overflow, all Tile rectangles remained inside the rack, and no gameplay control was clipped. The 30-Tile rack wrapped to 6 rows at 390px and 8 rows at 320px.
-- Browser interaction confirmed the three sort modes, selected-Tile identity across sorting, derived same-number classification, unique Joker inference, the ambiguous-Joker picker, server rejection of a locally valid but sub-30 initial meld, large turn/countdown presentation, action feedback, and sound preference control.
+- Browser interaction at the UX Polish 1 checkpoint confirmed the three sort modes, selected-Tile identity across sorting, derived same-number classification, unique Joker inference and the then-current ambiguity picker. The picker observation is historical and is superseded by the Joker semantics correction below; server rejection of a locally valid but sub-30 initial meld, large turn/countdown presentation, action feedback, and sound preference control remain valid evidence.
 - Browser warning/error logs were empty during Number and Hangul A/B flows. Hangul create/join/start/Draw/refresh-resume remained functional, including 14→15 private rack growth and opponent count-only projection.
 - The final automated gate passes typecheck, build, and 1,025 tests (shared 75, Web 170, server 780), including production-serving, Number RuleEngine, V1/V2, privacy, and Hangul lifecycle regression coverage.
 
@@ -74,3 +74,11 @@ This checkpoint improves the existing `NUMBER_TILE` Web experience without chang
 - At an actual 390×844 viewport, 14, 19, 24, and 30-Tile rack checkpoints had no document or rack horizontal overflow (5 columns; 30 Tiles wrapped to 6 rows). A 320×568 checkpoint used 4 columns without overflow, and tap placement remained usable.
 - Draw, refresh/resume, opponent-turn edit disabling, physical-keyboard Enter placement, focus recovery, and clean warning/error logs were verified in the same production-build flow.
 - This interaction pass adds six Web tests, for 1,031 total tests (shared 75, Web 176, server 780). It does not change Number rules, protocol, shared/server production source, dependencies, Hangul behavior, or GEM_CARD P11A.
+
+## Joker semantics correction
+
+- GROUP Joker is a colorless wildcard. `RED 10, BLUE 10, Joker` is valid when an unused color exists, but the editor neither chooses nor persists which unused color it represents.
+- RUN Joker role is derived from the submitted ordered sequence and ordinary Tile faces. `Joker, RED 5, RED 6`, `RED 4, Joker, RED 6`, and `RED 5, RED 6, Joker` derive Joker number 4, 5, and 7 respectively, with no color picker. The Tile itself retains a neutral Joker visual.
+- Dragging or clicking the same physical Joker into another combination re-derives its role. A previous GROUP/RUN role is not editor state and does not constrain the new final Table.
+- The server validates final-state legality: every pre-turn Joker `tileId` remains exactly once in the final Table, cannot move to the rack, and must belong to a valid final meld. Exact old-face replacement is not required.
+- The Number-only command/V2 Joker placement is now bare physical identity. Outer protocol/event/snapshot version names and Hangul contracts remain unchanged, but a strict old Number browser already open on the assignment-required schema must refresh to load the corrected bundle.

@@ -315,6 +315,53 @@ test("NUMBER_TILE V2 LOBBY/PLAYING/FINISHED는 Hangul V1 변환 없이 canonical
   }
 });
 
+test("NUMBER_TILE V2 decoder는 bare Joker meld를 받고 obsolete assignment projection은 거절한다", () => {
+  const group = numberPlayingV2();
+  (group.game as Record<string, unknown>).table = {
+    melds: [{
+      kind: "GROUP",
+      tiles: [
+        { tileId: "number-decoder-red-10", kind: "ORDINARY", number: 10, color: "RED" },
+        { tileId: "number-decoder-blue-10", kind: "ORDINARY", number: 10, color: "BLUE" },
+        { tileId: "number-decoder-group-joker", kind: "JOKER" },
+      ],
+    }],
+  };
+  const run = numberPlayingV2();
+  (run.game as Record<string, unknown>).table = {
+    melds: [{
+      kind: "RUN",
+      tiles: [
+        { tileId: "number-decoder-run-joker", kind: "JOKER" },
+        { tileId: "number-decoder-red-5", kind: "ORDINARY", number: 5, color: "RED" },
+        { tileId: "number-decoder-red-6", kind: "ORDINARY", number: 6, color: "RED" },
+      ],
+    }],
+  };
+
+  for (const input of [group, run]) {
+    const decoded = decodeWebSnapshot(input);
+    assert.equal(decoded.kind, "COMPATIBLE");
+    if (decoded.kind === "COMPATIBLE") {
+      assert.equal(decoded.value.kind, "PLATFORM_V2_NUMBER_TILE");
+    }
+  }
+
+  const obsolete = structuredClone(group);
+  const obsoleteGame = obsolete.game as Record<string, unknown>;
+  const obsoleteTable = obsoleteGame.table as {
+    melds: Array<{ tiles: Array<Record<string, unknown>> }>;
+  };
+  Object.assign(obsoleteTable.melds[0]!.tiles[2]!, {
+    assignedNumber: 10,
+    assignedColor: "BLACK",
+  });
+  assert.deepEqual(decodeWebSnapshot(obsolete), {
+    kind: "INCOMPATIBLE",
+    reason: "INVALID_V2_PROJECTION",
+  });
+});
+
 test("공통 Room shell은 Number game payload를 해석하지 않고 canonical identity/version만 투영한다", () => {
   const decoded = requireCompatible(numberPlayingV2());
   assert.equal(decoded.kind, "PLATFORM_V2_NUMBER_TILE");

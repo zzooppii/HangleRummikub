@@ -43,8 +43,8 @@ const USER_ERROR_MESSAGES = {
   TABLE_REARRANGEMENT_NOT_ALLOWED:
     "첫 등록을 마치기 전에는 기존 테이블을 바꿀 수 없습니다.",
   NO_NEW_RACK_TILE: "내 숫자 타일을 한 개 이상 새로 사용해야 합니다.",
-  INVALID_JOKER_ASSIGNMENT: "조커가 나타내는 숫자와 색상을 확인해주세요.",
-  INVALID_JOKER_RECOVERY: "조커 회수와 같은 턴 재사용 조건을 확인해주세요.",
+  INVALID_JOKER_ASSIGNMENT: "조커가 포함된 조합을 확인해주세요.",
+  INVALID_JOKER_RECOVERY: "조커가 포함된 최종 조합을 확인해주세요.",
   WORD_NOT_ALLOWED: "허용된 단어가 아닙니다.",
   RULE_VIOLATION: "현재 게임 규칙에 맞지 않는 배치입니다.",
   TEMPORARILY_UNAVAILABLE:

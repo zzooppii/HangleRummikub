@@ -12,6 +12,7 @@ import type {
 import {
   classifyNumberTileDraftMeld,
   normalizeNumberTileDraftMeld,
+  numberTileInitialMeldValueHint,
   numberTilePlacementLabel,
   sortNumberTileRackTiles,
 } from "../features/number-tile/number-tile-ux.js";
@@ -46,8 +47,6 @@ function joker(tileId = "joker"): NumberTileDraftJokerPlacement {
   return {
     tileId: tileId as TileId,
     kind: "JOKER",
-    assignment: null,
-    assignmentSource: null,
     origin: "SELF_RACK",
   };
 }
@@ -96,11 +95,11 @@ test("두 타일은 incomplete이고 규칙에 맞지 않는 세 타일은 inval
   );
 });
 
-test("RUN의 유일한 Joker 해석은 자동 지정하고 readable number order로 정리한다", () => {
+test("RUN의 Joker 역할은 ordered position에서 유도되고 placement에는 저장되지 않는다", () => {
   const normalized = normalizeNumberTileDraftMeld(meld([
-    ordinary("red-6", 6, "RED"),
-    joker(),
     ordinary("red-4", 4, "RED"),
+    joker(),
+    ordinary("red-6", 6, "RED"),
   ]));
   assert.equal(normalized.kind, "RUN");
   assert.deepEqual(normalized.tiles.map((tile) => tile.tileId), [
@@ -113,70 +112,96 @@ test("RUN의 유일한 Joker 해석은 자동 지정하고 readable number order
   if (placedJoker?.kind !== "JOKER") {
     throw new Error("Expected the inferred Joker in the middle of the RUN.");
   }
-  assert.deepEqual(placedJoker.assignment, { number: 5, color: "RED" });
-  assert.equal(placedJoker.assignmentSource, "INFERRED");
-});
-
-test("same-number Joker 해석이 여러 개면 자동 선택하지 않고 후보를 모두 보존한다", () => {
-  const classification = classifyNumberTileDraftMeld(meld([
-    ordinary("red-9", 9, "RED"),
-    ordinary("blue-9", 9, "BLUE"),
-    joker(),
-  ]));
-  assert.equal(classification.status, "AMBIGUOUS_JOKER");
-  if (classification.status !== "AMBIGUOUS_JOKER") {
-    throw new Error("Expected ambiguous Joker candidates.");
-  }
+  assert.deepEqual(placedJoker, {
+    tileId: "joker",
+    kind: "JOKER",
+    origin: "SELF_RACK",
+  });
+  const classification = classifyNumberTileDraftMeld(normalized);
   assert.deepEqual(
-    classification.interpretations.map((candidate) => candidate.jokerAssignment),
-    [
-      { number: 9, color: "BLACK" },
-      { number: 9, color: "ORANGE" },
-    ],
+    classification.status === "VALID"
+      ? classification.interpretation.jokerRole
+      : null,
+    { number: 5, color: "RED" },
   );
-  const normalized = normalizeNumberTileDraftMeld(meld([
+});
+
+test("GROUP Joker는 colorless wildcard로 즉시 분류되고 ordinary 확장에도 재배정이 없다", () => {
+  const threeTiles = meld([
     ordinary("red-9", 9, "RED"),
     ordinary("blue-9", 9, "BLUE"),
     joker(),
+  ]);
+  const classification = classifyNumberTileDraftMeld(threeTiles);
+  assert.equal(classification.status, "VALID");
+  assert.deepEqual(
+    classification.status === "VALID"
+      ? classification.interpretation
+      : null,
+    { kind: "GROUP", jokerRole: { number: 9, color: null } },
+  );
+  const expanded = normalizeNumberTileDraftMeld(meld([
+    ...threeTiles.tiles,
+    ordinary("black-9", 9, "BLACK"),
   ]));
-  assert.equal(normalized.kind, null);
-  assert.equal(normalized.tiles[2]?.kind === "JOKER" && normalized.tiles[2].assignment, null);
+  assert.equal(expanded.kind, "GROUP");
+  assert.deepEqual(expanded.tiles.map((tile) => tile.tileId), [
+    "red-9",
+    "blue-9",
+    "black-9",
+    "joker",
+  ]);
 });
 
-test("stale Joker assignment는 unique face로 재추론하고 ambiguous이면 picker 상태로 되돌린다", () => {
-  const staleUnique = normalizeNumberTileDraftMeld(meld([
-    ordinary("red-4", 4, "RED"),
-    {
-      ...joker(),
-      assignment: { number: 10, color: "BLUE" },
-      assignmentSource: "CANONICAL",
-    },
-    ordinary("red-6", 6, "RED"),
+test("RUN edge Joker는 위치로 반대 역할을 구분하고 invalid gap은 거절한다", () => {
+  const leading = classifyNumberTileDraftMeld(meld([
+    joker("leading"),
+    ordinary("red-5-a", 5, "RED"),
+    ordinary("red-6-a", 6, "RED"),
   ]));
-  assert.equal(staleUnique.kind, "RUN");
-  const inferred = staleUnique.tiles[1];
-  assert.equal(inferred?.kind, "JOKER");
-  if (inferred?.kind !== "JOKER") {
-    throw new Error("Expected a re-inferred Joker.");
-  }
-  assert.deepEqual(inferred.assignment, { number: 5, color: "RED" });
-  assert.equal(inferred.assignmentSource, "INFERRED");
+  const trailing = classifyNumberTileDraftMeld(meld([
+    ordinary("red-5-b", 5, "RED"),
+    ordinary("red-6-b", 6, "RED"),
+    joker("trailing"),
+  ]));
+  assert.deepEqual(
+    leading.status === "VALID" ? leading.interpretation.jokerRole : null,
+    { number: 4, color: "RED" },
+  );
+  assert.deepEqual(
+    trailing.status === "VALID" ? trailing.interpretation.jokerRole : null,
+    { number: 7, color: "RED" },
+  );
+  assert.deepEqual(
+    classifyNumberTileDraftMeld(meld([
+      ordinary("red-4-gap", 4, "RED"),
+      joker("gap"),
+      ordinary("red-7-gap", 7, "RED"),
+    ])),
+    { status: "INVALID" },
+  );
+});
 
-  const staleAmbiguous = normalizeNumberTileDraftMeld(meld([
-    ordinary("red-9", 9, "RED"),
-    ordinary("blue-9", 9, "BLUE"),
-    {
-      ...joker("stale-joker"),
-      assignment: { number: 8, color: "RED" },
-      assignmentSource: "USER",
-    },
-  ]));
-  assert.equal(staleAmbiguous.kind, null);
-  const unresolved = staleAmbiguous.tiles[2];
-  assert.equal(unresolved?.kind, "JOKER");
+test("initial meld 표시 점수도 colorless GROUP과 ordered RUN Joker number를 사용한다", () => {
   assert.equal(
-    unresolved?.kind === "JOKER" && unresolved.assignment,
-    null,
+    numberTileInitialMeldValueHint([
+      meld([
+        ordinary("group-red-10", 10, "RED"),
+        ordinary("group-blue-10", 10, "BLUE"),
+        joker("group-joker"),
+      ]),
+    ]),
+    30,
+  );
+  assert.equal(
+    numberTileInitialMeldValueHint([
+      meld([
+        ordinary("run-red-10", 10, "RED"),
+        ordinary("run-red-11", 11, "RED"),
+        joker("run-joker"),
+      ]),
+    ]),
+    33,
   );
 });
 
@@ -235,19 +260,9 @@ test("rack 정렬은 view-only이며 기본/숫자/색상 순서와 Joker-last�
   assert.equal(new Set(sortNumberTileRackTiles(tiles, "COLOR").map((tile) => tile.tileId)).size, tiles.length);
 });
 
-test("색상 marker를 보완하는 accessible tile label은 ordinary와 assigned Joker를 구분한다", () => {
+test("색상 marker를 보완하는 accessible tile label은 ordinary와 neutral Joker를 구분한다", () => {
   assert.equal(numberTilePlacementLabel(ordinary("red-7", 7, "RED")), "빨강 7");
   assert.equal(numberTilePlacementLabel(joker()), "조커");
-  assert.equal(
-    numberTilePlacementLabel({
-      tileId: "assigned-joker" as TileId,
-      kind: "JOKER",
-      assignment: { number: 10, color: "RED" },
-      assignmentSource: "USER",
-      origin: "SELF_RACK",
-    }),
-    "조커, 빨강 10으로 사용 중",
-  );
 });
 
 test("turn sound는 새 self turnId에만 한 번이고 same-turn/reconnect/presence에는 반복하지 않는다", () => {

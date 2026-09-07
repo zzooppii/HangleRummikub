@@ -73,11 +73,7 @@ export function createNumberTileSubmitFingerprint(
     turnId,
     proposedTable.melds.map((meld) => [
       meld.kind,
-      meld.tiles.map((tile) =>
-        tile.kind === "JOKER"
-          ? [tile.tileId, tile.kind, tile.assignedNumber, tile.assignedColor]
-          : [tile.tileId, tile.kind],
-      ),
+      meld.tiles.map((tile) => [tile.tileId, tile.kind]),
     ]),
   ]);
 }
@@ -100,8 +96,6 @@ function mapRuleFailure(error: NumberTileRuleFailure): ErrorDto {
       return NUMBER_TILE_COMMAND_ERRORS.NO_NEW_RACK_TILE;
     case "INVALID_JOKER_ASSIGNMENT":
       return NUMBER_TILE_COMMAND_ERRORS.INVALID_JOKER_ASSIGNMENT;
-    case "INVALID_JOKER_RECOVERY":
-      return NUMBER_TILE_COMMAND_ERRORS.INVALID_JOKER_RECOVERY;
   }
 }
 

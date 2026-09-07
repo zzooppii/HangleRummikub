@@ -28,6 +28,7 @@ import {
   NumberTileFinishedPlatformSnapshotV2Schema,
   NumberTilePlayingPlatformSnapshotV2Schema,
   NumberTileProposedTableSchema,
+  NumberTileTableV2Schema,
   PlatformSnapshotV2Schema,
   ProposedWordGroupSchema,
   ROOM_CODE_ALPHABET,
@@ -4390,8 +4391,6 @@ test("Number Tile protocol v1 command는 strict complete Table과 concurrency id
           {
             tileId: "number_proposed_joker",
             kind: "JOKER" as const,
-            assignedNumber: 3 as const,
-            assignedColor: "RED" as const,
           },
         ],
       },
@@ -4467,6 +4466,34 @@ test("Number Tile protocol v1 command는 strict complete Table과 concurrency id
         },
       },
     },
+    {
+      ...submit,
+      payload: {
+        proposedTable: {
+          melds: [
+            {
+              kind: "GROUP",
+              tiles: [
+                {
+                  tileId: "number_obsolete_red_10",
+                  kind: "ORDINARY",
+                },
+                {
+                  tileId: "number_obsolete_blue_10",
+                  kind: "ORDINARY",
+                },
+                {
+                  tileId: "number_obsolete_joker_assignment",
+                  kind: "JOKER",
+                  assignedNumber: 10,
+                  assignedColor: "RED",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
   ]) {
     assert.equal(validateNumberSubmitCommand(invalid).ok, false);
   }
@@ -4495,6 +4522,93 @@ test("Number Tile protocol v1 command는 strict complete Table과 concurrency id
   };
   assert.equal(
     v.safeParse(NumberTileProposedTableSchema, oversizedTable).success,
+    false,
+  );
+});
+
+test("Number V2 Table은 colorless GROUP Joker와 ordered RUN Joker role만 허용한다", () => {
+  const colorlessGroup = {
+    melds: [
+      {
+        kind: "GROUP",
+        tiles: [
+          { tileId: "number_group_red_10", kind: "ORDINARY", number: 10, color: "RED" },
+          { tileId: "number_group_blue_10", kind: "ORDINARY", number: 10, color: "BLUE" },
+          { tileId: "number_group_joker", kind: "JOKER" },
+        ],
+      },
+    ],
+  };
+  const orderedRun = {
+    melds: [
+      {
+        kind: "RUN",
+        tiles: [
+          { tileId: "number_run_red_4", kind: "ORDINARY", number: 4, color: "RED" },
+          { tileId: "number_run_joker", kind: "JOKER" },
+          { tileId: "number_run_red_6", kind: "ORDINARY", number: 6, color: "RED" },
+        ],
+      },
+    ],
+  };
+
+  assert.equal(v.safeParse(NumberTileTableV2Schema, colorlessGroup).success, true);
+  assert.equal(v.safeParse(NumberTileTableV2Schema, orderedRun).success, true);
+  assert.equal(
+    v.safeParse(NumberTileTableV2Schema, {
+      melds: [{
+        kind: "RUN",
+        tiles: [
+          { tileId: "number_run_leading_joker", kind: "JOKER" },
+          { tileId: "number_run_red_5_leading", kind: "ORDINARY", number: 5, color: "RED" },
+          { tileId: "number_run_red_6_leading", kind: "ORDINARY", number: 6, color: "RED" },
+        ],
+      }],
+    }).success,
+    true,
+  );
+  assert.equal(
+    v.safeParse(NumberTileTableV2Schema, {
+      melds: [{
+        kind: "RUN",
+        tiles: [
+          { tileId: "number_run_red_5", kind: "ORDINARY", number: 5, color: "RED" },
+          { tileId: "number_run_red_6_b", kind: "ORDINARY", number: 6, color: "RED" },
+          { tileId: "number_run_edge_joker", kind: "JOKER" },
+        ],
+      }],
+    }).success,
+    true,
+  );
+  assert.equal(
+    v.safeParse(NumberTileTableV2Schema, {
+      melds: [{
+        kind: "RUN",
+        tiles: [
+          { tileId: "number_run_red_4_gap", kind: "ORDINARY", number: 4, color: "RED" },
+          { tileId: "number_run_gap_joker", kind: "JOKER" },
+          { tileId: "number_run_red_7_gap", kind: "ORDINARY", number: 7, color: "RED" },
+        ],
+      }],
+    }).success,
+    false,
+  );
+  assert.equal(
+    v.safeParse(NumberTileTableV2Schema, {
+      melds: [{
+        kind: "GROUP",
+        tiles: [
+          { tileId: "number_old_red_10", kind: "ORDINARY", number: 10, color: "RED" },
+          { tileId: "number_old_blue_10", kind: "ORDINARY", number: 10, color: "BLUE" },
+          {
+            tileId: "number_old_assigned_joker",
+            kind: "JOKER",
+            assignedNumber: 10,
+            assignedColor: "BLACK",
+          },
+        ],
+      }],
+    }).success,
     false,
   );
 });

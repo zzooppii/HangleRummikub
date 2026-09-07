@@ -1,8 +1,4 @@
 import {
-  NUMBER_TILE_COLORS,
-  NUMBER_TILE_NUMBERS,
-  type NumberTileColor,
-  type NumberTileNumber,
   type NumberTilePlayingPlatformSnapshotV2,
   type NumberTilePrivateRackTileViewV2,
   type NumberTileTablePlacementV2,
@@ -21,16 +17,14 @@ import {
 import {
   findNumberTileDraftReusableEmptyMeldIndex,
   findNumberTileDraftTile,
-  type NumberTileDraftMeld,
   type NumberTileDraftPlacement,
   type NumberTileTurnDraft,
 } from "./number-tile-turn-draft.js";
 import {
-  NUMBER_TILE_COLOR_LABELS,
   NUMBER_TILE_COLOR_MARKERS,
   classifyNumberTileDraftMeld,
-  interpretationKey,
   numberTileDraftMeldIsValid,
+  numberTileInitialMeldValueHint,
   numberTilePlacementLabel,
   sortNumberTileRackTiles,
   type NumberTileMeldClassification,
@@ -57,25 +51,14 @@ type TileButtonProps = Readonly<{
 }>;
 
 function TileButton(props: TileButtonProps) {
-  const jokerAssignment =
-    props.tile.kind !== "JOKER"
-      ? null
-      : "assignment" in props.tile
-        ? props.tile.assignment
-        : "assignedNumber" in props.tile
-          ? {
-              number: props.tile.assignedNumber,
-              color: props.tile.assignedColor,
-            }
-          : null;
   const color =
     props.tile.kind === "ORDINARY"
       ? props.tile.color
-      : jokerAssignment?.color ?? null;
+      : null;
   const number =
     props.tile.kind === "ORDINARY"
       ? props.tile.number
-      : jokerAssignment?.number ?? null;
+      : null;
   const label = numberTilePlacementLabel(props.tile);
 
   return (
@@ -154,8 +137,6 @@ function meldStatusLabel(classification: NumberTileMeldClassification): string {
         : "✓ 연속 숫자 조합";
     case "INCOMPLETE":
       return "● 조합을 만드는 중";
-    case "AMBIGUOUS_JOKER":
-      return "! 조커 값을 선택해주세요";
     case "INVALID":
       return "! 아직 유효한 조합이 아닙니다";
   }
@@ -168,62 +149,8 @@ function canonicalMeldClassification(
     ? { status: "INVALID" }
     : {
     status: "VALID",
-    interpretation: { kind: meld.kind, jokerAssignment: null },
+    interpretation: { kind: meld.kind, jokerRole: null },
   };
-}
-
-function initialMeldHint(draft: NumberTileTurnDraft): number {
-  return draft.table.melds.reduce(
-    (total, meld) =>
-      total +
-      meld.tiles.reduce((meldTotal, tile) => {
-        if (tile.origin !== "SELF_RACK") {
-          return meldTotal;
-        }
-        if (tile.kind === "ORDINARY") {
-          return meldTotal + tile.number;
-        }
-        return meldTotal + (tile.assignment?.number ?? 0);
-      }, 0),
-    0,
-  );
-}
-
-function hasUnassignedJoker(draft: NumberTileTurnDraft): boolean {
-  return draft.table.melds.some((meld) =>
-    meld.tiles.some(
-      (tile) => tile.kind === "JOKER" && tile.assignment === null,
-    ),
-  );
-}
-
-function numberFromControl(value: string): NumberTileNumber {
-  switch (Number(value)) {
-    case 1: return 1;
-    case 2: return 2;
-    case 3: return 3;
-    case 4: return 4;
-    case 5: return 5;
-    case 6: return 6;
-    case 7: return 7;
-    case 8: return 8;
-    case 9: return 9;
-    case 10: return 10;
-    case 11: return 11;
-    case 12: return 12;
-    case 13: return 13;
-    default: return 1;
-  }
-}
-
-function colorFromControl(value: string): NumberTileColor {
-  switch (value) {
-    case "RED": return "RED";
-    case "BLUE": return "BLUE";
-    case "BLACK": return "BLACK";
-    case "ORANGE": return "ORANGE";
-    default: return "RED";
-  }
 }
 
 export type NumberTileTurnDraftEditorProps = Readonly<{
@@ -255,7 +182,6 @@ export function NumberTileTurnDraftEditor(
   const [confirmation, setConfirmation] = useState<ConfirmAction | null>(null);
   const [rackSortMode, setRackSortMode] =
     useState<NumberTileRackSortMode>("DEFAULT");
-  const [editingAssignedJoker, setEditingAssignedJoker] = useState(false);
   const [focusRequestVersion, setFocusRequestVersion] = useState(0);
   const drawButtonRef = useRef<HTMLButtonElement>(null);
   const passButtonRef = useRef<HTMLButtonElement>(null);
@@ -313,7 +239,6 @@ export function NumberTileTurnDraftEditor(
     setDropTarget(null);
     setInteractionMessage(null);
     setConfirmation(null);
-    setEditingAssignedJoker(false);
     pendingFocusTargetRef.current = null;
   }, [draftBaseline]);
 
@@ -341,10 +266,6 @@ export function NumberTileTurnDraftEditor(
       setDropTarget(null);
     }
   }, [props.controller.canEdit]);
-
-  useEffect(() => {
-    setEditingAssignedJoker(false);
-  }, [selectedTileId]);
 
   function isMeldLocked(meldIndex: number): boolean {
     const meld = draft?.table.melds[meldIndex];
@@ -390,15 +311,6 @@ export function NumberTileTurnDraftEditor(
       source?.source === "TABLE" &&
       draft.table.melds[source.meldIndex]?.tiles.length === 1;
     return draft.table.melds.length - (prunesSourceMeld ? 1 : 0);
-  }
-
-  function selectPlacedJokerOrClear(tileId: TileId): void {
-    if (draft === null) {
-      setSelectedTileId(null);
-      return;
-    }
-    const source = findNumberTileDraftTile(draft, tileId);
-    setSelectedTileId(source?.tile.kind === "JOKER" ? tileId : null);
   }
 
   function clearDragState(): void {
@@ -492,7 +404,7 @@ export function NumberTileTurnDraftEditor(
     props.controller.clearFeedback();
     props.controller.appendTileToMeld(tileId, meldIndex);
     setActiveMeldIndex(finalMeldIndex);
-    selectPlacedJokerOrClear(tileId);
+    setSelectedTileId(null);
     setInteractionMessage(null);
   }
 
@@ -512,7 +424,7 @@ export function NumberTileTurnDraftEditor(
     props.controller.clearFeedback();
     props.controller.placeTileInNewMeld(tileId);
     setActiveMeldIndex(finalMeldIndex);
-    selectPlacedJokerOrClear(tileId);
+    setSelectedTileId(null);
     setInteractionMessage(null);
   }
 
@@ -920,17 +832,6 @@ export function NumberTileTurnDraftEditor(
     dragged.tile.origin === "CANONICAL_TABLE";
   const currentDropTargetKey =
     dropTarget === null ? null : dropTargetKey(dropTarget);
-  const selectedJoker =
-    selected?.source === "TABLE" && selected.tile.kind === "JOKER"
-      ? selected.tile
-      : null;
-  const selectedJokerMeld: NumberTileDraftMeld | null =
-    selected?.source === "TABLE" && draft !== null
-      ? draft.table.melds[selected.meldIndex] ?? null
-      : null;
-  const selectedJokerClassification = selectedJokerMeld === null
-    ? null
-    : classifyNumberTileDraftMeld(selectedJokerMeld);
   const rackTiles =
     draft?.availableRackTiles ?? props.snapshot.game.privateState.rack;
   const displayedRackTiles = useMemo(
@@ -1012,7 +913,9 @@ export function NumberTileTurnDraftEditor(
       {draft?.mode === "INITIAL_MELD" ? (
         <p className="number-rule-hint">
           첫 등록: 내 타일만 사용해 합계 30점 이상
-          <strong>현재 조합 점수 {initialMeldHint(draft)} / 30</strong>
+          <strong>
+            현재 조합 점수 {numberTileInitialMeldValueHint(draft.table.melds)} / 30
+          </strong>
           <small>최종 유효성은 서버가 판정합니다.</small>
         </p>
       ) : draft?.mode === "REARRANGEMENT" ? (
@@ -1311,88 +1214,6 @@ export function NumberTileTurnDraftEditor(
         ) : null}
       </section>
 
-      {selectedJoker !== null ? (
-        <fieldset className="joker-assignment" disabled={!props.controller.canEdit}>
-          <legend>선택한 조커가 나타내는 값</legend>
-          {selectedJoker.assignmentSource === "INFERRED" &&
-          selectedJoker.assignment !== null ? (
-            <p className="joker-inference-note">
-              자동 지정: {NUMBER_TILE_COLOR_LABELS[selectedJoker.assignment.color]} {selectedJoker.assignment.number}
-            </p>
-          ) : selectedJoker.assignment !== null ? (
-            <p className="joker-inference-note">
-              현재 값: {NUMBER_TILE_COLOR_LABELS[selectedJoker.assignment.color]} {selectedJoker.assignment.number}
-            </p>
-          ) : selectedJokerClassification?.status === "AMBIGUOUS_JOKER" ? (
-            <div className="joker-candidate-picker" role="group" aria-label="가능한 조커 값">
-              <p>가능한 값이 여러 개입니다. 하나를 선택하세요.</p>
-              {selectedJokerClassification.interpretations.map((interpretation) => {
-                const assignment = interpretation.jokerAssignment;
-                return assignment === null ? null : (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    key={interpretationKey(interpretation)}
-                    onClick={() => props.controller.assignJoker(
-                      selectedJoker.tileId,
-                      assignment.number,
-                      assignment.color,
-                    )}
-                  >
-                    {NUMBER_TILE_COLOR_LABELS[assignment.color]} {assignment.number}
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="joker-inference-note">
-              타일을 더 놓으면 가능한 값이 하나일 때 자동으로 지정됩니다.
-            </p>
-          )}
-
-          {selectedJoker.assignment !== null ? (
-            <button
-              className="text-button"
-              type="button"
-              aria-expanded={editingAssignedJoker}
-              onClick={() => setEditingAssignedJoker((current) => !current)}
-            >
-              조커 값 직접 변경
-            </button>
-          ) : null}
-          {selectedJoker.assignment !== null && editingAssignedJoker ? (
-            <div className="joker-manual-picker">
-              <label>
-                숫자
-                <select
-                  value={selectedJoker.assignment.number}
-                  onChange={(event) => props.controller.assignJoker(
-                    selectedJoker.tileId,
-                    numberFromControl(event.target.value),
-                    selectedJoker.assignment?.color ?? "RED",
-                  )}
-                >
-                  {NUMBER_TILE_NUMBERS.map((number) => <option key={number} value={number}>{number}</option>)}
-                </select>
-              </label>
-              <label>
-                색상
-                <select
-                  value={selectedJoker.assignment.color}
-                  onChange={(event) => props.controller.assignJoker(
-                    selectedJoker.tileId,
-                    selectedJoker.assignment?.number ?? 1,
-                    colorFromControl(event.target.value),
-                  )}
-                >
-                  {NUMBER_TILE_COLORS.map((color) => <option key={color} value={color}>{NUMBER_TILE_COLOR_LABELS[color]}</option>)}
-                </select>
-              </label>
-            </div>
-          ) : null}
-        </fieldset>
-      ) : null}
-
       {draft !== null ? (
         <div className="number-submit-panel">
           <button
@@ -1405,11 +1226,7 @@ export function NumberTileTurnDraftEditor(
             {props.submitPending ? "제출 중..." : "조합 제출"}
           </button>
           {!draft.table.melds.every(numberTileDraftMeldIsValid) ? (
-            <p>
-              {hasUnassignedJoker(draft)
-                ? "조커 값을 정하고 모든 조합을 완성해주세요."
-                : "모든 조합을 유효하게 완성해주세요."}
-            </p>
+            <p>모든 조합을 유효하게 완성해주세요.</p>
           ) : null}
         </div>
       ) : null}

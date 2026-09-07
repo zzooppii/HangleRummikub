@@ -214,8 +214,8 @@ test("Number editor는 drag 외에도 native keyboard/touch controls와 색상 �
   assert.match(numberEditorSource, /confirmationButtonRef\.current\?\.focus\(\)/u);
   assert.match(numberEditorSource, /drawButtonRef\.current/u);
   assert.match(numberEditorSource, /passButtonRef\.current/u);
-  assert.match(numberEditorSource, /"assignedNumber" in props\.tile/u);
-  assert.match(numberEditorSource, /props\.tile\.assignedColor/u);
+  assert.doesNotMatch(numberEditorSource, /assignedNumber|assignedColor/u);
+  assert.match(numberEditorSource, /props\.tile\.kind === "JOKER"/u);
 });
 
 test("Number rack은 horizontal scroll 대신 responsive grid로 감싸고 view-only 정렬을 제공한다", () => {
@@ -253,7 +253,9 @@ test("Number 조합 UX는 하나의 생성 action과 derived classification만 �
   assert.match(numberEditorSource, /✓ 연속 숫자 조합/u);
   assert.match(numberEditorSource, /최종 유효성은 서버가 판정합니다/u);
   assert.match(numberUxSource, /classifyNumberTileDraftMeld/u);
-  assert.match(numberUxSource, /status:\s*"AMBIGUOUS_JOKER"/u);
+  assert.doesNotMatch(numberUxSource, /AMBIGUOUS_JOKER/u);
+  assert.match(numberUxSource, /jokerRole:\s*\{/u);
+  assert.match(numberUxSource, /color:\s*null/u);
 });
 
 test("Number pointer drag route는 whole meld/new meld/rack target과 physical tileId를 사용한다", () => {
@@ -382,7 +384,7 @@ test("Number draft is preserved but editor input is locked while authority comma
     numberEditorSource,
     /!props\.controller\.canEdit && confirmation !== null[\s\S]*setConfirmation\(null\)/u,
   );
-  assert.match(numberEditorSource, /fieldset className="joker-assignment" disabled=\{!props\.controller\.canEdit\}/u);
+  assert.doesNotMatch(numberEditorSource, /joker-assignment|assignJoker/u);
   assert.match(
     appSource,
     /props\.commandRetryKind === null \|\| props\.commandRetryKind === "SUBMIT"/u,

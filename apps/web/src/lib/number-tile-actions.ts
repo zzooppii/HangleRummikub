@@ -59,16 +59,9 @@ export function serializeNumberTileTurnDraft(
       }
       serializedTileIds.add(tile.tileId);
       if (tile.kind === "JOKER") {
-        const assignment =
-          tile.assignment ?? classification.interpretation.jokerAssignment;
-        if (assignment === null) {
-          return null;
-        }
         tiles.push({
           tileId: tile.tileId,
           kind: "JOKER",
-          assignedNumber: assignment.number,
-          assignedColor: assignment.color,
         });
       } else {
         tiles.push({ tileId: tile.tileId, kind: "ORDINARY" });

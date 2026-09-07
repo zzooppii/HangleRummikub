@@ -44,7 +44,10 @@ import {
   planNumberTilePresenceRestored,
 } from "./games/number-tile/application/number-tile-player-lifecycle-actions.js";
 import { NumberTileStartService } from "./games/number-tile/application/number-tile-start-service.js";
-import { NumberTileSubmitService } from "./games/number-tile/application/number-tile-submit-service.js";
+import {
+  NumberTileSubmitService,
+  createNumberTileSubmitFingerprint,
+} from "./games/number-tile/application/number-tile-submit-service.js";
 import { NumberTileTimeoutService } from "./games/number-tile/application/number-tile-timeout-service.js";
 import { projectNumberTileV2Game } from "./games/number-tile/compatibility/number-tile-v2-game-projector.js";
 import type { PlayingNumberTileGameState } from "./games/number-tile/domain/game-state.js";
@@ -82,6 +85,46 @@ class ImmediateRoomLane implements RoomMutationSerialExecutor {
 const immediateRoomLane = new ImmediateRoomLane();
 
 const alwaysCurrent = Object.freeze({ isCurrent: () => true });
+
+test("Number Submit fingerprint는 bare Joker physical identity와 ordered role position을 보존한다", () => {
+  const currentRevision = v.parse(GameRevisionSchema, 4);
+  const currentTurnId = v.parse(TurnIdSchema, "number-fingerprint-turn");
+  const joker = v.parse(TileIdSchema, "number-fingerprint-joker");
+  const redFive = v.parse(TileIdSchema, "number-fingerprint-red-5");
+  const redSix = v.parse(TileIdSchema, "number-fingerprint-red-6");
+  const leading = createNumberTileSubmitFingerprint(
+    currentRevision,
+    currentTurnId,
+    {
+      melds: [{
+        kind: "RUN",
+        tiles: [
+          { tileId: joker, kind: "JOKER" },
+          { tileId: redFive, kind: "ORDINARY" },
+          { tileId: redSix, kind: "ORDINARY" },
+        ],
+      }],
+    },
+  );
+  const trailing = createNumberTileSubmitFingerprint(
+    currentRevision,
+    currentTurnId,
+    {
+      melds: [{
+        kind: "RUN",
+        tiles: [
+          { tileId: redFive, kind: "ORDINARY" },
+          { tileId: redSix, kind: "ORDINARY" },
+          { tileId: joker, kind: "JOKER" },
+        ],
+      }],
+    },
+  );
+
+  assert.doesNotMatch(leading, /assignedNumber|assignedColor/u);
+  assert.notEqual(leading, trailing);
+  assert.match(leading, /number-fingerprint-joker/u);
+});
 
 class LastIndexRandomSource implements RandomSource {
   calls = 0;
@@ -1282,7 +1325,7 @@ test("normal Number Submit commits a whole-table RUN rearrangement while table-o
   });
 });
 
-test("Number Submit commits exact Joker replacement and same-Submit reassignment through persistence", async () => {
+test("Number Submit persists a freely rearranged bare Joker by physical identity", async () => {
   const harness = await createStartedHarness();
   const actorPlayerId = harness.room.game.turn.activePlayerId;
   const used = new Set<TileId>();
@@ -1304,8 +1347,6 @@ test("Number Submit commits exact Joker replacement and same-Submit reassignment
           {
             tileId: joker,
             kind: "JOKER",
-            assignedColor: "RED",
-            assignedNumber: 6,
           },
           ordinaryPlacement(red7),
         ],
@@ -1338,8 +1379,6 @@ test("Number Submit commits exact Joker replacement and same-Submit reassignment
           {
             tileId: joker,
             kind: "JOKER",
-            assignedColor: "ORANGE",
-            assignedNumber: 9,
           },
         ],
       },
@@ -1366,8 +1405,6 @@ test("Number Submit commits exact Joker replacement and same-Submit reassignment
   assert.deepEqual(jokerPlacement, {
     tileId: joker,
     kind: "JOKER",
-    assignedColor: "ORANGE",
-    assignedNumber: 9,
   });
   assert.equal(stored.game.racks.get(actorPlayerId)?.includes(joker), false);
   assert.equal(stored.game.racks.get(actorPlayerId)?.includes(red6), false);
@@ -1419,8 +1456,6 @@ test("Number Submit gives RACK_EMPTY terminal precedence and persists its canoni
             {
               tileId: joker,
               kind: "JOKER",
-              assignedColor: "ORANGE",
-              assignedNumber: 7,
             },
           ],
         },

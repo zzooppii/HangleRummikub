@@ -8,7 +8,7 @@
 
 P7A는 `apps/server/src/games/number-tile/domain/`에 framework-independent Number Tile domain만 추가했다. P7B는 이 domain을 game-owned application/compatibility boundary를 통해 Room, persistence, registry, Socket.IO와 PlatformSnapshotV2에 연결했다. Domain 자체는 여전히 transport, persistence implementation, composition root와 Web을 import하지 않는다.
 
-Hangul의 Board, WordGroup, RuleEngine, inventory, Joker recovery와 result를 import하거나 상속하지 않는다. 현재 두 구현 사이의 유사성은 P9 전까지 platform abstraction으로 승격하지 않는다.
+Hangul의 Board, WordGroup, RuleEngine, inventory, Joker semantics와 result를 import하거나 상속하지 않는다. 현재 두 구현 사이의 유사성은 platform abstraction으로 승격하지 않는다.
 
 ## 2. Concrete model
 
@@ -24,7 +24,7 @@ games/number-tile/domain/
   game-state.ts       Number-only initial state와 90초 Turn
 ```
 
-Ordinary physical Tile은 opaque `tileId`, `kind = ORDINARY`, canonical `color`, canonical `number`를 가진다. Joker는 `tileId`와 `kind = JOKER`만 가지며 canonical face가 없다. Joker의 `assignedColor`와 `assignedNumber`는 Table placement에만 존재한다. Stable meld ID는 없다.
+Ordinary physical Tile은 opaque `tileId`, `kind = ORDINARY`, canonical `color`, canonical `number`를 가진다. Joker는 `tileId`와 `kind = JOKER`만 가지며 canonical face가 없다. Table placement도 bare Joker physical identity만 저장하고 role은 containing meld에서 derive한다. Stable meld ID는 없다.
 
 Inventory는 `RED/BLUE/BLACK/ORANGE` × 1~13 × 2 ordinary 104장과 Joker 2장, 총 106장이다. Inventory 생성에는 `generateTileId`만 요구한다. 초기 state factory는 좁힌 ID generator, `RandomSource`, `Clock`을 주입받고 system time/random을 직접 읽지 않는다. Nontrivial injected shuffle도 동일 입력에서 같은 immutable turn order를 재현한다.
 
@@ -48,12 +48,14 @@ Turn command의 pure 시간 판정은 `receivedAt < deadlineAt`만 유효하다.
 
 `NumberTileTable`과 `NumberTileProposedTable`은 complete final meld collection이다. Client drag sequence나 partial intermediate arrangement는 domain input이 아니다.
 
-- `GROUP`: effective number 동일, effective color distinct, 3~4장
-- `RUN`: effective color 동일, 1~13 안에서 ascending consecutive, 3장 이상
+- `GROUP`: ordinary number 동일, ordinary color distinct, 3~4장. Joker가 있으면 공통 number와 unused-color existence로 colorless하게 검증한다.
+- `RUN`: ordinary color 동일, 1~13 안에서 ordered ascending consecutive, 3장 이상. Joker role은 array position과 ordinary faces에서 derive한다.
 - 두 kind 모두 meld당 Joker 최대 1장
-- Joker assignment는 valid color/number여야 하고 canonical physical kind와 일치해야 한다.
+- Joker placement는 canonical physical kind/`tileId`와 일치해야 하며 client-provided number/color assignment는 없다.
 - 같은 표시 pattern의 두 meld는 distinct physical IDs이면 허용한다.
 - Table 전체에서 같은 `tileId` 중복은 허용하지 않는다.
+
+Ordered RUN의 derivation은 ordinary placement `(number, index)`마다 `start = number - index`가 같은지 검사한다. `start`와 `start + length - 1`이 1~13 안이면 Joker number는 `start + jokerIndex`, color는 ordinary common color다. `J,R5,R6`, `R4,J,R6`, `R5,R6,J`는 각각 Joker 4/5/7로 결정되고 `R4,J,R7`은 invalid다. GROUP은 ordinary common number만 derive하고 특정 unused color를 canonical fact로 선택하지 않는다.
 
 ## 5. Submit RuleEngine
 
@@ -69,33 +71,31 @@ validateNumberTileSubmit({
 })
 ```
 
-성공값은 detached/frozen final Table, 새로 사용한 rack Tile IDs, 남은 rack Tile IDs, recovered Joker IDs, initial completion 여부와 initial meld value를 반환한다. Room, Clock, revision, actor authentication과 command idempotency는 받지 않는다.
+성공값은 detached/frozen final Table, 새로 사용한 rack Tile IDs, 남은 rack Tile IDs, initial completion 여부와 initial meld value를 반환한다. Previous-role recovery 목록은 만들지 않는다. Room, Clock, revision, actor authentication과 command idempotency는 받지 않는다.
 
-실패는 Number-owned closed category다: invalid meld, duplicate reference, tile access, conservation, missing/low initial meld, forbidden initial rearrangement, missing rack contribution, invalid Joker assignment/recovery. 이것은 public wire error catalog가 아니며 P7B compatibility layer가 안전한 mapping을 결정한다.
+실패는 Number-owned closed category다: invalid meld, duplicate reference, tile access, conservation, missing/low initial meld, forbidden initial rearrangement, missing rack contribution. Invalid Joker role은 containing meld의 `INVALID_MELD`, missing/duplicate/rack 이동은 conservation/access failure로 닫힌다. 이것은 public wire error catalog가 아니며 compatibility layer가 안전한 mapping을 결정한다.
 
-검증 순서는 canonical corruption fail-fast, proposed duplicate, authorized source, pre-table conservation, placement/final-meld validity, phase-specific rule, Joker recovery, rack contribution 순이다. Proposed Tile이 pre-table 또는 actor rack에 없으면 known/unknown 여부와 무관하게 같은 `INVALID_TILE_ACCESS` category를 반환한다.
+검증 순서는 canonical corruption fail-fast, proposed duplicate, authorized source, pre-table exact-once conservation, placement/final-meld validity, phase-specific rule, rack contribution 순이다. Proposed Tile이 pre-table 또는 actor rack에 없으면 known/unknown 여부와 무관하게 같은 `INVALID_TILE_ACCESS` category를 반환한다.
 
 ### 5.1 Initial meld
 
-Stable meld ID 대신 physical `tileId`, meld kind와 Joker assignment를 포함한 canonical meld-content signature multiset을 사용한다. GROUP 내부 순서와 Table meld 순서는 identity가 아니지만 RUN의 validated ascending sequence는 보존한다. Pre-table signature multiset이 final Table에 그대로 존재해야 하며 차감 뒤 남은 하나 이상의 새 meld만 actor rack Tile로 구성되어야 한다. 새 meld effective value 합은 30 이상이어야 한다.
+Stable meld ID 대신 meld kind와 각 placement의 physical `tileId`/kind를 포함한 canonical meld-content signature multiset을 사용한다. Ordinary face는 canonical inventory에서 해석한다. GROUP 내부 순서와 Table meld 순서는 identity가 아니지만 RUN의 ordered placement sequence는 role derivation에 의미가 있다. Pre-table signature multiset이 final Table에 그대로 존재해야 하며 차감 뒤 남은 하나 이상의 새 meld만 actor rack Tile로 구성되어야 한다. 새 meld의 derive된 Joker number를 포함한 effective value 합은 30 이상이어야 한다.
 
 ### 5.2 Normal rearrangement와 conservation
 
 모든 pre-table physical ID는 final Table에 정확히 한 번 남고 final meld 전체가 valid해야 한다. Split, merge, extend, reorder와 multi-meld rebuild 자체에는 operation identity를 두지 않는다. Actor의 pre-turn rack에서 최소 한 physical Tile이 final Table에 새로 존재해야 한다.
 
-### 5.3 Joker recovery
+### 5.3 Joker final-state semantics
 
-Stable meld identity 없이 다음 deterministic whole-table algorithm을 사용한다.
+Stable meld identity와 procedural recovery algorithm 없이 다음 deterministic final-state validation만 사용한다.
 
-1. Duplicate/conservation으로 각 pre-table Joker `tileId`가 final Table에 정확히 한 번 존재함을 먼저 보장한다.
-2. 같은 Joker `tileId`의 pre/final `(assignedColor, assignedNumber)`를 비교한다.
-3. Assignment가 바뀐 Joker만 recovered/reassigned Joker다. 위치나 meld index는 비교하지 않는다.
-4. Recovered Joker의 old face를 multiset demand로 센다.
-5. Final Table에 새로 사용된 actor-rack ordinary Tile만 canonical face별 replacement supply로 센다.
-6. 각 old-face demand에 exact physical ordinary supply 하나를 소비한다. 같은 old face의 Joker 두 장에는 distinct replacement 두 장이 필요하다.
-7. Final Table validity가 Joker의 새 assignment와 same-Submit reuse를 별도로 보장한다.
+1. Duplicate/source/conservation 검증으로 각 pre-table Joker `tileId`가 final Table에 정확히 한 번 존재함을 보장한다.
+2. 각 final GROUP의 Joker는 ordinary common number와 unused-color existence로 검증한다. 특정 color를 고르거나 저장하지 않는다.
+3. 각 final RUN의 Joker는 ordinary common color와 ordered position으로 number를 derive한다.
+4. Every final meld validity가 derive된 current role을 검증한다.
+5. Actor의 pre-turn rack에서 최소 한 physical Tile이 final Table에 새로 사용돼야 한다.
 
-Assignment가 같은 Joker는 배열/meld 위치가 바뀌어도 recovery로 추측하지 않는다. Exact replacement는 특정 old meld에 묶이지 않으며 whole-table final state 안에서 검증한다. 이 방식은 P6 clarification과 일치하며 ambiguous counterexample은 발견되지 않았다.
+같은 Joker의 pre/final role은 비교하지 않는다. Previous GROUP→final RUN, previous RUN→final GROUP과 number/color 변화가 모두 가능하며 old role의 exact ordinary replacement를 요구하지 않는다. Joker가 final Table에서 사라지거나 중복되거나 actor rack/pool로 이동하면 conservation/source validation으로 거절한다.
 
 ## 6. Draw, Pass와 lifecycle decision
 

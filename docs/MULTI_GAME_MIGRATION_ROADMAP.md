@@ -694,7 +694,7 @@ Multi-game Platform P6 NUMBER_TILE rules gate만 수행하라. docs/MULTI_GAME_M
 - [NUMBER_TILE_PROTOCOL_GATE.md](./NUMBER_TILE_PROTOCOL_GATE.md)에 existing platform command reuse, strict protocol v1 `number:*`, atomic whole-table submit, V2-only projection/privacy, revision/idempotency, no Number advisory와 exact client game capability를 확정했다.
 - current implementation을 조사한 결과 `RoomRecord.game`, in-memory state adapter, start/command/server-action paths, PlatformSnapshot V2와 Web decoder/renderer가 각각 Hangul compatibility에 결합되어 있어 registration 하나만 추가하는 rollout은 불가능함을 명시했다.
 - `supportedSnapshotVersions`만으로는 Number-capable client를 판별할 수 없으므로 create/join/resume mutation 전 `selectedSnapshotVersion === 2`와 exact `supportedGameTypes`의 `NUMBER_TILE` 포함을 함께 요구하도록 확정했다.
-- Number finish reason은 `RACK_EMPTY`, `STALEMATE`, `LAST_PLAYER_STANDING`이며 `ALL_PLAYERS_FORFEITED`와 `TIME_LIMIT`은 없다. Joker recovery는 stable meld identity 없이 exact replacement와 same-Submit final Table reuse로 검증한다.
+- Number finish reason은 `RACK_EMPTY`, `STALEMATE`, `LAST_PLAYER_STANDING`이며 `ALL_PLAYERS_FORFEITED`와 `TIME_LIMIT`은 없다. P6 당시 Joker recovery는 stable meld identity 없이 exact replacement와 same-Submit final Table reuse로 결정했으나, 이 부분은 이후 actual-play Joker semantics correction으로 superseded됐다.
 - STALEMATE는 eligible/non-forfeited full no-play cycle로 판정하고 forfeited result entries는 non-forfeited 뒤에서 별도 competition ranking하며 모두 `score = -penalty`를 사용한다.
 - `NUMBER_TILE`은 `GameType`, registry, catalog, shared protocol/schema 또는 production에 추가하지 않았다. `docs/GAME_RULES.md`, runtime source와 dependency도 변경하지 않았다.
 - 기존 P5C 685-test 기준선을 유지해야 하며 docs-only 작업이라 Number runtime test는 추가하지 않는다.
@@ -745,7 +745,7 @@ P6에서 confirmed된 규칙만으로 framework-independent NUMBER_TILE state와
 
 - `apps/server/src/games/number-tile/domain/`에 physical Tile/inventory, Table/Meld, Submit RuleEngine, draw, no-play/forfeit/finish, Number result와 initial GameState를 독립 구현했다.
 - Injected ID/random/Clock으로 exact 106 inventory, 2~4명 rack 14장, revision 0, immutable shuffled turn order와 90초 Turn을 만들며 overall game deadline capability는 만들지 않았다.
-- Initial meld 30, unchanged existing Table, normal split/merge/rearrangement, physical conservation, rack contribution과 stable meld ID 없는 exact Joker recovery를 pure validation으로 고정했다.
+- Initial meld 30, unchanged existing Table, normal split/merge/rearrangement, physical conservation, rack contribution과 당시 stable meld ID 없는 exact Joker recovery를 pure validation으로 고정했다. Exact-recovery behavior는 이후 correction으로 대체됐으며 이 문장은 P7A checkpoint의 historical record다.
 - Number result reason은 `RACK_EMPTY`, `STALEMATE`, `LAST_PLAYER_STANDING`만 존재하며 single-winner result와 STALEMATE competition ranking을 별도 shape로 유지했다.
 - Number-targeted 99 tests가 inventory/setup와 deterministic shuffle/exact 90초 deadline boundary, GROUP/RUN/Joker, initial/normal Submit, draw/pass/no-play/forfeit, timeout-action ordering, finish/result, runtime mutation safety와 static/dynamic import purity/inertness를 검증한다. 기존 685 tests와 함께 총 784 tests를 삭제·skip 없이 유지한다.
 - Shared wire, `GameType`, Registry, catalog, PlatformSnapshot, Socket.IO, Web와 composition root는 변경하지 않았으므로 production은 계속 `HANGUL_TILE` only다.
@@ -862,7 +862,7 @@ authoritative NUMBER_TILE projection만 소비하는 독립 web renderer와 loca
 - Current Web handshake는 snapshot `[2,1]`과 game `[HANGUL_TILE, NUMBER_TILE]` capability를 exact하게 광고한다.
 - Home은 구현된 두 game을 같은 hierarchy로 제공하며 `GEM_CARD` placeholder가 없다. Create만 selected game을 보내고 join/URL/renderer authority는 바뀌지 않았다.
 - Number V2 LOBBY/PLAYING/FINISHED를 direct strict branch로 decode하며 Number를 Hangul V1 shape로 변환하지 않는다.
-- `apps/web/src/features/number-tile/`의 독립 TurnDraft/editor는 GROUP/RUN, physical `tileId`, initial lock, rearrangement, Joker assignment, rack return, Undo/Reset과 최대 50 history를 소유한다.
+- `apps/web/src/features/number-tile/`의 독립 TurnDraft/editor는 GROUP/RUN, physical `tileId`, initial lock, rearrangement, rack return, Undo/Reset과 최대 50 history를 소유한다. 당시 Joker assignment state는 이후 meld-derived role로 제거됐다.
 - Exact `number:submit/draw/pass` client와 same-ID retry, stale/reset/sync, reconnect draft lifecycle을 연결했다. Number advisory와 `number:start`는 없다.
 - PLAYING/FINISHED privacy, 90초 display countdown, keyboard/touch controls와 390/320 responsive behavior를 검증한다.
 - Server/shared/domain rules와 dependency는 변경하지 않았고 자세한 구조는 [NUMBER_TILE_WEB_IMPLEMENTATION.md](./NUMBER_TILE_WEB_IMPLEMENTATION.md)에 기록했다.
@@ -916,7 +916,7 @@ Multi-game Platform P7C만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의
 ### 2026-09-07 final gate 결과
 
 - P7C의 909 tests를 보존하고 shared 75, Web 142, server 699, 총 916 tests를 통과했다.
-- Deterministic raw protocol로 Number exact-29 reject, exact-30 GROUP/RUN commit과 Joker exact replacement/same-Submit reuse를 확인했다.
+- Deterministic raw protocol로 Number exact-29 reject, exact-30 GROUP/RUN commit과 당시 Joker exact replacement/same-Submit reuse를 확인했다. 이 Joker assertion은 historical P8 evidence이며 current final-state semantics regression으로 superseded됐다.
 - 같은 runtime의 Hangul V1 Room과 Number V2 Room에서 양방향 wrong command, cross-shaped payload, parallel Draw/replay, privacy, 60초/90초 Turn recovery와 Hangul-only overall deadline을 확인했다.
 - Fresh production server와 실제 browser A/B에서 두 card, 양 game create/join/start/Draw/resume, Number invalid-submit draft UX, privacy와 390×844/320×568 responsive gate를 확인했다.
 - Production source, public wire, rule와 dependency 변경은 없다. 자세한 증거는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)를 따른다.
@@ -1134,6 +1134,12 @@ P10에서 confirmed된 카드·resource 규칙만으로 Tile/Rack 전제 없는 
 #### 완료 상태
 
 `apps/server/src/games/gem-card/domain/`에 exact resource/card/player/market/GameState와 `gem-cardset-v1`, collect/purchase/reserve, legal-action/YIELD/no-progress, explicit/offline forfeit, timeout, fair-round/market exhaustion, four-reason result를 구현했다. Setup은 P11B가 authority 있게 섞고 생성한 deck/order/ID/time을 받으며 domain 자체는 RNG, Clock, scheduler를 import하지 않는다. Import boundary는 Hangul/Number/platform runtime 의존과 production wiring을 모두 금지한다. 신규 76 cases를 포함한 shared 75 + Web 151 + server 780 = 총 1006 tests가 exact cardset/conservation, action legality, 45초 timeout, forfeit 차이, fair-round/result와 source boundary를 검증한다. Persisted whole-state codec/coherence와 Room/UoW/scheduler 연결은 P11B 책임이다. 상세 contract는 [GEM_CARD_DOMAIN_DESIGN.md](./GEM_CARD_DOMAIN_DESIGN.md)를 따른다. **P11A COMPLETE / P11B READY**.
+
+#### NUMBER_TILE Joker semantics follow-up
+
+현재 판정은 **SOURCE COMPLETE / MANUAL BROWSER VERIFICATION PENDING**이다. Root typecheck, 1045/1045 tests, build, production-serving 6/6과 diff-check를 통과했다. Codex의 Chrome 직접 연결 제한은 사용자 결정에 따라 source checkpoint blocker가 아니다. 배포는 `DEPLOYMENT_PENDING_USER_ACTION`이며, 사용자가 Railway 최신 commit 수동 배포 후 두 Chrome 창으로 검증할 때까지 **GEM_CARD P11B NOT STARTED**를 유지한다. 기존 Number browser tab은 refresh하고 새 Room에서 검증한다.
+
+P11B 시작 전 actual Number play에서 확인된 Joker interaction/rule 문제를 focused correction으로 처리한다. Bare physical Joker placement, GROUP의 colorless existential validation, RUN의 ordered-position role derivation, previous-role-independent rearrangement와 final Table exact-once conservation을 적용한다. Old exact-replacement recovery와 arbitrary GROUP color assignment는 제거한다. Number command/V2 branch만 좁게 변경하고 protocol/event/snapshot version 이름, Hangul rules/wire와 GEM_CARD P11A domain은 유지한다. 이미 old strict Number schema를 로드한 open client는 refresh해야 하며 fake color compatibility는 제공하지 않는다. 상세는 [NUMBER_TILE_JOKER_SEMANTICS_FIX.md](./NUMBER_TILE_JOKER_SEMANTICS_FIX.md)를 따른다. 이 focused change 자체는 P11B를 시작하지 않는다.
 
 #### Required tests
 

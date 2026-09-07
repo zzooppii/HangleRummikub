@@ -25,7 +25,7 @@ const revision = 4 as GameRevision;
 const turnId = "number-turn" as TurnId;
 const requestId = "number-request" as RequestId;
 
-function draft(jokerAssigned = true): NumberTileTurnDraft {
+function draft(): NumberTileTurnDraft {
   const table = {
     melds: [
       {
@@ -49,10 +49,6 @@ function draft(jokerAssigned = true): NumberTileTurnDraft {
           {
             tileId: "number-joker" as TileId,
             kind: "JOKER" as const,
-            assignment: jokerAssigned
-              ? { number: 7 as const, color: "BLUE" as const }
-              : null,
-            assignmentSource: jokerAssigned ? "USER" as const : null,
             origin: "SELF_RACK" as const,
           },
         ],
@@ -81,25 +77,22 @@ function withMelds(
   return { ...value, table: { melds } };
 }
 
-test("Number draft는 ordinary identity와 Joker assignment만 exact proposedTable로 serialize한다", () => {
+test("Number draft는 ordinary와 colorless Joker physical identity만 exact proposedTable로 serialize한다", () => {
   assert.deepEqual(serializeNumberTileTurnDraft(draft()), {
     melds: [
       {
         kind: "GROUP",
         tiles: [
           { tileId: "number-red-seven", kind: "ORDINARY" },
+          { tileId: "number-black-seven", kind: "ORDINARY" },
           {
             tileId: "number-joker",
             kind: "JOKER",
-            assignedNumber: 7,
-            assignedColor: "BLUE",
           },
-          { tileId: "number-black-seven", kind: "ORDINARY" },
         ],
       },
     ],
   });
-  assert.equal(serializeNumberTileTurnDraft(draft(false)), null);
 });
 
 test("Number draft serializer는 user-selected kind 대신 physical face로 kind와 RUN order를 derive한다", () => {
@@ -138,7 +131,58 @@ test("Number draft serializer는 user-selected kind 대신 physical face로 kind
   });
 });
 
-test("Number draft serializer는 incomplete/invalid/ambiguous Joker와 cross-meld duplicate identity를 거절한다", () => {
+test("Number draft serializer는 Joker RUN의 leading/middle/trailing role을 ordered bare identity로 보존한다", () => {
+  const base = draft();
+  const ordinary = (
+    tileId: string,
+    number: 4 | 5 | 6 | 7,
+  ) => ({
+    tileId: tileId as TileId,
+    kind: "ORDINARY" as const,
+    number,
+    color: "RED" as const,
+    origin: "SELF_RACK" as const,
+  });
+  const joker = {
+    tileId: "number-ordered-joker" as TileId,
+    kind: "JOKER" as const,
+    origin: "SELF_RACK" as const,
+  };
+  const cases = [
+    [joker, ordinary("number-red-five-leading", 5), ordinary("number-red-six-leading", 6)],
+    [ordinary("number-red-four-middle", 4), joker, ordinary("number-red-six-middle", 6)],
+    [ordinary("number-red-five-trailing", 5), ordinary("number-red-six-trailing", 6), joker],
+  ] as const;
+
+  for (const tiles of cases) {
+    const serialized = serializeNumberTileTurnDraft(withMelds(base, [{
+      kind: null,
+      origin: "LOCAL",
+      tiles,
+    }]));
+    assert.deepEqual(serialized, {
+      melds: [{
+        kind: "RUN",
+        tiles: tiles.map((tile) => ({ tileId: tile.tileId, kind: tile.kind })),
+      }],
+    });
+  }
+
+  assert.equal(
+    serializeNumberTileTurnDraft(withMelds(base, [{
+      kind: null,
+      origin: "LOCAL",
+      tiles: [
+        ordinary("number-red-four-gap", 4),
+        joker,
+        ordinary("number-red-seven-gap", 7),
+      ],
+    }])),
+    null,
+  );
+});
+
+test("Number draft serializer는 incomplete/invalid meld와 cross-meld duplicate identity를 거절한다", () => {
   const base = draft();
   const first = base.table.melds[0]!;
   assert.equal(
@@ -148,7 +192,6 @@ test("Number draft serializer는 incomplete/invalid/ambiguous Joker와 cross-mel
     }])),
     null,
   );
-  assert.equal(serializeNumberTileTurnDraft(draft(false)), null);
   assert.equal(
     serializeNumberTileTurnDraft(withMelds(base, [first, first])),
     null,
@@ -203,7 +246,6 @@ test("gameplay rejection은 draft를 보존하고 stale/turn/deadline mismatch�
     "INVALID_TABLE",
     "INVALID_MELD",
     "INITIAL_MELD_TOO_LOW",
-    "INVALID_JOKER_RECOVERY",
   ] as const) {
     assert.equal(
       decideNumberTileCommandFailureAction(code, revision, revision),

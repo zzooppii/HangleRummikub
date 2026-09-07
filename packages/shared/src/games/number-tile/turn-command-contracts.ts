@@ -34,8 +34,6 @@ export type NumberTileOrdinaryProposedPlacement = v.InferOutput<
 export const NumberTileJokerProposedPlacementSchema = v.strictObject({
   tileId: TileIdSchema,
   kind: v.literal("JOKER"),
-  assignedNumber: NumberTileNumberSchema,
-  assignedColor: NumberTileColorSchema,
 });
 export type NumberTileJokerProposedPlacement = v.InferOutput<
   typeof NumberTileJokerProposedPlacementSchema

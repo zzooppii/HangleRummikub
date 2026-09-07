@@ -5,11 +5,13 @@
 > 분석 대상: production에서 검증된 `HANGUL_TILE`, `NUMBER_TILE`
 > 원칙: 두 구현의 의미가 실제로 같을 때만 작은 공통 primitive를 제안하고, runtime source나 public contract는 변경하지 않는다.
 
+> Historical note: 이 분석의 NUMBER_TILE number/color assignment와 exact-recovery 표현은 P9A 당시 구현을 기록한다. 이후 Joker semantics correction이 이를 colorless GROUP, ordered RUN role과 final-state conservation으로 대체했으며, Joker/domain을 concrete로 유지한다는 분석 결론은 변하지 않는다.
+
 ## 1. Executive summary
 
 두 게임은 Room/session/presence/admission, Room 단위 직렬화와 UoW/CAS, idempotency, snapshot fan-out, retention/cleanup, connection capability와 optional turn scheduler를 같은 의미로 재사용한다. 이 영역은 더 이상 후보가 아니라 `PROVEN_PLATFORM_CORE`다.
 
-반면 두 게임이 모두 tile, rack, Joker, Submit, Draw, Pass를 가진다는 사실은 공통 domain model의 근거가 아니다. Hangul은 두 bag, Board/WordGroup, 한글 조합·사전, 60초 Turn과 overall deadline을 사용한다. Number는 single pool, Table/GROUP/RUN, number/color Joker recovery, 90초 Turn과 no overall deadline을 사용한다. payload, rule, timeout, stalemate와 result semantics도 다르다. 따라서 `GenericTile`, `GenericRack`, `GenericBoard`, `GenericMeld`, `GenericJoker`, `GenericTurnDraft`, `GenericResult`, giant `GameModule`, generic `game:command`는 기각한다.
+반면 두 게임이 모두 tile, rack, Joker, Submit, Draw, Pass를 가진다는 사실은 공통 domain model의 근거가 아니다. Hangul은 두 bag, Board/WordGroup, 한글 조합·사전, 60초 Turn과 overall deadline을 사용한다. Number는 single pool, Table/GROUP/RUN, meld-derived Joker role/final-state conservation, 90초 Turn과 no overall deadline을 사용한다. payload, rule, timeout, stalemate와 result semantics도 다르다. 따라서 `GenericTile`, `GenericRack`, `GenericBoard`, `GenericMeld`, `GenericJoker`, `GenericTurnDraft`, `GenericResult`, giant `GameModule`, generic `game:command`는 기각한다.
 
 P9B에 제안할 엄격한 `EXTRACT_NOW`는 다음 네 개뿐이다.
 
@@ -184,7 +186,7 @@ opaque `TileId`, physical instance uniqueness/conservation, viewer-own private c
 `NUMBER_TILE`에 남는 것:
 
 - 106개 inventory, single pool와 server-random Draw
-- Table, GROUP/RUN, number/color assignment와 exact Joker recovery
+- Table, GROUP/RUN, colorless GROUP Joker, ordered RUN role와 final-state Joker conservation
 - 30-point initial meld와 whole-table rearrangement
 - 90초 Turn, one-tile/no-play timeout, no overall deadline
 - eligible full no-play cycle, three finish reasons, forfeited subgroup ranking
@@ -197,7 +199,7 @@ opaque `TileId`, physical instance uniqueness/conservation, viewer-own private c
 | Tile | descriptor, inventory, assignment와 rule이 다름 | `GenericTile` 금지 |
 | Rack | 두 tile game의 private collection일 뿐 GEM에는 없을 수 있음 | `GenericRack` 금지 |
 | Board/Table | WordGroup/syllable와 GROUP/RUN meld는 의미가 다름 | generic placement model 금지 |
-| Joker | Hangul component substitution과 Number number/color recovery가 다름 | `GenericJoker` 금지 |
+| Joker | Hangul component substitution과 Number meld-derived/final-conservation semantics가 다름 | `GenericJoker` 금지 |
 | Submit | atomic proposal pattern만 같고 payload/rule/error/result가 다름 | generic payload 금지 |
 | Draw | selected dual bags와 random single pool | concrete commands 유지 |
 | Pass | two-bag empty와 pool-empty no-play cycle | concrete rules 유지 |

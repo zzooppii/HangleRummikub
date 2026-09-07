@@ -11,6 +11,7 @@ import {
   ServerTimeSchema,
 } from "../../protocol.js";
 import {
+  NUMBER_TILE_COLORS,
   NumberTileColorSchema,
   NumberTileNumberSchema,
 } from "./turn-command-contracts.js";
@@ -94,8 +95,6 @@ export type NumberTileOrdinaryTablePlacementV2 = v.InferOutput<
 export const NumberTileJokerTablePlacementV2Schema = v.strictObject({
   tileId: TileIdSchema,
   kind: v.literal("JOKER"),
-  assignedNumber: NumberTileNumberSchema,
-  assignedColor: NumberTileColorSchema,
 });
 export type NumberTileJokerTablePlacementV2 = v.InferOutput<
   typeof NumberTileJokerTablePlacementV2Schema
@@ -126,19 +125,17 @@ export const NumberTileGroupV2Schema = v.pipe(
     "A Number Tile meld may contain at most one Joker.",
   ),
   v.check((meld) => {
-    const faces = meld.tiles.map((placement) =>
-      placement.kind === "JOKER"
-        ? {
-            number: placement.assignedNumber,
-            color: placement.assignedColor,
-          }
-        : { number: placement.number, color: placement.color },
+    const ordinary = meld.tiles.filter(
+      (placement) => placement.kind === "ORDINARY",
     );
     return (
-      faces.every((face) => face.number === faces[0]?.number) &&
-      new Set(faces.map((face) => face.color)).size === faces.length
+      ordinary.length >= 2 &&
+      ordinary.every((tile) => tile.number === ordinary[0]?.number) &&
+      new Set(ordinary.map((tile) => tile.color)).size === ordinary.length &&
+      (ordinary.length === meld.tiles.length ||
+        ordinary.length < NUMBER_TILE_COLORS.length)
     );
-  }, "A public Number Tile GROUP must have one number and distinct colors."),
+  }, "A public Number Tile GROUP must have one number, distinct ordinary colors, and an available wildcard color."),
 );
 export type NumberTileGroupV2 = v.InferOutput<
   typeof NumberTileGroupV2Schema
@@ -161,22 +158,23 @@ export const NumberTileRunV2Schema = v.pipe(
     "A Number Tile meld may contain at most one Joker.",
   ),
   v.check((meld) => {
-    const faces = meld.tiles.map((placement) =>
-      placement.kind === "JOKER"
-        ? {
-            number: placement.assignedNumber,
-            color: placement.assignedColor,
-          }
-        : { number: placement.number, color: placement.color },
+    const ordinary = meld.tiles.flatMap((placement, index) =>
+      placement.kind === "ORDINARY" ? [{ placement, index }] : [],
     );
+    if (ordinary.length < 2) {
+      return false;
+    }
+    const start = ordinary[0]!.placement.number - ordinary[0]!.index;
     return (
-      faces.every((face) => face.color === faces[0]?.color) &&
-      faces.every(
-        (face, index) =>
-          index === 0 || face.number === faces[index - 1]!.number + 1,
+      start >= 1 &&
+      start + meld.tiles.length - 1 <= 13 &&
+      ordinary.every(
+        ({ placement, index }) =>
+          placement.color === ordinary[0]!.placement.color &&
+          placement.number === start + index,
       )
     );
-  }, "A public Number Tile RUN must have one color and consecutive numbers."),
+  }, "A public Number Tile RUN must derive one color and an ordered consecutive sequence."),
 );
 export type NumberTileRunV2 = v.InferOutput<typeof NumberTileRunV2Schema>;
 

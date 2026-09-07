@@ -41,10 +41,7 @@ class RuleFixture {
     return Object.freeze({ tileId, kind: "ORDINARY" });
   }
 
-  joker(
-    assignedColor: NumberTileColor,
-    assignedNumber: NumberTileNumber,
-  ): NumberTileJokerPlacement {
+  joker(): NumberTileJokerPlacement {
     const tileId = parse(
       TileIdSchema,
       `number-rule-${this.#sequence += 1}`,
@@ -53,8 +50,6 @@ class RuleFixture {
     return Object.freeze({
       tileId,
       kind: "JOKER",
-      assignedColor,
-      assignedNumber,
     });
   }
 }
@@ -185,10 +180,10 @@ test("initial 30은 existing Table 값이 아니라 새 rack meld 값만 센다"
   );
 });
 
-test("initial meld Joker는 assigned number value를 사용한다", () => {
+test("initial meld Joker는 ordered RUN에서 derive한 number value를 사용한다", () => {
   const fixture = new RuleFixture();
   const orange9 = fixture.ordinary("ORANGE", 9);
-  const joker10 = fixture.joker("ORANGE", 10);
+  const joker10 = fixture.joker();
   const orange11 = fixture.ordinary("ORANGE", 11);
   const result = submit(
     fixture,
@@ -248,11 +243,12 @@ test("initial player는 GROUP order와 Table order 변화만으로 기존 meld�
   assert.equal(result.ok, true);
 });
 
-test("initial player는 existing Joker assignment를 바꿀 수 없다", () => {
+test("initial player는 existing colorless Joker meld를 확장할 수 없다", () => {
   const fixture = new RuleFixture();
   const red7 = fixture.ordinary("RED", 7);
   const blue7 = fixture.ordinary("BLUE", 7);
-  const joker = fixture.joker("BLACK", 7);
+  const joker = fixture.joker();
+  const black7 = fixture.ordinary("BLACK", 7);
   const fresh = ["RED", "BLUE", "BLACK"].map((color) =>
     fixture.ordinary(color as NumberTileColor, 10),
   );
@@ -262,13 +258,10 @@ test("initial player는 existing Joker assignment를 바꿀 수 없다", () => {
       fixture,
       table(group(red7, blue7, joker)),
       table(
-        group(red7, blue7, {
-          ...joker,
-          assignedColor: "ORANGE",
-        }),
+        group(red7, blue7, black7, joker),
         group(...fresh),
       ),
-      fresh,
+      [black7, ...fresh],
       false,
     ),
     "TABLE_REARRANGEMENT_NOT_ALLOWED",
@@ -395,7 +388,7 @@ test("rack의 마지막 physical Joker를 valid meld에 내면 remaining rack이
   const red7 = fixture.ordinary("RED", 7);
   const blue7 = fixture.ordinary("BLUE", 7);
   const black7 = fixture.ordinary("BLACK", 7);
-  const joker = fixture.joker("ORANGE", 7);
+  const joker = fixture.joker();
   const result = submit(
     fixture,
     table(group(red7, blue7, black7)),
@@ -494,35 +487,109 @@ test("unknown과 known-but-unowned Tile은 같은 access error로 정규화한�
   assertFailure(unknownResult, "INVALID_TILE_ACCESS");
 });
 
-test("exact ordinary replacement과 same-Submit Joker reuse는 성공한다", () => {
+test("기존 RUN Joker는 final Table의 다른 GROUP 역할로 자유롭게 이동한다", () => {
   const fixture = new RuleFixture();
   const red5 = fixture.ordinary("RED", 5);
-  const joker = fixture.joker("RED", 6);
+  const joker = fixture.joker();
   const red7 = fixture.ordinary("RED", 7);
   const red6 = fixture.ordinary("RED", 6);
   const blue9 = fixture.ordinary("BLUE", 9);
   const black9 = fixture.ordinary("BLACK", 9);
-  const finalJoker = Object.freeze({
-    ...joker,
-    assignedColor: "ORANGE" as const,
-    assignedNumber: 9 as const,
-  });
   const result = submit(
     fixture,
     table(run(red5, joker, red7)),
-    table(run(red5, red6, red7), group(blue9, black9, finalJoker)),
+    table(run(red5, red6, red7), group(blue9, black9, joker)),
     [red6, blue9, black9],
     true,
   );
 
   assert.equal(result.ok, true);
   if (result.ok) {
-    assert.deepEqual(result.value.recoveredJokerTileIds, [joker.tileId]);
     assert.deepEqual(result.value.newlyUsedRackTileIds, [
       red6.tileId,
       blue9.tileId,
       black9.tileId,
     ]);
+  }
+});
+
+test("기존 RUN Joker는 exact replacement 없이 다른 RUN number 역할로 이동한다", () => {
+  const fixture = new RuleFixture();
+  const red4 = fixture.ordinary("RED", 4);
+  const joker = fixture.joker();
+  const red6 = fixture.ordinary("RED", 6);
+  const red5 = fixture.ordinary("RED", 5);
+  const blue8 = fixture.ordinary("BLUE", 8);
+  const blue10 = fixture.ordinary("BLUE", 10);
+  const result = submit(
+    fixture,
+    table(run(red4, joker, red6)),
+    table(run(red4, red5, red6), run(blue8, joker, blue10)),
+    [red5, blue8, blue10],
+    true,
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(
+      result.value.table.melds.flatMap((meld) => meld.tiles)
+        .filter((placement) => placement.tileId === joker.tileId).length,
+      1,
+    );
+  }
+});
+
+test("기존 colorless GROUP Joker는 새 ordinary color가 추가되어도 같은 physical tile로 남는다", () => {
+  for (const color of ["BLACK", "ORANGE"] as const) {
+    const fixture = new RuleFixture();
+    const red10 = fixture.ordinary("RED", 10);
+    const blue10 = fixture.ordinary("BLUE", 10);
+    const joker = fixture.joker();
+    const added10 = fixture.ordinary(color, 10);
+    const result = submit(
+      fixture,
+      table(group(red10, blue10, joker)),
+      table(group(red10, blue10, added10, joker)),
+      [added10],
+      true,
+    );
+
+    assert.equal(result.ok, true);
+    if (result.ok) {
+      assert.equal(
+        result.value.table.melds[0]?.tiles.at(-1)?.tileId,
+        joker.tileId,
+      );
+    }
+  }
+});
+
+test("기존 GROUP Joker는 exact replacement 없이 final RUN 역할로 이동한다", () => {
+  const fixture = new RuleFixture();
+  const red9 = fixture.ordinary("RED", 9);
+  const blue9 = fixture.ordinary("BLUE", 9);
+  const joker = fixture.joker();
+  const black9 = fixture.ordinary("BLACK", 9);
+  const orange4 = fixture.ordinary("ORANGE", 4);
+  const orange6 = fixture.ordinary("ORANGE", 6);
+  const result = submit(
+    fixture,
+    table(group(red9, blue9, joker)),
+    table(
+      group(red9, blue9, black9),
+      run(orange4, joker, orange6),
+    ),
+    [black9, orange4, orange6],
+    true,
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(
+      result.value.table.melds.flatMap((meld) => meld.tiles)
+        .filter((placement) => placement.tileId === joker.tileId).length,
+      1,
+    );
   }
 });
 
@@ -536,10 +603,10 @@ for (const [
   ["wrong color", "BLUE", 6, "BLUE", [7, 8]],
   ["wrong number", "RED", 8, "RED", [9, 10]],
 ] as const) {
-  test(`Joker recovery의 ${label} replacement는 거절한다`, () => {
+  test(`이전 Joker face와 무관한 ${label} rack contribution도 final Table이 valid하면 허용한다`, () => {
     const fixture = new RuleFixture();
     const red5 = fixture.ordinary("RED", 5);
-    const joker = fixture.joker("RED", 6);
+    const joker = fixture.joker();
     const red7 = fixture.ordinary("RED", 7);
     const existingRed6 = fixture.ordinary("RED", 6);
     const existingBlue6 = fixture.ordinary("BLUE", 6);
@@ -554,11 +621,6 @@ for (const [
     );
     const blue9 = fixture.ordinary("BLUE", 9);
     const black9 = fixture.ordinary("BLACK", 9);
-    const finalJoker = {
-      ...joker,
-      assignedColor: "ORANGE" as const,
-      assignedNumber: 9 as const,
-    };
     const result = submit(
       fixture,
       table(
@@ -569,22 +631,22 @@ for (const [
         run(red5, existingRed6, red7),
         group(existingBlue6, existingBlack6, existingOrange6),
         run(replacement, ...support),
-        group(blue9, black9, finalJoker),
+        group(blue9, black9, joker),
       ),
       [replacement, ...support, blue9, black9],
       true,
     );
-    assertFailure(result, "INVALID_JOKER_RECOVERY");
+    assert.equal(result.ok, true);
   });
 }
 
-test("matching pre-table ordinary는 recovered Joker replacement 공급이 아니다", () => {
+test("pre-table ordinary를 재배치해도 Joker의 이전 역할 replacement를 요구하지 않는다", () => {
   const fixture = new RuleFixture();
   const red5a = fixture.ordinary("RED", 5);
-  const jokerA = fixture.joker("RED", 6);
+  const jokerA = fixture.joker();
   const red7a = fixture.ordinary("RED", 7);
   const red5b = fixture.ordinary("RED", 5);
-  const jokerB = fixture.joker("RED", 6);
+  const jokerB = fixture.joker();
   const red7b = fixture.ordinary("RED", 7);
   const existingRed6 = fixture.ordinary("RED", 6);
   const blue6 = fixture.ordinary("BLUE", 6);
@@ -595,8 +657,6 @@ test("matching pre-table ordinary는 recovered Joker replacement 공급이 아�
   const actorBlack9 = fixture.ordinary("BLACK", 9);
   const actorBlue10 = fixture.ordinary("BLUE", 10);
   const actorBlack10 = fixture.ordinary("BLACK", 10);
-  const finalJokerA = { ...jokerA, assignedColor: "ORANGE" as const, assignedNumber: 9 as const };
-  const finalJokerB = { ...jokerB, assignedColor: "ORANGE" as const, assignedNumber: 10 as const };
   const result = submit(
     fixture,
     table(
@@ -608,8 +668,8 @@ test("matching pre-table ordinary는 recovered Joker replacement 공급이 아�
       run(red5a, actorRed6, red7a),
       run(red5b, existingRed6, red7b),
       group(blue6, black6, actorOrange6),
-      group(actorBlue9, actorBlack9, finalJokerA),
-      group(actorBlue10, actorBlack10, finalJokerB),
+      group(actorBlue9, actorBlack9, jokerA),
+      group(actorBlue10, actorBlack10, jokerB),
     ),
     [
       actorRed6,
@@ -621,16 +681,16 @@ test("matching pre-table ordinary는 recovered Joker replacement 공급이 아�
     ],
     true,
   );
-  assertFailure(result, "INVALID_JOKER_RECOVERY");
+  assert.equal(result.ok, true);
 });
 
-test("같은 old face Joker 두 장은 exact replacement 두 장이면 성공한다", () => {
+test("두 physical Joker도 각각 final Table에 한 번 있으면 역할 변경을 허용한다", () => {
   const fixture = new RuleFixture();
   const red5a = fixture.ordinary("RED", 5);
-  const jokerA = fixture.joker("RED", 6);
+  const jokerA = fixture.joker();
   const red7a = fixture.ordinary("RED", 7);
   const red5b = fixture.ordinary("RED", 5);
-  const jokerB = fixture.joker("RED", 6);
+  const jokerB = fixture.joker();
   const red7b = fixture.ordinary("RED", 7);
   const red6a = fixture.ordinary("RED", 6);
   const red6b = fixture.ordinary("RED", 6);
@@ -644,25 +704,19 @@ test("같은 old face Joker 두 장은 exact replacement 두 장이면 성공한
     table(
       run(red5a, red6a, red7a),
       run(red5b, red6b, red7b),
-      group(blue9, black9, { ...jokerA, assignedColor: "ORANGE", assignedNumber: 9 }),
-      group(blue10, black10, { ...jokerB, assignedColor: "ORANGE", assignedNumber: 10 }),
+      group(blue9, black9, jokerA),
+      group(blue10, black10, jokerB),
     ),
     [red6a, red6b, blue9, black9, blue10, black10],
     true,
   );
   assert.equal(result.ok, true);
-  if (result.ok) {
-    assert.deepEqual(result.value.recoveredJokerTileIds, [
-      jokerA.tileId,
-      jokerB.tileId,
-    ]);
-  }
 });
 
-test("assignment가 같은 Joker는 meld 위치가 바뀌어도 recovery가 아니다", () => {
+test("Joker가 RUN 안에서 이동해도 physical identity만 보존한다", () => {
   const fixture = new RuleFixture();
   const red5 = fixture.ordinary("RED", 5);
-  const joker = fixture.joker("RED", 6);
+  const joker = fixture.joker();
   const red7 = fixture.ordinary("RED", 7);
   const red8 = fixture.ordinary("RED", 8);
   const red4 = fixture.ordinary("RED", 4);
@@ -675,14 +729,18 @@ test("assignment가 같은 Joker는 meld 위치가 바뀌어도 recovery가 아�
   );
   assert.equal(result.ok, true);
   if (result.ok) {
-    assert.deepEqual(result.value.recoveredJokerTileIds, []);
+    assert.equal(
+      result.value.table.melds.flatMap((meld) => meld.tiles)
+        .filter((placement) => placement.tileId === joker.tileId).length,
+      1,
+    );
   }
 });
 
-test("pre-turn Joker가 final Table에서 사라지면 conservation failure다", () => {
+test("pre-turn Joker를 final Table에서 제거해 rack에 보관하려 하면 conservation failure다", () => {
   const fixture = new RuleFixture();
   const red5 = fixture.ordinary("RED", 5);
-  const joker = fixture.joker("RED", 6);
+  const joker = fixture.joker();
   const red7 = fixture.ordinary("RED", 7);
   const red6 = fixture.ordinary("RED", 6);
   assertFailure(
@@ -694,6 +752,42 @@ test("pre-turn Joker가 final Table에서 사라지면 conservation failure다",
       true,
     ),
     "TILE_CONSERVATION_FAILED",
+  );
+});
+
+test("pre-turn Joker가 final Table에 중복되면 duplicate reference로 거절한다", () => {
+  const fixture = new RuleFixture();
+  const red4 = fixture.ordinary("RED", 4);
+  const joker = fixture.joker();
+  const red6 = fixture.ordinary("RED", 6);
+  const red7 = fixture.ordinary("RED", 7);
+  assertFailure(
+    submit(
+      fixture,
+      table(run(red4, joker, red6)),
+      table(run(red4, joker, joker, red6, red7)),
+      [red7],
+      true,
+    ),
+    "DUPLICATE_TILE_REFERENCE",
+  );
+});
+
+test("Joker와 rack contribution을 모두 보존해도 final meld가 invalid면 거절한다", () => {
+  const fixture = new RuleFixture();
+  const red4 = fixture.ordinary("RED", 4);
+  const joker = fixture.joker();
+  const red6 = fixture.ordinary("RED", 6);
+  const red7 = fixture.ordinary("RED", 7);
+  assertFailure(
+    submit(
+      fixture,
+      table(run(red4, joker, red6)),
+      table(run(red4, joker, red7, red6)),
+      [red7],
+      true,
+    ),
+    "INVALID_MELD",
   );
 });
 

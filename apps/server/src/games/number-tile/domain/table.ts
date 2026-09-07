@@ -1,7 +1,5 @@
 import type { TileId } from "@hangul-rummikub/shared";
 
-import type { NumberTileColor, NumberTileNumber } from "./tile.js";
-
 export type NumberTileMeldKind = "GROUP" | "RUN";
 
 export type NumberTileOrdinaryPlacement = Readonly<{
@@ -12,13 +10,12 @@ export type NumberTileOrdinaryPlacement = Readonly<{
 export type NumberTileJokerPlacement = Readonly<{
   tileId: TileId;
   kind: "JOKER";
-  assignedNumber: NumberTileNumber;
-  assignedColor: NumberTileColor;
 }>;
 
 /**
  * A Table placement refers to one canonical physical Tile. Ordinary faces come
- * from the canonical Tile record; only a Joker carries a proposed assignment.
+ * from the canonical Tile record. A Joker's role is derived from its containing
+ * meld and its position instead of being persisted on the physical placement.
  */
 export type NumberTilePlacement =
   | NumberTileOrdinaryPlacement
@@ -41,17 +38,19 @@ export type NumberTileProposedTable = Readonly<{
 function cloneNumberTilePlacement(
   placement: NumberTilePlacement,
 ): NumberTilePlacement {
-  return placement.kind === "JOKER"
-    ? Object.freeze({
-        tileId: placement.tileId,
-        kind: placement.kind,
-        assignedNumber: placement.assignedNumber,
-        assignedColor: placement.assignedColor,
-      })
-    : Object.freeze({
-        tileId: placement.tileId,
-        kind: placement.kind,
-      });
+  const keys = Object.keys(placement);
+  if (
+    keys.length !== 2 ||
+    !keys.includes("tileId") ||
+    !keys.includes("kind") ||
+    (placement.kind !== "ORDINARY" && placement.kind !== "JOKER")
+  ) {
+    throw new Error("Number Tile Table placement shape is invalid.");
+  }
+  return Object.freeze({
+    tileId: placement.tileId,
+    kind: placement.kind,
+  });
 }
 
 export function cloneNumberTileTable(

@@ -33,12 +33,12 @@ Draft는 browser memory에만 존재하며 base `gameId`, `gameRevision`, `turnI
 - 첫 등록 전 canonical Table은 읽기 전용이고 local meld에는 own rack tile만 놓는다. 합계 30 안내와 candidate 합계는 UX hint일 뿐 server 판정을 대체하지 않는다.
 - 첫 등록 뒤 split/merge/extend/rebuild가 가능한 whole-table editor를 제공하고 own rack tile 1개 사용 requirement를 안내한다.
 - 이번 turn의 rack-origin tile은 rack으로 되돌릴 수 있지만 pre-turn canonical Table tile은 rack으로 반환할 수 없다.
-- Joker는 같은 `tileId`를 유지한다. 유일한 valid assignment는 자동 추론하고 여러 후보일 때만 picker를 제공하며, Stable meld ID나 recovery algorithm을 client에 만들지 않고 exact replacement/same-Submit reuse/final validity는 server가 판정한다.
-- Undo는 click/drag move, meld create/delete, Joker assignment, rack return을 복원한다. 첫 combination 생성+첫 Tile 배치는 history 한 entry이며, 비워진 source combination은 같은 edit에서 제거된다. Reset은 authoritative baseline으로 돌아간다.
+- Joker는 같은 physical `tileId`만 유지한다. GROUP에서는 ordinary common number와 unused-color existence로 colorless하게 분류하며 color/number picker를 제공하지 않는다. RUN에서는 ordinary common color와 ordered position으로 role을 derive하므로 color picker가 없다. Previous role은 drag/rearrangement를 제한하지 않는다.
+- Undo는 click/drag move, meld create/delete와 rack return을 복원한다. Joker role은 draft meld에서 매번 derive되므로 stale assignment state를 history에 보관하지 않는다. 첫 combination 생성+첫 Tile 배치는 history 한 entry이며, 비워진 source combination은 같은 edit에서 제거된다. Reset은 authoritative baseline으로 돌아간다.
 
-## 4. Command와 recovery
+## 4. Command와 final-state validation
 
-`number:submit`은 draft의 complete `proposedTable`, base revision/turn과 새 request ID를 보낸다. Ordinary face는 주장하지 않고 Joker assignment만 wire에 포함한다. Gameplay rejection은 readable shared error를 표시하며 draft를 보존한다. stale revision, wrong turn, expired turn, invalid authority/identity는 draft를 버리고 `state:sync`를 요청한다.
+`number:submit`은 draft의 complete `proposedTable`, base revision/turn과 새 request ID를 보낸다. Ordinary face나 Joker color/number를 주장하지 않고 bare physical Joker `tileId`/kind만 wire에 포함한다. GROUP/RUN kind와 order는 client preview/intent지만 server가 canonical physical faces로 독립 검증한다. Gameplay rejection은 readable shared error를 표시하며 draft를 보존한다. stale revision, wrong turn, expired turn, invalid authority/identity는 draft를 버리고 `state:sync`를 요청한다.
 
 Pool이 남아 있으면 `number:draw`, 0이면 `number:pass`만 표시한다. Draw는 tile을 고르지 않고 empty payload를 보낸다. Dirty draft에서 Draw/Pass를 실행하기 전 discard confirmation과 focus 이동·복원을 제공한다. Submit/Draw/Pass는 하나의 page-memory single-flight gate를 사용하며 acknowledgement loss reconnect retry는 같은 command/request ID를 유지한다. Number-specific advisory와 `number:start`는 없고 shared `game:start` 및 authoritative snapshot-bearing ack를 사용한다.
 
@@ -69,10 +69,17 @@ P8 당시 390×844와 320×568에서 Home, Number PLAYING controls와 FINISHED r
 
 Web test는 same identity의 transient update에서 draft/pending command를 유지하고 newer revision 또는 changed Turn에서 supersede하는 경계를 강화했다. 또한 Hangul/Number Web feature와 shared contract namespace가 서로 import하지 않음을 고정했다. Browser console의 Hangul/Number A/B warn/error log는 비어 있었다.
 
-Random browser rack의 valid 30/Joker recovery와 pool-empty Pass는 production cheat 없이 deterministic raw protocol/application test로 검증했다. 사용자가 Railway의 `deafc39` deployment와 1 Replica를 확인한 뒤 public Number UI, A/B create·join·start·Draw·resume, privacy, responsive와 clean browser console을 검증했다. 상세는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)를 따른다.
+Random browser rack의 valid 30과 당시 exact-replacement Joker recovery는 production cheat 없이 deterministic raw protocol/application test로 검증했다. 그 recovery rule은 이후 NUMBER_TILE Joker semantics correction으로 superseded됐고 현재는 final-state role derivation/conservation tests가 authority다. 사용자가 Railway의 `deafc39` deployment와 1 Replica를 확인한 뒤 public Number UI, A/B create·join·start·Draw·resume, privacy, responsive와 clean browser console을 검증했다. 상세는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)를 따른다.
 
 ## 8. UX polish boundary
 
 Rack wrap/sort, stronger color identity, compact turn hierarchy, sound feedback, automatic meld classification, and Joker inference are documented in [NUMBER_TILE_UX_POLISH.md](./NUMBER_TILE_UX_POLISH.md). These are Web-only presentation/draft helpers: the existing command/event/snapshot contracts are unchanged and the Number server RuleEngine remains the final authority.
 
-The second interaction pass adds an Editor-local active-combination pointer and optional desktop mouse Pointer Events drag-and-drop without adding a stable meld identity, protocol field, or command. Pointer state carries the exact physical `tileId` only inside browser memory; Submit continues to serialize only the complete proposed Table and existing identities/assignments. Click, tap, Enter, and Space remain complete non-drag interaction paths.
+The second interaction pass adds an Editor-local active-combination pointer and optional desktop mouse Pointer Events drag-and-drop without adding a stable meld identity, protocol field, or command. Pointer state carries the exact physical `tileId` only inside browser memory; Submit serializes the complete proposed Table with bare Joker identities and no persisted role. Click, tap, Enter, and Space remain complete non-drag interaction paths.
+
+## 9. Joker semantics and open-client compatibility
+
+- `R10, B10, Joker` is a complete same-number combination without a color picker. Adding either `K10` or `O10` remains valid because the Joker does not retain an arbitrary previous color.
+- Ordered RUN placement expresses numeric intent: `J,R5,R6`, `R4,J,R6`, and `R5,R6,J` derive Joker 4, 5, and 7. RUN color always comes from ordinary tiles and is never picked.
+- Moving a Joker between combinations immediately re-derives its preview; the Web does not enforce old-face replacement. The server remains authoritative for final Table conservation, rack contribution and all meld validity.
+- The corrected Number V2 command/projection shape removes Joker assignment fields without changing `protocolVersion`, `snapshotVersion`, event names or Hangul branches. A strict old Number browser already open on the previous schema must refresh; fake GROUP color is not emitted as a compatibility workaround.
