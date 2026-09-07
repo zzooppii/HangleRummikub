@@ -25,7 +25,9 @@ export function LobbyScreen(props: LobbyScreenProps) {
       <header className="lobby-header">
         <div>
           <p className="eyebrow">
-            {room.gameType === "NUMBER_TILE"
+            {room.gameType === "GEM_CARD"
+              ? "보석 카드 게임"
+              : room.gameType === "NUMBER_TILE"
               ? "숫자 타일 게임"
               : "한글 타일 게임"}
           </p>

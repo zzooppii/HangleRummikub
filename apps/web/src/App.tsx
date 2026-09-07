@@ -4,6 +4,9 @@ import { useLobbyApp } from "./app/use-lobby-app.js";
 import { PlayingScreen } from "./features/game/PlayingScreen.js";
 import { FinishedScreen } from "./features/game/FinishedScreen.js";
 import { useTurnDraft } from "./features/game/use-turn-draft.js";
+import { GemCardPlayingScreen } from "./features/gem-card/GemCardPlayingScreen.js";
+import { GemCardFinishedScreen } from "./features/gem-card/GemCardFinishedScreen.js";
+import "./features/gem-card/gem-card.css";
 import { NumberTileFinishedScreen } from "./features/number-tile/NumberTileFinishedScreen.js";
 import { NumberTilePlayingScreen } from "./features/number-tile/NumberTilePlayingScreen.js";
 import { useNumberTileTurnDraft } from "./features/number-tile/use-number-tile-turn-draft.js";
@@ -288,6 +291,58 @@ export function App() {
         <div data-protocol-version={PROTOCOL_VERSION}>
           <NumberTileFinishedScreen
             snapshot={roomView.snapshot}
+            connectionLabel={connectionLabel}
+            connectionTone={connection.tone}
+            errorMessage={app.errorMessage}
+            sessionReplaced={app.sessionReplaced}
+            roomLeavePending={app.roomLeavePending}
+            onLeaveRoom={app.leaveRoom}
+            onGoHome={app.goHome}
+          />
+        </div>
+      );
+    }
+
+    if (roomView.kind === "GEM_CARD_PLAYING") {
+      const selfState = roomView.snapshot.game.playerStates.find(
+        (player) => player.playerId === roomView.snapshot.self.playerId,
+      );
+      const canAct = app.connectionState === "CONNECTED" &&
+        !app.sessionReplaced && !app.roomLeavePending &&
+        app.operationLabel === null && selfState?.forfeited === false &&
+        roomView.snapshot.game.turn.activePlayerId === roomView.snapshot.self.playerId;
+      return (
+        <div data-protocol-version={PROTOCOL_VERSION}>
+          <GemCardPlayingScreen
+            snapshot={roomView.snapshot}
+            connectionLabel={connectionLabel}
+            connectionTone={connection.tone}
+            errorMessage={app.errorMessage}
+            sessionReplaced={app.sessionReplaced}
+            actionPending={app.gemActionPending}
+            commandRetryKind={app.gemCommandRetryKind}
+            actionFeedback={app.gemActionFeedback}
+            selectionResetGeneration={app.gemSelectionResetGeneration}
+            roomLeavePending={app.roomLeavePending}
+            canAct={canAct}
+            onCollect={app.collectGemResources}
+            onPurchase={app.purchaseGemCard}
+            onReserve={app.reserveGemCard}
+            onYield={app.yieldGemTurn}
+            onRetry={app.retryGemAction}
+            onLeaveRoom={app.leaveRoom}
+            onGoHome={app.goHome}
+          />
+        </div>
+      );
+    }
+
+    if (roomView.kind === "GEM_CARD_FINISHED") {
+      return (
+        <div data-protocol-version={PROTOCOL_VERSION}>
+          <GemCardFinishedScreen
+            snapshot={roomView.snapshot}
+            actionFeedback={app.gemActionFeedback}
             connectionLabel={connectionLabel}
             connectionTone={connection.tone}
             errorMessage={app.errorMessage}

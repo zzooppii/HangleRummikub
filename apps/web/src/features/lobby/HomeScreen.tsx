@@ -49,7 +49,7 @@ export function HomeScreen(props: HomeScreenProps) {
       <header className="hero-panel">
         <div>
           <p className="eyebrow">실시간 멀티플레이 보드게임</p>
-          <h1>함께 즐기는 타일 게임</h1>
+          <h1>함께 즐기는 보드게임</h1>
           <p className="hero-copy">
             닉네임만 정하고 방을 만들거나, 친구가 보낸 초대 코드로
             바로 참가하세요.

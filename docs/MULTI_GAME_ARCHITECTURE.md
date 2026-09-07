@@ -1335,3 +1335,15 @@ platform V2 shell -> projectGemCardV2Game (public whitelist, no fake rack)
 - 45-second timeout uses the existing scheduler/sweeper mechanism. GEM has no overall deadline. Explicit leave returns resources; third offline timeout retains them. Domain finish precedence and fair-round queue remain authoritative. No GEM advisory events.
 - P11A domain, Hangul rules/wire, Number bare Joker semantics and dependency manifests are unchanged. Number manual Railway/Chrome verification remains a separate pending item; this user-authorized P11B does not claim that verification.
 - Railway deployment is not required for P11B. Public three-game verification waits for a usable GEM Web client and its later release gate.
+
+## 40. P11C — Concrete GEM Web feature
+
+Starting from `cc20977`, P11C enables the third current-Web capability and Home choice using P11B's unchanged server/shared contracts. Historical P11B notes above describe the two-game Web at that checkpoint.
+
+`decodeWebSnapshot -> PLATFORM_V2_GEM_CARD -> platform Lobby / GemCardPlayingScreen / GemCardFinishedScreen` is a concrete route, not a renderer registry or a Hangul/Number adapter. GEM feature files own only presentation, local selection, preview and audio. They import shared browser-safe DTOs and small Web primitives, never server domain implementations or either tile-game feature.
+
+Four typed RealtimeClient methods preserve strict validation, ack identity and snapshot negotiation. The existing page controller owns single-flight, exact request retries, canonical snapshot ordering and session replacement. Market payment/affordability/YIELD hints do not mutate or authorize canonical state. The server still computes resources, cards, scores, turn and finish; Web displays the four projected reasons/ranks without recalculation.
+
+The market has fixed 3×3 nullable slots and rack-free public player data. Original CSS/letter markers and generated audio add no asset/dependency. Number's direct editor and bare-Joker V2 semantics are unchanged. [GEM_CARD_WEB_IMPLEMENTATION.md](./GEM_CARD_WEB_IMPLEMENTATION.md) records implementation and verification. Public release/IP/product review and Railway verification remain P12 gates, not an inferred result of pushing source.
+
+P11C source gate: 1114 tests (85 shared / 211 Web / 818 server), typecheck/build and production-serving 6/6 PASS. Built-client H/N/GEM smoke and local in-app GEM A/B gameplay/refresh/390/320 inspection passed. Status is **SOURCE COMPLETE / MANUAL PUBLIC VERIFICATION PENDING**, with browser/API limitations and remaining P12 checks recorded in the implementation document.

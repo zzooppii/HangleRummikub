@@ -1,4 +1,20 @@
 import {
+  validateGemCollectCommand,
+  validateGemCollectWireAck,
+  validateGemPurchaseCommand,
+  validateGemPurchaseWireAck,
+  validateGemReserveCommand,
+  validateGemReserveWireAck,
+  validateGemYieldCommand,
+  validateGemYieldWireAck,
+  type GemCollectCommand,
+  type GemCollectWireAck,
+  type GemPurchaseCommand,
+  type GemPurchaseWireAck,
+  type GemReserveCommand,
+  type GemReserveWireAck,
+  type GemYieldCommand,
+  type GemYieldWireAck,
   validateGameStartWireAck,
   validateGameStartCommand,
   validateGameFinishedEvent,
@@ -270,6 +286,10 @@ function hasConsistentSnapshotAcknowledgement(
     | SessionResumeWireAck
     | StateSyncWireAck
     | GameStartWireAck
+    | GemCollectWireAck
+    | GemPurchaseWireAck
+    | GemReserveWireAck
+    | GemYieldWireAck
     | NumberDrawWireAck
     | NumberPassWireAck
     | NumberSubmitWireAck
@@ -768,6 +788,78 @@ export class RealtimeClient {
     );
   }
 
+  collectGemResources(command: GemCollectCommand): Promise<GemCollectWireAck> {
+    const validatedCommand = validateGemCollectCommand(command);
+    if (!validatedCommand.ok) {
+      return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    }
+    return this.#emitAcknowledged(
+      "gem:collect",
+      validatedCommand.value.requestId,
+      (acknowledge) => {
+        this.#socket.emit("gem:collect", validatedCommand.value, acknowledge);
+      },
+      validateGemCollectWireAck,
+      (acknowledgement) =>
+        hasConsistentSnapshotAcknowledgement(acknowledgement) &&
+        this.#acceptAcknowledgementSnapshotVersion(acknowledgement),
+    );
+  }
+
+  purchaseGemCard(command: GemPurchaseCommand): Promise<GemPurchaseWireAck> {
+    const validatedCommand = validateGemPurchaseCommand(command);
+    if (!validatedCommand.ok) {
+      return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    }
+    return this.#emitAcknowledged(
+      "gem:purchase",
+      validatedCommand.value.requestId,
+      (acknowledge) => {
+        this.#socket.emit("gem:purchase", validatedCommand.value, acknowledge);
+      },
+      validateGemPurchaseWireAck,
+      (acknowledgement) =>
+        hasConsistentSnapshotAcknowledgement(acknowledgement) &&
+        this.#acceptAcknowledgementSnapshotVersion(acknowledgement),
+    );
+  }
+
+  reserveGemCard(command: GemReserveCommand): Promise<GemReserveWireAck> {
+    const validatedCommand = validateGemReserveCommand(command);
+    if (!validatedCommand.ok) {
+      return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    }
+    return this.#emitAcknowledged(
+      "gem:reserve",
+      validatedCommand.value.requestId,
+      (acknowledge) => {
+        this.#socket.emit("gem:reserve", validatedCommand.value, acknowledge);
+      },
+      validateGemReserveWireAck,
+      (acknowledgement) =>
+        hasConsistentSnapshotAcknowledgement(acknowledgement) &&
+        this.#acceptAcknowledgementSnapshotVersion(acknowledgement),
+    );
+  }
+
+  yieldGemTurn(command: GemYieldCommand): Promise<GemYieldWireAck> {
+    const validatedCommand = validateGemYieldCommand(command);
+    if (!validatedCommand.ok) {
+      return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    }
+    return this.#emitAcknowledged(
+      "gem:yield",
+      validatedCommand.value.requestId,
+      (acknowledge) => {
+        this.#socket.emit("gem:yield", validatedCommand.value, acknowledge);
+      },
+      validateGemYieldWireAck,
+      (acknowledgement) =>
+        hasConsistentSnapshotAcknowledgement(acknowledgement) &&
+        this.#acceptAcknowledgementSnapshotVersion(acknowledgement),
+    );
+  }
+
   #emitAcknowledged<
     TAcknowledgement extends Readonly<{ requestId: string | null }>,
   >(
@@ -904,6 +996,10 @@ export class RealtimeClient {
       | SessionResumeWireAck
       | StateSyncWireAck
       | GameStartWireAck
+      | GemCollectWireAck
+      | GemPurchaseWireAck
+      | GemReserveWireAck
+      | GemYieldWireAck
       | NumberDrawWireAck
       | NumberPassWireAck
       | NumberSubmitWireAck

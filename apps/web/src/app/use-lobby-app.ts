@@ -6,6 +6,10 @@ import {
   type ErrorDto,
   type GameStartCommand,
   type GameType,
+  type GemCardPlayingPlatformSnapshotV2,
+  type GemCollectSelectionDto,
+  type GemMarketSourceDto,
+  type GemPurchaseSourceDto,
   type Nickname,
   type NumberSubmitCommand,
   type NumberTilePlayingPlatformSnapshotV2,
@@ -24,6 +28,20 @@ import {
 import { useEffect, useRef, useState } from "react";
 
 import { getUserErrorMessage } from "../lib/error-messages.js";
+import { runAsyncSingleFlight } from "../lib/async-single-flight.js";
+import {
+  createGemCollectCommand,
+  createGemPurchaseCommand,
+  createGemReserveCommand,
+  createGemYieldCommand,
+  gemCardActionFeedback as createGemActionFeedback,
+  gemCardCommandKind,
+  gemSnapshotSupersedesCommand,
+  shouldResetGemSelectionAfterFailure,
+  type GemCardActionFeedback,
+  type GemCardActionKind,
+  type PendingGemCardCommand,
+} from "../features/gem-card/gem-card-actions.js";
 import { DEFAULT_SELECTED_GAME_TYPE } from "../features/game-catalog/game-catalog.js";
 import {
   createOrReuseGameStartCommand,
@@ -125,6 +143,14 @@ type EntryAck = RoomCreateWireAck | RoomJoinWireAck;
 type SnapshotApplication = "CURRENT" | "REQUEST_SYNC" | "REJECTED";
 export type NumberTileCommandRetryKind = "SUBMIT" | "DRAW" | "PASS" | null;
 
+function isGemCardPlayingSnapshot(
+  snapshot: Extract<CompatibleWebSnapshot,
+    { kind: "PLATFORM_V2_GEM_CARD" }>["platformSnapshot"],
+): snapshot is GemCardPlayingPlatformSnapshotV2 {
+  return snapshot.room.phase === "PLAYING" && snapshot.game !== null &&
+    snapshot.game.gameType === "GEM_CARD" && "turn" in snapshot.game;
+}
+
 function isNumberTilePlayingSnapshot(
   snapshot: Extract<
     CompatibleWebSnapshot,
@@ -162,6 +188,10 @@ export type LobbyAppState = Readonly<{
   turnActionPending: boolean;
   numberCommandRetryKind: NumberTileCommandRetryKind;
   numberActionFeedback: NumberTileActionFeedback | null;
+  gemActionPending: boolean;
+  gemCommandRetryKind: GemCardActionKind | null;
+  gemActionFeedback: GemCardActionFeedback | null;
+  gemSelectionResetGeneration: number;
   roomLeavePending: boolean;
   turnDraftResetGeneration: number;
   setNickname: (value: string) => void;
@@ -175,6 +205,11 @@ export type LobbyAppState = Readonly<{
   submitNumberTurn: (draft: NumberTileTurnDraft) => void;
   drawNumberTurn: () => void;
   passNumberTurn: () => void;
+  collectGemResources: (selection: GemCollectSelectionDto) => void;
+  purchaseGemCard: (source: GemPurchaseSourceDto) => void;
+  reserveGemCard: (source: GemMarketSourceDto) => void;
+  yieldGemTurn: () => void;
+  retryGemAction: () => void;
   leaveRoom: () => void;
   copyInvitation: (invitationUrl: string) => void;
   goHome: () => void;
@@ -271,6 +306,12 @@ export function useLobbyApp(): LobbyAppState {
   const [numberActionFeedback, setNumberActionFeedback] =
     useState<NumberTileActionFeedback | null>(null);
   const [roomLeavePending, setRoomLeavePending] = useState(false);
+  const [gemActionPending, setGemActionPending] = useState(false);
+  const [gemCommandRetryKind, setGemCommandRetryKind] =
+    useState<GemCardActionKind | null>(null);
+  const [gemActionFeedback, setGemActionFeedback] =
+    useState<GemCardActionFeedback | null>(null);
+  const [gemSelectionResetGeneration, setGemSelectionResetGeneration] = useState(0);
   const [turnDraftResetGeneration, setTurnDraftResetGeneration] = useState(0);
 
   const routeRef = useRef<AppRoute>(initialRoute);
@@ -301,6 +342,10 @@ export function useLobbyApp(): LobbyAppState {
     useRef<PendingNumberTileActionCommand | null>(null);
   const numberActionRetryRequestedRef = useRef(false);
   const announcedNumberActionRequestIdsRef = useRef<Set<RequestId>>(new Set());
+  const pendingGemCommandRef = useRef<PendingGemCardCommand | null>(null);
+  const gemRetryRequestedRef = useRef(false);
+  const announcedGemActionRequestIdsRef = useRef<Set<RequestId>>(new Set());
+  const gemContextGenerationRef = useRef(0);
   const roomLeaveFlightRef = useRef<Promise<void> | null>(null);
   const pendingRoomLeaveCommandRef = useRef<RoomLeaveCommand | null>(null);
   const roomLeaveRetryRequestedRef = useRef(false);
@@ -351,7 +396,8 @@ export function useLobbyApp(): LobbyAppState {
 
   function currentLegacyHangulSnapshot(): StateSnapshot | null {
     const compatible = compatibleSnapshotRef.current;
-    return compatible === null || compatible.kind === "PLATFORM_V2_NUMBER_TILE"
+    return compatible === null || compatible.kind === "PLATFORM_V2_NUMBER_TILE" ||
+      compatible.kind === "PLATFORM_V2_GEM_CARD"
       ? null
       : compatible.legacySnapshot;
   }
@@ -371,6 +417,28 @@ export function useLobbyApp(): LobbyAppState {
     pendingGameStartCommandRef.current = null;
     gameStartRetryRequestedRef.current = false;
     setGameStartPending(false);
+  }
+
+  function currentGemCardPlayingSnapshot(): GemCardPlayingPlatformSnapshotV2 | null {
+    const compatible = compatibleSnapshotRef.current;
+    return compatible?.kind === "PLATFORM_V2_GEM_CARD" &&
+      isGemCardPlayingSnapshot(compatible.platformSnapshot)
+      ? compatible.platformSnapshot : null;
+  }
+
+  function clearPendingGemCommand(settled = true): void {
+    pendingGemCommandRef.current = null;
+    gemRetryRequestedRef.current = false;
+    setGemCommandRetryKind(null);
+    if (settled) setGemActionPending(false);
+  }
+
+  function discardGemEditor(): void {
+    gemContextGenerationRef.current += 1;
+    clearPendingGemCommand();
+    setGemActionFeedback(null);
+    announcedGemActionRequestIdsRef.current.clear();
+    setGemSelectionResetGeneration((current) => current + 1);
   }
 
   function clearPendingTurnSubmitRequest(): void {
@@ -435,6 +503,7 @@ export function useLobbyApp(): LobbyAppState {
     clearPendingGameStartRequest();
     clearPendingTurnSubmitRequest();
     clearPendingTurnActionRequest();
+    discardGemEditor();
     clearPendingRoomLeaveRequest();
     resetTurnDraftFromAuthority();
     setOperationLabel(null);
@@ -465,6 +534,7 @@ export function useLobbyApp(): LobbyAppState {
     clearPendingGameStartRequest();
     clearPendingTurnSubmitRequest();
     clearPendingTurnActionRequest();
+    discardGemEditor();
     clearPendingRoomLeaveRequest();
     updateSnapshot(null);
     clearSnapshotIncompatibility();
@@ -542,7 +612,8 @@ export function useLobbyApp(): LobbyAppState {
   ): SnapshotApplication {
     const incomingSnapshot = projectRoomSnapshotShell(compatible);
     const incomingLegacySnapshot =
-      compatible.kind === "PLATFORM_V2_NUMBER_TILE"
+      compatible.kind === "PLATFORM_V2_NUMBER_TILE" ||
+      compatible.kind === "PLATFORM_V2_GEM_CARD"
         ? null
         : compatible.legacySnapshot;
     const incomingNumberSnapshot =
@@ -550,6 +621,10 @@ export function useLobbyApp(): LobbyAppState {
       isNumberTilePlayingSnapshot(compatible.platformSnapshot)
         ? compatible.platformSnapshot
         : null;
+    const incomingGemSnapshot =
+      compatible.kind === "PLATFORM_V2_GEM_CARD" &&
+      isGemCardPlayingSnapshot(compatible.platformSnapshot)
+        ? compatible.platformSnapshot : null;
     if (!isSnapshotForSession(incomingSnapshot, session)) {
       setErrorMessage(INVALID_SERVER_STATE_MESSAGE);
       return "REJECTED";
@@ -606,6 +681,10 @@ export function useLobbyApp(): LobbyAppState {
           )
         ) {
           clearPendingTurnActionRequest(false);
+        }
+        if (pendingGemCommandRef.current !== null &&
+          gemSnapshotSupersedesCommand(pendingGemCommandRef.current, incomingGemSnapshot)) {
+          clearPendingGemCommand(false);
         }
         updateSnapshot(incomingSnapshot, compatible);
         clearSnapshotIncompatibility();
@@ -1219,6 +1298,97 @@ export function useLobbyApp(): LobbyAppState {
     }
   }
 
+  async function executeGemCommand(command: PendingGemCardCommand): Promise<void> {
+    if (gameplayMutationFlightRef.current !== null) return gameplayMutationFlightRef.current;
+    const client = clientRef.current;
+    const session = storedSessionForCurrentRoute();
+    if (client === null || !client.connected || session === null ||
+      sessionReplacedRef.current || snapshotIncompatibilityRef.current !== null) {
+      setGemCommandRetryKind(gemCardCommandKind(command));
+      setErrorMessage("서버에 연결되지 않았습니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    const contextGeneration = gemContextGenerationRef.current;
+    const hasCurrentContext = () => clientRef.current === client &&
+      gemContextGenerationRef.current === contextGeneration && !sessionReplacedRef.current;
+    pendingGemCommandRef.current = command;
+    setGemCommandRetryKind(null);
+    setGemActionFeedback(null);
+    setGemActionPending(true);
+    setOperationLabel("보석 카드 행동 확인 중...");
+    setErrorMessage(null);
+
+    const flight = runAsyncSingleFlight(gameplayMutationFlightRef, async () => {
+      try {
+        const acknowledgement = command.kind === "gem:collect"
+          ? await client.collectGemResources(command)
+          : command.kind === "gem:purchase"
+            ? await client.purchaseGemCard(command)
+            : command.kind === "gem:reserve"
+              ? await client.reserveGemCard(command)
+              : await client.yieldGemTurn(command);
+        if (!hasCurrentContext()) return;
+        pendingGemCommandRef.current = null;
+        if (!acknowledgement.ok) {
+          if (isStaleSessionError(acknowledgement.error)) {
+            handleStaleSession();
+            return;
+          }
+          setErrorMessage(getUserErrorMessage(acknowledgement.error.code));
+          if (shouldResetGemSelectionAfterFailure(
+            acknowledgement.error.code,
+            acknowledgement.scope === "ROOM" ? acknowledgement.versions.gameRevision : null,
+            command.expectedGameRevision,
+          )) {
+            setGemSelectionResetGeneration((current) => current + 1);
+            void requestLatestSnapshot();
+          }
+          return;
+        }
+
+        const application = applyWireSnapshot(acknowledgement.data.snapshot, session);
+        if (!hasCurrentContext()) return;
+        if (application === "CURRENT") {
+          setErrorMessage(null);
+          setGemSelectionResetGeneration((current) => current + 1);
+          const feedback = createGemActionFeedback(command, announcedGemActionRequestIdsRef.current);
+          if (feedback !== null) setGemActionFeedback(feedback);
+        } else {
+          setGemSelectionResetGeneration((current) => current + 1);
+          void requestLatestSnapshot();
+        }
+      } catch (error: unknown) {
+        if (!hasCurrentContext()) return;
+        if (!isRetryableCommandFailure(error)) {
+          pendingGemCommandRef.current = null;
+          if (error instanceof RealtimeClientError && error.code === "INVALID_SERVER_RESPONSE") {
+            setGemSelectionResetGeneration((current) => current + 1);
+            void requestLatestSnapshot();
+          }
+        }
+        setErrorMessage(clientFailureMessage(error));
+      }
+    });
+    try {
+      await flight;
+    } finally {
+      if (hasCurrentContext()) {
+        setGemActionPending(false);
+        setOperationLabel(null);
+        setGemCommandRetryKind(pendingGemCommandRef.current === null
+          ? null : gemCardCommandKind(pendingGemCommandRef.current));
+      }
+    }
+    if (!hasCurrentContext()) return;
+    const retryRequested = gemRetryRequestedRef.current;
+    gemRetryRequestedRef.current = false;
+    const pending = pendingGemCommandRef.current;
+    if (retryRequested && pending !== null && client.connected) {
+      await executeGemCommand(pending);
+    }
+  }
+
   async function executeRoomLeaveCommand(
     command: RoomLeaveCommand,
   ): Promise<void> {
@@ -1429,6 +1599,7 @@ export function useLobbyApp(): LobbyAppState {
     clearPendingGameStartRequest();
     clearPendingTurnSubmitRequest();
     clearPendingTurnActionRequest();
+    discardGemEditor();
     clearNumberActionFeedbackState();
 
     const sessionStored = writeStoredPlayerSession(
@@ -1707,6 +1878,17 @@ export function useLobbyApp(): LobbyAppState {
       }
     }
 
+    const pendingGemCommand = pendingGemCommandRef.current;
+    if (pendingGemCommand !== null && !sessionReplacedRef.current) {
+      if (gameplayMutationFlightRef.current !== null) {
+        gemRetryRequestedRef.current = true;
+        await gameplayMutationFlightRef.current;
+      } else {
+        await executeGemCommand(pendingGemCommand);
+      }
+      return;
+    }
+
     const pendingNumberActionCommand = pendingNumberActionCommandRef.current;
     if (pendingNumberActionCommand === null || sessionReplacedRef.current) {
       return;
@@ -1777,6 +1959,7 @@ export function useLobbyApp(): LobbyAppState {
       clearPendingGameStartRequest();
       clearPendingTurnSubmitRequest();
       clearPendingTurnActionRequest();
+      discardGemEditor();
       clearPendingRoomLeaveRequest();
       resetTurnDraftFromAuthority();
       clearSnapshotIncompatibility();
@@ -1835,6 +2018,7 @@ export function useLobbyApp(): LobbyAppState {
         clearPendingGameStartRequest();
         clearPendingTurnSubmitRequest();
         clearPendingTurnActionRequest();
+        discardGemEditor();
         clearPendingRoomLeaveRequest();
         updateSnapshot(null);
         client.disconnect();
@@ -1860,6 +2044,7 @@ export function useLobbyApp(): LobbyAppState {
       unsubscribeRoomClosed();
       unsubscribeReplaced();
       unsubscribeProtocolIssue();
+      gemContextGenerationRef.current += 1;
       client.destroy();
       if (clientRef.current === client) {
         clientRef.current = null;
@@ -2300,8 +2485,65 @@ export function useLobbyApp(): LobbyAppState {
     void executeNumberActionCommand(command);
   }
 
+  function gemActionSnapshot(): GemCardPlayingPlatformSnapshotV2 | null {
+    if (gameplayMutationFlightRef.current !== null || resumeFlightRef.current !== null ||
+      entryFlightRef.current !== null || gameStartFlightRef.current !== null ||
+      roomLeaveFlightRef.current !== null || pendingRoomLeaveCommandRef.current !== null ||
+      operationLabel !== null || snapshotIncompatibilityRef.current !== null) return null;
+    if (pendingGemCommandRef.current !== null) {
+      setErrorMessage("이전 행동의 결과를 확인 중입니다. 같은 요청을 다시 확인해주세요.");
+      return null;
+    }
+    const current = currentGemCardPlayingSnapshot();
+    if (current === null || current.game.turn.activePlayerId !== current.self.playerId ||
+      !current.game.playerStates.some((player) => player.playerId === current.self.playerId &&
+        !player.forfeited)) return null;
+    if (clientRef.current === null || !clientRef.current.connected ||
+      sessionReplacedRef.current || storedSessionForCurrentRoute() === null) {
+      setErrorMessage("서버에 연결되지 않았습니다. 잠시 후 다시 시도해주세요.");
+      return null;
+    }
+    return current;
+  }
+
+  function collectGemResources(selection: GemCollectSelectionDto): void {
+    const current = gemActionSnapshot();
+    if (current === null) return;
+    void executeGemCommand(createGemCollectCommand(selection,
+      current.game.gameRevision, current.game.turn.turnId, createRequestId));
+  }
+
+  function purchaseGemCard(source: GemPurchaseSourceDto): void {
+    const current = gemActionSnapshot();
+    if (current === null) return;
+    void executeGemCommand(createGemPurchaseCommand(source,
+      current.game.gameRevision, current.game.turn.turnId, createRequestId));
+  }
+
+  function reserveGemCard(source: GemMarketSourceDto): void {
+    const current = gemActionSnapshot();
+    if (current === null) return;
+    void executeGemCommand(createGemReserveCommand(source,
+      current.game.gameRevision, current.game.turn.turnId, createRequestId));
+  }
+
+  function yieldGemTurn(): void {
+    const current = gemActionSnapshot();
+    if (current === null) return;
+    void executeGemCommand(createGemYieldCommand(
+      current.game.gameRevision, current.game.turn.turnId, createRequestId));
+  }
+
+  function retryGemAction(): void {
+    const pending = pendingGemCommandRef.current;
+    if (pending === null || sessionReplacedRef.current ||
+      resumeFlightRef.current !== null || snapshotIncompatibilityRef.current !== null) return;
+    void executeGemCommand(pending);
+  }
+
   function leaveRoom(): void {
     if (
+      pendingGemCommandRef.current !== null ||
       roomLeaveFlightRef.current !== null ||
       gameplayMutationFlightRef.current !== null ||
       pendingTurnSubmitCommandRef.current !== null ||
@@ -2359,6 +2601,7 @@ export function useLobbyApp(): LobbyAppState {
     clearPendingGameStartRequest();
     clearPendingTurnSubmitRequest();
     clearPendingTurnActionRequest();
+    discardGemEditor();
     clearPendingRoomLeaveRequest();
     clearNumberActionFeedbackState();
     setErrorMessage(null);
@@ -2393,6 +2636,10 @@ export function useLobbyApp(): LobbyAppState {
     turnActionPending,
     numberCommandRetryKind,
     numberActionFeedback,
+    gemActionPending,
+    gemCommandRetryKind,
+    gemActionFeedback,
+    gemSelectionResetGeneration,
     roomLeavePending,
     turnDraftResetGeneration,
     setNickname,
@@ -2406,6 +2653,11 @@ export function useLobbyApp(): LobbyAppState {
     submitNumberTurn,
     drawNumberTurn,
     passNumberTurn,
+    collectGemResources,
+    purchaseGemCard,
+    reserveGemCard,
+    yieldGemTurn,
+    retryGemAction,
     leaveRoom,
     copyInvitation,
     goHome,

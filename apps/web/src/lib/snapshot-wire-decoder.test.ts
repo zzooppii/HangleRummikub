@@ -293,8 +293,8 @@ test("new Web은 snapshot capability 2와 legacy 1을 내림차순으로 adverti
   assert.equal(Object.isFrozen(WEB_SUPPORTED_SNAPSHOT_VERSIONS), true);
 });
 
-test("new Web은 실제 renderer가 있는 Hangul/Number game capability만 advertise한다", () => {
-  assert.deepEqual(WEB_SUPPORTED_GAME_TYPES, ["HANGUL_TILE", "NUMBER_TILE"]);
+test("new Web은 실제 renderer가 있는 Hangul/Number/GEM game capability를 advertise한다", () => {
+  assert.deepEqual(WEB_SUPPORTED_GAME_TYPES, ["HANGUL_TILE", "NUMBER_TILE", "GEM_CARD"]);
   assert.equal(Object.isFrozen(WEB_SUPPORTED_GAME_TYPES), true);
 });
 
@@ -580,14 +580,14 @@ test("future version과 unsupported canonical gameType은 Hangul fallback 없이
   });
 });
 
-test("P11B shared GEM identity does not enable GEM admission/rendering in the current H/N Web", () => {
+test("GEM identity cannot reinterpret Hangul game data as a GEM projection", () => {
   const gem = {
     ...playingV2(),
     room: { ...(playingV2().room as Record<string, unknown>), gameType: "GEM_CARD" },
   };
   assert.deepEqual(decodeWebSnapshot(gem), {
     kind: "INCOMPATIBLE",
-    reason: "UNSUPPORTED_GAME_TYPE",
+    reason: "INVALID_V2_PROJECTION",
   });
 });
 

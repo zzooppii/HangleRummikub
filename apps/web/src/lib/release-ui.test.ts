@@ -160,7 +160,7 @@ test("P5B legacy pending create는 현재 기본 gameType과 같은 요청으로
   );
 });
 
-test("P7C current Web은 snapshot V2와 구현된 Hangul/Number capability만 광고한다", () => {
+test("current Web은 snapshot V2와 구현된 game capability를 광고하고 Number commands를 유지한다", () => {
   assert.match(
     realtimeClientSource,
     /supportedSnapshotVersions:\s*\[\.\.\.WEB_SUPPORTED_SNAPSHOT_VERSIONS\]/u,

@@ -1,6 +1,8 @@
 import type { LegacyHangulRoomView } from "./legacy-hangul-room-view.js";
 import { resolveLegacyHangulRoomView } from "./legacy-hangul-room-view.js";
 import type {
+  GemCardFinishedPlatformSnapshotV2,
+  GemCardPlayingPlatformSnapshotV2,
   NumberTileFinishedPlatformSnapshotV2,
   NumberTilePlayingPlatformSnapshotV2,
 } from "@hangul-rummikub/shared";
@@ -38,6 +40,14 @@ function isNumberTileFinishedSnapshot(
 export type RoomSnapshotView =
   | LegacyHangulRoomView
   | Readonly<{
+      kind: "GEM_CARD_PLAYING";
+      snapshot: GemCardPlayingPlatformSnapshotV2;
+    }>
+  | Readonly<{
+      kind: "GEM_CARD_FINISHED";
+      snapshot: GemCardFinishedPlatformSnapshotV2;
+    }>
+  | Readonly<{
       kind: "NUMBER_TILE_PLAYING";
       snapshot: NumberTilePlayingPlatformSnapshotV2;
     }>
@@ -60,6 +70,24 @@ export function resolveRoomSnapshotView(
 ): RoomSnapshotView {
   if (decoded.kind === "LEGACY_HANGUL_V1") {
     return resolveLegacyHangulRoomView(decoded.legacySnapshot);
+  }
+
+  if (decoded.kind === "PLATFORM_V2_GEM_CARD") {
+    const snapshot = decoded.platformSnapshot;
+    if (snapshot.room.gameType !== "GEM_CARD" ||
+      (snapshot.game !== null && snapshot.game.gameType !== "GEM_CARD")) {
+      return { kind: "INCOMPATIBLE", reason: "UNSUPPORTED_GAME_TYPE" };
+    }
+    if (snapshot.room.phase === "LOBBY" && snapshot.game === null) {
+      return { kind: "LOBBY" };
+    }
+    if (isGemPlayingSnapshot(snapshot)) {
+      return { kind: "GEM_CARD_PLAYING", snapshot };
+    }
+    if (isGemFinishedSnapshot(snapshot)) {
+      return { kind: "GEM_CARD_FINISHED", snapshot };
+    }
+    return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
   }
 
   if (decoded.kind === "PLATFORM_V2_NUMBER_TILE") {
@@ -107,4 +135,18 @@ export function resolveRoomSnapshotView(
   }
 
   return legacyView;
+}
+
+function isGemPlayingSnapshot(
+  snapshot: Extract<CompatibleWebSnapshot, { kind: "PLATFORM_V2_GEM_CARD" }>["platformSnapshot"],
+): snapshot is GemCardPlayingPlatformSnapshotV2 {
+  return snapshot.room.phase === "PLAYING" && snapshot.game !== null &&
+    "turn" in snapshot.game;
+}
+
+function isGemFinishedSnapshot(
+  snapshot: Extract<CompatibleWebSnapshot, { kind: "PLATFORM_V2_GEM_CARD" }>["platformSnapshot"],
+): snapshot is GemCardFinishedPlatformSnapshotV2 {
+  return snapshot.room.phase === "FINISHED" && snapshot.game !== null &&
+    "result" in snapshot.game;
 }

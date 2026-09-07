@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0~P11B COMPLETE / PUBLIC TWO-GAME VERIFIED / P11C READY (NOT STARTED)
+> 상태: P0~P11B COMPLETE / PUBLIC TWO-GAME VERIFIED / P11C SOURCE COMPLETE / P12 READY (NOT STARTED)
 > 작성일: 2026-09-07
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -1101,7 +1101,7 @@ Multi-game Platform P10 GEM_CARD rules/IP gate만 수행하라. docs/MULTI_GAME_
 
 ## 14. P11 — Gem/Card implementation
 
-P11은 domain, server/shared integration, web 구현을 각각 독립 stop gate로 수행한다. P10 rules/consistency/IP development gate 뒤 P11A pure domain을 완료했으며, P11B~P11C와 P12 production gate가 끝나기 전에는 production catalog에서 enable하지 않는다.
+P11은 domain, server/shared integration, web 구현을 각각 독립 stop gate로 수행한다. P10~P11C source gate를 완료했다. 사용자의 P11C 요청에 따라 source Web catalog/capability에는 세 게임을 노출하지만, public deployment/release 완료는 P12 gate 전까지 주장하지 않는다.
 
 ### 14.1 P11A — Gem/Card domain implementation
 
@@ -1208,13 +1208,15 @@ P11B is source integration only: current Web advertises/creates only Hangul + Nu
 
 ### 14.3 P11C — Gem/Card web implementation
 
+> Completed from `cc20977` / 1083 tests: **SOURCE COMPLETE / MANUAL PUBLIC VERIFICATION PENDING**. Final 1114 tests (85 shared / 211 Web / 818 server), typecheck/build and production-serving 6/6 PASS. Local built-client three-game smoke and in-app A/B GEM gameplay/390/320 inspection passed; public release and Railway remain P12. Implementation, the local Leave-dialog automation limitation and exact manual scope: [GEM_CARD_WEB_IMPLEMENTATION.md](./GEM_CARD_WEB_IMPLEMENTATION.md).
+
 #### 목표
 
 authoritative GEM_CARD projection만 소비하는 독립 card/resource renderer를 구현한다.
 
 #### Scope
 
-- web registry의 GEM_CARD decoder/renderer
+- concrete GEM_CARD decoder/Playing/Finished route (renderer registry 추가 없음)
 - market/resource/purchase/reserve/result interaction
 - approved neutral/original/licensed asset만 사용
 - local selection과 server ack/snapshot reconciliation
@@ -1226,7 +1228,7 @@ authoritative GEM_CARD projection만 소비하는 독립 card/resource renderer�
 - Tile/Rack UI adapter와 client-side canonical rule/score 계산
 - unapproved brand/logo/official art
 - server/shared rule 변경
-- P12 E2E 전 production enablement
+- P12 E2E/product review 전 public release 완료 주장 또는 임의 Railway 배포
 
 #### Definition of Done
 

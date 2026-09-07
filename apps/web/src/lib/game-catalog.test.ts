@@ -6,9 +6,9 @@ import {
   GAME_CATALOG,
 } from "../features/game-catalog/game-catalog.js";
 
-test("Web game catalog는 구현 완료된 Hangul/Number 두 게임만 같은 계층으로 공개한다", () => {
+test("Web game catalog는 구현 완료된 Hangul/Number/GEM 세 게임을 같은 계층으로 공개한다", () => {
   assert.equal(Object.isFrozen(GAME_CATALOG), true);
-  assert.equal(GAME_CATALOG.length, 2);
+  assert.equal(GAME_CATALOG.length, 3);
   assert.deepEqual(GAME_CATALOG, [
     {
       gameType: "HANGUL_TILE",
@@ -20,9 +20,15 @@ test("Web game catalog는 구현 완료된 Hangul/Number 두 게임만 같은 �
       displayName: "숫자 타일 게임",
       description: "숫자를 그룹과 연속 조합으로 맞추는 타일 게임입니다.",
     },
+    {
+      gameType: "GEM_CARD",
+      displayName: "보석 카드 게임",
+      description: "자원을 모아 카드를 구매하고, 생산을 키워 18점을 향해 경쟁하세요.",
+    },
   ]);
   assert.equal(Object.isFrozen(GAME_CATALOG[0]), true);
   assert.equal(Object.isFrozen(GAME_CATALOG[1]), true);
   assert.equal(DEFAULT_SELECTED_GAME_TYPE, GAME_CATALOG[0].gameType);
-  assert.doesNotMatch(JSON.stringify(GAME_CATALOG), /GEM_CARD/u);
+  assert.equal(Object.isFrozen(GAME_CATALOG[2]), true);
+  assert.doesNotMatch(JSON.stringify(GAME_CATALOG), /준비중|COMING_SOON/u);
 });

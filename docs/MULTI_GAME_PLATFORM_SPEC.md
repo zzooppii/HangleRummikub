@@ -1,6 +1,6 @@
 # Multi-game Platform Specification
 
-> 상태: P0~P11B COMPLETE / PUBLIC TWO-GAME VERIFIED / GEM Web P11C DEFERRED
+> 상태: P0~P11B COMPLETE / PUBLIC TWO-GAME VERIFIED / P11C SOURCE COMPLETE / MANUAL PUBLIC VERIFICATION PENDING
 > 작성일: 2026-09-07
 > 적용 범위: 현재 production 한글 타일 게임을 보존하면서 여러 턴제 보드게임을 수용하기 위한 제품 경계  
 > 비고: 이 문서는 구현 계약이 아니라 후속 Phase의 의사결정 기준이다.
@@ -49,11 +49,11 @@ P0 및 초기 migration의 비목표는 다음과 같다.
 | --- | --- | --- |
 | `HANGUL_TILE` | 기존 한글 타일 게임 | production 기준 implementation |
 | `NUMBER_TILE` | 숫자 타일 게임 | P7A domain + P7B server/shared + P7C Web + P8 source/local/public E2E 완료 |
-| `GEM_CARD` | 보석·카드형 게임 | P10/P11A/P11B 완료; server/shared 연결, Web/catalog는 P11C 보류 |
+| `GEM_CARD` | 보석·카드형 게임 | P10/P11A/P11B 완료; P11C Web/catalog source 완료, P12 public 검증 대기 |
 
 세 ID는 중립 내부 식별자로 확정했다. 장기적으로 protocol, persistence, registry, telemetry에서 일관되게 사용하되 공개 UI 명칭과 licensing은 별도 결정하며, 특정 상용 게임 브랜드나 asset 이름을 결합하지 않는다.
 
-P11B server/shared `SUPPORTED_GAME_TYPES`, `GameTypeSchema`와 identity-only GameRegistry는 `HANGUL_TILE`, `NUMBER_TILE`, `GEM_CARD` 세 값을 허용한다. Current Web capability/catalog는 여전히 Hangul + Number 두 값만 가진다. GEM은 V2 + explicit GEM capability가 있는 raw client에만 admission되며 Web UI/catalog는 P11C로 보류한다. [GEM_CARD_SERVER_INTEGRATION.md](./GEM_CARD_SERVER_INTEGRATION.md)를 따른다.
+P11B server/shared `SUPPORTED_GAME_TYPES`, `GameTypeSchema`와 identity-only GameRegistry는 `HANGUL_TILE`, `NUMBER_TILE`, `GEM_CARD` 세 값을 허용한다. P11C는 current Web capability/catalog에도 정확히 이 세 게임을 연결한다. GEM은 V2 + explicit GEM capability가 있어야 admission된다. Server contract는 [GEM_CARD_SERVER_INTEGRATION.md](./GEM_CARD_SERVER_INTEGRATION.md), Web/source verification과 P12 public release 구분은 [GEM_CARD_WEB_IMPLEMENTATION.md](./GEM_CARD_WEB_IMPLEMENTATION.md)를 따른다.
 
 ## 5. 공통 플랫폼 범위
 
@@ -353,6 +353,12 @@ GEM_CARD는 public market, shared resource supply, purchased development와 publ
 Rules consistency와 IP/product development audit에는 blocker가 없다. `rulesVersion = gem-rules-v1`, `cardSetVersion = gem-cardset-v1`을 문서상 확정했고 P10 판정은 **COMPLETE / P11A READY**다. 다만 public title, visual assets와 release provenance review는 계속 별도 release gate이며, current production runtime은 여전히 exact `HANGUL_TILE | NUMBER_TILE` 두 game만 지원한다.
 
 
-## 19. P11B source integration status
+## 19. P11B source integration status (historical checkpoint)
 
 GEM_CARD server/shared integration is COMPLETE; P11A rules/domain are unchanged. Exact third Room state, strict additive gem:collect/purchase/reserve/yield, V2-only admission, rack-free public projection and 45-second timeout/lifecycle are live in source. The current Web remains two-game-only. No public deployment or GEM UI is claimed. P11C remains a separately authorized next task. Details: [GEM_CARD_SERVER_INTEGRATION.md](./GEM_CARD_SERVER_INTEGRATION.md).
+
+## 20. P11C Web source completion
+
+Current Web now offers exactly Hangul, Number and GEM, advertises `[2,1]` with all three game types, and routes validated GEM V2 directly to its concrete card/resource Playing and Finished screens. Platform Lobby, join/resume and command/session mechanisms remain shared; GEM actions, previews and public player views are concrete and server-authoritative. No server/shared/rules/cardset or dependency changes were required.
+
+P11C is **SOURCE COMPLETE / MANUAL PUBLIC VERIFICATION PENDING**: 1114 tests and build/typecheck PASS, production-serving 6/6 PASS, compiled-client three-game smoke and local in-app GEM A/B gameplay/refresh/responsive checks PASS. This is not a public three-game release claim, a Chrome verification claim or closure of Number's separate manual Joker check. P12 owns release/IP/product and Railway verification. See [GEM_CARD_WEB_IMPLEMENTATION.md](./GEM_CARD_WEB_IMPLEMENTATION.md) for evidence and limitations.

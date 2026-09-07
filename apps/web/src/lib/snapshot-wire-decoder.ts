@@ -2,6 +2,9 @@ import {
   PLATFORM_SNAPSHOT_VERSION,
   validatePlatformSnapshotV2,
   validateStateSnapshot,
+  type GemCardFinishedPlatformSnapshotV2,
+  type GemCardLobbyPlatformSnapshotV2,
+  type GemCardPlayingPlatformSnapshotV2,
   type NumberTileFinishedPlatformSnapshotV2,
   type NumberTileLobbyPlatformSnapshotV2,
   type NumberTilePlayingPlatformSnapshotV2,
@@ -15,7 +18,13 @@ export const WEB_SUPPORTED_SNAPSHOT_VERSIONS = Object.freeze([2, 1] as const);
 export const WEB_SUPPORTED_GAME_TYPES = Object.freeze([
   "HANGUL_TILE",
   "NUMBER_TILE",
+  "GEM_CARD",
 ] as const);
+
+export type GemCardPlatformSnapshotV2 =
+  | GemCardLobbyPlatformSnapshotV2
+  | GemCardPlayingPlatformSnapshotV2
+  | GemCardFinishedPlatformSnapshotV2;
 
 export type NumberTilePlatformSnapshotV2 =
   | NumberTileLobbyPlatformSnapshotV2
@@ -39,6 +48,12 @@ export type CompatibleWebSnapshot =
       snapshotVersion: typeof PLATFORM_SNAPSHOT_VERSION;
       gameType: "NUMBER_TILE";
       platformSnapshot: NumberTilePlatformSnapshotV2;
+    }>
+  | Readonly<{
+      kind: "PLATFORM_V2_GEM_CARD";
+      snapshotVersion: typeof PLATFORM_SNAPSHOT_VERSION;
+      gameType: "GEM_CARD";
+      platformSnapshot: GemCardPlatformSnapshotV2;
     }>;
 
 export type WebSnapshotIncompatibilityReason =
@@ -79,6 +94,13 @@ function isNumberTilePlatformSnapshot(
   );
 }
 
+function isGemCardPlatformSnapshot(
+  snapshot: PlatformSnapshotV2,
+): snapshot is GemCardPlatformSnapshotV2 {
+  return snapshot.room.gameType === "GEM_CARD" &&
+    (snapshot.game === null || snapshot.game.gameType === "GEM_CARD");
+}
+
 function decodePlatformSnapshotV2(
   input: Record<string, unknown>,
 ): WebSnapshotDecodeResult {
@@ -95,7 +117,8 @@ function decodePlatformSnapshotV2(
 
   if (
     input.room.gameType !== "HANGUL_TILE" &&
-    input.room.gameType !== "NUMBER_TILE"
+    input.room.gameType !== "NUMBER_TILE" &&
+    input.room.gameType !== "GEM_CARD"
   ) {
     return typeof input.room.gameType === "string"
       ? { kind: "INCOMPATIBLE", reason: "UNSUPPORTED_GAME_TYPE" }
@@ -105,6 +128,20 @@ function decodePlatformSnapshotV2(
   const validation = validatePlatformSnapshotV2(input);
   if (!validation.ok) {
     return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
+  }
+  if (input.room.gameType === "GEM_CARD") {
+    if (!isGemCardPlatformSnapshot(validation.value)) {
+      return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
+    }
+    return {
+      kind: "COMPATIBLE",
+      value: {
+        kind: "PLATFORM_V2_GEM_CARD",
+        snapshotVersion: PLATFORM_SNAPSHOT_VERSION,
+        gameType: "GEM_CARD",
+        platformSnapshot: validation.value,
+      },
+    };
   }
   if (input.room.gameType === "NUMBER_TILE") {
     if (!isNumberTilePlatformSnapshot(validation.value)) {
