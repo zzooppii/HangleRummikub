@@ -1,11 +1,11 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P0~P8 COMPLETE / PUBLIC TWO-GAME VERIFIED / P9A READY
+> 상태: P0~P9A COMPLETE / PUBLIC TWO-GAME VERIFIED / P9B DECISION REQUIRED
 > 작성일: 2026-09-07
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
 
-제품 범위는 [MULTI_GAME_PLATFORM_SPEC.md](./MULTI_GAME_PLATFORM_SPEC.md), current/target architecture는 [MULTI_GAME_ARCHITECTURE.md](./MULTI_GAME_ARCHITECTURE.md)를 따른다. P1의 exact compatibility inventory와 migration handoff는 [MULTI_GAME_P1_CHARACTERIZATION.md](./MULTI_GAME_P1_CHARACTERIZATION.md)에 있다.
+제품 범위는 [MULTI_GAME_PLATFORM_SPEC.md](./MULTI_GAME_PLATFORM_SPEC.md), current/target architecture는 [MULTI_GAME_ARCHITECTURE.md](./MULTI_GAME_ARCHITECTURE.md)를 따른다. P1의 exact compatibility inventory와 migration handoff는 [MULTI_GAME_P1_CHARACTERIZATION.md](./MULTI_GAME_P1_CHARACTERIZATION.md)에 있다. P9A의 two-game evidence, score와 승인 대기 decision은 [MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md](./MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md)에 있다.
 
 ## 1. 공통 실행 원칙
 
@@ -922,7 +922,7 @@ Multi-game Platform P7C만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의
 - Production source, public wire, rule와 dependency 변경은 없다. 자세한 증거는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)를 따른다.
 - 사용자가 Railway Dashboard에서 `deafc39`가 master의 Active/Successful deployment이며 1 Replica라고 확인했다.
 - 해당 public deployment에서 exact Web capability `[2,1]` + `[HANGUL_TILE, NUMBER_TILE]`, Home 두 card, Hangul/Number A/B create·join·start·Draw·resume, Legacy V1, Number V2/game type, viewer privacy, wrong-client/cross-game rejection, 390×844·320×568 responsive와 clean browser console을 검증했다.
-- P8 최종 판정은 `COMPLETE / PUBLIC TWO-GAME VERIFIED`이며 P9A analysis-only Phase는 `READY`다.
+- P8 최종 판정은 `COMPLETE / PUBLIC TWO-GAME VERIFIED`다. P9A analysis-only Phase도 완료됐으며 P9B는 네 proposed decision에 대한 사용자 승인 전 `NOT STARTED`다.
 
 ### Codex 실행 명령
 
@@ -948,7 +948,7 @@ P9A에서 분석과 승인안을 만들고, 별도 P9B에서 승인된 작은 �
 - revision/result/player policy와 codec/recovery capability 재검토
 - Tile 없는 GEM_CARD state/action thought experiment
 - 유지/축소/승격/제거 제안과 migration 영향 문서화
-- decision ID와 사용자 승인 상태를 가진 결과를 `docs/MULTI_GAME_ABSTRACTION_REVIEW.md`에 기록
+- decision ID와 사용자 승인 상태를 가진 결과를 `docs/MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md`에 기록
 
 #### 금지사항
 
@@ -963,7 +963,7 @@ P9A에서 분석과 승인안을 만들고, 별도 P9B에서 승인된 작은 �
 - 한 game만 쓰는 capability가 명확히 표시된다.
 - GEM_CARD 예시는 game-specific Tile/Rack contract 없이 Room core를 통과한다.
 - P9B에 들어갈 승인 단위가 독립적으로 검증 가능하게 나뉜다.
-- 각 decision ID가 `PROPOSED | APPROVED | REJECTED`로 표시되고 Codex가 사용자 승인을 추정하지 않는다.
+- 각 decision ID가 `PROPOSED / USER_DECISION_REQUIRED`로 표시되고 Codex가 사용자 승인을 추정하지 않는다.
 
 #### Required tests
 
@@ -975,8 +975,17 @@ P9A에서 분석과 승인안을 만들고, 별도 P9B에서 승인된 작은 �
 #### Codex 실행 명령
 
 ```text
-Multi-game Platform P9A 분석만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙을 지키고 HANGUL_TILE과 NUMBER_TILE의 실제 state/command/projection/persistence/scheduler 호출을 비교해 각 platform member를 유지·축소·module 환원·승격 후보로 분류하라. source/interface/public protocol은 수정하지 말고 Tile 없는 GEM_CARD thought experiment로 경계를 검증하라. decision ID, 근거, risk, PROPOSED/APPROVED/REJECTED 사용자 승인 상태와 독립적인 P9B 변경안을 docs/MULTI_GAME_ABSTRACTION_REVIEW.md에 기록하고 전체 two-game test와 문서 검증 결과를 제출하라.
+Multi-game Platform P9A 분석만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙을 지키고 HANGUL_TILE과 NUMBER_TILE의 실제 state/command/projection/persistence/scheduler 호출을 비교해 각 platform member를 유지·축소·module 환원·승격 후보로 분류하라. source/interface/public protocol은 수정하지 말고 Tile 없는 GEM_CARD thought experiment로 경계를 검증하라. decision ID, 근거, risk와 `PROPOSED / USER_DECISION_REQUIRED` 상태를 독립적인 P9B 변경안과 함께 docs/MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md에 기록하고 전체 two-game test와 문서 검증 결과를 제출하라.
 ```
+
+#### 2026-09-07 analysis 결과
+
+- Room/session/presence/capability admission, Room lane, UoW/CAS, idempotency, fan-out, retention/cleanup과 optional scheduler mechanism을 `PROVEN_PLATFORM_CORE`로 재검증했다.
+- exact Room union과 identity-only Registry는 유지한다. Common adapter registry, start/command executor, ranking, renderer registry와 direct Hangul V2 migration은 `GEM_CARD` 또는 별도 gate까지 보류한다.
+- Tile/Rack/Board/Table/Meld/Joker/TurnDraft/Result와 Draw/Pass/timeout semantics는 game-specific 또는 accidental similarity로 판정했다.
+- giant `GameModule` 대신 narrow typed collaborators를 composition root에서 조립하는 방향을 유지한다.
+- strict `EXTRACT_NOW`는 `P9A-001` GameRevision successor, `P9A-002` frozen Fisher–Yates, `P9A-003` Web single-flight, `P9A-004` gameplay supersession comparator 네 개뿐이다.
+- 네 decision은 모두 `PROPOSED / USER_DECISION_REQUIRED`다. P9A는 `COMPLETE`, P9B는 사용자 승인 전 `NOT STARTED`다.
 
 ### 12.2 P9B — Approved abstraction adjustments
 
@@ -991,7 +1000,7 @@ P9A에서 근거와 승인을 얻은 작은 contract adjustment만 순차 구현
 - codec, projection, recovery, revision/result type의 승인된 최소 조정
 - compatibility adapter와 관련 문서/test 동기화
 - 한 변경 단위마다 full regression stop gate
-- `docs/MULTI_GAME_ABSTRACTION_REVIEW.md`에서 사용자가 `APPROVED`로 확정한 decision ID만 입력으로 사용
+- `docs/MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md`에서 사용자가 `APPROVED`로 확정한 decision ID만 입력으로 사용
 
 #### 금지사항
 
@@ -1004,7 +1013,7 @@ P9A에서 근거와 승인을 얻은 작은 contract adjustment만 순차 구현
 #### Definition of Done
 
 - 모든 변경이 두 game의 실제 사용 근거를 가진다.
-- platform은 concrete Hangul/Number type을 import하지 않는다.
+- 승인된 local adjustment가 새 concrete cross-game import나 type erasure를 만들지 않는다.
 - no-timer/non-Tile future module을 막는 필수 member가 없다.
 - 두 game observable behavior와 wire compatibility가 유지된다.
 - 완료 보고가 구현한 decision ID와 사용자 승인 근거를 열거한다.
@@ -1020,7 +1029,7 @@ P9A에서 근거와 승인을 얻은 작은 contract adjustment만 순차 구현
 #### Codex 실행 명령
 
 ```text
-Multi-game Platform P9B만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙을 지키고 docs/MULTI_GAME_ABSTRACTION_REVIEW.md에서 사용자가 APPROVED로 확정한 decision ID만 하나씩 구현하라. 승인된 ID가 없으면 추정하지 말고 BLOCKED로 보고하라. 두 game에서 의미가 같은 부분만 platform으로 승격하고 한 game 전용 member는 optional화하거나 module로 되돌리며 GenericTile/Rack/turn timer와 GEM_CARD/public protocol은 제외하라. 각 adjustment 뒤 두 게임 전체 회귀와 dependency/typecheck/test/build/diff-check를 통과시키고 구현 ID와 승인 근거를 보고하라.
+Multi-game Platform P9B만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md의 공통 실행 원칙을 지키고 docs/MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md에서 사용자가 APPROVED로 확정한 decision ID만 하나씩 구현하라. 승인된 ID가 없으면 추정하지 말고 BLOCKED로 보고하라. 두 game에서 의미가 같은 작은 primitive만 승격하고 GenericTile/Rack/turn timer, giant GameModule, GEM_CARD와 public protocol은 제외하라. 각 adjustment 뒤 두 게임 전체 회귀와 dependency/typecheck/test/build/diff-check를 통과시키고 구현 ID와 승인 근거를 보고하라.
 ```
 
 ## 13. P10 — Gem/Card rules and IP gate

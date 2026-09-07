@@ -1,10 +1,10 @@
 # Multi-game Platform Architecture
 
-> 상태: P0~P8 COMPLETE / PUBLIC TWO-GAME VERIFIED / P9A READY
+> 상태: P0~P9A COMPLETE / PUBLIC TWO-GAME VERIFIED / P9B DECISION REQUIRED
 > 작성일: 2026-09-07
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
-제품 범위는 [MULTI_GAME_PLATFORM_SPEC.md](./MULTI_GAME_PLATFORM_SPEC.md), 실행 순서와 Phase별 명령은 [MULTI_GAME_MIGRATION_ROADMAP.md](./MULTI_GAME_MIGRATION_ROADMAP.md)를 따른다. P1에서 확인한 exact wire, persistence/projector/service/scheduler/web ownership은 [MULTI_GAME_P1_CHARACTERIZATION.md](./MULTI_GAME_P1_CHARACTERIZATION.md)에 기록한다.
+제품 범위는 [MULTI_GAME_PLATFORM_SPEC.md](./MULTI_GAME_PLATFORM_SPEC.md), 실행 순서와 Phase별 명령은 [MULTI_GAME_MIGRATION_ROADMAP.md](./MULTI_GAME_MIGRATION_ROADMAP.md)를 따른다. P1에서 확인한 exact wire, persistence/projector/service/scheduler/web ownership은 [MULTI_GAME_P1_CHARACTERIZATION.md](./MULTI_GAME_P1_CHARACTERIZATION.md)에 기록한다. 두 production game을 실제 구현 단위로 비교한 P9A 판정과 승인 대기 항목은 [MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md](./MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md)를 따른다.
 
 ## 1. 분석 범위와 방법
 
@@ -1201,4 +1201,22 @@ wrong command or cross-shaped payload
 
 새 raw Socket.IO gate는 deterministic exact-29 reject와 exact-30 GROUP/RUN commit, exact Joker replacement와 same-Submit reuse, 별도 Hangul/Number Room의 양방향 wrong command, parallel Draw와 replay, recovery deadline 격리를 한 runtime에서 확인한다. Production-serving gate는 실제 Number A/B create/join/start/Draw/privacy/resume를 추가했다. Web/source boundary gate는 두 feature 및 shared game namespace의 상호 import를 금지한다.
 
-이 검증은 기존 구체 router/adapter/result를 공통 `GameModule`로 승격할 근거로 사용하지 않는다. 사용자가 `deafc39`의 Active/Successful/master/1 Replica를 확인했고, 해당 public deployment에서 exact Web capability, Home 두 card, Hangul/Number A/B create·join·start·Draw·resume, privacy, wrong-client/cross-game rejection, 390×844·320×568 responsive와 clean browser console을 검증했다. 상세 증거는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)에 있으며 P9A는 분석-only 별도 Phase로 `READY`다.
+이 검증은 기존 구체 router/adapter/result를 공통 `GameModule`로 승격할 근거로 사용하지 않는다. 사용자가 `deafc39`의 Active/Successful/master/1 Replica를 확인했고, 해당 public deployment에서 exact Web capability, Home 두 card, Hangul/Number A/B create·join·start·Draw·resume, privacy, wrong-client/cross-game rejection, 390×844·320×568 responsive와 clean browser console을 검증했다. 상세 증거는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)에 있다. P9A analysis-only Phase는 아래 판정으로 완료됐다.
+
+## 35. P9A two-game abstraction analysis
+
+P9A는 production source를 변경하지 않고 `HANGUL_TILE`과 `NUMBER_TILE`의 state, start/command, persistence, scheduling, projection, protocol과 Web lifecycle을 나란히 비교했다. 상세 evidence, score와 decision은 [MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md](./MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md)에 있다.
+
+현재 architecture 판단은 다음과 같다.
+
+- Room/session/Host/presence/capability admission, Room lane, UoW/CAS, idempotency, fan-out, retention/cleanup과 optional scheduler mechanism은 `PROVEN_PLATFORM_CORE`다.
+- `GameRevision` semantics, scheduled-turn identity, gameplay identity와 opt-in physical identity/privacy 원칙은 작은 `PROVEN_CROSS_GAME_PRIMITIVE`다. 이것은 generic state/Turn/Tile model을 뜻하지 않는다.
+- exact `RoomRecord` union과 identity-only `GameRegistry`는 현재 type safety가 가장 높으므로 유지한다.
+- common start/command executor, lifecycle adapter registry, competition rank, renderer registry와 offline timeout policy는 `GEM_CARD`까지 보류한다.
+- Tile/Rack/Board/Table/Meld/Joker/TurnDraft/Result, Draw/Pass semantics와 game-specific event surface는 concrete module에 남긴다.
+- overall game deadline과 advisory는 Hangul-only optional capability임이 두 번째 구현으로 증명됐다.
+- outer PlatformSnapshot V2의 rack/player-state refinement, Hangul V1→V2 projection bridge, central concrete union branches와 large `use-lobby-app.ts`는 실제 migration debt지만 작은 P9B primitive와 섞지 않는다.
+
+Giant `GameModule`은 재검토 결과도 기각한다. 권장 방향은 immutable identity registration과 composition root에서 조립하는 narrow typed start/router/adapter/projector/server-action collaborators다. capability가 없는 game에 timer, advisory, rack 또는 result shape를 강제하지 않는다.
+
+P9B 후보는 pure revision successor, frozen-copy Fisher–Yates, Web async single-flight와 gameplay supersession comparator 네 개뿐이다. 모두 `PROPOSED / USER_DECISION_REQUIRED`이며 승인 전에는 구현하지 않는다. P9A는 `COMPLETE`, P9B는 사용자 decision 전 `BLOCKED/NOT STARTED`다.
