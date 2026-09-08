@@ -135,15 +135,19 @@
   .number-playing-shell .number-sound-toggle { width:48px; min-height:44px; white-space:normal; word-break:keep-all; font-size:.62rem; }
   .number-playing-shell .number-board-heading { padding-top:2px; }
   .number-playing-shell .number-board-heading small { display:none; }
-  .number-playing-shell .number-play-surface { padding:14px 9px 22px; min-height:300px; border-radius:16px; }
-  .number-playing-shell .number-meld-pack { gap:15px 10px; }
-  .number-playing-shell .number-meld-group { padding:5px 4px 16px; }
-  .number-playing-shell .number-meld-group .number-tile { width:44px; min-width:44px; min-height:56px; }
-  .number-playing-shell .number-meld-group .number-tile strong { font-size:1.35rem; }
-  .number-playing-shell .number-meld-tiles { gap:3px; }
-  .number-playing-shell .number-rack { padding:8px 9px 12px; border-radius:12px; margin-top:9px; }
-  .number-playing-shell .number-rack-tiles { grid-template-columns:repeat(auto-fill,minmax(48px,1fr)); gap:6px; }
-  .number-playing-shell .number-rack .number-tile { min-height:64px; }
+  .number-playing-shell .number-play-surface { padding:12px 3px 18px; min-height:280px; border-radius:16px; }
+  .number-playing-shell .number-meld-pack { gap:12px 6px; }
+  .number-playing-shell .number-meld-group { padding:4px 2px 12px; }
+  .number-playing-shell .number-meld-group .number-tile { position:relative; width:40px; min-width:40px; min-height:52px; padding:1px 2px; }
+  .number-playing-shell .number-meld-group .number-tile strong { font-size:1.25rem; }
+  /* The 2px border plus 2px outside each side gives a 44px hit width.
+     Adjacent hit areas meet within the 4px gap, without overlapping. */
+  .number-playing-shell .number-meld-group .number-tile::before { content:""; position:absolute; inset:-2px -4px; }
+  .number-playing-shell .number-meld-tiles { gap:4px; }
+  .number-playing-shell .number-rack { padding:8px 7px 10px; border-radius:12px; margin-top:9px; }
+  .number-playing-shell .number-rack-tiles { grid-template-columns:repeat(auto-fill,minmax(44px,1fr)); gap:4px; padding:6px 2px; }
+  .number-playing-shell .number-rack .number-tile { min-height:58px; padding:1px 2px; }
+  .number-playing-shell .number-rack .number-tile strong { font-size:1.5rem; }
   .number-playing-shell .number-action-dock { gap:9px; }
   .number-playing-shell .number-board-tools { flex:1 1 100%; justify-content:space-between; gap:4px; }
   .number-playing-shell .number-board-tools button { padding:5px 9px; }

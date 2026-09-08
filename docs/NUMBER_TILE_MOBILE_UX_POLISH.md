@@ -89,3 +89,42 @@ An ephemeral, non-production fixture bundled the existing `numberBoardFixture`, 
 5. Enable sound with a real gesture. Compare new-turn and accepted Submit cues with smaller Draw/Pass cues; reject/replay/presence updates must not produce success spam. Test sound off/on, iOS/Android autoplay and comfortable real-speaker volume.
 
 Next: **Manual mobile NUMBER_TILE verification** only. P12 waits for the user's mobile verification and GEM beginner-UX confirmation.
+
+## Follow-up: mobile tile size polish
+
+Baseline: `31d8c47 feat: improve game reconnect experience`, clean `master === origin/master`, typecheck/build and **1182/1182** tests passing. This follow-up changes only Number-scoped CSS inside the existing `max-width:600px` media query, its layout characterization test and this document. No production TypeScript, server/shared, rule, protocol, dependency, Hangul or GEM change.
+
+### Compact visuals, retained interaction
+
+| Mobile element | Before | After |
+| --- | --- | --- |
+| Table tile box | 44 × 56px | 40 × 52px |
+| Table numeral | 21.6px | 20px |
+| Rack grid minimum column | 48px | 44px |
+| Rack tile minimum height | 64px | 58px |
+| Rack numeral | 26.4px | 24px |
+| Rack gap | 6px | 4px |
+| Meld-pack row/column gap | 15 / 10px | 12 / 6px |
+
+Table/Rack interior padding and the mobile board minimum height are slightly reduced. Table tile spacing is deliberately **4px rather than the previous 3px**: each 40px visual tile has a pseudo-element hit area extending 2px on each side, yielding a 44px-wide target without overlapping its neighbor. Whole-meld destination targets remain available. Rack columns remain at least 44px wide and wrap vertically, with no horizontal scrollbar. Color definitions, markers, Joker visuals, focus and selected states are unchanged.
+
+HUD, click/tap rearrangement, desktop pointer drag, Undo/Reset, initial registration, canonical RUN/Joker semantics, actions, audio and credential-based reconnect retain their existing implementations. The change creates no new canonical state or payload.
+
+### Browser layout comparison
+
+A temporary local fixture bundled the real Playing screen, draft controller and styles in production mode. Frozen baseline CSS and candidate CSS were compared at **390×844, 320×568 and 1280×720**. The fixture is not shipped and has no server/Room mutation; it is layout/editor evidence, not a new server-accepted gameplay or physical-device claim.
+
+- All requested Rack sizes **14/19/24/30**, Table sizes **3/6/10/15 melds**, and single RUN lengths **3/6/10/13** were inspected. Document and Rack horizontal overflow were absent in every case.
+- Three-tile meld and Rack density measurements (heights are the meld-pack / Rack tile-grid, excluding surrounding controls):
+
+| Viewport | Rack columns, before → after | 14 / 19 / 24 / 30 Rack heights, before → after | 3 / 6 / 10 / 15 meld-pack heights, before → after |
+| --- | --- | --- | --- |
+| 390px | 6 → 7 | 216/286/286/356 → 132/194/256/318px | 173/267/455/737 → 152/234/398/644px |
+| 320px | 4 → 5 | 286/356/426/566 → 194/256/318/380px | 267/549/925/1395 → 152/234/398/644px |
+
+- At 320px two three-tile melds now fit side by side rather than one. A six-tile RUN fits one tile row instead of two. At 390px a thirteen-tile RUN fits two rows instead of three.
+- At 1280×720 the nine fixture cases retained the exact baseline geometry: ordinary Table tiles **48×60px**, Rack tiles **56×68px**, existing fonts, columns and panel heights. Desktop media rules are unchanged, including at widths above 1280px.
+- Visual inspection retained distinguishable R/B/K/O markers, readable numerals and neutral Joker with its derived number hint. Expanded Table hit areas were checked with browser hit-testing on both outer edges; 320px Table selection → another meld's tile destination, Rack → active meld, Undo/Reset, and 390px sorting were exercised. The existing fixed turn HUD remained visible while scrolling. Sample gameplay controls were not horizontally clipped.
+- Final automated gates: **1183/1183** tests (shared 91 / Web 265 / server 827), **1 new CSS boundary/layout test**, typecheck/build and `git diff --check` PASS. Existing tests are retained; only the old mobile-size assertion changes to the requested new visual dimensions.
+
+Status: **SOURCE COMPLETE / DEPLOYMENT_PENDING_USER_ACTION**. No Railway deployment was performed or inferred. Physical-phone tap comfort and device/browser chrome remain manual checks after the user's deployment; desktop-browser viewport checks are not represented as physical-mobile verification.

@@ -90,7 +90,7 @@ test("Number board retains empty guidance, opponent lock, stable timer semantics
 
 test("Number-only board styles preserve mobile targets, focus, nonsticky large rack and reduced motion", () => {
   assert.match(css, /@media \(max-width:600px\)/);
-  assert.match(css, /width:44px; min-width:44px; min-height:56px/);
+  assert.match(css, /width:40px; min-width:40px; min-height:52px/);
   assert.match(css, /button:focus-visible/);
   assert.match(css, /\.number-meld-group:focus-within \.number-meld-helper/);
   assert.match(editor, /조커는 조합당 1개까지 사용할 수 있습니다/);
@@ -101,4 +101,20 @@ test("Number-only board styles preserve mobile targets, focus, nonsticky large r
   assert.match(editor, /event.pointerType !== "mouse"/);
   assert.match(editor, /releasePointerCapture/);
   assert.match(editor, /공개 테이블의 타일은 내 랙으로 가져올 수 없습니다/);
+});
+
+test("compact tiles are mobile-only, retain readable numbers and non-overlapping 44px tap footprints", () => {
+  const mobileStart = css.indexOf("@media (max-width:600px)");
+  const desktop = css.slice(0, mobileStart);
+  const mobile = css.slice(mobileStart, css.indexOf("@media (prefers-reduced-motion:reduce)"));
+  assert.match(desktop, /width:48px; min-width:48px; min-height:60px/);
+  assert.match(desktop, /\.number-rack \.number-tile \{ min-height:68px/);
+  assert.doesNotMatch(desktop, /width:40px|inset:-2px -4px|min-height:58px/);
+  assert.match(mobile, /\.number-meld-group \.number-tile strong \{ font-size:1\.25rem/);
+  assert.match(mobile, /\.number-rack \.number-tile strong \{ font-size:1\.5rem/);
+  assert.match(mobile, /\.number-meld-group \.number-tile::before \{ content:""; position:absolute; inset:-2px -4px/);
+  assert.match(mobile, /\.number-meld-tiles \{ gap:4px/);
+  assert.match(mobile, /repeat\(auto-fill,minmax\(44px,1fr\)\); gap:4px/);
+  assert.match(desktop, /\.number-activate-meld \{[^}]*inset:0;[^}]*min-height:44px/);
+  assert.doesNotMatch(mobile, /number-tile-marker|\.number-tile\.joker|border-color:.*(?:d63c45|2f6fd6|e47a1f)/);
 });
