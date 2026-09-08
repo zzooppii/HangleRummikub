@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P12 COMPLETE / THREE-GAME PLATFORM V1 VERIFIED / P13 COMPLETE / P13B COMPLETE
+> 상태: P12 COMPLETE / THREE-GAME PLATFORM V1 VERIFIED / P13 COMPLETE / P13B COMPLETE / P14A DECISION GATE READY
 > 작성일: 2026-09-07
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -10,6 +10,10 @@
 ## P13 current review status (2026-09-08)
 
 [THREE_GAME_POST_RELEASE_ABSTRACTION_REVIEW.md](./THREE_GAME_POST_RELEASE_ABSTRACTION_REVIEW.md)에서 세 게임의 실제 mechanism/policy를 재분류했고 P13 자체는 analysis-only로 완료했다. `three-game-platform-v1` local/remote tag는 verified runtime `db0e6c6`에 유지된다. 아래 P12의 tag 미생성/P13 미시작 표현은 당시 history다. 이후 별도 사용자 승인으로 P13-001 public participant mapper, P13-002 caller-owned feedback RequestId mark, P13-003 MM:SS formatter만 **APPROVED / IMPLEMENTED**다. P13B gate는 1225 tests(91/283/851) 연속2회 및 typecheck/build/targeted/P12/production-serving PASS다. 구현 기록은 review §13을 따른다. 나머지 후보와 네 번째 게임은 미구현이며 P13B는 Railway 배포를 요구하지 않는다.
+
+## P14A fourth-game planning status (2026-09-08)
+
+`8f8da13` / 1225 tests 기준에서 `CITY_ROLE` 후보를 docs-only로 분석했다. [Rules draft](./CITY_ROLE_GAME_RULES_DRAFT.md), [CITY-001–070 decision gate](./CITY_ROLE_DECISION_GATE.md), [architecture analysis](./CITY_ROLE_ARCHITECTURE_ANALYSIS.md), [IP/product gate](./CITY_ROLE_IP_PRODUCT_GATE.md)를 작성했다. **P14A COMPLETE / DECISION GATE READY**이며 모든 rule decision은 OPEN, DOMAIN READY가 아니다. 현재 4인 상한, secret role/pending-choice projection, roster와 role order 분리, 단일 active-turn lifecycle은 후속 검토 지점이다. P13 보류 registry를 승인·구현하지 않았다. 기존 세 게임 runtime/tests/dependency와 release tag는 그대로다. 사용자 decisions 후 다음은 **P14B — CITY_ROLE final rules / protocol / IP consistency gate** 하나이며 구현을 시작하지 않는다. 아래 과거 단계의 네 번째 게임 미시작 문구는 해당 checkpoint history다.
 
 ## 1. 공통 실행 원칙
 
@@ -62,6 +66,8 @@ P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3
 | P12 | Multi-game E2E and deployment | 세 game의 isolation, compatibility, production rollout과 rollback을 검증한다. |
 | P13 | Three-game post-release abstraction review | 실제 세 게임 source로 재분류하고 작은 extraction 후보만 제안한다. Runtime 변경 없음. |
 | P13B | Approved post-release abstractions | COMPLETE — 별도로 승인된 P13-001/002/003만 구현·검증. 다른 후보 미구현. |
+| P14A | Fourth-game rules & architecture planning | COMPLETE / DECISION GATE READY — CITY_ROLE 문서 후보와70개 OPEN decision, runtime 변경 없음. |
+| P14B | CITY_ROLE final rules / protocol / IP consistency gate | NOT STARTED — 사용자 decisions 확정 후 일관성 감사. Domain 구현 승인 아님. |
 
 ## 3. P0 — Current-state analysis and transition design
 
