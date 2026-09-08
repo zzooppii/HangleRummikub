@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P12 COMPLETE / THREE-GAME PLATFORM V1 VERIFIED / P13 analysis complete — P13B approval required
+> 상태: P12 COMPLETE / THREE-GAME PLATFORM V1 VERIFIED / P13 COMPLETE / P13B COMPLETE
 > 작성일: 2026-09-07
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -9,7 +9,7 @@
 
 ## P13 current review status (2026-09-08)
 
-[THREE_GAME_POST_RELEASE_ABSTRACTION_REVIEW.md](./THREE_GAME_POST_RELEASE_ABSTRACTION_REVIEW.md)에서 세 게임의 실제 mechanism/policy를 재분류했다. 분석만 완료하며 production/tests/dependency 변경은 없다. `three-game-platform-v1` local/remote tag는 현재 verified runtime `db0e6c6`에 존재한다. 아래 P12의 tag 미생성/P13 미시작 표현은 당시 history다. P13-001 public participant mapper, P13-002 feedback RequestId mark, P13-003 MM:SS formatter만 작은 추출 후보로 제안한다. Registry/executor/renderer/lifecycle framework와 네 번째 게임은 시작하지 않는다. 다음 P13B는 **APPROVAL_REQUIRED**이며 승인된 ID만 별도로 수행한다.
+[THREE_GAME_POST_RELEASE_ABSTRACTION_REVIEW.md](./THREE_GAME_POST_RELEASE_ABSTRACTION_REVIEW.md)에서 세 게임의 실제 mechanism/policy를 재분류했고 P13 자체는 analysis-only로 완료했다. `three-game-platform-v1` local/remote tag는 verified runtime `db0e6c6`에 유지된다. 아래 P12의 tag 미생성/P13 미시작 표현은 당시 history다. 이후 별도 사용자 승인으로 P13-001 public participant mapper, P13-002 caller-owned feedback RequestId mark, P13-003 MM:SS formatter만 **APPROVED / IMPLEMENTED**다. P13B gate는 1225 tests(91/283/851) 연속2회 및 typecheck/build/targeted/P12/production-serving PASS다. 구현 기록은 review §13을 따른다. 나머지 후보와 네 번째 게임은 미구현이며 P13B는 Railway 배포를 요구하지 않는다.
 
 ## 1. 공통 실행 원칙
 
@@ -61,7 +61,7 @@ P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3
 | P11C | Gem/Card web implementation | 독립 card/resource renderer를 구현한다. |
 | P12 | Multi-game E2E and deployment | 세 game의 isolation, compatibility, production rollout과 rollback을 검증한다. |
 | P13 | Three-game post-release abstraction review | 실제 세 게임 source로 재분류하고 작은 extraction 후보만 제안한다. Runtime 변경 없음. |
-| P13B | Approved post-release abstractions | 사용자에게 별도로 승인받은 P13 후보만 구현한다. 현재 APPROVAL_REQUIRED. |
+| P13B | Approved post-release abstractions | COMPLETE — 별도로 승인된 P13-001/002/003만 구현·검증. 다른 후보 미구현. |
 
 ## 3. P0 — Current-state analysis and transition design
 

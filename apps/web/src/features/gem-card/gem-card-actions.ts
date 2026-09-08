@@ -13,6 +13,7 @@ import {
   type RequestId,
   type TurnId,
 } from "@hangul-rummikub/shared";
+import { markRequestFeedbackSeen } from "../../lib/request-feedback.js";
 
 export type GemCardActionKind = "COLLECT" | "PURCHASE" | "RESERVE" | "YIELD";
 export type PendingGemCardCommand = GemCollectCommand | GemPurchaseCommand |
@@ -98,8 +99,7 @@ export function gemCardActionFeedback(
   command: PendingGemCardCommand,
   announcedRequestIds: Set<RequestId>,
 ): GemCardActionFeedback | null {
-  if (announcedRequestIds.has(command.requestId)) return null;
-  announcedRequestIds.add(command.requestId);
+  if (!markRequestFeedbackSeen(announcedRequestIds, command.requestId)) return null;
   const kind = gemCardCommandKind(command);
   const messages: Record<GemCardActionKind, string> = {
     COLLECT: "자원을 받았습니다.", PURCHASE: "카드를 구매했습니다.",

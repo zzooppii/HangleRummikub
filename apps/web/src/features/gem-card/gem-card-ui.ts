@@ -5,6 +5,7 @@ import {
   type GemCollectSelectionDto,
   type GemPurchaseSourceDto,
 } from "@hangul-rummikub/shared";
+import { formatCountdownMmSs } from "../../lib/turn-countdown.js";
 
 export type GemUiPlayer = GemCardPlayingProjectionV2["playerStates"][number];
 export type GemUiCard = GemUiPlayer["purchasedCards"][number];
@@ -122,6 +123,5 @@ export function gemFairRoundLabel(reason: NonNullable<GemCardPlayingProjectionV2
 }
 
 export function formatGemCountdown(seconds: number): string {
-  const value = Math.max(0, Math.floor(seconds));
-  return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
+  return formatCountdownMmSs(seconds);
 }

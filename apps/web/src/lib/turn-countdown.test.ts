@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   calculateServerClockOffset,
   calculateTurnCountdown,
+  formatCountdownMmSs,
 } from "./turn-countdown.js";
 
 test("serverTime과 local receipt time으로 display-only clock offset을 계산한다", () => {
@@ -46,4 +47,33 @@ test("새 snapshot의 serverTime으로 offset을 다시 계산하면 countdown�
 
   assert.equal(oldCountdown.remainingSeconds, 2);
   assert.equal(resynced.remainingSeconds, 60);
+});
+
+test("MM:SS formatting pads seconds and rolls over at one minute", () => {
+  for (const [seconds, expected] of [
+    [0, "00:00"], [1, "00:01"], [9, "00:09"], [45, "00:45"], [59, "00:59"],
+    [60, "01:00"], [90, "01:30"],
+  ] as const) {
+    assert.equal(formatCountdownMmSs(seconds), expected);
+  }
+});
+
+test("MM:SS formatting clamps negative values and floors fractional seconds", () => {
+  assert.equal(formatCountdownMmSs(-2), "00:00");
+  assert.equal(formatCountdownMmSs(-0.1), "00:00");
+  assert.equal(formatCountdownMmSs(0.9), "00:00");
+  assert.equal(formatCountdownMmSs(59.9), "00:59");
+  assert.equal(formatCountdownMmSs(60.9), "01:00");
+});
+
+test("MM:SS formatting does not cap minutes at 99", () => {
+  assert.equal(formatCountdownMmSs(5_999), "99:59");
+  assert.equal(formatCountdownMmSs(6_000), "100:00");
+  assert.equal(formatCountdownMmSs(6_061), "101:01");
+});
+
+test("MM:SS formatting preserves existing non-finite number behavior", () => {
+  assert.equal(formatCountdownMmSs(Number.NaN), "NaN:NaN");
+  assert.equal(formatCountdownMmSs(Number.POSITIVE_INFINITY), "Infinity:NaN");
+  assert.equal(formatCountdownMmSs(Number.NEGATIVE_INFINITY), "00:00");
 });

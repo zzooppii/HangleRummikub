@@ -1,4 +1,6 @@
 import type { PlayerId, RequestId, RoomId, TurnId } from "@hangul-rummikub/shared";
+import { markRequestFeedbackSeen } from "../../lib/request-feedback.js";
+import { formatCountdownMmSs } from "../../lib/turn-countdown.js";
 
 export type NumberTileSoundCue =
   | "TURN_START"
@@ -37,11 +39,7 @@ export function markNumberTileActionFeedback(
   seenRequestIds: Set<RequestId>,
   requestId: RequestId,
 ): boolean {
-  if (seenRequestIds.has(requestId)) {
-    return false;
-  }
-  seenRequestIds.add(requestId);
-  return true;
+  return markRequestFeedbackSeen(seenRequestIds, requestId);
 }
 
 export function numberTileActionSoundCue(
@@ -97,10 +95,7 @@ export function writeLastAnnouncedNumberTileTurn(
 }
 
 export function formatNumberTileCountdown(remainingSeconds: number): string {
-  const safeSeconds = Math.max(0, Math.floor(remainingSeconds));
-  const minutes = Math.floor(safeSeconds / 60);
-  const seconds = safeSeconds % 60;
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  return formatCountdownMmSs(remainingSeconds);
 }
 
 type AudioContextConstructor = new () => AudioContext;

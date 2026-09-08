@@ -2,9 +2,11 @@
 
 > 날짜: 2026-09-08
 >
-> 상태: P13 analysis complete; extraction은 사용자 승인 전 미구현
+> 상태: P13 COMPLETE / P13B COMPLETE — P13-001·002·003 APPROVED / IMPLEMENTED
 >
-> 범위: source evidence, classification, recommendation, migration proposal만
+> 범위: P13 분석 history와 승인된 세 helper의 P13B implementation record
+
+§1–12는 P13 analysis checkpoint `ae77637`의 history다. 그 안의 미승인·미구현/승인 대기 문구는 당시 상태이며, 이후 사용자가 정확히 세 후보만 승인했다. P13B의 실제 구현 및 검증 상태는 §13에서 별도로 기록한다. 다른 classification의 후보는 여전히 미승인이다.
 
 ## 1. Release baseline와 검토 범위
 
@@ -199,11 +201,13 @@ Each proposal is independent. No generic state, callback bag, rule option or add
 
 ### 7.1 P13-001 — public Room participant whitelist
 
+P13B status: **APPROVED / IMPLEMENTED**. Final API/location/call sites와 검증은 §13을 따른다.
+
 **Files / actual duplicate sites**
 
 - `apps/server/src/application/lobby-state-snapshot-projector.ts:63–70` — `basePlayers` for H V1 (also feeds H V2).
 - `apps/server/src/application/platform-snapshot-v2-projector.ts:75–81` — `roomPlayers` for N/G V2.
-- Proposed new owner: `apps/server/src/application/project-room-participants.ts` (does not exist yet).
+- Proposed owner, now implemented: `apps/server/src/application/project-room-participants.ts`.
 
 **Identical invariant:** preserve player array order; build detached objects containing only playerId/nickname/isHost/connectionStatus; host equality determines isHost; null host yields all false; missing status defaults OFFLINE. Do not freeze previously mutable output, sort or mutate input.
 
@@ -229,12 +233,14 @@ It is a server-local pure mapper of existing fields, not a GameProjector interfa
 
 ### 7.2 P13-002 — feedback RequestId seen-set operation
 
+P13B status: **APPROVED / IMPLEMENTED**. Final API/location/call sites와 검증은 §13을 따른다.
+
 **Files / actual duplicate sites**
 
 - `apps/web/src/features/number-tile/number-tile-sound.ts:36` — `markNumberTileActionFeedback`; used by `app/use-lobby-app.ts:383` after accepted action.
 - `apps/web/src/features/gem-card/gem-card-sound.ts:22,60` — `markGemFeedback`/audio hook.
 - `apps/web/src/features/gem-card/gem-card-actions.ts:97–102` — inline has/add in `gemCardActionFeedback`; called by page controller at1371.
-- Proposed new owner: `apps/web/src/lib/request-feedback.ts` (not implemented).
+- Proposed owner, now implemented: `apps/web/src/lib/request-feedback.ts`.
 
 **Proposed API:** `markRequestFeedbackSeen(seen: Set<RequestId>, requestId: RequestId): boolean`.
 
@@ -247,6 +253,8 @@ It is a server-local pure mapper of existing fields, not a GameProjector interfa
 **Regression:** `W/lib/number-tile-ux.test.ts:329`, `gem-card-ui.test.ts:202`, `gem-card-actions.test.ts:153`, `number-mobile-audio.test.ts` and reconnect/retry tests. Add first/replay/different IDs, independent Sets, clear/reuse and exact return-value tests; rejected command emits no success feedback; final-action cue and same-ID retry stay unchanged.
 
 ### 7.3 P13-003 — opt-in MM:SS formatter
+
+P13B status: **APPROVED / IMPLEMENTED**. Final API/location/call sites와 검증은 §13을 따른다.
 
 **Files / actual duplicate sites**
 
@@ -359,3 +367,38 @@ Known release limitations remain process-memory only, one Railway replica, redep
 - Checkpoint: this document's `docs: review three-game platform abstractions` commit, normal push only; exact identity is available in Git history. Release runtime/tag stays `db0e6c6`; this documentation checkpoint does not deploy or change gameplay.
 
 **P13 analysis COMPLETE / P13B APPROVAL_REQUIRED.** Final checkpoint/push status is reported separately after Git verification. No abstraction implementation is authorized by this review.
+
+## 13. P13B — approved platform helpers
+
+사용자가 P13-001/002/003 전부를 별도로 승인했다. 이 절이 위 P13 시점의 approval-required 기록 이후 현재 상태다. 시작 HEAD `ae77637`, clean `master === origin/master`, baseline **1215/1215** (shared91/Web276/server848), typecheck/build PASS를 확인한 뒤 구현했다. Release tag의 local/remote target `db0e6c638835dc8164236fc3841f4f3a88db6054`는 보존한다.
+
+| ID | Final location / API | Migrated call sites |
+| --- | --- | --- |
+| P13-001 **APPROVED / IMPLEMENTED** | `apps/server/src/application/project-room-participants.ts` — `projectRoomParticipants(players: readonly Pick<PlayerRecord, "playerId" \| "nickname">[], hostPlayerId: PlayerId \| null, statuses: ReadonlyMap<PlayerId, ConnectionStatus>): PlatformPlayerViewV2[]` | `lobby-state-snapshot-projector.ts`의 basePlayers와 `platform-snapshot-v2-projector.ts`의 roomPlayers, 정확히 두 map |
+| P13-002 **APPROVED / IMPLEMENTED** | `apps/web/src/lib/request-feedback.ts` — `markRequestFeedbackSeen(seen: Set<RequestId>, requestId: RequestId): boolean` | Number `markNumberTileActionFeedback`, GEM `markGemFeedback`, GEM `gemCardActionFeedback` inline has/add, 정확히 세 곳 |
+| P13-003 **APPROVED / IMPLEMENTED** | `apps/web/src/lib/turn-countdown.ts` — `formatCountdownMmSs(remainingSeconds: number): string` | Number `formatNumberTileCountdown`, GEM `formatGemCountdown`, 정확히 두 곳 |
+
+기존 feature export 이름은 thin wrapper로 유지해 TSX/controller callers를 수정하지 않았다. P13-001은 existing shared public type을 **type-only**로 사용하지만 helper는 server에만 위치한다. Web helpers도 shared package로 이동하지 않았다.
+
+### Preserved semantics / non-extractions
+
+- Participant: 순서, detached mutable output, playerId/nickname/isHost/connectionStatus exact whitelist, null Host, missing presence의 OFFLINE fallback 그대로다. Self authorization, presence I/O, clock 호출과 game projection/schema parse는 기존 위치에 남는다. V1 mapper나 다른 game projector는 migration하지 않았다.
+- Feedback: 첫 ID는 caller의 Set에 추가 후 true, 이미 본 ID는 Set을 바꾸지 않고 false. Number accepted feedback, GEM accepted feedback, GEM audio의 **별도 Set 수명**과 clear/reset/sessionStorage/mute/success/late-ack 정책은 그대로다. Server idempotency나 sound engine을 추출한 것이 아니다.
+- Formatting: `max(0, floor(seconds))` 후 분/초 최소2자리 padding. 0/9/45/60/90은 00:00/00:09/00:45/01:00/01:30. Negative→00:00, fraction floor, NaN→NaN:NaN, +Infinity→Infinity:NaN, −Infinity→00:00은 기존 behavior 그대로다. Minutes는 99로 자르지 않으며 HH:MM:SS 기능을 추가하지 않았다.
+- H countdown, N/G timer effects/deadline/warning/HUD/audio, all TSX/CSS, reconnect/controller, Home/tutorial, canonical rules와 schemas는 변경하지 않았다. P12 verified behavior를 다시 정의하지 않는다.
+- WAIT/KEEP/ACCIDENTAL/POST_RELEASE_POLISH 후보는 미구현이다. Registry/start shell/generic executor/AudioManager/TurnHUD/Result 및 네 번째 게임 작업은 없다.
+
+### Tests and quality gate
+
+- 신규 **10 tests**: participant3, feedback Set3, formatter4. 기존 test 삭제·skip·assertion 약화 없음.
+- Participant tests: host/status/order, null-host/OFFLINE, detached mutable exact keys 및 input/status map 불변. 기존 H/N/G projector/privacy 회귀와 함께 실행한다.
+- Feedback tests: first/replay/different IDs, independent Sets, caller clear/reuse. 기존 Number Submit/Draw/Pass exact-once와 GEM 네 actions/replay/audio tests를 유지한다.
+- Formatter tests: required values, minute rollover, negative/fraction, >99-minute 및 기존 non-finite behavior. 기존 countdown authority/UI tests를 유지한다.
+- Final root: `npm run typecheck` PASS, `npm test` **1225/1225 두 번 연속 PASS** (shared91/Web283/server851), `npm run build` PASS, `git diff --check` PASS. Fail/cancel/skip/todo 모두0.
+- 별도 targeted: participant/projector/privacy **50/50**, Web feedback/audio/countdown/UI **58/58**, reconnect/session **34/34**, P12 raw release **19/19**, production-serving **6/6 PASS**. 이 수는 전체 suite에 포함된 부분집합이며 total에 중복 합산하지 않는다.
+- Source/independent review: 승인된 두 map/세 mark/두 formatter delegation만 변경. Production 변경은 9개 파일에 국한되고 tests3개와 docs3개를 포함한 총15개 파일이다. 몇백 줄의 전체 diff 대부분은 새 characterization tests와 이 기록이며 architecture rewrite가 아니다. Shared/protocol/rules/manifests/TSX/CSS/controller/storage와 release tag diff0.
+- Audio/mute/success gating은 기존 테스트 및 **변경되지 않은 caller source**로 검증했다. 새 mounted-hook/browser/device 검증을 수행했다고 주장하지 않는다. 원래 Number/GEM의 다른 AudioContext 정책은 그대로이며 P13B는 public deployment gate가 아니다.
+
+### Release / handoff
+
+`refactor: extract proven platform helpers` 일반 checkpoint/push만 수행한다. `three-game-platform-v1`은 historical verified runtime에 고정하며 tag 생성·이동이나 Railway 배포는 없다. **DEPLOYMENT_NOT_REQUIRED_FOR_P13B**. 완료 후 다음 작업은 별도 사용자 요청의 fourth-game **planning gate**이며, 게임 구현을 자동 시작하지 않는다.

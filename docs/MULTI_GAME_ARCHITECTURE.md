@@ -1,6 +1,6 @@
 # Multi-game Platform Architecture
 
-> 상태: P12 COMPLETE / THREE-GAME PLATFORM V1 VERIFIED / P13 analysis complete — implementation approval required
+> 상태: P12 COMPLETE / THREE-GAME PLATFORM V1 VERIFIED / P13 COMPLETE / P13B COMPLETE
 > 작성일: 2026-09-07
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
@@ -12,7 +12,7 @@
 
 ## P13 post-release review (2026-09-08)
 
-[THREE_GAME_POST_RELEASE_ABSTRACTION_REVIEW.md](./THREE_GAME_POST_RELEASE_ABSTRACTION_REVIEW.md)는 실제 H/N/G source를 비교한 분석이며 runtime 변경은 없다. 현재 `three-game-platform-v1` local/remote tag는 verified runtime `db0e6c6`을 가리킨다. 위 P12 closure의 tag 미생성/P13 미시작 문장은 당시 기록이다. Identity-only Registry, exact three-game Room union, concrete policies/projectors/renderers를 유지한다. 공개 참가자 whitelist mapper, feedback RequestId seen-set 연산, MM:SS formatting 세 작은 후보만 제안하며 모두 사용자 승인 전 미구현이다. Giant GameModule/start executor/lifecycle·renderer registry는 도입하지 않고, P13B 및 네 번째 게임은 자동 시작하지 않는다.
+[THREE_GAME_POST_RELEASE_ABSTRACTION_REVIEW.md](./THREE_GAME_POST_RELEASE_ABSTRACTION_REVIEW.md)는 실제 H/N/G source를 비교한 P13 분석 history와 이후 승인된 P13B 구현을 구분한다. 현재 `three-game-platform-v1` local/remote tag는 verified runtime `db0e6c6`을 가리킨다. 위 P12 closure의 tag 미생성/P13 미시작 문장은 당시 기록이다. Identity-only Registry, exact three-game Room union, concrete policies/projectors/renderers를 유지한다. 사용자가 승인한 P13-001 공개 참가자 whitelist mapper, P13-002 caller-owned feedback RequestId mark, P13-003 MM:SS formatter만 P13B에서 구현했다. 기존 IO/권한/Set lifetime/timer/audio와 wire는 그대로이며 1225 tests 연속2회, typecheck/build 및 production-serving6/6 PASS다. 최종 위치·API·call sites는 review §13을 따른다. 다른 후보/registry/framework와 네 번째 게임은 구현하지 않았다. P13B를 위한 Railway 배포나 release tag 이동은 없다.
 
 ## 1. 분석 범위와 방법
 

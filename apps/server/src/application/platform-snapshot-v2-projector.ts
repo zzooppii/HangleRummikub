@@ -13,6 +13,7 @@ import type { PlayerPresenceReader } from "../ports/player-presence-reader.js";
 import type { Clock } from "../ports/system.js";
 import type { LobbyStateSnapshotProjector } from "./lobby-state-snapshot-projector.js";
 import { mapLegacyStateSnapshotV1ToPlatformSnapshotV2 } from "./platform-snapshot-v2-mapper.js";
+import { projectRoomParticipants } from "./project-room-participants.js";
 
 export type PlatformSnapshotV2ProjectorDependencies = Readonly<{
   clock: Clock;
@@ -72,13 +73,11 @@ export class PlatformSnapshotV2Projector {
     const presence = await this.#presenceReader.readRoomPresence(
       input.room.roomId,
     );
-    const roomPlayers = input.room.players.map((player) => ({
-      playerId: player.playerId,
-      nickname: player.nickname,
-      isHost: player.playerId === input.room.hostPlayerId,
-      connectionStatus:
-        presence.connectionStatusByPlayerId.get(player.playerId) ?? "OFFLINE",
-    }));
+    const roomPlayers = projectRoomParticipants(
+      input.room.players,
+      input.room.hostPlayerId,
+      presence.connectionStatusByPlayerId,
+    );
     const base = {
       snapshotVersion: PLATFORM_SNAPSHOT_VERSION,
       versions: {

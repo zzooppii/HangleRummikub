@@ -14,6 +14,7 @@ import type {
   RoomPresenceReadModel,
 } from "../ports/player-presence-reader.js";
 import type { Clock } from "../ports/system.js";
+import { projectRoomParticipants } from "./project-room-participants.js";
 
 export type { RoomPresenceReadModel };
 export type RoomPresenceReadPort = PlayerPresenceReader;
@@ -60,14 +61,11 @@ export class LobbyStateSnapshotProjector {
     const presence = await this.#presenceReader.readRoomPresence(
       input.room.roomId,
     );
-    const basePlayers = input.room.players.map((player) => ({
-      playerId: player.playerId,
-      nickname: player.nickname,
-      isHost: player.playerId === input.room.hostPlayerId,
-      connectionStatus:
-        presence.connectionStatusByPlayerId.get(player.playerId) ??
-        "OFFLINE",
-    }));
+    const basePlayers = projectRoomParticipants(
+      input.room.players,
+      input.room.hostPlayerId,
+      presence.connectionStatusByPlayerId,
+    );
     const baseSnapshot = {
       protocolVersion: PROTOCOL_VERSION,
       serverTime: this.#clock.now(),

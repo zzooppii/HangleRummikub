@@ -1,5 +1,6 @@
 import type { PlayerId, RequestId, TurnId } from "@hangul-rummikub/shared";
 import { useEffect, useRef, useState } from "react";
+import { markRequestFeedbackSeen } from "../../lib/request-feedback.js";
 import type { GemCardActionKind, GemCardActionFeedback } from "./gem-card-actions.js";
 
 export type { GemCardActionKind, GemCardActionFeedback } from "./gem-card-actions.js";
@@ -20,9 +21,7 @@ export function shouldAnnounceGemTurn(lastTurn: string | null, turnId: TurnId, a
   return active === self && lastTurn !== turnId;
 }
 export function markGemFeedback(seen: Set<RequestId>, requestId: RequestId): boolean {
-  if (seen.has(requestId)) return false;
-  seen.add(requestId);
-  return true;
+  return markRequestFeedbackSeen(seen, requestId);
 }
 
 /** Original, short sine sweeps, synthesized locally without assets/dependencies. */
