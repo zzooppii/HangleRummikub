@@ -1,6 +1,6 @@
 # Multi-game Platform Architecture
 
-> 상태: P11C SOURCE COMPLETE / P12 COMPLETE / THREE-GAME PLATFORM V1 VERIFIED
+> 상태: P12 COMPLETE / THREE-GAME PLATFORM V1 VERIFIED / P13 analysis complete — implementation approval required
 > 작성일: 2026-09-07
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
@@ -9,6 +9,10 @@
 ## P12 current release status (2026-09-08)
 
 아래 Phase별 설명은 해당 checkpoint의 history다. 현재 exact 세 GameType/identity-only Registry, Hangul/Number/GEM Room union과 concrete Web renderer를 보존한다. 최초 source gate 1,202 tests 이후 Number focus-layout blocker를 수정하여 1,215 tests가 통과했다. Recovery는 in-memory overdue sweeper이며 durable restart recovery가 아니다. Railway Active `db0e6c6`/1 Replica와 public raw 세 게임 gameplay/security/resume 확인에 이어, 남은 GEM actual browser UI와 Number desktop을 포함한 public functional/responsive 검증을 완료했다. 실제 handshake frame은 `MANUAL HANDSHAKE FRAME UNOBSERVED`로 남기되 exact deployed bundle, 기존 public raw capability 검증, 실제 두 Chrome GEM admission/gameplay의 독립 근거를 함께 기록한다. **P12 COMPLETE / THREE-GAME PLATFORM V1 VERIFIED**이며 상세 근거는 [THREE_GAME_PLATFORM_RELEASE_GATE.md §10](./THREE_GAME_PLATFORM_RELEASE_GATE.md#10-public-browser-verification-closure)를 따른다. 검증된 runtime은 `db0e6c6`이고 이후 checkpoint는 docs-only다. Architecture/runtime 변경, tag 생성, P13 구현은 없으며 physical-device 체감 검토는 알려진 수동 한계로 유지한다.
+
+## P13 post-release review (2026-09-08)
+
+[THREE_GAME_POST_RELEASE_ABSTRACTION_REVIEW.md](./THREE_GAME_POST_RELEASE_ABSTRACTION_REVIEW.md)는 실제 H/N/G source를 비교한 분석이며 runtime 변경은 없다. 현재 `three-game-platform-v1` local/remote tag는 verified runtime `db0e6c6`을 가리킨다. 위 P12 closure의 tag 미생성/P13 미시작 문장은 당시 기록이다. Identity-only Registry, exact three-game Room union, concrete policies/projectors/renderers를 유지한다. 공개 참가자 whitelist mapper, feedback RequestId seen-set 연산, MM:SS formatting 세 작은 후보만 제안하며 모두 사용자 승인 전 미구현이다. Giant GameModule/start executor/lifecycle·renderer registry는 도입하지 않고, P13B 및 네 번째 게임은 자동 시작하지 않는다.
 
 ## 1. 분석 범위와 방법
 
