@@ -82,3 +82,13 @@ This checkpoint improves the existing `NUMBER_TILE` Web experience without chang
 - Dragging or clicking the same physical Joker into another combination re-derives its role. A previous GROUP/RUN role is not editor state and does not constrain the new final Table.
 - The server validates final-state legality: every pre-turn Joker `tileId` remains exactly once in the final Table, cannot move to the rack, and must belong to a valid final meld. Exact old-face replacement is not required.
 - The Number-only command/V2 Joker placement is now bare physical identity. Outer protocol/event/snapshot version names and Hangul contracts remain unchanged, but a strict old Number browser already open on the assignment-required schema must refresh to load the corrected bundle.
+
+## Board-centric presentation follow-up
+
+The later [board UI overhaul](NUMBER_TILE_BOARD_UI_OVERHAUL.md) replaces the large
+meld/dashboard-card presentation with compact packed tile groups, a central play
+surface, wrapping rack tray and action dock. Board whitespace accepts the existing
+atomic new-meld drop operation. Direct click/tap, keyboard, mouse drag, sorting,
+Joker semantics and server authority are preserved. Its current verification and
+public-review status supersede the historical counts and phase status above;
+GEM_CARD P11C is preserved and P12 waits for user UI review.

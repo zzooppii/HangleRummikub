@@ -65,7 +65,7 @@ export function NumberTilePlayingScreen(
   );
   const isMyTurn = game.turn.activePlayerId === self.playerId;
   const [soundEnabled, setSoundEnabled] = useState(() =>
-    readNumberTileSoundEnabled(window.localStorage)
+    typeof window === "undefined" ? true : readNumberTileSoundEnabled(window.localStorage)
   );
   const turnSoundTrackerRef = useRef<{
     scope: string;
@@ -120,10 +120,10 @@ export function NumberTilePlayingScreen(
 
   return (
     <main className="app-shell playing-shell number-playing-shell">
-      <header className="lobby-header">
+      <header className="number-room-bar">
         <div>
-          <p className="eyebrow">숫자 타일 게임 · ROOM {room.roomCode}</p>
           <h1>숫자 타일 게임</h1>
+          <span className="number-room-code">ROOM {room.roomCode}</span>
         </div>
         <div className="room-header-actions">
           <span className={`connection-chip ${props.connectionTone}`}>
@@ -161,6 +161,7 @@ export function NumberTilePlayingScreen(
         </p>
       ) : null}
 
+      <div className="number-hud">
       <section
         className={`number-turn-banner${isMyTurn ? " is-self" : ""}${
           countdown.remainingSeconds <= 10 ? " warning" : ""
@@ -168,19 +169,11 @@ export function NumberTilePlayingScreen(
         aria-label="현재 숫자 타일 게임 상태"
       >
         <div className="number-turn-copy">
-          <p className="step-label">CURRENT TURN</p>
           <h2>
             {isMyTurn
               ? "내 차례입니다"
               : `${activePlayer?.nickname ?? "다른 참가자"}님의 차례입니다`}
           </h2>
-          <p>
-            {isMyTurn
-              ? game.remainingPoolCount > 0
-                ? "타일을 조합하거나 1개 가져오세요."
-                : "조합을 제출하거나 패스하세요."
-              : "테이블을 살펴보며 다음 차례를 준비하세요."}
-          </p>
         </div>
         <div className="number-turn-controls">
           <time
@@ -205,28 +198,18 @@ export function NumberTilePlayingScreen(
           </button>
         </div>
         <p className="number-game-stats">
-          남은 풀 <strong>{game.remainingPoolCount}</strong>
-          <span aria-hidden="true"> · </span>
-          내 타일 <strong>{game.privateState.rack.length}</strong>
-          <span aria-hidden="true"> · </span>
-          공개 조합 <strong>{game.table.melds.length}</strong>
+          남은 타일 <strong>{game.remainingPoolCount}</strong>
         </p>
       </section>
 
-      {props.actionFeedback !== null ? (
-        <p className="number-action-feedback" role="status">
-          {props.actionFeedback.message}
-        </p>
-      ) : null}
-
-      <section className="playing-participants" aria-label="참가자 상태">
+      <section className="number-player-strip" aria-label="참가자 상태">
         {room.players.map((player) => {
           const playerState = game.playerStates.find(
             (state) => state.playerId === player.playerId,
           );
           return (
             <div
-              className={`playing-player${
+              className={`number-player-chip${
                 player.playerId === game.turn.activePlayerId &&
                 playerState?.forfeited !== true
                   ? " active"
@@ -234,6 +217,7 @@ export function NumberTilePlayingScreen(
               }`}
               key={player.playerId}
             >
+              <span className="number-player-initial" aria-hidden="true">{player.nickname.slice(0, 1)}</span>
               <span className="number-player-identity">
                 <strong>{player.nickname}</strong>
                 <small>
@@ -241,15 +225,23 @@ export function NumberTilePlayingScreen(
                   {player.isHost ? "방장 · " : ""}
                   {player.connectionStatus === "CONNECTED" ? "접속 중" : "오프라인"}
                   {playerState?.forfeited ? " · 기권" : ""}
+                  {player.playerId === game.turn.activePlayerId && !playerState?.forfeited ? " · 현재 차례" : ""}
                 </small>
               </span>
               <span className="number-player-stats">
-                랙 {playerState?.rackCount ?? 0} · 첫 등록 {playerState?.initialMeldCompleted ? "완료" : "대기"}
+                {playerState?.rackCount ?? 0}개
               </span>
             </div>
           );
         })}
       </section>
+      </div>
+
+      {props.actionFeedback !== null ? (
+        <p className="number-action-feedback" role="status">
+          {props.actionFeedback.message}
+        </p>
+      ) : null}
 
       <NumberTileTurnDraftEditor
         snapshot={props.snapshot}

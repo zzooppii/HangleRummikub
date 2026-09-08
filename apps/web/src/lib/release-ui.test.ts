@@ -6,6 +6,9 @@ const styles = readFileSync(
   new URL("../../src/styles.css", import.meta.url),
   "utf8",
 );
+const numberBoardStyles = readFileSync(
+  new URL("../../src/features/number-tile/number-tile-board.css", import.meta.url), "utf8",
+);
 const editorSource = readFileSync(
   new URL("../../src/features/game/TurnDraftEditor.tsx", import.meta.url),
   "utf8",
@@ -237,7 +240,7 @@ test("Number 조합 UX는 하나의 생성 action과 derived classification만 �
   assert.match(numberEditorSource, /appendTileToMeld\(tileId, meldIndex\)/u);
   assert.match(numberEditorSource, /findNumberTileDraftReusableEmptyMeldIndex/u);
   assert.match(numberEditorSource, /aria-pressed=\{active\}/u);
-  assert.match(numberEditorSource, /● 여기에 추가 중/u);
+  assert.match(numberEditorSource, /● 추가 중/u);
   assert.match(
     numberEditorSource,
     /selected\?\.source === "TABLE" && selected\.tile\.origin === "SELF_RACK"/u,
@@ -307,7 +310,8 @@ test("Number pointer drag route는 whole meld/new meld/rack target과 physical t
     /dragged\.tile\.origin === "CANONICAL_TABLE"/u,
   );
   assert.match(numberEditorSource, /공개 테이블의 타일은 내 랙으로 가져올 수 없습니다/u);
-  assert.match(styles, /\.number-meld-card\.is-drop-target,[\s\S]*\.number-rack\.is-drop-target/u);
+  assert.match(numberBoardStyles, /\.number-meld-group\.is-drop-target/u);
+  assert.match(numberBoardStyles, /\.number-rack\.is-drop-target/u);
   assert.match(ruleFor(".number-tile.dragging"), /opacity:\s*0\.55/u);
   assert.match(ruleFor(".number-rack.is-drop-blocked"), /border-color:/u);
   assert.match(
@@ -353,7 +357,8 @@ test("Number 화면은 display-only 90초 countdown과 authoritative snapshot을
   assert.match(numberPlayingSource, /calculateTurnCountdown/u);
   assert.match(numberPlayingSource, /game\.turn\.deadlineAt/u);
   assert.match(numberPlayingSource, /remainingPoolCount/u);
-  assert.match(numberPlayingSource, /game\.privateState\.rack/u);
+  // Rack is rendered once in the tray, not duplicated in the compact HUD.
+  assert.match(numberEditorSource, /props\.snapshot\.game\.privateState\.rack/u);
   assert.doesNotMatch(numberPlayingSource, /TIME_LIMIT|ALL_PLAYERS_FORFEITED/u);
 });
 

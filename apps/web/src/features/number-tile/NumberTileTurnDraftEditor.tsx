@@ -42,6 +42,7 @@ type TileButtonProps = Readonly<{
   selected?: boolean;
   disabled?: boolean;
   dragging?: boolean;
+  jokerNumber?: number;
   dragEnabled?: boolean;
   locationLabel: string;
   interactionLabel: string;
@@ -59,7 +60,9 @@ function TileButton(props: TileButtonProps) {
     props.tile.kind === "ORDINARY"
       ? props.tile.number
       : null;
-  const label = numberTilePlacementLabel(props.tile);
+  const label = props.tile.kind === "JOKER" && props.jokerNumber !== undefined
+    ? `조커, 숫자 ${props.jokerNumber}로 사용 중`
+    : numberTilePlacementLabel(props.tile);
 
   return (
     <button
@@ -97,7 +100,7 @@ function TileButton(props: TileButtonProps) {
       </span>
       <strong aria-hidden="true">{number ?? "J"}</strong>
       {props.tile.kind === "JOKER" ? (
-        <small aria-hidden="true">JOKER</small>
+        <small aria-hidden="true">{props.jokerNumber === undefined ? "JOKER" : `↳ ${props.jokerNumber}`}</small>
       ) : null}
     </button>
   );
@@ -136,9 +139,9 @@ function meldStatusLabel(classification: NumberTileMeldClassification): string {
         ? "✓ 같은 숫자 조합"
         : "✓ 연속 숫자 조합";
     case "INCOMPLETE":
-      return "● 조합을 만드는 중";
+      return "조합을 완성하세요";
     case "INVALID":
-      return "! 아직 유효한 조합이 아닙니다";
+      return "조합을 확인하세요";
     case "AMBIGUOUS":
       return "● 조커 숫자를 선택해주세요";
   }
@@ -175,6 +178,8 @@ export function NumberTileTurnDraftEditor(
   const [selectedTileId, setSelectedTileId] = useState<TileId | null>(null);
   const [activeMeldIndex, setActiveMeldIndex] = useState<number | null>(null);
   const [draggedTileId, setDraggedTileId] = useState<TileId | null>(null);
+  // Screen-only drag preview; never part of the ordered meld draft or payload.
+  const [dragPreview, setDragPreview] = useState<{ x: number; y: number } | null>(null);
   const [dropTarget, setDropTarget] = useState<NumberTileDropTarget | null>(
     null,
   );
@@ -239,6 +244,7 @@ export function NumberTileTurnDraftEditor(
     setActiveMeldIndex(null);
     setDraggedTileId(null);
     setDropTarget(null);
+    setDragPreview(null);
     setInteractionMessage(null);
     setConfirmation(null);
     pendingFocusTargetRef.current = null;
@@ -266,6 +272,7 @@ export function NumberTileTurnDraftEditor(
       pointerDragRef.current = null;
       setDraggedTileId(null);
       setDropTarget(null);
+      setDragPreview(null);
     }
   }, [props.controller.canEdit]);
 
@@ -319,6 +326,7 @@ export function NumberTileTurnDraftEditor(
     draggedTileIdRef.current = null;
     setDraggedTileId(null);
     setDropTarget(null);
+    setDragPreview(null);
   }
 
   function requestFocus(target: NumberTileFocusTarget): void {
@@ -690,6 +698,7 @@ export function NumberTileTurnDraftEditor(
       candidate.started = true;
     }
     event.preventDefault();
+    setDragPreview({ x: event.clientX, y: event.clientY });
     const target = pointerDropTargetAt(event.clientX, event.clientY);
     if (target === null || !canUseDropTarget(candidate.tileId, target)) {
       setDropTarget(null);
@@ -873,11 +882,11 @@ export function NumberTileTurnDraftEditor(
     draft.table.melds.every(numberTileDraftMeldIsValid);
 
   return (
-    <section className="number-editor" aria-labelledby="number-editor-heading">
-      <header className="number-editor-heading">
+    <section className="number-board-editor" aria-labelledby="number-editor-heading">
+      <header className="number-board-heading">
         <div>
-          <p className="step-label">NUMBER TABLE</p>
-          <h2 id="number-editor-heading">숫자 타일 테이블</h2>
+          <h2 id="number-editor-heading">공용 테이블</h2>
+          <small>타일을 누르거나 끌어서 놓으세요.</small>
         </div>
         {draft === null ? (
           <span className="lock-label">내 차례에 편집할 수 있습니다</span>
@@ -885,16 +894,12 @@ export function NumberTileTurnDraftEditor(
           <span className="lock-label">서버 응답을 기다리는 동안 입력이 잠겼습니다</span>
         ) : (
           <span className="lock-label">
-            {draft.mode === "INITIAL_MELD" ? "첫 등록" : "테이블 재배치"}
+            {draft.mode === "INITIAL_MELD"
+              ? `첫 등록 ${numberTileInitialMeldValueHint(draft.table.melds)} / 30`
+              : "내 타일 최소 1개 사용"}
           </span>
         )}
       </header>
-
-      <p className="number-editor-guide">
-        <strong>조합 만들기:</strong> 랙 타일을 누르면 현재 편집 중인
-        조합에 바로 들어갑니다. 데스크톱에서는 타일을 원하는 조합으로
-        끌어놓을 수도 있습니다.
-      </p>
 
       {props.controller.noticeMessage !== null ? (
         <p className="notice" role="status">
@@ -912,22 +917,15 @@ export function NumberTileTurnDraftEditor(
         </p>
       ) : null}
 
-      {draft?.mode === "INITIAL_MELD" ? (
-        <p className="number-rule-hint">
-          첫 등록: 내 타일만 사용해 합계 30점 이상
-          <strong>
-            현재 조합 점수 {numberTileInitialMeldValueHint(draft.table.melds)} / 30
-          </strong>
-          <small>최종 유효성은 서버가 판정합니다.</small>
-        </p>
-      ) : draft?.mode === "REARRANGEMENT" ? (
-        <p className="number-rule-hint">
-          기존 조합을 자유롭게 재배치할 수 있지만 내 랙 타일을 최소 1개 사용해야 합니다.
-          <small>최종 테이블 전체의 유효성은 서버가 판정합니다.</small>
-        </p>
-      ) : null}
-
-      <div className="number-meld-list">
+      <div
+        className={`number-play-surface${props.controller.canEdit ? " editable" : ""}${
+          currentDropTargetKey === "NEW_MELD" ? " is-drop-target" : ""
+        }`}
+        aria-label="공용 타일 보드"
+        data-number-drop-new-meld
+      >
+      {draggedTileId !== null ? <span className="number-board-drop-hint" aria-hidden="true">빈 곳에 놓으면 새 조합</span> : null}
+      <div className="number-meld-pack">
         {(draft?.table.melds ?? props.snapshot.game.table.melds).map(
           (meld, meldIndex) => {
             const draftMeld = draft?.table.melds[meldIndex];
@@ -940,13 +938,14 @@ export function NumberTileTurnDraftEditor(
               currentDropTargetKey === `MELD:${meldIndex}`;
             return (
               <article
-                className={`number-meld-card${locked ? " locked" : ""}${
+                className={`number-meld-group ${classification.status.toLowerCase()}${locked ? " locked" : ""}${
                   active ? " active" : ""
                 }${highlighted ? " is-drop-target" : ""}${
                   meld.tiles.length === 0 ? " empty" : ""
                 }`}
                 key={`number-meld-${meldIndex}`}
                 aria-labelledby={`number-meld-${meldIndex}-title number-meld-${meldIndex}-status`}
+                role="group"
                 data-number-drop-meld-index={meldIndex}
                 onClick={(event) => activateMeldFromCard(event, meldIndex)}
               >
@@ -956,7 +955,7 @@ export function NumberTileTurnDraftEditor(
                       className="group-number"
                       id={`number-meld-${meldIndex}-title`}
                     >
-                      조합 {meldIndex + 1}
+                      조합 {meldIndex + 1}, 타일 {meld.tiles.length}개
                     </span>
                     <strong
                       id={`number-meld-${meldIndex}-status`}
@@ -995,14 +994,14 @@ export function NumberTileTurnDraftEditor(
                         }}
                       >
                         {active
-                          ? "● 여기에 추가 중"
+                          ? "● 추가 중"
                           : selected?.source === "TABLE" &&
                               selected.meldIndex !== meldIndex
                             ? "여기로 이동"
-                            : "편집 대상으로 선택"}
+                            : "선택"}
                       </button>
                     ) : (
-                      <span className="lock-label">읽기 전용</span>
+                      <span className="live-region">읽기 전용</span>
                     )}
                     {draftMeld !== undefined &&
                     !locked &&
@@ -1022,7 +1021,7 @@ export function NumberTileTurnDraftEditor(
                           );
                         }}
                       >
-                        비우기
+                        닫기
                       </button>
                     ) : null}
                   </div>
@@ -1034,6 +1033,9 @@ export function NumberTileTurnDraftEditor(
                       <TileButton
                         key={tile.tileId}
                         tile={tile}
+                        {...(classification.status === "VALID" && classification.interpretation.kind === "RUN" && classification.interpretation.jokerRole !== null
+                          ? { jokerNumber: classification.interpretation.jokerRole.number }
+                          : {})}
                         selected={selectedTileId === tile.tileId}
                         dragging={draggedTileId === tile.tileId}
                         dragEnabled={!locked}
@@ -1055,15 +1057,18 @@ export function NumberTileTurnDraftEditor(
                   })}
                   {meld.tiles.length === 0 ? (
                     <span className="empty-group-copy">
-                      {active
-                        ? "랙 타일을 누르거나 여기로 끌어놓으세요."
-                        : "이 조합을 선택하면 랙 타일이 여기에 들어갑니다."}
+                      타일을 놓으세요
                     </span>
                   ) : null}
                 </div>
+                {(classification.status === "INVALID" || classification.status === "INCOMPLETE") && !locked ? (
+                  <small className="number-meld-helper">
+                    같은 숫자는 서로 다른 색 3~4개, 같은 색은 연속 숫자 3개 이상으로 만드세요. 조커는 조합당 1개까지 사용할 수 있습니다.
+                  </small>
+                ) : null}
                 {classification.status === "AMBIGUOUS" && !locked ? (
-                  <div className="number-rule-hint" role="group" aria-label={`조합 ${meldIndex + 1} 조커 숫자 선택`}>
-                    <p>가능한 연속 숫자가 두 가지입니다. 조커가 대신할 숫자만 선택하세요.</p>
+                  <div className="number-joker-choice" role="group" aria-label={`조합 ${meldIndex + 1} 조커 숫자 선택`}>
+                    <p>조커 숫자를 선택하세요.</p>
                     <div className="number-meld-card-actions">
                       {classification.candidates.map(candidate => candidate.jokerNumber === null ? null : (
                         <button className="secondary-button compact-button" type="button" key={candidate.jokerNumber}
@@ -1079,7 +1084,6 @@ export function NumberTileTurnDraftEditor(
                           }}>조커 → {candidate.jokerNumber}</button>
                       ))}
                     </div>
-                    <small>숫자를 고르면 타일 순서로 반영됩니다. 색상 선택은 필요하지 않습니다.</small>
                   </div>
                 ) : null}
               </article>
@@ -1087,71 +1091,14 @@ export function NumberTileTurnDraftEditor(
           },
         )}
         {(draft?.table.melds.length ?? props.snapshot.game.table.melds.length) === 0 ? (
-          <div className="empty-board-copy number-empty-table-copy">
-            <strong>아직 공개된 조합이 없습니다.</strong>
-            <span>첫 등록을 기다리고 있습니다.</span>
-            <span>
-              랙 타일을 눌러 같은 숫자 또는 같은 색의 연속 숫자 3개 이상을
-              만드세요. 첫 등록은 합계 30점 이상이어야 합니다.
-            </span>
+          <div className="number-board-empty">
+            <span className="number-board-emblem" aria-hidden="true">7 · 8 · 9</span>
+            <strong>내 타일을 놓아 첫 조합을 만들어보세요</strong>
+            <small>첫 등록은 내 타일만 사용해 합계 30점 이상</small>
           </div>
         ) : null}
       </div>
-
-      {draft !== null ? (
-        <div
-          className="number-editor-toolbar"
-          role="group"
-          aria-label="조합 편집 도구"
-        >
-          <button
-            className={`secondary-button number-add-meld${
-              currentDropTargetKey === "NEW_MELD" ? " is-drop-target" : ""
-            }`}
-            type="button"
-            data-number-drop-new-meld
-            aria-label={
-              selected?.source === "TABLE"
-                ? "선택한 타일로 새 조합 만들기"
-                : "+ 새 조합 만들기"
-            }
-            disabled={!props.controller.canEdit}
-            onClick={activateNewMeld}
-          >
-            {draggedTileId === null
-              ? "+ 새 조합 만들기"
-              : "+ 여기에 놓아 새 조합 만들기"}
-          </button>
-          <button
-            className="secondary-button"
-            type="button"
-            disabled={!props.controller.canEdit || draft.history.length === 0}
-            onClick={() => {
-              props.controller.undo();
-              setActiveMeldIndex(null);
-              setSelectedTileId(null);
-              setInteractionMessage(null);
-              clearDragState();
-            }}
-          >
-            실행 취소
-          </button>
-          <button
-            className="secondary-button"
-            type="button"
-            disabled={!props.controller.canEdit || !props.controller.isDirty}
-            onClick={() => {
-              props.controller.reset();
-              setActiveMeldIndex(null);
-              setSelectedTileId(null);
-              setInteractionMessage(null);
-              clearDragState();
-            }}
-          >
-            배치 초기화
-          </button>
-        </div>
-      ) : null}
+      </div>
 
       <section
         className={`number-rack${
@@ -1237,6 +1184,60 @@ export function NumberTileTurnDraftEditor(
         ) : null}
       </section>
 
+      <footer className="number-action-dock">
+      {draft !== null ? (
+        <div
+          className="number-board-tools"
+          role="group"
+          aria-label="조합 편집 도구"
+        >
+          <button
+            className={`secondary-button number-add-meld${
+              currentDropTargetKey === "NEW_MELD" ? " is-drop-target" : ""
+            }`}
+            type="button"
+            data-number-drop-new-meld
+            aria-label={
+              selected?.source === "TABLE"
+                ? "선택한 타일로 새 조합 만들기"
+                : "+ 새 조합 만들기"
+            }
+            disabled={!props.controller.canEdit}
+            onClick={activateNewMeld}
+          >
+            + 새 조합
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={!props.controller.canEdit || draft.history.length === 0}
+            onClick={() => {
+              props.controller.undo();
+              setActiveMeldIndex(null);
+              setSelectedTileId(null);
+              setInteractionMessage(null);
+              clearDragState();
+            }}
+          >
+            실행 취소
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={!props.controller.canEdit || !props.controller.isDirty}
+            onClick={() => {
+              props.controller.reset();
+              setActiveMeldIndex(null);
+              setSelectedTileId(null);
+              setInteractionMessage(null);
+              clearDragState();
+            }}
+          >
+            배치 초기화
+          </button>
+        </div>
+      ) : null}
+      <div className="number-command-dock">
       {draft !== null ? (
         <div className="number-submit-panel">
           <button
@@ -1285,6 +1286,17 @@ export function NumberTileTurnDraftEditor(
           </button>
         )}
       </div>
+      </div>
+
+      </footer>
+
+      <small className="number-authority-hint">최종 유효성은 서버가 판정합니다.</small>
+
+      {dragged !== null && dragPreview !== null ? (
+        <div className="number-drag-preview" aria-hidden="true" style={{ left: dragPreview.x + 12, top: dragPreview.y + 12 }}>
+          <TileButton tile={dragged.tile} locationLabel="" interactionLabel="" disabled onSelect={() => {}} />
+        </div>
+      ) : null}
 
       {confirmation !== null ? (
         <section className="draw-confirmation" aria-labelledby="number-action-confirmation">
