@@ -8,6 +8,7 @@ import {
 import { NumberTileTurnDraftEditor } from "./NumberTileTurnDraftEditor.js";
 import {
   formatNumberTileCountdown,
+  disposeNumberTileAudio,
   numberTileTurnSoundStorageKey,
   playNumberTileSound,
   readLastAnnouncedNumberTileTurn,
@@ -15,6 +16,7 @@ import {
   shouldAnnounceNumberTileTurn,
   writeLastAnnouncedNumberTileTurn,
   writeNumberTileSoundEnabled,
+  unlockNumberTileAudio,
   type NumberTileActionFeedback,
 } from "./number-tile-sound.js";
 import type { NumberTileTurnDraft } from "./number-tile-turn-draft.js";
@@ -72,6 +74,7 @@ export function NumberTilePlayingScreen(
     lastAnnouncedTurnId: typeof game.turn.turnId | null;
   }>({ scope: "", lastAnnouncedTurnId: null });
   const turnSoundKey = numberTileTurnSoundStorageKey(room.roomId, self.playerId);
+  useEffect(() => () => disposeNumberTileAudio(), []);
 
   useEffect(() => {
     const tracker = turnSoundTrackerRef.current;
@@ -111,6 +114,7 @@ export function NumberTilePlayingScreen(
   ]);
 
   function toggleSound(): void {
+    if (!soundEnabled) unlockNumberTileAudio();
     setSoundEnabled((current) => {
       const next = !current;
       writeNumberTileSoundEnabled(window.localStorage, next);
@@ -119,7 +123,9 @@ export function NumberTilePlayingScreen(
   }
 
   return (
-    <main className="app-shell playing-shell number-playing-shell">
+    <main className="app-shell playing-shell number-playing-shell"
+      onPointerDownCapture={() => { if (soundEnabled) unlockNumberTileAudio(); }}
+      onKeyDownCapture={event => { if (soundEnabled && (event.key === "Enter" || event.key === " ")) unlockNumberTileAudio(); }}>
       <header className="number-room-bar">
         <div>
           <h1>숫자 타일 게임</h1>
@@ -259,9 +265,11 @@ export function NumberTilePlayingScreen(
       <p className="live-region" aria-live="polite">
         {countdown.expired
           ? "턴 제한 시간이 끝나 서버 처리를 기다리고 있습니다."
+          : isMyTurn && countdown.remainingSeconds <= 10
+            ? "내 차례가 10초 이하 남았습니다."
           : props.turnDraft.noticeMessage ??
             props.turnDraft.editErrorMessage ??
-            props.connectionLabel}
+            (isMyTurn ? "내 차례입니다." : `${activePlayer?.nickname ?? "다른 참가자"}님의 차례입니다.`)}
       </p>
     </main>
   );

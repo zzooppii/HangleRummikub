@@ -106,61 +106,84 @@ export function formatNumberTileCountdown(remainingSeconds: number): string {
 type AudioContextConstructor = new () => AudioContext;
 
 function audioContextConstructor(): AudioContextConstructor | null {
+  if (typeof window === "undefined") return null;
   const audioWindow = window as typeof window & {
     webkitAudioContext?: AudioContextConstructor;
   };
   return window.AudioContext ?? audioWindow.webkitAudioContext ?? null;
 }
 
-const CUE_FREQUENCIES: Readonly<Record<NumberTileSoundCue, readonly [number, number]>> = {
-  TURN_START: [659, 880],
-  SUBMIT_SUCCESS: [523, 784],
-  DRAW_SUCCESS: [440, 587],
-  PASS_SUCCESS: [392, 440],
+/** Original, Number-only note envelopes; gains do not change OS/device volume. */
+export const NUMBER_TILE_AUDIO_CUES: Readonly<Record<NumberTileSoundCue, Readonly<{
+  frequencies: readonly number[]; duration: number; gain: number;
+}>>> = {
+  TURN_START: { frequencies: [659, 880], duration: 0.42, gain: 0.24 },
+  SUBMIT_SUCCESS: { frequencies: [523, 659, 1047], duration: 0.45, gain: 0.23 },
+  DRAW_SUCCESS: { frequencies: [440, 587], duration: 0.18, gain: 0.095 },
+  PASS_SUCCESS: { frequencies: [440, 392], duration: 0.14, gain: 0.055 },
 };
 
-/** Plays a tiny synthesized cue. Autoplay or device failures are deliberately ignored. */
-export function playNumberTileSound(cue: NumberTileSoundCue): void {
+// Reuse the context unlocked by a real gesture; an ack arrives after activation expires.
+let numberAudioContext: AudioContext | null = null;
+const cueEndsAt = new WeakMap<AudioContext, number>();
+
+function numberAudio(): AudioContext | null {
+  if (numberAudioContext !== null && numberAudioContext.state !== "closed") return numberAudioContext;
   const Constructor = audioContextConstructor();
-  if (Constructor === null) {
-    return;
-  }
-
-  let context: AudioContext;
+  if (Constructor === null) return null;
   try {
-    context = new Constructor();
+    numberAudioContext = new Constructor();
+    return numberAudioContext;
   } catch {
-    return;
+    return null;
   }
+}
 
-  const play = async (): Promise<void> => {
-    if (context.state === "suspended") {
-      await context.resume();
-    }
-    const [startFrequency, endFrequency] = CUE_FREQUENCIES[cue];
-    const startedAt = context.currentTime;
-    const duration = cue === "TURN_START" ? 0.22 : 0.14;
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(startFrequency, startedAt);
-    oscillator.frequency.exponentialRampToValueAtTime(
-      endFrequency,
-      startedAt + duration,
-    );
-    gain.gain.setValueAtTime(0.0001, startedAt);
-    gain.gain.exponentialRampToValueAtTime(0.09, startedAt + 0.025);
-    gain.gain.exponentialRampToValueAtTime(0.0001, startedAt + duration);
-    oscillator.connect(gain);
-    gain.connect(context.destination);
-    oscillator.addEventListener("ended", () => {
-      void context.close().catch(() => undefined);
-    }, { once: true });
-    oscillator.start(startedAt);
-    oscillator.stop(startedAt + duration);
+/** Pointer/keyboard gesture only. Never queues a missed cue for later playback. */
+export function unlockNumberTileAudio(): void {
+  try {
+    const context = numberAudio();
+    if (context !== null && context.state !== "running") void context.resume().catch(() => undefined);
+  } catch { /* Unsupported/blocked audio never blocks an interaction. */ }
+}
+
+export function disposeNumberTileAudio(): void {
+  const context = numberAudioContext;
+  numberAudioContext = null;
+  if (context === null) return;
+  const close = () => {
+    try { if (context.state !== "closed") void context.close().catch(() => undefined); }
+    catch { /* Device teardown is best effort. */ }
   };
+  // A rack-empty accepted Submit may unmount Playing immediately. Let its short
+  // already-started cue finish; never schedule or replay a new sound on teardown.
+  const remaining = (cueEndsAt.get(context) ?? 0) - context.currentTime;
+  if (remaining > 0) setTimeout(close, Math.ceil(remaining * 1000) + 20);
+  else close();
+}
 
-  void play().catch(() => {
-    void context.close().catch(() => undefined);
-  });
+/** Caller owns accepted-command/turn deduplication. No delayed or autoplay replay. */
+export function playNumberTileSound(cue: NumberTileSoundCue): void {
+  const context = numberAudio();
+  if (context === null || context.state !== "running") return;
+  try {
+    const { frequencies, duration, gain: peak } = NUMBER_TILE_AUDIO_CUES[cue];
+    cueEndsAt.set(context, Math.max(cueEndsAt.get(context) ?? 0, context.currentTime + duration));
+    const noteDuration = duration / frequencies.length;
+    frequencies.forEach((frequency, index) => {
+      const startedAt = context.currentTime + index * noteDuration;
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(frequency, startedAt);
+      gain.gain.setValueAtTime(0.0001, startedAt);
+      gain.gain.exponentialRampToValueAtTime(peak, startedAt + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startedAt + noteDuration);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.addEventListener("ended", () => { oscillator.disconnect(); gain.disconnect(); }, { once: true });
+      oscillator.start(startedAt);
+      oscillator.stop(startedAt + noteDuration);
+    });
+  } catch { /* A sound failure must not escape into command handling. */ }
 }

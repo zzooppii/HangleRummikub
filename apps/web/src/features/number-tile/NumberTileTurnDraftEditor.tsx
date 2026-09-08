@@ -31,6 +31,7 @@ import {
   type NumberTileRackSortMode,
 } from "./number-tile-ux.js";
 import type { NumberTileTurnDraftController } from "./use-number-tile-turn-draft.js";
+import { numberTileTableTap } from "./number-tile-tap.js";
 
 type ConfirmAction = "DRAW" | "PASS";
 
@@ -268,6 +269,8 @@ export function NumberTileTurnDraftEditor(
 
   useEffect(() => {
     if (!props.controller.canEdit) {
+      setSelectedTileId(null);
+      setInteractionMessage(null);
       draggedTileIdRef.current = null;
       pointerDragRef.current = null;
       setDraggedTileId(null);
@@ -475,7 +478,7 @@ export function NumberTileTurnDraftEditor(
   }
 
   function returnPlacedTileToRack(tileId: TileId): void {
-    if (draft === null) {
+    if (draft === null || !props.controller.canEdit) {
       return;
     }
     const source = findNumberTileDraftTile(draft, tileId);
@@ -507,20 +510,17 @@ export function NumberTileTurnDraftEditor(
   }
 
   function selectTableTile(tileId: TileId): void {
-    if (ignoreClickAfterDrag(tileId) || draft === null) {
+    if (ignoreClickAfterDrag(tileId)) return;
+    const intent = numberTileTableTap(draft, selectedTileId, tileId, props.controller.canEdit);
+    if (intent.kind === "IGNORE") return;
+    // A destination's tiles are part of its whole tap target, not new sources.
+    if (intent.kind === "MOVE") {
+      activateMeld(intent.meldIndex);
       return;
     }
-    const source = findNumberTileDraftTile(draft, tileId);
-    if (source?.source !== "TABLE") {
-      return;
-    }
-    setSelectedTileId((current) => current === tileId ? null : tileId);
-    setActiveMeldIndex(source.meldIndex);
-    setInteractionMessage(
-      source.tile.origin === "CANONICAL_TABLE"
-        ? "옮길 조합을 선택하세요. 공개 테이블 타일은 랙으로 가져올 수 없습니다."
-        : null,
-    );
+    setSelectedTileId(intent.kind === "SELECT" ? intent.tileId : null);
+    if (intent.kind === "SELECT") setActiveMeldIndex(intent.meldIndex);
+    setInteractionMessage(null);
     props.controller.clearFeedback();
   }
 
@@ -917,12 +917,30 @@ export function NumberTileTurnDraftEditor(
         </p>
       ) : null}
 
+      {selected?.source === "TABLE" && props.controller.canEdit ? (
+        <div className="number-move-helper" role="group" aria-label="선택한 타일 이동">
+          <p role="status"><strong>{numberTilePlacementLabel(selected.tile)} 선택됨</strong>
+            <span>옮길 조합을 누르세요. 보드 빈 곳을 누르면 새 조합이 됩니다.</span></p>
+          <button type="button" className="text-button" onClick={() => {
+            requestFocus({ kind: "MELD", meldIndex: selected.meldIndex });
+            setSelectedTileId(null);
+            setInteractionMessage(null);
+          }}>선택 취소</button>
+        </div>
+      ) : null}
+
       <div
         className={`number-play-surface${props.controller.canEdit ? " editable" : ""}${
           currentDropTargetKey === "NEW_MELD" ? " is-drop-target" : ""
+        }${selected?.source === "TABLE" && props.controller.canEdit ? " has-selected-tile" : ""
         }`}
         aria-label="공용 타일 보드"
         data-number-drop-new-meld
+        onClick={event => {
+          if (selected?.source !== "TABLE" || !props.controller.canEdit || !(event.target instanceof Element)) return;
+          if (event.target.closest('[data-number-drop-meld-index], button, input, select') !== null) return;
+          activateNewMeld();
+        }}
       >
       {draggedTileId !== null ? <span className="number-board-drop-hint" aria-hidden="true">빈 곳에 놓으면 새 조합</span> : null}
       <div className="number-meld-pack">
@@ -942,6 +960,7 @@ export function NumberTileTurnDraftEditor(
                   active ? " active" : ""
                 }${highlighted ? " is-drop-target" : ""}${
                   meld.tiles.length === 0 ? " empty" : ""
+                }${selected?.source === "TABLE" && selected.meldIndex !== meldIndex && !locked ? " is-tap-destination" : ""
                 }`}
                 key={`number-meld-${meldIndex}`}
                 aria-labelledby={`number-meld-${meldIndex}-title number-meld-${meldIndex}-status`}
@@ -1046,7 +1065,7 @@ export function NumberTileTurnDraftEditor(
                             ? "읽기 전용"
                             : draftPlacement?.origin === "SELF_RACK"
                               ? "누르면 선택하고, 다른 조합이나 내 랙으로 옮길 수 있습니다"
-                              : "누르면 선택하고, 끌어서 다른 조합으로 옮길 수 있습니다"
+                              : "누르면 선택합니다. 옮길 조합이나 보드 빈 곳을 누르세요"
                         }
                         onSelect={() => selectTableTile(tile.tileId)}
                         onPointerDown={(event) =>
@@ -1110,6 +1129,11 @@ export function NumberTileTurnDraftEditor(
         }`}
         aria-labelledby="number-rack-heading"
         data-number-drop-rack
+        onClick={event => {
+          if (selected?.source !== "TABLE" || !(event.target instanceof Element)) return;
+          if (event.target.closest('button, input, select') !== null) return;
+          returnPlacedTileToRack(selected.tile.tileId);
+        }}
       >
         <div className="number-rack-heading">
           <div>
