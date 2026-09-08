@@ -59,6 +59,7 @@ test("game:start delegates exactly once from canonical Room gameType", async () 
     let hangulCalls = 0;
     let numberCalls = 0;
     const router = new GameStartRouter({
+      cityRole: { gameType: "CITY_ROLE", start: async () => { throw new Error("Unexpected CITY dispatch in two-game fixture."); } },
       gemCard: { gameType: "GEM_CARD", start: async () => { throw new Error("Unexpected GEM dispatch in two-game fixture."); } },
       roomRepository: repository(lobbyRoom(selected)),
       hangul: {
@@ -94,6 +95,7 @@ test("game:start delegates exactly once from canonical Room gameType", async () 
 test("game:start fails before delegation when the Room is absent", async () => {
   let calls = 0;
   const router = new GameStartRouter({
+    cityRole: { gameType: "CITY_ROLE", start: async () => { throw new Error("Unexpected CITY dispatch in two-game fixture."); } },
       gemCard: { gameType: "GEM_CARD", start: async () => { throw new Error("Unexpected GEM dispatch in two-game fixture."); } },
     roomRepository: repository(null),
     hangul: {
@@ -128,6 +130,7 @@ test("game:start configuration fails fast when an exact capability is missing", 
   assert.throws(
     () =>
       new GameStartRouter({
+        cityRole: { gameType: "CITY_ROLE", start: async () => { throw new Error("Unexpected CITY dispatch in two-game fixture."); } },
       gemCard: { gameType: "GEM_CARD", start: async () => { throw new Error("Unexpected GEM dispatch in two-game fixture."); } },
         roomRepository: repository(null),
         hangul: {

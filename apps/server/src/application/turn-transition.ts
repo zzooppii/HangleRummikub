@@ -1,6 +1,8 @@
 import type { PlayingGemGameState } from "../games/gem-card/domain/game-state.js";
+import type { CityRoleStoredGame } from "../games/city-role/compatibility/city-role-game-state-adapter.js";
 import {
   ServerTimeSchema,
+  TurnIdSchema,
   TurnNumberSchema,
   type GameId,
   type GameRevision,
@@ -66,8 +68,12 @@ export function createNextTurn(
 
 export function toScheduledTurnDeadline(
   roomId: RoomId,
-  game: PlayingGameState | PlayingNumberTileGameState | PlayingGemGameState,
+  game: PlayingGameState | PlayingNumberTileGameState | PlayingGemGameState | CityRoleStoredGame,
 ): ScheduledTurnDeadline {
+  if ("state" in game) {
+    if (game.state.window === null || game.deadlineAt === null) throw new Error("CITY has no scheduled window.");
+    return Object.freeze({ roomId, gameId: game.gameId, turnId: parse(TurnIdSchema, game.state.window.actionId), expectedGameRevision: game.gameRevision, deadlineAt: game.deadlineAt });
+  }
   return Object.freeze({
     roomId,
     gameId: game.gameId,
@@ -130,14 +136,15 @@ export async function scheduleCurrentTurnBestEffort(
       room?.phase !== "PLAYING" ||
       game === null ||
       game === undefined ||
-      game.turn === null ||
-      game.result !== null ||
       game.gameId !== identity.gameId ||
-      game.gameRevision !== identity.gameRevision ||
-      game.turn.turnId !== identity.turnId
+      game.gameRevision !== identity.gameRevision
     ) {
       return false;
     }
+
+    if ("state" in game) {
+      if (game.state.window === null || String(game.state.window.actionId) !== identity.turnId) return false;
+    } else if (game.turn === null || game.result !== null || game.turn.turnId !== identity.turnId) return false;
 
     const deadline = toScheduledTurnDeadline(room.roomId, game);
     for (

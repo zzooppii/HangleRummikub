@@ -87,8 +87,7 @@ export class RoomRetentionService {
       room.phase !== "FINISHED" ||
       room.game === null ||
       room.game.gameId !== deadline.gameId ||
-      room.game.result === null ||
-      room.game.result.finishedAt !== deadline.finishedAt
+      (room.gameType === "CITY_ROLE" ? room.game.finishedAt !== deadline.finishedAt : room.game.result?.finishedAt !== deadline.finishedAt)
     ) {
       return { status: "NO_OP", reason: "STALE_POLICY" };
     }

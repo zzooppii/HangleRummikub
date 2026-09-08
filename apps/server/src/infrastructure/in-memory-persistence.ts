@@ -1,4 +1,5 @@
 import { GemCardGameStateAdapter, type GemCardGameStateStorage, type GemCardGameLifecycleInspection } from "../games/gem-card/compatibility/gem-card-game-state-adapter.js";
+import { CityRoleGameStateAdapter, type CityRoleGameStateStorage, type CityRoleGameLifecycleInspection } from "../games/city-role/compatibility/city-role-game-state-adapter.js";
 import type {
   PlayerId,
   RequestId,
@@ -90,6 +91,7 @@ export type InMemoryPersistenceOptions = Readonly<{
   legacyHangulGameStateAdapter?: LegacyHangulGameStateStorage;
   numberTileGameStateAdapter?: NumberTileGameStateStorage;
   gemCardGameStateAdapter?: GemCardGameStateStorage;
+  cityRoleGameStateAdapter?: CityRoleGameStateStorage;
   onCommitCheckpoint?: (checkpoint: InMemoryCommitCheckpoint) => void;
 }>;
 
@@ -97,9 +99,11 @@ type GameStateStorageAdapters = Readonly<{
   legacyHangul: LegacyHangulGameStateStorage;
   numberTile: NumberTileGameStateStorage;
   gemCard: GemCardGameStateStorage;
+  cityRole: CityRoleGameStateStorage;
 }>;
 
 type RoomGameLifecycleInspection =
+  | Readonly<{ gameType: "CITY_ROLE"; inspection: CityRoleGameLifecycleInspection }>
   | Readonly<{ gameType: "GEM_CARD"; inspection: GemCardGameLifecycleInspection }>
   | Readonly<{
       gameType: "HANGUL_TILE";
@@ -253,6 +257,11 @@ function cloneRoomWriteCandidate(
         game,
       });
     }
+    case "CITY_ROLE": {
+      const game = candidate.game === null ? null : adapters.cityRole.cloneAndValidate(candidate.game);
+      validateRoomGameCoherence(shell.phase, shell.players, game, () => game === null ? null : adapters.cityRole.inspectLifecycle(game));
+      return Object.freeze({ ...shell, gameType: "CITY_ROLE", game });
+    }
   }
 }
 
@@ -263,6 +272,7 @@ function validateRoomGameCoherence(
   inspect: () =>
     | LegacyHangulGameLifecycleInspection
     | GemCardGameLifecycleInspection
+    | CityRoleGameLifecycleInspection
     | NumberTileGameLifecycleInspection
     | null,
 ): void {
@@ -286,10 +296,11 @@ function validateRoomGameCoherence(
   }
 
   const playerIds = players.map((player) => player.playerId);
+  const participantIds: readonly string[] = "state" in game ? game.state.seatOrder : game.turnOrder;
   if (
-    playerIds.length !== game.turnOrder.length ||
+    playerIds.length !== participantIds.length ||
     new Set(playerIds).size !== playerIds.length ||
-    game.turnOrder.some((playerId) => !playerIds.includes(playerId))
+    participantIds.some((playerId) => !playerIds.some(id => id === playerId))
   ) {
     throw new TypeError("Room Players and GameState Players must match.");
   }
@@ -307,6 +318,7 @@ function persistRoom(
       return Object.freeze({ ...detached, storageRevision: revision });
     case "NUMBER_TILE":
     case "GEM_CARD":
+    case "CITY_ROLE":
       return Object.freeze({ ...detached, storageRevision: revision });
   }
 }
@@ -341,6 +353,8 @@ function inspectRoomGame(
         gameType: room.gameType,
         inspection: adapters.gemCard.inspectLifecycle(room.game),
       });
+    case "CITY_ROLE":
+      return Object.freeze({ gameType: room.gameType, inspection: adapters.cityRole.inspectLifecycle(room.game) });
   }
 }
 
@@ -835,9 +849,12 @@ export class InMemoryPersistence
       throw new Error("Number Tile storage adapter has an invalid gameType.");
     }
     const gemCard = options.gemCardGameStateAdapter ?? new GemCardGameStateAdapter();
+    const cityRole = options.cityRoleGameStateAdapter ?? new CityRoleGameStateAdapter();
+    if (cityRole.gameType !== "CITY_ROLE") throw new Error("CITY storage adapter has an invalid gameType.");
     if (gemCard.gameType !== "GEM_CARD") throw new Error("GEM storage adapter has an invalid gameType.");
     this.#gameStateStorageAdapters = Object.freeze({
       gemCard,
+      cityRole,
       legacyHangul,
       numberTile,
     });

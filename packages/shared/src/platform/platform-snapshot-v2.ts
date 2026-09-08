@@ -1,4 +1,5 @@
 import { GemCardPlayingProjectionV2Schema, GemCardFinishedProjectionV2Schema } from "../games/gem-card/v2-projection-contracts.js";
+import { CityRolePlayingProjectionV2Schema, CityRoleFinishedProjectionV2Schema, cityPrivateStateMatchesViewer } from "../games/city-role/v2-projection-contracts.js";
 import * as v from "valibot";
 
 import {
@@ -224,10 +225,33 @@ export type GemCardLobbyPlatformSnapshotV2 = v.InferOutput<
   typeof GemCardLobbyPlatformSnapshotV2Schema
 >;
 
+const CityLobbyPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(1), v.maxLength(6));
+const CityActivePlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(6));
+const CityOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema,
+  serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const CityRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("CITY_ROLE") };
+export const CityRoleLobbyPlatformSnapshotV2Schema = v.pipe(v.strictObject({ ...CityOuter,
+  room: v.strictObject({ ...CityRoom, phase: v.literal("LOBBY"), players: CityLobbyPlayers }), game: v.null(),
+}), v.check(snapshot => hasUniqueRoomPlayers(snapshot), "Duplicate CITY participants."), v.check(snapshot => containsSelfPlayer(snapshot), "CITY self must belong to Room."), v.check(snapshot => hasAtMostOneHost(snapshot), "CITY has at most one host."));
+export type CityRoleLobbyPlatformSnapshotV2 = v.InferOutput<typeof CityRoleLobbyPlatformSnapshotV2Schema>;
+export const CityRolePlayingPlatformSnapshotV2Schema = v.pipe(v.strictObject({ ...CityOuter,
+  room: v.strictObject({ ...CityRoom, phase: v.literal("PLAYING"), players: CityActivePlayers }), game: CityRolePlayingProjectionV2Schema,
+}), v.check(snapshot => hasUniqueRoomPlayers(snapshot), "Duplicate CITY participants."), v.check(snapshot => containsSelfPlayer(snapshot), "CITY self must belong to Room."),
+v.check(snapshot => hasAtMostOneHost(snapshot), "CITY has at most one host."), v.check(snapshot => hasMatchingGamePlayers(snapshot), "CITY game roster must match Room."),
+v.check(snapshot => cityPrivateStateMatchesViewer(snapshot.game, snapshot.self.playerId), "CITY private state must match viewer and current window."));
+export type CityRolePlayingPlatformSnapshotV2 = v.InferOutput<typeof CityRolePlayingPlatformSnapshotV2Schema>;
+export const CityRoleFinishedPlatformSnapshotV2Schema = v.pipe(v.strictObject({ ...CityOuter,
+  room: v.strictObject({ ...CityRoom, phase: v.literal("FINISHED"), players: CityActivePlayers }), game: CityRoleFinishedProjectionV2Schema,
+}), v.check(snapshot => hasUniqueRoomPlayers(snapshot), "Duplicate CITY participants."), v.check(snapshot => containsSelfPlayer(snapshot), "CITY self must belong to Room."),
+v.check(snapshot => hasAtMostOneHost(snapshot), "CITY has at most one host."), v.check(snapshot => hasMatchingGamePlayers(snapshot), "CITY game roster must match Room."),
+v.check(snapshot => cityPrivateStateMatchesViewer(snapshot.game, snapshot.self.playerId), "CITY private state must match viewer."));
+export type CityRoleFinishedPlatformSnapshotV2 = v.InferOutput<typeof CityRoleFinishedPlatformSnapshotV2Schema>;
+
 export const LobbyPlatformSnapshotV2Schema = v.union([
   HangulTileLobbyPlatformSnapshotV2Schema,
   NumberTileLobbyPlatformSnapshotV2Schema,
   GemCardLobbyPlatformSnapshotV2Schema,
+  CityRoleLobbyPlatformSnapshotV2Schema,
 ]);
 export type LobbyPlatformSnapshotV2 = v.InferOutput<
   typeof LobbyPlatformSnapshotV2Schema
@@ -365,6 +389,7 @@ export const PlayingPlatformSnapshotV2Schema = v.union([
   HangulTilePlayingPlatformSnapshotV2Schema,
   NumberTilePlayingPlatformSnapshotV2Schema,
   GemCardPlayingPlatformSnapshotV2Schema,
+  CityRolePlayingPlatformSnapshotV2Schema,
 ]);
 export type PlayingPlatformSnapshotV2 = v.InferOutput<
   typeof PlayingPlatformSnapshotV2Schema
@@ -502,6 +527,7 @@ export const FinishedPlatformSnapshotV2Schema = v.union([
   HangulTileFinishedPlatformSnapshotV2Schema,
   NumberTileFinishedPlatformSnapshotV2Schema,
   GemCardFinishedPlatformSnapshotV2Schema,
+  CityRoleFinishedPlatformSnapshotV2Schema,
 ]);
 export type FinishedPlatformSnapshotV2 = v.InferOutput<
   typeof FinishedPlatformSnapshotV2Schema

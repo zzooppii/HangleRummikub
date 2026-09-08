@@ -157,6 +157,7 @@ async function harness(t: TestContext) {
 }
 
 function turnOf(snapshot: PlayingPlatformSnapshotV2) {
+  assert.ok(snapshot.game.gameType !== "CITY_ROLE", "P12 fixture remains the three released games.");
   return snapshot.game.gameType === "HANGUL_TILE" ? snapshot.game.publicState.turn : snapshot.game.turn;
 }
 function identity(snapshot: PlayingPlatformSnapshotV2) {
@@ -207,6 +208,7 @@ for (const gameType of GAME_TYPES) {
       assert.equal(turn.deadlineAt - turn.startedAt, TURN_MS[gameType]);
       const stored = await h.server.runtime.persistence.findById(started.room.roomId);
       assert.ok(stored?.game);
+      assert.ok(stored.gameType !== "CITY_ROLE");
       assert.deepEqual(new Set(stored.game.turnOrder), new Set(p.members.map(member => member.playerId)));
       assert.equal(h.server.runtime.turnScheduler.scheduledCount, 1);
       assert.equal(h.server.runtime.gameDeadlineScheduler.scheduledCount, gameType === "HANGUL_TILE" ? 1 : 0);
@@ -234,6 +236,7 @@ for (const gameType of GAME_TYPES) {
           for (const cardId of stored.game.market.flatMap(tier => tier.deck)) assert.equal(serialized.includes(cardId), false);
           assert.deepEqual(view.game, started.game);
         } else {
+          assert.ok(view.game.gameType === "HANGUL_TILE" || view.game.gameType === "NUMBER_TILE");
           assert.equal(view.game.privateState.rack.length, 14);
           assert.ok(view.game.playerStates.every(player => player.rackCount === 14));
           for (const [otherIndex, other] of views.entries()) {

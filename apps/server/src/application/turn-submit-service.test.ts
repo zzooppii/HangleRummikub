@@ -419,6 +419,7 @@ test("advanced Submit은 next Turn을 scheduler에 등록한다", async () => {
   assert.equal(result.outcome, "ADVANCED");
   assert.equal(scheduler.deadlines.length, 1);
   const persisted = await harness.persistence.findById(harness.room.roomId);
+  assert.equal(persisted?.gameType, "HANGUL_TILE");
   assert.ok(persisted?.game?.turn);
   assert.deepEqual(scheduler.deadlines[0], {
     roomId: persisted.roomId,
@@ -442,6 +443,7 @@ test("2/3/4 Player Game은 turnOrder의 다음 Player를 순환한다", async (c
       const harness = await createHarness({ players: fixture.players });
       requireSuccess(await harness.service.submit(submitInput(harness)));
       const persisted = await harness.persistence.findById(harness.room.roomId);
+      assert.equal(persisted?.gameType, "HANGUL_TILE");
       assert.equal(
         persisted?.game?.turn?.activePlayerId,
         fixture.expectedNext,
@@ -472,6 +474,7 @@ test("receivedAt deadline 경계는 queue/validation 완료 시각과 분리된�
         const success = requireSuccess(result);
         assert.equal(success.outcome, "ADVANCED");
         const persisted = await harness.persistence.findById(harness.room.roomId);
+        assert.equal(persisted?.gameType, "HANGUL_TILE");
         assert.equal(persisted?.game?.turn?.startedAt, 100_000);
       } else {
         requireError(result, boundary.expected);

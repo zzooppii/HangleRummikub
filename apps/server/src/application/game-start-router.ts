@@ -6,7 +6,7 @@ import type {
   StartGameInput,
 } from "./game-start-service.js";
 
-type StartCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD"> =
+type StartCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE"> =
   Readonly<{
     gameType: TGameType;
     start(input: StartGameInput): Promise<GameStartResult>;
@@ -14,6 +14,7 @@ type StartCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD
 
 export type HangulGameStartCapability = StartCapability<"HANGUL_TILE">;
 export type GemCardGameStartCapability = StartCapability<"GEM_CARD">;
+export type CityRoleGameStartCapability = StartCapability<"CITY_ROLE">;
 export type NumberTileGameStartCapability = StartCapability<"NUMBER_TILE">;
 
 export type GameStartRouterDependencies = Readonly<{
@@ -21,6 +22,7 @@ export type GameStartRouterDependencies = Readonly<{
   hangul: HangulGameStartCapability;
   numberTile: NumberTileGameStartCapability;
   gemCard: GemCardGameStartCapability;
+  cityRole: CityRoleGameStartCapability;
 }>;
 
 export interface GameStartRouting {
@@ -44,7 +46,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function isStartCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE",
 >(
   value: unknown,
   gameType: TGameType,
@@ -56,7 +58,7 @@ function isStartCapability<
   );
 }
 
-function requireCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD">(
+function requireCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE">(
   value: unknown,
   gameType: TGameType,
 ): StartCapability<TGameType> {
@@ -76,6 +78,7 @@ export class GameStartRouter implements GameStartRouting {
   readonly #hangul: HangulGameStartCapability;
   readonly #numberTile: NumberTileGameStartCapability;
   readonly #gemCard: GemCardGameStartCapability;
+  readonly #cityRole: CityRoleGameStartCapability;
 
   constructor(dependencies: GameStartRouterDependencies) {
     this.#roomRepository = dependencies.roomRepository;
@@ -85,6 +88,7 @@ export class GameStartRouter implements GameStartRouting {
       "NUMBER_TILE",
     );
     this.#gemCard = requireCapability(dependencies.gemCard, "GEM_CARD");
+    this.#cityRole = requireCapability(dependencies.cityRole, "CITY_ROLE");
     Object.freeze(this);
   }
 
@@ -100,6 +104,8 @@ export class GameStartRouter implements GameStartRouting {
           return await this.#hangul.start(input);
         case "GEM_CARD":
           return await this.#gemCard.start(input);
+        case "CITY_ROLE":
+          return await this.#cityRole.start(input);
         case "NUMBER_TILE":
           return await this.#numberTile.start(input);
       }

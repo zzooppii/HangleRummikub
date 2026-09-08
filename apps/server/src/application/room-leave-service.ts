@@ -2,6 +2,7 @@ import {
   GameRevisionSchema,
   RoomIdSchema,
   RoomRevisionSchema,
+  TurnIdSchema,
   type ErrorDto,
   type GameId,
   type GameRevision,
@@ -166,6 +167,7 @@ export class RoomLeaveService {
           roomClosed: boolean;
           roomCode: RoomCode;
           nextTurnIdentity: CurrentTurnIdentity | null;
+          cancelCityActionId?: import("@hangul-rummikub/shared").TurnId;
           finishedGameId: import("@hangul-rummikub/shared").GameId | null;
         }>
       | undefined;
@@ -334,7 +336,7 @@ export class RoomLeaveService {
           } else if (
             room.phase === "FINISHED" &&
             room.game !== null &&
-            room.game.result !== null
+            (room.gameType === "CITY_ROLE" ? room.game.state.result !== null : room.game.result !== null)
           ) {
             candidate = { ...room, updatedAt: now };
             finishedGameId = room.game.gameId;
@@ -385,6 +387,9 @@ export class RoomLeaveService {
               roomCode: room.roomCode,
               nextTurnIdentity,
               finishedGameId,
+              ...(room.gameType === "CITY_ROLE" && room.game?.state.window !== null && room.game?.state.window !== undefined &&
+                String(room.game.state.window.actionId) !== nextTurnIdentity?.turnId
+                ? { cancelCityActionId: v.parse(TurnIdSchema, room.game.state.window.actionId) } : {}),
             };
           }
           return mapped;
@@ -406,6 +411,10 @@ export class RoomLeaveService {
           }
         } catch {
           // The canonical leave is already committed.
+        }
+        if (postCommit.cancelCityActionId !== undefined) {
+          try { await this.#dependencies.turnScheduler?.cancelTimeout(postCommit.cancelCityActionId); }
+          catch { /* Old callbacks are stale; the committed window reader is authoritative. */ }
         }
         if (postCommit.nextTurnIdentity !== null) {
           await scheduleCurrentTurnBestEffort(

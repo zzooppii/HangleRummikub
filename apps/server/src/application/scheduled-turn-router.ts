@@ -7,7 +7,7 @@ export type ScheduledTurnDispatchResult =
   | Readonly<{ status: "FAILED" }>;
 
 type ScheduledTurnCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE",
 > = Readonly<{
   gameType: TGameType;
   handleTurnTimeout(
@@ -18,6 +18,7 @@ type ScheduledTurnCapability<
 export type HangulScheduledTurnCapability =
   ScheduledTurnCapability<"HANGUL_TILE">;
 export type GemCardScheduledTurnCapability = ScheduledTurnCapability<"GEM_CARD">;
+export type CityRoleScheduledTurnCapability = ScheduledTurnCapability<"CITY_ROLE">;
 export type NumberTileScheduledTurnCapability =
   ScheduledTurnCapability<"NUMBER_TILE">;
 
@@ -26,6 +27,7 @@ export type ScheduledTurnRouterDependencies = Readonly<{
   hangul: HangulScheduledTurnCapability;
   numberTile: NumberTileScheduledTurnCapability;
   gemCard: GemCardScheduledTurnCapability;
+  cityRole: CityRoleScheduledTurnCapability;
 }>;
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -33,7 +35,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function isCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE",
 >(
   value: unknown,
   gameType: TGameType,
@@ -46,7 +48,7 @@ function isCapability<
 }
 
 function requireCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE",
 >(
   value: unknown,
   gameType: TGameType,
@@ -66,6 +68,7 @@ export class ScheduledTurnRouter {
   readonly #hangul: HangulScheduledTurnCapability;
   readonly #numberTile: NumberTileScheduledTurnCapability;
   readonly #gemCard: GemCardScheduledTurnCapability;
+  readonly #cityRole: CityRoleScheduledTurnCapability;
 
   constructor(dependencies: ScheduledTurnRouterDependencies) {
     this.#roomRepository = dependencies.roomRepository;
@@ -75,6 +78,7 @@ export class ScheduledTurnRouter {
       "NUMBER_TILE",
     );
     this.#gemCard = requireCapability(dependencies.gemCard, "GEM_CARD");
+    this.#cityRole = requireCapability(dependencies.cityRole, "CITY_ROLE");
     Object.freeze(this);
   }
 
@@ -91,6 +95,8 @@ export class ScheduledTurnRouter {
           return await this.#hangul.handleTurnTimeout(input);
         case "GEM_CARD":
           return await this.#gemCard.handleTurnTimeout(input);
+        case "CITY_ROLE":
+          return await this.#cityRole.handleTurnTimeout(input);
         case "NUMBER_TILE":
           return await this.#numberTile.handleTurnTimeout(input);
       }

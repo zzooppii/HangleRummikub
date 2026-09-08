@@ -1,4 +1,12 @@
 import { createGemCardRegistration } from "./games/gem-card/gem-card-registration.js";
+import { createCityRoleRegistration } from "./games/city-role/city-role-registration.js";
+import { CityRoleGameStateAdapter } from "./games/city-role/compatibility/city-role-game-state-adapter.js";
+import { projectCityRoleV2Game } from "./games/city-role/compatibility/city-role-v2-game-projector.js";
+import { CityRoleStartService } from "./games/city-role/application/city-role-start-service.js";
+import { CityRoleCommandService } from "./games/city-role/application/city-role-command-service.js";
+import { CityRoleCommandRouter } from "./games/city-role/application/city-role-command-router.js";
+import { CityRoleTimeoutService } from "./games/city-role/application/city-role-timeout-service.js";
+import { createCityRolePlayerLifecycleActions } from "./games/city-role/application/city-role-player-lifecycle-actions.js";
 import { GemCardGameStateAdapter } from "./games/gem-card/compatibility/gem-card-game-state-adapter.js";
 import { projectGemCardV2Game } from "./games/gem-card/compatibility/gem-card-v2-game-projector.js";
 import { GemCardStartService } from "./games/gem-card/application/gem-card-start-service.js";
@@ -104,6 +112,8 @@ export type ApplicationRuntime = Readonly<{
   legacyHangulV1CommandRouter: LegacyHangulV1CommandRouting;
   numberTileCommandRouter: NumberTileCommandRouter;
   gemCardCommandRouter: GemCardCommandRouter;
+  cityRoleCommandRouter: CityRoleCommandRouter;
+  subscribeCityRoleTimeoutApplied(listener: Parameters<CityRoleTimeoutService["subscribeApplied"]>[0]): () => void;
   subscribeGemCardTimeoutApplied(listener: Parameters<GemCardTimeoutService["subscribeApplied"]>[0]): () => void;
   overdueGameDeadlineSweeper: OverdueGameDeadlineSweeper;
   persistence: InMemoryPersistence;
@@ -186,11 +196,13 @@ export function createApplicationRuntime(
       createLegacyHangulCompatibilityRegistration(),
       createNumberTileRegistration(),
       createGemCardRegistration(),
+      createCityRoleRegistration(),
     ],
   );
   gameRegistry.getRequired(LEGACY_V1_DEFAULT_GAME_TYPE);
   gameRegistry.getRequired(NUMBER_TILE_GAME_TYPE);
   gameRegistry.getRequired("GEM_CARD");
+  gameRegistry.getRequired("CITY_ROLE");
 
   const legacyHangulGameStateAdapter = new LegacyHangulGameStateAdapter();
   const numberTileGameStateAdapter = new NumberTileGameStateAdapter();
@@ -198,6 +210,7 @@ export function createApplicationRuntime(
     legacyHangulGameStateAdapter,
     numberTileGameStateAdapter,
     gemCardGameStateAdapter: new GemCardGameStateAdapter(),
+    cityRoleGameStateAdapter: new CityRoleGameStateAdapter(),
   });
   const clock = new SystemClock();
   const randomSource = new CryptoRandomSource();
@@ -210,6 +223,7 @@ export function createApplicationRuntime(
     hangul: legacyHangulPlayerLifecycleActions,
     numberTile: numberTilePlayerLifecycleActions,
     gemCard: createGemCardPlayerLifecycleActions(idGenerator),
+    cityRole: createCityRolePlayerLifecycleActions(idGenerator),
   });
   const roomCodeGenerator = new RandomRoomCodeGenerator(randomSource);
   const sessionTokenIssuer = new NodeCryptoSessionTokenIssuer();
@@ -470,6 +484,11 @@ export function createApplicationRuntime(
     turnScheduler,
     onTurnSchedulingFailure: reportTurnSchedulingFailure,
   });
+  const cityRoleStartService = new CityRoleStartService({
+    roomRepository: persistence, idempotencyRepository: persistence, roomUnitOfWork: persistence,
+    roomMutationExecutor, presenceLeaseReader: presenceReader, clock, idGenerator, randomSource,
+    gameRegistrationReader: gameRegistry, turnScheduler, onTurnSchedulingFailure: reportTurnSchedulingFailure,
+  });
   const turnSubmitService = new TurnSubmitService({
     roomRepository: persistence,
     idempotencyRepository: persistence,
@@ -516,6 +535,7 @@ export function createApplicationRuntime(
     capability: legacyHangulV1CommandCapability,
   });
   const gameStartRouter = new GameStartRouter({
+    cityRole: { gameType: "CITY_ROLE", start: input => cityRoleStartService.start(input) },
     gemCard: { gameType: "GEM_CARD", start: input => gemCardStartService.start(input) },
     roomRepository: persistence,
     hangul: {
@@ -608,7 +628,27 @@ export function createApplicationRuntime(
     roomMutationExecutor, clock, idGenerator, turnScheduler, onTurnSchedulingFailure: reportTurnSchedulingFailure,
     onGameFinished, presenceLeaseReader: presenceReader,
   });
+  const cityRoleCommandService = new CityRoleCommandService({
+    roomRepository: persistence, idempotencyRepository: persistence, roomUnitOfWork: persistence,
+    roomMutationExecutor, clock, idGenerator, turnScheduler, onTurnSchedulingFailure: reportTurnSchedulingFailure, onGameFinished,
+  });
+  const cityRoleCommandRouter = new CityRoleCommandRouter({ roomRepository: persistence, capability: {
+    gameType: "CITY_ROLE",
+    selectRole: input => cityRoleCommandService.selectRole(input),
+    takeIncome: input => cityRoleCommandService.takeIncome(input),
+    drawBuildingCards: input => cityRoleCommandService.drawBuildingCards(input),
+    chooseBuildingCard: input => cityRoleCommandService.chooseBuildingCard(input),
+    useRoleAbility: input => cityRoleCommandService.useRoleAbility(input),
+    build: input => cityRoleCommandService.build(input),
+    endTurn: input => cityRoleCommandService.endTurn(input),
+  } });
+  const cityRoleTimeoutService = new CityRoleTimeoutService({
+    roomRepository: persistence, idempotencyRepository: persistence, roomUnitOfWork: persistence,
+    roomMutationExecutor, clock, idGenerator, turnScheduler, onTurnSchedulingFailure: reportTurnSchedulingFailure,
+    onGameFinished, presenceLeaseReader: presenceReader,
+  });
   scheduledTurnRouter = new ScheduledTurnRouter({
+    cityRole: { gameType: "CITY_ROLE", handleTurnTimeout: input => cityRoleTimeoutService.timeout(input) },
     gemCard: { gameType: "GEM_CARD", handleTurnTimeout: input => gemCardTimeoutService.timeout(input) },
     roomRepository: persistence,
     hangul: {
@@ -641,6 +681,7 @@ export function createApplicationRuntime(
     legacyHangulSnapshotProjector: snapshotProjector,
     numberTileGameProjector: projectNumberTileV2Game,
     gemCardGameProjector: projectGemCardV2Game,
+    cityRoleGameProjector: projectCityRoleV2Game,
   });
   const roomLeaveService = new RoomLeaveService({
     roomRepository: persistence,
@@ -668,6 +709,8 @@ export function createApplicationRuntime(
     legacyHangulV1CommandRouter,
     numberTileCommandRouter,
     gemCardCommandRouter,
+    cityRoleCommandRouter,
+    subscribeCityRoleTimeoutApplied(listener) { return cityRoleTimeoutService.subscribeApplied(listener); },
     subscribeGemCardTimeoutApplied(listener) { return gemCardTimeoutService.subscribeApplied(listener); },
     overdueGameDeadlineSweeper,
     persistence,

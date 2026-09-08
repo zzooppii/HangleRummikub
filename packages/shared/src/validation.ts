@@ -1,6 +1,9 @@
 import type { GemCollectCommand, GemPurchaseCommand, GemReserveCommand, GemYieldCommand } from "./protocol.js";
 import { GemCollectWireAckSchema, GemPurchaseWireAckSchema, GemReserveWireAckSchema, GemYieldWireAckSchema } from "./realtime.js";
 import * as v from "valibot";
+import type { CitySelectRoleCommand, CityTakeIncomeCommand, CityDrawBuildingCardsCommand, CityChooseBuildingCardCommand, CityUseRoleAbilityCommand, CityBuildCommand, CityEndTurnCommand } from "./protocol.js";
+import { CityActionWireAckSchema } from "./realtime.js";
+import { CityClientCommandSchema } from "./protocol.js";
 
 import {
   BootstrapCredentialSchema,
@@ -1062,3 +1065,47 @@ export function validateGemYieldCommand(input: unknown): RuntimeValidationResult
   return result.value.kind === "gem:yield" ? { ok: true, value: result.value } : { ok: false, error: validationError("INVALID_PAYLOAD", "GEM yield command is invalid.", false) };
 }
 export function validateGemYieldWireAck(input: unknown) { return validateSchema(GemYieldWireAckSchema, input, validationError("INVALID_PAYLOAD", "GEM acknowledgement is invalid.", false)); }
+
+export function validateCitySelectRoleCommand(input: unknown): RuntimeValidationResult<CitySelectRoleCommand> {
+  const result = validateClientCommand(input);
+  if (!result.ok) return result;
+  return result.value.kind === "city:selectRole" ? { ok: true, value: result.value } : { ok: false, error: validationError("INVALID_PAYLOAD", "CITY command is invalid.", false) };
+}
+export function validateCityClientCommand(input: unknown) { return validateSchema(CityClientCommandSchema, input, validationError("INVALID_PAYLOAD", "CITY command is invalid.", false)); }
+export function validateCitySelectRoleWireAck(input: unknown) { return validateSchema(CityActionWireAckSchema, input, validationError("INVALID_PAYLOAD", "CITY acknowledgement is invalid.", false)); }
+export function validateCityTakeIncomeCommand(input: unknown): RuntimeValidationResult<CityTakeIncomeCommand> {
+  const result = validateClientCommand(input);
+  if (!result.ok) return result;
+  return result.value.kind === "city:takeIncome" ? { ok: true, value: result.value } : { ok: false, error: validationError("INVALID_PAYLOAD", "CITY command is invalid.", false) };
+}
+export function validateCityTakeIncomeWireAck(input: unknown) { return validateSchema(CityActionWireAckSchema, input, validationError("INVALID_PAYLOAD", "CITY acknowledgement is invalid.", false)); }
+export function validateCityDrawBuildingCardsCommand(input: unknown): RuntimeValidationResult<CityDrawBuildingCardsCommand> {
+  const result = validateClientCommand(input);
+  if (!result.ok) return result;
+  return result.value.kind === "city:drawBuildingCards" ? { ok: true, value: result.value } : { ok: false, error: validationError("INVALID_PAYLOAD", "CITY command is invalid.", false) };
+}
+export function validateCityDrawBuildingCardsWireAck(input: unknown) { return validateSchema(CityActionWireAckSchema, input, validationError("INVALID_PAYLOAD", "CITY acknowledgement is invalid.", false)); }
+export function validateCityChooseBuildingCardCommand(input: unknown): RuntimeValidationResult<CityChooseBuildingCardCommand> {
+  const result = validateClientCommand(input);
+  if (!result.ok) return result;
+  return result.value.kind === "city:chooseBuildingCard" ? { ok: true, value: result.value } : { ok: false, error: validationError("INVALID_PAYLOAD", "CITY command is invalid.", false) };
+}
+export function validateCityChooseBuildingCardWireAck(input: unknown) { return validateSchema(CityActionWireAckSchema, input, validationError("INVALID_PAYLOAD", "CITY acknowledgement is invalid.", false)); }
+export function validateCityUseRoleAbilityCommand(input: unknown): RuntimeValidationResult<CityUseRoleAbilityCommand> {
+  const result = validateClientCommand(input);
+  if (!result.ok) return result;
+  return result.value.kind === "city:useRoleAbility" ? { ok: true, value: result.value } : { ok: false, error: validationError("INVALID_PAYLOAD", "CITY command is invalid.", false) };
+}
+export function validateCityUseRoleAbilityWireAck(input: unknown) { return validateSchema(CityActionWireAckSchema, input, validationError("INVALID_PAYLOAD", "CITY acknowledgement is invalid.", false)); }
+export function validateCityBuildCommand(input: unknown): RuntimeValidationResult<CityBuildCommand> {
+  const result = validateClientCommand(input);
+  if (!result.ok) return result;
+  return result.value.kind === "city:build" ? { ok: true, value: result.value } : { ok: false, error: validationError("INVALID_PAYLOAD", "CITY command is invalid.", false) };
+}
+export function validateCityBuildWireAck(input: unknown) { return validateSchema(CityActionWireAckSchema, input, validationError("INVALID_PAYLOAD", "CITY acknowledgement is invalid.", false)); }
+export function validateCityEndTurnCommand(input: unknown): RuntimeValidationResult<CityEndTurnCommand> {
+  const result = validateClientCommand(input);
+  if (!result.ok) return result;
+  return result.value.kind === "city:endTurn" ? { ok: true, value: result.value } : { ok: false, error: validationError("INVALID_PAYLOAD", "CITY command is invalid.", false) };
+}
+export function validateCityEndTurnWireAck(input: unknown) { return validateSchema(CityActionWireAckSchema, input, validationError("INVALID_PAYLOAD", "CITY acknowledgement is invalid.", false)); }

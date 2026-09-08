@@ -4,6 +4,7 @@ export const SUPPORTED_GAME_TYPES = Object.freeze([
   "HANGUL_TILE",
   "NUMBER_TILE",
   "GEM_CARD",
+  "CITY_ROLE",
 ] as const);
 
 export const GameTypeSchema = v.picklist(SUPPORTED_GAME_TYPES);

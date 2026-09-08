@@ -180,6 +180,7 @@ test("terminal leave creates the legacy LAST_PLAYER_STANDING result and GAME_FIN
   assert.equal(action.finishedGameId, fixture.game.gameId);
   assert.equal(action.candidate.phase, "FINISHED");
   assert.equal(action.candidate.roomRevision, fixture.room.roomRevision + 1);
+  assert.equal(action.candidate.gameType, "HANGUL_TILE");
   assert.ok(action.candidate.game?.result);
   assert.equal(action.candidate.game.turn, null);
   assert.equal(

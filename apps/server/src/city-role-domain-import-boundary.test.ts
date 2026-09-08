@@ -72,20 +72,17 @@ test("CITY domain AST has no Clock/RNG/transport/persistence authority or generi
   assert.deepEqual(violations, []);
 });
 
-test("P15A CITY has no server/Web/shared production consumer, GameType, capability or event integration", () => {
+test("P15B CITY domain consumers are restricted to its approved concrete application/compatibility layers", () => {
   const violations: string[] = [];
   const roots = [sourceRoot, resolve(repositoryRoot, "apps/web/src"), resolve(repositoryRoot, "packages/shared/src")];
   for (const path of roots.flatMap(files).filter((path) => !insideDomain(path))) {
     const source = parse(path);
     for (const specifier of imports(source)) {
       const target = importTarget(path, specifier);
-      if ((target !== null && insideDomain(target)) || specifier.includes("games/city-role")) violations.push(`${relative(repositoryRoot, path)} -> ${specifier}`);
+      const importsDomain = target !== null && insideDomain(target);
+      const approvedConsumer = ["games/city-role/application/", "games/city-role/compatibility/"].some((prefix) => portable(relative(sourceRoot, path)).startsWith(prefix));
+      if (importsDomain && !approvedConsumer) violations.push(`${relative(repositoryRoot, path)} -> ${specifier}`);
     }
-    const visit = (node: ts.Node): void => {
-      if (ts.isStringLiteralLike(node) && (node.text === "CITY_ROLE" || /^city:/.test(node.text))) violations.push(`${relative(repositoryRoot, path)}: ${node.text}`);
-      ts.forEachChild(node, visit);
-    };
-    visit(source);
   }
   assert.deepEqual(violations, []);
 });

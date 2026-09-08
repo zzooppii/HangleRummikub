@@ -1,4 +1,5 @@
 import type { GemCardV2GameProjector } from "../games/gem-card/compatibility/gem-card-v2-game-projector.js";
+import { projectCityRoleV2Game, type CityRoleV2GameProjector } from "../games/city-role/compatibility/city-role-v2-game-projector.js";
 import {
   PLATFORM_SNAPSHOT_VERSION,
   PlatformSnapshotV2Schema,
@@ -21,6 +22,7 @@ export type PlatformSnapshotV2ProjectorDependencies = Readonly<{
   legacyHangulSnapshotProjector: LobbyStateSnapshotProjector;
   numberTileGameProjector: NumberTileV2GameProjector;
   gemCardGameProjector: GemCardV2GameProjector;
+  cityRoleGameProjector?: CityRoleV2GameProjector;
 }>;
 
 export type ProjectPlatformSnapshotV2Input = Readonly<{
@@ -39,9 +41,11 @@ export class PlatformSnapshotV2Projector {
   readonly #legacyHangulSnapshotProjector: LobbyStateSnapshotProjector;
   readonly #numberTileGameProjector: NumberTileV2GameProjector;
   readonly #gemCardGameProjector: GemCardV2GameProjector;
+  readonly #cityRoleGameProjector: CityRoleV2GameProjector;
 
   constructor(dependencies: PlatformSnapshotV2ProjectorDependencies) {
     this.#gemCardGameProjector = dependencies.gemCardGameProjector;
+    this.#cityRoleGameProjector = dependencies.cityRoleGameProjector ?? projectCityRoleV2Game;
     this.#clock = dependencies.clock;
     this.#presenceReader = dependencies.presenceReader;
     this.#legacyHangulSnapshotProjector =
@@ -109,6 +113,10 @@ export class PlatformSnapshotV2Projector {
       throw new Error("A non-LOBBY Room must contain a GameState.");
     }
     const playerIds = input.room.players.map((player) => player.playerId);
+    if (input.room.gameType === "CITY_ROLE") {
+      const game = this.#cityRoleGameProjector({ phase: input.room.phase, playerIds, selfPlayerId: input.selfPlayerId, game: input.room.game });
+      return v.parse(PlatformSnapshotV2Schema, { ...base, room: { ...base.room, phase: input.room.phase }, game });
+    }
     if (input.room.gameType === "GEM_CARD") {
       const game = this.#gemCardGameProjector({ phase: input.room.phase, playerIds, selfPlayerId: input.selfPlayerId, game: input.room.game });
       return v.parse(PlatformSnapshotV2Schema, { ...base, room: { ...base.room, phase: input.room.phase }, game });

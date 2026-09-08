@@ -1,4 +1,5 @@
 const unexpectedGemLifecycle = Object.freeze({ gameType: "GEM_CARD" as const, applyPlayingLeave: () => { throw new Error("Unexpected GEM leave in two-game fixture."); }, planPresenceRestored: () => { throw new Error("Unexpected GEM presence in two-game fixture."); } });
+const unexpectedCityLifecycle = Object.freeze({ gameType: "CITY_ROLE" as const, applyPlayingLeave: () => { throw new Error("Unexpected CITY leave in two-game fixture."); }, planPresenceRestored: () => { throw new Error("Unexpected CITY presence in two-game fixture."); } });
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -115,7 +116,7 @@ function createRecordingCapabilities() {
 
 test("player lifecycle leave dispatches exactly once by canonical Room gameType", () => {
   const capabilities = createRecordingCapabilities();
-  const router = new PlayerLifecycleRouter({ ...capabilities, gemCard: unexpectedGemLifecycle });
+  const router = new PlayerLifecycleRouter({ ...capabilities, gemCard: unexpectedGemLifecycle, cityRole: unexpectedCityLifecycle });
   const hangulRoom = lobbyRoom("HANGUL_TILE");
   const numberRoom = lobbyRoom("NUMBER_TILE");
 
@@ -138,7 +139,7 @@ test("player lifecycle leave dispatches exactly once by canonical Room gameType"
 
 test("presence restoration dispatches exactly once by canonical Room gameType", () => {
   const capabilities = createRecordingCapabilities();
-  const router = new PlayerLifecycleRouter({ ...capabilities, gemCard: unexpectedGemLifecycle });
+  const router = new PlayerLifecycleRouter({ ...capabilities, gemCard: unexpectedGemLifecycle, cityRole: unexpectedCityLifecycle });
   const hangulRoom = lobbyRoom("HANGUL_TILE");
   const numberRoom = lobbyRoom("NUMBER_TILE");
 
@@ -185,7 +186,7 @@ test("player lifecycle routing fails fast when either concrete capability is mis
 
 test("the Number lifecycle result cannot introduce a legacy advisory", () => {
   const capabilities = createRecordingCapabilities();
-  const router = new PlayerLifecycleRouter({ ...capabilities, gemCard: unexpectedGemLifecycle });
+  const router = new PlayerLifecycleRouter({ ...capabilities, gemCard: unexpectedGemLifecycle, cityRole: unexpectedCityLifecycle });
   const result = router.applyPlayingLeave({
     room: lobbyRoom("NUMBER_TILE"),
     actorPlayerId,

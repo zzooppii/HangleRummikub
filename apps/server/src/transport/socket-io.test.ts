@@ -114,6 +114,7 @@ import { TurnPassService } from "../application/turn-pass-service.js";
 import { TurnSubmitService } from "../application/turn-submit-service.js";
 import { TurnTimeoutService } from "../application/turn-timeout-service.js";
 import type { ApplicationRuntime } from "../composition-root.js";
+import { CityRoleCommandRouter } from "../games/city-role/application/city-role-command-router.js";
 import type {
   FinishedGameState,
   PlayingGameState,
@@ -410,6 +411,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
   ]);
   const idGenerator = new FakeIdGenerator();
   const playerLifecycleActions = new PlayerLifecycleRouter({
+    cityRole: { gameType: "CITY_ROLE", applyPlayingLeave: () => { throw new Error("CITY leave is outside this Hangul/Number harness."); }, planPresenceRestored: () => { throw new Error("CITY presence is outside this Hangul/Number harness."); } },
     gemCard: createGemCardPlayerLifecycleActions(idGenerator),
     hangul: createLegacyHangulPlayerLifecycleActions(idGenerator),
     numberTile: createNumberTilePlayerLifecycleActions(idGenerator),
@@ -597,6 +599,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
     turnScheduler,
   });
   const gameStartRouter = new GameStartRouter({
+    cityRole: { gameType: "CITY_ROLE", start: async () => { throw new Error("CITY start is outside this Hangul/Number harness."); } },
     gemCard: { gameType: "GEM_CARD", start: async () => { throw new Error("GEM start is outside this Hangul/Number harness."); } },
     roomRepository: persistence,
     hangul: {
@@ -714,6 +717,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
     onGameFinished,
   });
   scheduledTurnRouter = new ScheduledTurnRouter({
+    cityRole: { gameType: "CITY_ROLE", handleTurnTimeout: async () => { throw new Error("CITY timeout is outside this Hangul/Number harness."); } },
     gemCard: { gameType: "GEM_CARD", handleTurnTimeout: async () => { throw new Error("GEM timeout is outside this harness."); } },
     roomRepository: persistence,
     hangul: {
@@ -763,6 +767,17 @@ function createDeterministicRuntime(): DeterministicRuntime {
 
   return {
     runtime: {
+      cityRoleCommandRouter: new CityRoleCommandRouter({ roomRepository: persistence, capability: {
+        gameType: "CITY_ROLE",
+        selectRole: async () => { throw new Error("Unexpected CITY action."); },
+        takeIncome: async () => { throw new Error("Unexpected CITY action."); },
+        drawBuildingCards: async () => { throw new Error("Unexpected CITY action."); },
+        chooseBuildingCard: async () => { throw new Error("Unexpected CITY action."); },
+        useRoleAbility: async () => { throw new Error("Unexpected CITY action."); },
+        build: async () => { throw new Error("Unexpected CITY action."); },
+        endTurn: async () => { throw new Error("Unexpected CITY action."); },
+      } }),
+      subscribeCityRoleTimeoutApplied() { return () => undefined; },
       gemCardCommandRouter: new GemCardCommandRouter({ roomRepository: persistence, capability: {
         gameType: "GEM_CARD",
         collect: async () => { throw new Error("Unexpected GEM action."); },
@@ -1911,6 +1926,7 @@ async function seedBothBagsEmpty(
   });
   if (
     result.status !== "REPLACED" ||
+    result.room.gameType !== "HANGUL_TILE" ||
     result.room.game === null ||
     result.room.game.turn === null ||
     result.room.game.result !== null
@@ -1964,6 +1980,7 @@ async function seedOverdueCurrentTurn(
   });
   if (
     result.status !== "REPLACED" ||
+    result.room.gameType !== "HANGUL_TILE" ||
     result.room.game === null ||
     result.room.game.turn === null ||
     result.room.game.result !== null
@@ -2016,6 +2033,7 @@ async function seedOverdueGameDeadline(
   });
   if (
     result.status !== "REPLACED" ||
+    result.room.gameType !== "HANGUL_TILE" ||
     result.room.game === null ||
     result.room.game.turn === null ||
     result.room.game.result !== null
@@ -2171,6 +2189,7 @@ async function seedDalgyalSubmitFixture(
   });
   if (
     replaced.status !== "REPLACED" ||
+    replaced.room.gameType !== "HANGUL_TILE" ||
     replaced.room.game === null ||
     replaced.room.game.turn === null ||
     replaced.room.game.result !== null
@@ -4121,6 +4140,7 @@ test(
         );
         assert.equal(persisted?.phase, "FINISHED");
         assert.equal(persisted?.storageRevision, 4);
+        assert.equal(persisted?.gameType, "HANGUL_TILE");
         assert.equal(persisted?.game?.turn, null);
         assert.equal(persisted?.game?.result?.reason, "RACK_EMPTY");
 

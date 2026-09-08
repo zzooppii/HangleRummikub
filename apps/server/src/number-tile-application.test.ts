@@ -1211,6 +1211,7 @@ test("pool-empty Number Pass records a partial no-play cycle and the final eligi
 
   const finished = await harness.persistence.findById(room.roomId);
   assert.equal(finished?.phase, "FINISHED");
+  assert.equal(finished?.gameType, "NUMBER_TILE");
   assert.equal(finished?.game?.result?.reason, "STALEMATE");
 });
 
@@ -2064,6 +2065,7 @@ test("overdue recovery reads a canonical Number deadline and routes one timeout 
   let hangulCalls = 0;
   let numberCalls = 0;
   const router = new ScheduledTurnRouter({
+      cityRole: { gameType: "CITY_ROLE", handleTurnTimeout: async () => { throw new Error("Unexpected CITY timeout in two-game fixture."); } },
       gemCard: { gameType: "GEM_CARD", handleTurnTimeout: async () => { throw new Error("Unexpected GEM timeout in two-game fixture."); } },
     roomRepository: harness.persistence,
     hangul: {
@@ -2227,6 +2229,7 @@ test("Number leave and restored presence keep Number-only lifecycle semantics", 
   assert.equal(leave.advisory, "NONE");
   assert.equal(leave.finishedGameId, harness.room.game.gameId);
   assert.equal(leave.candidate.phase, "FINISHED");
+  assert.equal(leave.candidate.gameType, "NUMBER_TILE");
   assert.equal(leave.candidate.game?.result?.reason, "LAST_PLAYER_STANDING");
   assert.equal(
     leave.candidate.game?.result?.reason === "LAST_PLAYER_STANDING"

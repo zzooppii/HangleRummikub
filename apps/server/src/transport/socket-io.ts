@@ -1,4 +1,5 @@
 import { validateGemCollectCommand, validateGemPurchaseCommand, validateGemReserveCommand, validateGemYieldCommand, type GemCollectWireAck, type GemCardPlayingPlatformSnapshotV2, type GemCardFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
+import { validateCityClientCommand, type CityClientCommand, type CityActionWireAck } from "@hangul-rummikub/shared";
 import {
   PROTOCOL_VERSION,
   validateNumberDrawCommand,
@@ -1910,6 +1911,68 @@ function registerTurnPassHandler(
   });
 }
 
+/** Seven closed CITY events share only authenticated transport delivery plumbing. */
+function registerCityHandlers(io: RealtimeServer, socket: RealtimeSocket, runtime: ApplicationRuntime): void {
+  function receive(event: CityClientCommand["kind"], raw: unknown, acknowledge: (ack: CityActionWireAck) => void): void {
+    const receivedAt = runtime.clock.now();
+    const command = validateCityClientCommand(raw);
+    if (!command.ok || command.value.kind !== event) {
+      acknowledgeIfPresent(acknowledge, failureAck(raw, command.ok ? INVALID_PAYLOAD_ERROR : command.error, receivedAt));
+      return;
+    }
+    let committed = false;
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(createSocketId(socket.id));
+      if (binding === null) {
+        acknowledgeIfPresent(acknowledge, failureAck(raw, UNAUTHENTICATED_ERROR, receivedAt));
+        return;
+      }
+      if (!isRoomAdmissionCompatible("CITY_ROLE", socketAdmissionCapabilities(socket))) {
+        acknowledgeIfPresent(acknowledge, failureAck(raw, { code: "INCOMPATIBLE_GAME_CAPABILITY", message: "CITY requires V2 and CITY capability.", recoverable: false }, receivedAt));
+        return;
+      }
+      const value = command.value;
+      const input = { roomId: binding.roomId, actorPlayerId: binding.playerId, requestId: value.requestId,
+        gameId: value.gameId, expectedGameRevision: value.expectedGameRevision, actionId: value.actionId, receivedAt,
+        authorization: { isCurrent: () => socket.connected && isCurrentBinding(runtime, binding) } };
+      const router = runtime.cityRoleCommandRouter;
+      const result = await (async () => {
+        switch (value.kind) {
+          case "city:selectRole": return router.selectRole({ ...input, roleId: value.payload.roleId });
+          case "city:takeIncome": return router.takeIncome(input);
+          case "city:drawBuildingCards": return router.drawBuildingCards(input);
+          case "city:chooseBuildingCard": return router.chooseBuildingCard({ ...input, cardId: value.payload.cardId });
+          case "city:useRoleAbility": return router.useRoleAbility({ ...input, ability: value.payload });
+          case "city:build": return router.build({ ...input, cardId: value.payload.cardId });
+          case "city:endTurn": return router.endTurn(input);
+        }
+      })();
+      if (!result.ok) {
+        acknowledgeIfPresent(acknowledge, await turnSubmitFailureAck(runtime, socket, binding, value.requestId, result.error, receivedAt));
+        return;
+      }
+      committed = true;
+      const loaded = await loadSnapshotForSocket(runtime, socket, binding.roomId, binding.playerId);
+      if (loaded === null || !socket.connected || !isCurrentBinding(runtime, binding)) return;
+      await fanOutRoomSnapshots(io, runtime, binding.roomId);
+      // Replay data is the original commit receipt, never a stale private snapshot.
+      acknowledgeIfPresent(acknowledge, { scope: "ROOM", requestId: value.requestId, ok: true,
+        serverTime: loaded.metadata.serverTime, versions: loaded.metadata.versions,
+        data: { gameId: result.data.gameId, committedGameRevision: result.data.gameRevision } });
+    })().catch(() => {
+      if (committed) reportPostCommitDeliveryFailure();
+      else acknowledgeIfPresent(acknowledge, failureAck(raw, INTERNAL_ERROR, receivedAt));
+    });
+  }
+  socket.on("city:selectRole", (raw, ack) => receive("city:selectRole", raw, ack));
+  socket.on("city:takeIncome", (raw, ack) => receive("city:takeIncome", raw, ack));
+  socket.on("city:drawBuildingCards", (raw, ack) => receive("city:drawBuildingCards", raw, ack));
+  socket.on("city:chooseBuildingCard", (raw, ack) => receive("city:chooseBuildingCard", raw, ack));
+  socket.on("city:useRoleAbility", (raw, ack) => receive("city:useRoleAbility", raw, ack));
+  socket.on("city:build", (raw, ack) => receive("city:build", raw, ack));
+  socket.on("city:endTurn", (raw, ack) => receive("city:endTurn", raw, ack));
+}
+
 function registerGemCollectHandler(
   io: RealtimeServer,
   socket: RealtimeSocket,
@@ -2872,6 +2935,10 @@ export function registerSocketIoHandlers(
         reportSnapshotFanOutFailure();
       }
     });
+  const unsubscribeCityRoleTimeoutApplied = runtime.subscribeCityRoleTimeoutApplied(async data => {
+    try { await fanOutRoomSnapshots(io, runtime, data.roomId); }
+    catch { reportSnapshotFanOutFailure(); }
+  });
   const unsubscribeRoomPlayerRemoved = runtime.subscribeRoomPlayerRemoved(
     async (roomId) => {
       try {
@@ -2913,6 +2980,7 @@ export function registerSocketIoHandlers(
     registerGemPurchaseHandler(io, socket, runtime);
     registerGemReserveHandler(io, socket, runtime);
     registerGemYieldHandler(io, socket, runtime);
+    registerCityHandlers(io, socket, runtime);
     registerNumberSubmitHandler(io, socket, runtime);
     registerNumberDrawHandler(io, socket, runtime);
     registerNumberPassHandler(io, socket, runtime);
@@ -2926,6 +2994,7 @@ export function registerSocketIoHandlers(
     unsubscribeTimeoutApplied();
     unsubscribeNumberTileTimeoutApplied();
     unsubscribeGemCardTimeoutApplied();
+    unsubscribeCityRoleTimeoutApplied();
     unsubscribeGameDeadlineApplied();
   };
 }

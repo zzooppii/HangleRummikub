@@ -1,6 +1,8 @@
 import { GemCardPlayingPlatformSnapshotV2Schema, GemCardFinishedPlatformSnapshotV2Schema } from "./platform/platform-snapshot-v2.js";
 import type { GemCollectCommand, GemPurchaseCommand, GemReserveCommand, GemYieldCommand } from "./protocol.js";
 import * as v from "valibot";
+import { GameRevisionSchema } from "./protocol.js";
+import type { CitySelectRoleCommand, CityTakeIncomeCommand, CityDrawBuildingCardsCommand, CityChooseBuildingCardCommand, CityUseRoleAbilityCommand, CityBuildCommand, CityEndTurnCommand } from "./protocol.js";
 
 import {
   GameIdSchema,
@@ -341,6 +343,25 @@ export type GemReserveWireAck = v.InferOutput<typeof GemReserveWireAckSchema>;
 export const GemYieldWireAckSchema = v.union([UncorrelatedFailureAckSchema, UnscopedAckFailureSchema, createRoomScopedAckSchema(GemSnapshotDeliveryDataSchema)]);
 export type GemYieldWireAck = v.InferOutput<typeof GemYieldWireAckSchema>;
 
+export const CityActionAckDataSchema = v.strictObject({ gameId: GameIdSchema, committedGameRevision: GameRevisionSchema });
+export type CityActionAckData = v.InferOutput<typeof CityActionAckDataSchema>;
+export const CityActionWireAckSchema = v.union([UncorrelatedFailureAckSchema, UnscopedAckFailureSchema, createRoomScopedAckSchema(CityActionAckDataSchema)]);
+export type CityActionWireAck = v.InferOutput<typeof CityActionWireAckSchema>;
+export const CitySelectRoleWireAckSchema = CityActionWireAckSchema;
+export type CitySelectRoleWireAck = CityActionWireAck;
+export const CityTakeIncomeWireAckSchema = CityActionWireAckSchema;
+export type CityTakeIncomeWireAck = CityActionWireAck;
+export const CityDrawBuildingCardsWireAckSchema = CityActionWireAckSchema;
+export type CityDrawBuildingCardsWireAck = CityActionWireAck;
+export const CityChooseBuildingCardWireAckSchema = CityActionWireAckSchema;
+export type CityChooseBuildingCardWireAck = CityActionWireAck;
+export const CityUseRoleAbilityWireAckSchema = CityActionWireAckSchema;
+export type CityUseRoleAbilityWireAck = CityActionWireAck;
+export const CityBuildWireAckSchema = CityActionWireAckSchema;
+export type CityBuildWireAck = CityActionWireAck;
+export const CityEndTurnWireAckSchema = CityActionWireAckSchema;
+export type CityEndTurnWireAck = CityActionWireAck;
+
 export const StateSnapshotEventSchema = v.strictObject({
   kind: v.literal("state:snapshot"),
   protocolVersion: ProtocolVersionSchema,
@@ -509,6 +530,13 @@ export interface ServerToClientEvents {
  * remain available to compile old V1-only clients without changing their API.
  */
 export interface SnapshotWireClientToServerEvents {
+  "city:selectRole": (command: CitySelectRoleCommand, acknowledge: SocketAcknowledgement<CitySelectRoleWireAck>) => void;
+  "city:takeIncome": (command: CityTakeIncomeCommand, acknowledge: SocketAcknowledgement<CityTakeIncomeWireAck>) => void;
+  "city:drawBuildingCards": (command: CityDrawBuildingCardsCommand, acknowledge: SocketAcknowledgement<CityDrawBuildingCardsWireAck>) => void;
+  "city:chooseBuildingCard": (command: CityChooseBuildingCardCommand, acknowledge: SocketAcknowledgement<CityChooseBuildingCardWireAck>) => void;
+  "city:useRoleAbility": (command: CityUseRoleAbilityCommand, acknowledge: SocketAcknowledgement<CityUseRoleAbilityWireAck>) => void;
+  "city:build": (command: CityBuildCommand, acknowledge: SocketAcknowledgement<CityBuildWireAck>) => void;
+  "city:endTurn": (command: CityEndTurnCommand, acknowledge: SocketAcknowledgement<CityEndTurnWireAck>) => void;
   "session:bootstrap": (
     command: SessionBootstrapCommand,
     acknowledge: SocketAcknowledgement<SessionBootstrapAck>,

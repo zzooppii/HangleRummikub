@@ -17,6 +17,8 @@ import {
   TurnDrawBagKindSchema,
 } from "./games/hangul-tile/turn-command-contracts.js";
 import { NumberTileProposedTableSchema } from "./games/number-tile/turn-command-contracts.js";
+import { CityActionIdSchema, CityBuildingCardIdSchema, CityRoleAbilityPayloadSchema, CityRoleIdSchema } from "./games/city-role/contracts.js";
+import { GameIdSchema } from "./identifiers.js";
 
 export {
   PROPOSED_ASSIGNED_SYMBOL_MAX_LENGTH,
@@ -404,6 +406,27 @@ export const GemYieldCommandSchema = v.strictObject({
 });
 export type GemYieldCommand = v.InferOutput<typeof GemYieldCommandSchema>;
 
+const CityCommandEnvelope = {
+  protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema,
+  gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema, actionId: CityActionIdSchema,
+};
+export const CitySelectRoleCommandSchema = v.strictObject({ ...CityCommandEnvelope, kind: v.literal("city:selectRole"), payload: v.strictObject({ roleId: CityRoleIdSchema }) });
+export type CitySelectRoleCommand = v.InferOutput<typeof CitySelectRoleCommandSchema>;
+export const CityTakeIncomeCommandSchema = v.strictObject({ ...CityCommandEnvelope, kind: v.literal("city:takeIncome"), payload: v.strictObject({}) });
+export type CityTakeIncomeCommand = v.InferOutput<typeof CityTakeIncomeCommandSchema>;
+export const CityDrawBuildingCardsCommandSchema = v.strictObject({ ...CityCommandEnvelope, kind: v.literal("city:drawBuildingCards"), payload: v.strictObject({}) });
+export type CityDrawBuildingCardsCommand = v.InferOutput<typeof CityDrawBuildingCardsCommandSchema>;
+export const CityChooseBuildingCardCommandSchema = v.strictObject({ ...CityCommandEnvelope, kind: v.literal("city:chooseBuildingCard"), payload: v.strictObject({ cardId: CityBuildingCardIdSchema }) });
+export type CityChooseBuildingCardCommand = v.InferOutput<typeof CityChooseBuildingCardCommandSchema>;
+export const CityUseRoleAbilityCommandSchema = v.strictObject({ ...CityCommandEnvelope, kind: v.literal("city:useRoleAbility"), payload: CityRoleAbilityPayloadSchema });
+export type CityUseRoleAbilityCommand = v.InferOutput<typeof CityUseRoleAbilityCommandSchema>;
+export const CityBuildCommandSchema = v.strictObject({ ...CityCommandEnvelope, kind: v.literal("city:build"), payload: v.strictObject({ cardId: CityBuildingCardIdSchema }) });
+export type CityBuildCommand = v.InferOutput<typeof CityBuildCommandSchema>;
+export const CityEndTurnCommandSchema = v.strictObject({ ...CityCommandEnvelope, kind: v.literal("city:endTurn"), payload: v.strictObject({}) });
+export type CityEndTurnCommand = v.InferOutput<typeof CityEndTurnCommandSchema>;
+export type CityClientCommand = CitySelectRoleCommand | CityTakeIncomeCommand | CityDrawBuildingCardsCommand | CityChooseBuildingCardCommand | CityUseRoleAbilityCommand | CityBuildCommand | CityEndTurnCommand;
+export const CityClientCommandSchema = v.variant("kind", [CitySelectRoleCommandSchema, CityTakeIncomeCommandSchema, CityDrawBuildingCardsCommandSchema, CityChooseBuildingCardCommandSchema, CityUseRoleAbilityCommandSchema, CityBuildCommandSchema, CityEndTurnCommandSchema]);
+
 export const Phase2ClientCommandSchema = v.variant("kind", [
   SessionBootstrapCommandSchema,
   RoomCreateCommandSchema,
@@ -433,6 +456,13 @@ export const ClientCommandSchema = v.variant("kind", [
   GemPurchaseCommandSchema,
   GemReserveCommandSchema,
   GemYieldCommandSchema,
+  CitySelectRoleCommandSchema,
+  CityTakeIncomeCommandSchema,
+  CityDrawBuildingCardsCommandSchema,
+  CityChooseBuildingCardCommandSchema,
+  CityUseRoleAbilityCommandSchema,
+  CityBuildCommandSchema,
+  CityEndTurnCommandSchema,
 ]);
 export type KnownClientCommand = v.InferOutput<typeof ClientCommandSchema>;
 

@@ -1,4 +1,5 @@
 const unexpectedGemLifecycle = Object.freeze({ gameType: "GEM_CARD" as const, applyPlayingLeave: () => { throw new Error("Unexpected GEM leave in two-game fixture."); }, planPresenceRestored: () => { throw new Error("Unexpected GEM presence in two-game fixture."); } });
+const unexpectedCityLifecycle = Object.freeze({ gameType: "CITY_ROLE" as const, applyPlayingLeave: () => { throw new Error("Unexpected CITY leave in two-game fixture."); }, planPresenceRestored: () => { throw new Error("Unexpected CITY presence in two-game fixture."); } });
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -239,6 +240,7 @@ async function createHarness(playerCount = 2): Promise<LifecycleHarness> {
 function createPlayerLifecycleActions(): PlayerLifecycleActionRouting {
   const idGenerator = new FakeIdGenerator();
   return new PlayerLifecycleRouter({
+      cityRole: unexpectedCityLifecycle,
       gemCard: unexpectedGemLifecycle,
     hangul: createLegacyHangulPlayerLifecycleActions(idGenerator),
     numberTile: createNumberTilePlayerLifecycleActions(idGenerator),
@@ -615,8 +617,10 @@ test("non-current Playing leave는 current Turn/deadline을 보존하고 새 gam
   });
   assert.equal(started.status, "REPLACED");
   if (started.status !== "REPLACED" || started.room.game === null) return;
+  assert.equal(started.room.gameType, "HANGUL_TILE");
+  const startedGame = started.room.game;
   const nonCurrent = started.room.players.find(
-    (player) => player.playerId !== started.room.game?.turn?.activePlayerId,
+    (player) => player.playerId !== startedGame.turn?.activePlayerId,
   );
   assert.ok(nonCurrent && started.room.game.turn);
   const oldTurn = started.room.game.turn;
@@ -939,6 +943,7 @@ test("corrupt PLAYING gameType은 leave와 presence-restored concrete game actio
   };
   const playerLifecycleActions: PlayerLifecycleActionRouting =
     new PlayerLifecycleRouter({
+      cityRole: unexpectedCityLifecycle,
       gemCard: unexpectedGemLifecycle,
       hangul: {
         gameType: "HANGUL_TILE",

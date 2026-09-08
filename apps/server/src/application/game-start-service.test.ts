@@ -407,6 +407,7 @@ test("Game deadline 등록 실패는 accepted game:start를 rollback하지 않�
   assert.equal(turnScheduler.deadlines.length, 1);
   const persisted = await harness.persistence.findById(harness.room.roomId);
   assert.equal(persisted?.phase, "PLAYING");
+  assert.equal(persisted?.gameType, "HANGUL_TILE");
   assert.ok(persisted?.game?.turn);
   assert.equal(persisted?.roomRevision, harness.room.roomRevision + 1);
   assert.equal(persisted?.storageRevision, harness.room.storageRevision + 1);

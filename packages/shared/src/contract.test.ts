@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as v from "valibot";
+import "./city-role-contract.test.js";
 
 import {
   BOOTSTRAP_SESSION_TTL_MS,
@@ -1218,8 +1219,8 @@ test("Room phase와 session replacement notification은 exhaustive shape를 가�
   );
 });
 
-test("GameType runtime contract는 정확히 세 개의 구현된 게임을 지원한다", () => {
-  assert.deepEqual(SUPPORTED_GAME_TYPES, ["HANGUL_TILE", "NUMBER_TILE", "GEM_CARD"]);
+test("GameType runtime contract는 정확히 네 개의 구현된 게임을 지원한다", () => {
+  assert.deepEqual(SUPPORTED_GAME_TYPES, ["HANGUL_TILE", "NUMBER_TILE", "GEM_CARD", "CITY_ROLE"]);
   assert.equal(Object.isFrozen(SUPPORTED_GAME_TYPES), true);
 
   const hangul = v.safeParse(GameTypeSchema, "HANGUL_TILE");
@@ -4624,6 +4625,13 @@ test("runtime Socket.IO map은 Number events를 additive하게 제공하고 lega
     | "gem:purchase"
     | "gem:reserve"
     | "gem:yield"
+    | "city:selectRole"
+    | "city:takeIncome"
+    | "city:drawBuildingCards"
+    | "city:chooseBuildingCard"
+    | "city:useRoleAbility"
+    | "city:build"
+    | "city:endTurn"
   > = true;
   const legacyEventNamesRemainExact: SameUnion<
     keyof ClientToServerEvents,

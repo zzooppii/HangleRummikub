@@ -15,3 +15,5 @@ export * from "./validation.js";
 
 export * from "./games/gem-card/contracts.js";
 export * from "./games/gem-card/v2-projection-contracts.js";
+export * from "./games/city-role/contracts.js";
+export * from "./games/city-role/v2-projection-contracts.js";

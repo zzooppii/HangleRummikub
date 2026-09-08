@@ -81,13 +81,13 @@ export async function scheduleFinishedRetentionBestEffort(
       room?.phase !== "FINISHED" ||
       game === null ||
       game === undefined ||
-      game.result === null ||
       game.gameId !== identity.gameId
     ) {
       return false;
     }
 
-    const finishedAt = game.result.finishedAt;
+    const finishedAt = "state" in game ? game.finishedAt : game.result?.finishedAt;
+    if (finishedAt === null || finishedAt === undefined) return false;
     const deadline = Object.freeze({
       kind: "FINISHED_ROOM_RETENTION" as const,
       roomId: room.roomId,

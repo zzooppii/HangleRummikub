@@ -245,6 +245,7 @@ test("overdue sweeper recovers an unscheduled Game deadline exactly once", async
 
   const after = await harness.persistence.findById(harness.roomId);
   assert.equal(after?.phase, "FINISHED");
+  assert.equal(after?.gameType, "HANGUL_TILE");
   assert.equal(after?.game?.result?.reason, "TIME_LIMIT");
   assert.equal(
     after?.game?.gameRevision,
