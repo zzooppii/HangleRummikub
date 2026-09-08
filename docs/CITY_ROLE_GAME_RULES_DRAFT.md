@@ -3,6 +3,8 @@
 > P14A · 2026-09-08 · **DECISION GATE READY / RULES OPEN / NOT DOMAIN READY**
 > 모든 CITY rule은 제안이다. 사용자 승인 없이 code/schema/card data/asset을 생성하지 않는다.
 
+> **P14B 현재 상태: P14B COMPLETE / DOMAIN READY.** 위 상태와 본문 추천은 P14A 당시 history다. 이후 CITY-001–070은 모두 CONFIRMED(001C/004B/018B/019B/070B, 그 외 A)되었고 E01–03·exact60-card 사용자 승인·Classic 직접 대조도 완료했다. 현재 규칙은 [P14B rules](./CITY_ROLE_GAME_RULES.md), final gate는 [consistency audit](./CITY_ROLE_P14B_CONSISTENCY_AUDIT.md)를 따른다. 기존 draft를 최종 규칙으로 구현하지 않으며 P15A는 아직 시작하지 않았다.
+
 ## 1. Baseline / 문서 authority
 
 - 시작: `8f8da13342269aef33c87bd5b1a1a76a953c3bde` — `refactor: extract proven platform helpers`.

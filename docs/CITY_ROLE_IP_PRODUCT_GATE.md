@@ -6,6 +6,8 @@
 >
 > 이 문서는 개발 정책과 검토 항목이다. 특정 게임의 권리 범위, 법적 비침해 또는 사용 허가를 판정하는 법률 자문이 아니다.
 
+> **P14B 현재 상태: P14B COMPLETE / DOMAIN READY.** §1–6은 P14A planning history다. CITY-001–070/E01–03, CLASSIC_REFERENCE_VERIFIED 및 사용자 최종 승인 exact60-card를 보존한다. 현재 출처/승인 상태는 §7.5–7.6이 우선하며 **NOT RELEASE CLEARANCE**는 계속 유효하다.
+
 ## 1. 확정된 경계와 아직 OPEN인 선택
 
 사용자가 이미 정한 범위는 다음과 같다.
@@ -94,3 +96,58 @@ P14A에서 독립 deck을 실제로 채우지 않는다. 먼저 player count, dr
 - [ ] 선택한 mechanics의 근접성, 전체 presentation, publisher policy를 함께 검토한 결과를 기록.
 
 **P14A 결과는 decision 준비이지 개발 content 전체 승인, release 승인 또는 비침해 판단이 아니다.** 사용자 decisions 이후 P14B로 진행하며, 기존 HANGUL_TILE / NUMBER_TILE / GEM_CARD와 `three-game-platform-v1`은 이 gate의 영향을 받지 않는다.
+
+## 7. P14B confirmed product policy / reference audit
+
+### 7.1 사용자 승인과 독립 제작
+
+CITY-002A/062A를 승인했다. Classic에 가까운 핵심 구조를 원하되, 공개 이름은 CITY-026A의 **비밀 도시 게임**이라는 자체 working title이며 최종 상표 검토 완료가 아니다. 내부명 CITY_ROLE, 자체8role 문구와 자체60-card 초안은 [P14B rules](./CITY_ROLE_GAME_RULES.md)와 [cardset](./CITY_ROLE_CARDSET_V1.md)에 있다. Official title/art/logo/character·district 이미지/rulebook prose/app UI/trade dress를 사용하지 않았다. 원작 deck table을 이름만 바꾸거나 숫자만 수정해 옮기지 않았다.
+
+새 덱은 승인된 5category×12, cost=VP1–6 제약에서 category별6templates×2copies, 각category36VP로 독립 작성했다. 공개용 card asset/illustration/audio/runtime data는 아직 없다. 새 exact분포는 CITY-037A의 별도 audit 후 사용자 최종 승인을 완료했으며, 최종 상태는 [consistency audit](./CITY_ROLE_P14B_CONSISTENCY_AUDIT.md)를 따른다.
+
+### 7.2 CITY-068A — 첨부 이전의 판본 확인 한계 (history)
+
+2026-09-08에 지정 [WR01 Classic PDF](https://images-cdn.zmangames.com/us-east-1/filer_public/d3/b0/d3b00592-62fa-409a-b5c6-3364e972955f/wr01_citadels_classic_rules.pdf)를 다시 열었으나 Web fetch는502, 직접 HTTPS HEAD는 인증서 만료로 실패했다. TLS 검증을 끄지 않았다. 공식 검색 색인의 소개에는 완성7건물이라는 문구가 보이지만 이는 **전체 규칙/예외 전문 확인을 대신하지 않는다**. 사용자 CITY-014A의8건물을7로 바꾸지 않는다. CITY-068A 선택 자체는 CONFIRMED이지만 그 선택이 요구한 **정확한 Classic 원문 대조는 미완료**다.
+
+안전하게 열람 가능한 공식 [FFG English rulebook](https://images-cdn.fantasyflightgames.com/ffg_content/Citadels/support/citadels-rules-english.pdf)의 기본 규칙·역할·2/3인 절차를 보조 대조했다. 이 PDF의 copyright는2010이며 **WR01 Classic과 다른 판본**이다. Expansion/bonus set이나 공식 district dataset을 우리 content로 가져오지 않았다. 아래 표의 첫 열은 이2010자료에서만 확인한 차이로, WR01 검증 결과라고 표현하지 않는다.
+
+| FFG2010에서 확인한 비교 지점 | 승인된 CITY 선택 / 처리 |
+| --- | --- |
+| 2인 draft에 추가 비밀 discard가 있음 | 006A/007A의 순차 두pass, 추가discard 없음;2인 public2/hidden1 |
+| leader 역할을 public 제거에서 제외 | 007A는 해당 역할 예외 없음;CR-04도 제거 가능 |
+| 봉쇄된 leader 역할에도 round-end leader 처리 | 009A는 정상reveal일 때만 획득, 나머지 incumbent 유지 |
+| category 수입 시점 선택, 추가 draw는 기본획득 뒤 | 043–047A/066A는 entry 수입·bonusdraw, CR-06 추가1만 획득후 |
+| 자기 카드교환의 반환은 deck bottom | 042A는 discard 후 draw/031A reshuffle; 재draw 가능 |
+| 파괴의 end-turn timing, 자기city 대상도 가능 | 039A/048A는 획득후 optional, 자기city 금지 |
+| 역할표적을 발표 | 070B는 사용actor만 표적을 알고 resolution 결과만 공개 |
+| 완성8, 보너스4/2/3, 동점은 gold 비교 | CITY도8과4/2/3이지만017A 공동승리/competition ranking |
+
+위 차이는 사용자가 선택한 우리 규칙을 보존하기 위한 audit다. “Classic에 가깝게”를 이유로 확정값을 임의 변경하지 않는다. WR01 원문을 받거나 접근 가능한 정확한 공식 사본을 확인한 뒤, 남은 판본 차이만 대조한다. 다른 판본을 자동으로 기준판으로 승격하지 않는다.
+
+### 7.3 첨부 이전 Product audit 결과 (history)
+
+- 친구용 개인 온라인 플레이 목적 유지. 공개·상업 서비스 전 별도 review 필요.
+- 자체 이름/문구/카드데이터 정책 일치. 실제 asset이 없으므로 asset 라이선스 확보 완료를 주장하지 않는다.
+- Secret hand/role/mark/pending 정보는 authenticated viewer projection으로 제한. 로그·ACK·tutorial screenshot에 secret을 넣는 설계 없음.
+- Publisher 정책은2026-09-08에 다시 확인했다. 온라인 재현/IP software에 대한 게시 정책을 개인용/무료/재명명 허가로 해석하지 않는다. Mechanics 유사성만으로 비침해를 판단하지 않는다. [Z-Man IP policy](https://www.zmangames.com/ip-policy/)
+- **독립 제작 정책 감사는 수행했으나, CITY-068A 정확한 판본 대조는 보류**다. 새로운 runtime/카드이미지/production enablement는 없고, 기존3게임 release 상태는 변경하지 않는다.
+
+### 7.4 첨부 이전 P14B 재개 시 reference 상태 (history)
+
+기존 70개와 추가3개 승인 보존 하에 공식 WR01 URL을 다시 직접 열었으나 **502 Bad Gateway**로 실패했다. 이번 검색에서 같은 공식 URL은 확인됐지만, 다른 결과의 revised/deluxe rulebook을 지정 Classic의 전문으로 취급하지 않았다. 이전 HTTPS 인증서 실패 기록도 유효한 당시 시도 기록으로 보존한다. 원문 없이 세부 규칙을 기억으로 채우거나 기존 확정값을 바꾸지 않는다.
+
+현재 **CLASSIC_REFERENCE_VERIFICATION_PENDING**이다. 이는 가능한 덱/규칙/프로토콜 내부 감사를 중단하는 이유는 아니지만, 정확한 Classic 대조 완료나 DOMAIN READY를 선언할 수는 없게 한다. Cardset의 작성 과정과 독립 template 표에서 직접 복제 증거는 발견하지 못했으며, published card table 전체와의 전수 비교나 법적 비침해 증명은 수행하지 않았다. 공식 카드표를 새로 내려받아 자체 덱을 맞추거나 수정하지 않는다.
+
+### 7.5 첨부 WR01 Classic 직접 대조 완료 — 현재 상태
+
+사용자가 공식 기준으로 지정한 `wr01_citadels_classic_rules.pdf`를 제공했다. 표지/16페이지 전문/표/각주/예시/©2016 Windrider 표기를 직접 확인했다. SHA-256 `278c36693cac249f766015e0e37c4a9647a181a80899027ad93cb8fc5e5af94e`. 원문 PDF/공식 artwork/card image를 저장소나 production asset으로 복제하지 않았다. §7.2/7.4의 URL 접근 실패는 과거 시도이며 현재는 **CLASSIC_REFERENCE_VERIFIED**다.
+
+[Classic 비교 문서](./CITY_ROLE_CLASSIC_COMPARISON.md)에 70개 결정과 E01–03 전체를 대응시켜 차이와 원문 미명시를 구별했다. 첨부 판본의 기본7/소인원8/Classic Variant8, 최고 revealed-role tie-break, optional 능력·자유 timing, King 상속, 카드 bottom 행선지를 확인했다. FFG2010의 gold tie-break/파괴 end-turn 제한/일부 획득후 timing은 이번 첨부 판본의 규칙으로 사용하지 않는다. 기존 CITY 승인과 다른 부분은 자동 수정하지 않는다.
+
+Cardset은 이 첨부 열람 **이전에** 승인된 제약에서 독립 작성한60장 그대로다. 공식68장 개별 목록/전체분포는 이16페이지에 없으며, 그 내용을 추측하거나 우리 덱을 공식분포에 맞추지 않는다. 이후 사용자 exact deck 승인도 완료했으며, 향후 실제 제품 공개에 대한 별도 IP/product review는 계속 필요하다. 원문 열람 완료는 구현 라이선스나 법적 비침해 판단이 아니다.
+
+### 7.6 P14B final product gate
+
+사용자는 기존60장 후보를 최종 승인하고 모든 CITY-001–070/E01–03 및 원문 검증 상태의 보존을 요청했다. 승인된 card rows·명칭·수치·능력·공개 정책을 변경하지 않았다. 독립 content/provenance 원칙과 승인된 mechanics 사이의 새 내부 blocker는 발견하지 못했다.
+
+**P14B COMPLETE / DOMAIN READY**는 문서 설계·사용자 dataset 승인·규칙 consistency의 완료다. 공개명/asset 실제 제작·배포·법적 권리 검토를 완료한 것은 아니므로 개인용 목적과 향후 공개/상업 release 전 별도 review 요구를 유지한다. P15A pure domain 구현은 다음 단계로만 제안한다.

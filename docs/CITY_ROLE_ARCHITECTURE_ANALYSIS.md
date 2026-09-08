@@ -6,6 +6,8 @@
 >
 > 상태: planning only. 아래 모델은 제안이며 [decision gate](./CITY_ROLE_DECISION_GATE.md)의 사용자 선택과 P14B consistency audit 전에는 구현 계약이 아니다.
 
+> **P14B 현재 상태 (2026-09-08): P14B COMPLETE / DOMAIN READY.** 70개 선택과 E01–03, 사용자 승인 exact60장, CLASSIC_REFERENCE_VERIFIED를 유지한다. 2–6인, 2/3인 각2roles, 45초 pick/90초 role action을 반영했다. 이 문서의 조건부 표현은 P14A source 분석 history다. 현재 exact 계약 방향과 player-cap source inventory는 [protocol gate](./CITY_ROLE_PROTOCOL_GATE.md), final gate는 [consistency audit](./CITY_ROLE_P14B_CONSISTENCY_AUDIT.md)를 따른다. Runtime/registry/adapter 구현은 여전히 없고 P15A도 시작하지 않았다.
+
 ## 1. 범위와 결론
 
 `CITY_ROLE`은 이름 후보일 뿐 현재 `GameType`이 아니다. P14A는 production·shared schema·tests·dependency·기존 game rules를 변경하지 않는다. P13의 보류 항목은 네 번째 게임을 논의한다는 이유만으로 승인되지 않는다.

@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P12 COMPLETE / THREE-GAME PLATFORM V1 VERIFIED / P13 COMPLETE / P13B COMPLETE / P14A DECISION GATE READY
+> 상태: P12 COMPLETE / THREE-GAME PLATFORM V1 VERIFIED / P13 COMPLETE / P13B COMPLETE / P14A COMPLETE / P14B COMPLETE — DOMAIN READY / P15A NOT STARTED
 > 작성일: 2026-09-07
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -14,6 +14,10 @@
 ## P14A fourth-game planning status (2026-09-08)
 
 `8f8da13` / 1225 tests 기준에서 `CITY_ROLE` 후보를 docs-only로 분석했다. [Rules draft](./CITY_ROLE_GAME_RULES_DRAFT.md), [CITY-001–070 decision gate](./CITY_ROLE_DECISION_GATE.md), [architecture analysis](./CITY_ROLE_ARCHITECTURE_ANALYSIS.md), [IP/product gate](./CITY_ROLE_IP_PRODUCT_GATE.md)를 작성했다. **P14A COMPLETE / DECISION GATE READY**이며 모든 rule decision은 OPEN, DOMAIN READY가 아니다. 현재 4인 상한, secret role/pending-choice projection, roster와 role order 분리, 단일 active-turn lifecycle은 후속 검토 지점이다. P13 보류 registry를 승인·구현하지 않았다. 기존 세 게임 runtime/tests/dependency와 release tag는 그대로다. 사용자 decisions 후 다음은 **P14B — CITY_ROLE final rules / protocol / IP consistency gate** 하나이며 구현을 시작하지 않는다. 아래 과거 단계의 네 번째 게임 미시작 문구는 해당 checkpoint history다.
+
+## P14B current gate (2026-09-08)
+
+P14A의 위 OPEN 기록은 당시 history다. `d5923c9`에서 사용자 CITY-001–070을 모두 CONFIRMED로 기록했다(001C/004B/018B/019B/070B, 그 외 A). [P14B rules](./CITY_ROLE_GAME_RULES.md), [original60-card design](./CITY_ROLE_CARDSET_V1.md), [concrete protocol gate](./CITY_ROLE_PROTOCOL_GATE.md), [consistency audit](./CITY_ROLE_P14B_CONSISTENCY_AUDIT.md)를 작성했다. 추가 승인된 source forfeit 시 미해결 mark 취소, 현재 window 종료→종료조건→forfeit→다음 window 순서, 0장 자기 손패 교환 거절을 반영했다. 이후 사용자 첨부 Classic16페이지를 직접 확인해 [공식 원문 차이표](./CITY_ROLE_CLASSIC_COMPARISON.md)를 작성했으며 **CLASSIC_REFERENCE_VERIFIED**를 유지한다. 사용자가 exact60-card 후보도 최종 승인했고, final consistency audit에서 blocker를 발견하지 못했다. **P14B COMPLETE / DOMAIN READY**이며 이는 구현·배포 완료가 아니다. 기존3게임 production/tests/dependency와 release tag 변경은 없다. 다음은 사용자 별도 요청 후 **P15A — CITY_ROLE pure domain implementation** 하나이며 아직 시작하지 않았다.
 
 ## 1. 공통 실행 원칙
 
@@ -67,7 +71,8 @@ P2 checkpoint 기준선은 shared 59, web 91, server 447로 총 597 tests다. P3
 | P13 | Three-game post-release abstraction review | 실제 세 게임 source로 재분류하고 작은 extraction 후보만 제안한다. Runtime 변경 없음. |
 | P13B | Approved post-release abstractions | COMPLETE — 별도로 승인된 P13-001/002/003만 구현·검증. 다른 후보 미구현. |
 | P14A | Fourth-game rules & architecture planning | COMPLETE / DECISION GATE READY — CITY_ROLE 문서 후보와70개 OPEN decision, runtime 변경 없음. |
-| P14B | CITY_ROLE final rules / protocol / IP consistency gate | NOT STARTED — 사용자 decisions 확정 후 일관성 감사. Domain 구현 승인 아님. |
+| P14B | CITY_ROLE final rules / protocol / IP consistency gate | COMPLETE / DOMAIN READY — 70 decisions + E01–03 + exact60-card 사용자 승인, Classic 직접 대조 및 final audit. Runtime 구현 없음. |
+| P15A | CITY_ROLE pure domain implementation | NOT STARTED — 사용자 별도 요청 후 승인된 CITY 규칙과 dataset만으로 진행. |
 
 ## 3. P0 — Current-state analysis and transition design
 
