@@ -276,9 +276,9 @@ playerId ──────────> zero, one, or policy가 허용한 activ
 binding ───────────> connectionGeneration and presenceVersion
 ```
 
-raw `sessionToken`은 직접 credential response에서만 client에 전달하고 server에는 가능하면 hash만 저장한다. MVP browser client는 bound credential을 `sessionStorage`에 저장하며 URL, snapshot, 일반 event와 application log에는 넣지 않는다. bound session은 Room이 server memory에 존재하는 동안 유효하고 explicit leave 또는 Room cleanup에서 종료하며 별도 absolute expiry를 두지 않는다.
+raw `sessionToken`은 직접 credential response에서만 client에 전달하고 server에는 가능하면 hash만 저장한다. browser client는 활성 tab의 bound credential을 `sessionStorage`에 저장하고, 최근 게임의 동일 credential을 `localStorage`에도 보관한다. URL, snapshot, 일반 event와 application log에는 넣지 않는다. bound session은 Room이 server memory에 존재하는 동안 유효하고 explicit leave 또는 Room cleanup에서 종료하며 별도 absolute expiry를 두지 않는다.
 
-Phase 6 web client는 `{ protocolVersion, playerId, credential: { roomCode, sessionToken } }` 형태의 bound Player session을 `sessionStorage`에서 runtime validation한 뒤 사용한다. create/join 전에는 bootstrap credential, `requestId`, command kind와 normalized payload를 별도 pending operation으로 저장하며 성공 ack와 bound session 저장이 확인된 뒤 삭제한다. malformed JSON/schema는 폐기하고, URL Room과 저장된 `roomCode`가 다르면 해당 credential을 자동 전송하지 않는다.
+Web client는 `{ protocolVersion, playerId, credential: { roomCode, sessionToken } }` 형태의 bound Player session을 runtime validation한 뒤 사용한다. tab credential을 우선하며, 해당 Room의 tab credential이 없을 때만 browser backup으로 복원한다. create/join pending operation은 기존처럼 tab-local `sessionStorage`에 남긴다. malformed JSON/schema는 사용하지 않고, URL Room과 저장된 `roomCode`가 다르면 해당 credential을 자동 전송하지 않는다. `session:replaced`는 tab credential을 지우고 tab-local auto-reclaim 차단 표식을 남기며, 다른 primary가 사용하는 browser backup을 삭제하지 않는다. 명시적인 사용자 복귀 버튼만 차단을 해제한다. 상세한 수명과 UX는 [RECONNECT_UX](./RECONNECT_UX.md)에 기록한다.
 
 MVP duplicate connection policy는 `single-primary`다. 각 binding은 server-only `connectionGeneration`을 가지며 새 socket의 resume이 성공하면 generation이 증가하고 이전 socket의 Room/gameplay command 권한이 끝난다. 늦게 도착한 이전 socket의 disconnect가 새 연결의 presence를 offline으로 되돌리거나 reconnect grace/Host policy를 시작하지 못하게 한다.
 
@@ -458,7 +458,7 @@ opaque high-entropy sessionToken
 - nickname이나 room code만으로 기존 Player를 복구하지 않는다.
 - bootstrap credential은 server time 기준 발급 후 5분 미만일 때만 유효하고 만료 시각부터 invalid다.
 - create/join 성공 시 credential은 정확히 한 Room/Player에 bound된다. bound session은 해당 Room이 memory에 존재하는 동안 유효하며 explicit leave 또는 Room cleanup에서 종료하고 MVP absolute expiry는 없다.
-- MVP web client는 bound credential을 `sessionStorage`에 저장한다. 같은 tab의 refresh와 일시 단절은 복구할 수 있지만 tab/browser session 종료 뒤 복구는 보장하지 않는다.
+- Web client는 tab-isolated credential과 최근 게임의 browser-persistent backup을 사용한다. 같은 origin에 저장 정보와 server Room이 남아 있으면 refresh와 tab 재열기 후 복원할 수 있다. browser가 저장 정보를 지우거나 차단하는 경우, 다른 기기, server restart는 복구 보장 밖이다.
 
 ### 8.2 Resume flow
 
@@ -928,7 +928,7 @@ https://game.example/
 - production web dist는 compiled server module에서 상대적으로 계산해 process working directory에 의존하지 않는다. directory와 `index.html`이 없으면 application runtime을 시작하기 전에 fail-fast한다.
 - 동일 origin을 기본으로 해 production CORS와 credential 복잡도를 줄인다.
 - 동일 origin이어도 Socket.IO handshake의 `Origin`을 request `Host`와 exact scheme/host origin으로 검증한다. cross-origin browser handshake는 거절하며 Origin이 없는 non-browser client는 기존 session/protocol 인증을 계속 적용한다.
-- MVP credential 저장소는 `sessionStorage`다. 향후 cookie 방식으로 변경한다면 `HttpOnly`, `Secure`, `SameSite`와 CSRF 방어를 별도 보안 결정으로 함께 확정한다.
+- Credential 저장은 `sessionStorage` + 최근 게임 `localStorage` backup이다. 둘 다 same-origin JavaScript에서 접근 가능한 bearer credential 저장소이므로 XSS로부터 보호해야 한다. 향후 cookie 방식으로 변경한다면 `HttpOnly`, `Secure`, `SameSite`와 CSRF 방어를 별도 보안 결정으로 함께 확정한다.
 - Railway reverse proxy 뒤에서 secure cookie나 IP 기반 rate limit을 사용할 때는 알려진 proxy hop에만 맞춘 정확한 Express `trust proxy` 설정을 사용한다.
 - client bundle에 server secret이나 private environment variable을 주입하지 않는다.
 - shared wire contract에 `protocolVersion`을 두고 deploy 뒤 열린 구형 tab이 호환되지 않으면 명시적 reload/update UX로 처리한다.

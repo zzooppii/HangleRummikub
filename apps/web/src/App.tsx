@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION } from "@hangul-rummikub/shared";
+import { ReconnectBoundary } from "./features/platform/ReconnectBoundary.js";
 
 import { useLobbyApp } from "./app/use-lobby-app.js";
 import { PlayingScreen } from "./features/game/PlayingScreen.js";
@@ -189,12 +189,17 @@ export function App() {
   const app = useLobbyApp();
   const connection = connectionPresentation(app.connectionState);
   const connectionLabel = app.operationLabel ?? connection.label;
+  const recovery = {
+    visible: app.snapshot !== null && app.reconnectNeeded && !app.sessionReplaced && app.snapshotIncompatibility === null,
+    pending: app.resumePending,
+    onReconnect: app.reconnect,
+  };
 
   if (app.snapshotIncompatibility !== null) {
     return (
-      <div data-protocol-version={PROTOCOL_VERSION}>
+      <ReconnectBoundary {...recovery}>
         <IncompatibleSnapshotScreen onGoHome={app.goHome} />
-      </div>
+      </ReconnectBoundary>
     );
   }
 
@@ -212,15 +217,15 @@ export function App() {
 
     if (roomView.kind === "INCOMPATIBLE") {
       return (
-        <div data-protocol-version={PROTOCOL_VERSION}>
+        <ReconnectBoundary {...recovery}>
           <IncompatibleSnapshotScreen onGoHome={app.goHome} />
-        </div>
+        </ReconnectBoundary>
       );
     }
 
     if (roomView.kind === "PLAYING") {
       return (
-        <div data-protocol-version={PROTOCOL_VERSION}>
+        <ReconnectBoundary {...recovery}>
           <PlayingRoute
             snapshot={roomView.snapshot}
             connectionState={app.connectionState}
@@ -238,13 +243,13 @@ export function App() {
             onLeaveRoom={app.leaveRoom}
             onGoHome={app.goHome}
           />
-        </div>
+        </ReconnectBoundary>
       );
     }
 
     if (roomView.kind === "FINISHED") {
       return (
-        <div data-protocol-version={PROTOCOL_VERSION}>
+        <ReconnectBoundary {...recovery}>
           <FinishedScreen
             snapshot={roomView.snapshot}
             connectionLabel={connectionLabel}
@@ -255,13 +260,13 @@ export function App() {
             onLeaveRoom={app.leaveRoom}
             onGoHome={app.goHome}
           />
-        </div>
+        </ReconnectBoundary>
       );
     }
 
     if (roomView.kind === "NUMBER_TILE_PLAYING") {
       return (
-        <div data-protocol-version={PROTOCOL_VERSION}>
+        <ReconnectBoundary {...recovery}>
           <NumberTilePlayingRoute
             snapshot={roomView.snapshot}
             connectionState={app.connectionState}
@@ -282,13 +287,13 @@ export function App() {
             onLeaveRoom={app.leaveRoom}
             onGoHome={app.goHome}
           />
-        </div>
+        </ReconnectBoundary>
       );
     }
 
     if (roomView.kind === "NUMBER_TILE_FINISHED") {
       return (
-        <div data-protocol-version={PROTOCOL_VERSION}>
+        <ReconnectBoundary {...recovery}>
           <NumberTileFinishedScreen
             snapshot={roomView.snapshot}
             connectionLabel={connectionLabel}
@@ -299,7 +304,7 @@ export function App() {
             onLeaveRoom={app.leaveRoom}
             onGoHome={app.goHome}
           />
-        </div>
+        </ReconnectBoundary>
       );
     }
 
@@ -312,7 +317,7 @@ export function App() {
         app.operationLabel === null && selfState?.forfeited === false &&
         roomView.snapshot.game.turn.activePlayerId === roomView.snapshot.self.playerId;
       return (
-        <div data-protocol-version={PROTOCOL_VERSION}>
+        <ReconnectBoundary {...recovery}>
           <GemCardPlayingScreen
             snapshot={roomView.snapshot}
             connectionLabel={connectionLabel}
@@ -333,13 +338,13 @@ export function App() {
             onLeaveRoom={app.leaveRoom}
             onGoHome={app.goHome}
           />
-        </div>
+        </ReconnectBoundary>
       );
     }
 
     if (roomView.kind === "GEM_CARD_FINISHED") {
       return (
-        <div data-protocol-version={PROTOCOL_VERSION}>
+        <ReconnectBoundary {...recovery}>
           <GemCardFinishedScreen
             snapshot={roomView.snapshot}
             actionFeedback={app.gemActionFeedback}
@@ -351,7 +356,7 @@ export function App() {
             onLeaveRoom={app.leaveRoom}
             onGoHome={app.goHome}
           />
-        </div>
+        </ReconnectBoundary>
       );
     }
 
@@ -373,7 +378,7 @@ export function App() {
         : snapshotControl;
 
     return (
-      <div data-protocol-version={PROTOCOL_VERSION}>
+      <ReconnectBoundary {...recovery}>
         <LobbyScreen
           snapshot={app.snapshot}
           invitationUrl={invitationUrl}
@@ -389,7 +394,7 @@ export function App() {
           onLeaveRoom={app.leaveRoom}
           onGoHome={app.goHome}
         />
-      </div>
+      </ReconnectBoundary>
     );
   }
 
@@ -404,8 +409,11 @@ export function App() {
     (app.connectionState === "CONNECTED" ? null : connection.label);
 
   return (
-    <div data-protocol-version={PROTOCOL_VERSION}>
+    <ReconnectBoundary {...recovery}>
       <HomeScreen
+        savedGame={app.route.kind !== "ROOM" || app.savedGame?.roomCode === app.route.roomCode ? app.savedGame : null}
+        resumePending={app.resumePending}
+        onReconnect={app.reconnect}
         nickname={app.nickname}
         roomCodeInput={app.roomCodeInput}
         invitationRoomCode={
@@ -422,6 +430,6 @@ export function App() {
         onJoinRoom={app.joinRoom}
         onGoHome={app.goHome}
       />
-    </div>
+    </ReconnectBoundary>
   );
 }

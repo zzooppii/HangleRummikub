@@ -33,7 +33,7 @@ server는 `PORT` 환경 변수가 있으면 해당 port를 사용하고, 없으�
 9. active Player가 시간을 넘기면 server timer가 penalty를 적용하고 다음 Turn으로 진행하는지 확인한다.
 10. disconnect/resume, explicit leave/forfeit와 FINISHED result 화면을 확인한다. active Player tab을 새로고침하면 session은 resume되지만 미제출 TurnDraft는 폐기된다.
 
-초대 URL은 `/room/{ROOM_CODE}` 형식이며 credential을 포함하지 않는다. 같은 tab의 새로고침 복구 정보는 `sessionStorage`에만 저장되므로 tab/browser session 종료나 server restart 뒤 복구는 보장하지 않는다.
+초대 URL은 `/room/{ROOM_CODE}` 형식이며 credential을 포함하지 않는다. 활성 tab의 credential은 `sessionStorage`로 분리하고, 최근 게임의 복귀 정보는 같은 origin의 `localStorage`에도 저장한다. 저장 정보가 남아 있으면 새로고침·tab 닫기/열기 뒤 Home의 **진행 중인 게임 → 다시 접속하기**로 기존 자리에 복귀할 수 있다. 다른 기기에서 nickname만으로 자리를 복구할 수 없으며, 저장소 삭제/차단이나 server restart 뒤 복구는 보장하지 않는다. 자세한 동작과 제한은 [재접속 UX](./docs/RECONNECT_UX.md)를 참고한다.
 
 TurnDraft의 rack/Board 편집은 해당 tab 메모리에서만 동작한다. 모든 canonical mutation과 deadline 판정은 server가 수행한다.
 

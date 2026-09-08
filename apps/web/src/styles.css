@@ -1927,3 +1927,11 @@ button.game-tile:hover:not(:disabled) {
     transition-duration: 0.01ms !important;
   }
 }
+/* Recovery belongs to the platform, not a game renderer. Visible only offline;
+   bottom placement leaves Number's mobile turn HUD intact. */
+.room-recovery-active { padding-bottom: calc(180px + env(safe-area-inset-bottom, 0px)); }
+.room-recovery-notice { position: fixed; z-index: 70; inset: auto 0 0; padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); display: grid; gap: 6px; background: #fff4df; color: #44361e; border-top: 2px solid #b37724; box-shadow: 0 -3px 12px #0002; }
+.room-recovery-notice p { margin: 0; font-weight: 700; }
+.room-recovery-notice button { min-height: 44px; }
+.saved-game-entry { display: grid; gap: 8px; }
+.saved-game-entry h2, .saved-game-entry p { margin: 0; }

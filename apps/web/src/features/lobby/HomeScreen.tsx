@@ -6,6 +6,7 @@ import {
 import { useState, type FormEvent } from "react";
 
 import { limitNicknameInput } from "../../lib/nickname-input.js";
+import { MISSING_RESUME_CREDENTIAL, type SavedGameEntry } from "../../lib/saved-game.js";
 import {
   DEFAULT_SELECTED_GAME_TYPE,
   GAME_CATALOG,
@@ -25,6 +26,9 @@ export type HomeScreenProps = Readonly<{
   onCreateRoom: (gameType: GameType) => void;
   onJoinRoom: () => void;
   onGoHome: () => void;
+  savedGame?: SavedGameEntry | null;
+  resumePending?: boolean;
+  onReconnect?: () => void;
 }>;
 
 export function HomeScreen(props: HomeScreenProps) {
@@ -60,6 +64,20 @@ export function HomeScreen(props: HomeScreenProps) {
           {props.connectionLabel}
         </span>
       </header>
+
+      {props.savedGame ? (
+        <section className="entry-card saved-game-entry" aria-labelledby="saved-game-heading">
+          <h2 id="saved-game-heading">진행 중인 게임</h2>
+          <p>{GAME_CATALOG.find(game => game.gameType === props.savedGame?.gameType)?.displayName ?? "저장된 게임"}</p>
+          <strong>ROOM {props.savedGame.roomCode}</strong>
+          <p className="field-help">이 브라우저에 저장된 정보로 기존 자리에 접속합니다. 종료된 방은 복구할 수 없습니다.</p>
+          <button className="primary-button" type="button" disabled={props.resumePending} onClick={props.onReconnect}>
+            {props.resumePending ? "연결 복원 중..." : "다시 접속하기"}
+          </button>
+        </section>
+      ) : props.invitationRoomCode !== null ? (
+        <p className="notice" role="status">{MISSING_RESUME_CREDENTIAL} 닉네임만으로 기존 자리에 접속할 수 없습니다. 새 참가는 대기실에서만 가능합니다.</p>
+      ) : null}
 
       <section className="entry-card" aria-labelledby="entry-heading">
         <div className="section-heading">

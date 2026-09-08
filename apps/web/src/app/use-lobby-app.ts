@@ -56,6 +56,11 @@ import {
 } from "../lib/realtime-client.js";
 import { createRequestId } from "../lib/request-id.js";
 import {
+  browserSavedGameStorage,
+  MISSING_RESUME_CREDENTIAL,
+  type SavedGameEntry,
+} from "../lib/saved-game.js";
+import {
   createOrReuseNumberDrawCommand,
   createOrReuseNumberPassCommand,
   createOrReuseNumberSubmitCommand,
@@ -84,13 +89,10 @@ import {
 } from "../lib/room-url.js";
 import {
   clearPendingRoomOperation,
-  clearStoredPlayerSession,
   createPendingRoomCreateOperation,
   createPendingRoomJoinOperation,
   readPendingRoomOperation,
-  readStoredPlayerSessionForRoom,
   writePendingRoomOperation,
-  writeStoredPlayerSession,
   type PendingRoomOperation,
 } from "../lib/session-storage.js";
 import {
@@ -179,6 +181,10 @@ export type LobbyAppState = Readonly<{
   compatibleSnapshot: CompatibleWebSnapshot | null;
   snapshotIncompatibility: SnapshotIncompatibility | null;
   connectionState: RealtimeConnectionState;
+  savedGame: SavedGameEntry | null;
+  reconnectNeeded: boolean;
+  resumePending: boolean;
+  reconnect: () => void;
   operationLabel: string | null;
   errorMessage: string | null;
   copyMessage: string | null;
@@ -295,6 +301,11 @@ export function useLobbyApp(): LobbyAppState {
   const [connectionState, setConnectionState] =
     useState<RealtimeConnectionState>("CONNECTING");
   const [operationLabel, setOperationLabel] = useState<string | null>(null);
+  const [savedGame, setSavedGame] = useState<SavedGameEntry | null>(() =>
+    typeof window === "undefined" ? null : browserSavedGameStorage().entry(),
+  );
+  const [reconnectNeeded, setReconnectNeeded] = useState(false);
+  const [resumePending, setResumePending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [sessionReplaced, setSessionReplaced] = useState(false);
@@ -325,6 +336,7 @@ export function useLobbyApp(): LobbyAppState {
   const pendingRetryRequestedRef = useRef(false);
   const resumeFlightRef = useRef<Promise<void> | null>(null);
   const resumeRetryRequestedRef = useRef(false);
+  const savedGameStorageRef = useRef(browserSavedGameStorage());
   const syncFlightRef = useRef<Promise<void> | null>(null);
   const syncRetryRequestedRef = useRef(false);
   const gameStartFlightRef = useRef<Promise<void> | null>(null);
@@ -529,7 +541,9 @@ export function useLobbyApp(): LobbyAppState {
     message: string | null,
     navigateHome: boolean,
   ): void {
-    clearStoredPlayerSession(window.sessionStorage);
+    savedGameStorageRef.current.forget(storedSessionForCurrentRoute());
+    setSavedGame(savedGameStorageRef.current.entry());
+    setReconnectNeeded(false);
     clearPendingRoomOperation(window.sessionStorage);
     clearPendingGameStartRequest();
     clearPendingTurnSubmitRequest();
@@ -600,16 +614,14 @@ export function useLobbyApp(): LobbyAppState {
       return null;
     }
 
-    return readStoredPlayerSessionForRoom(
-      window.sessionStorage,
-      currentRoute.roomCode,
-    );
+    return savedGameStorageRef.current.forRoom(currentRoute.roomCode);
   }
 
   function applyOrderedSnapshot(
     compatible: CompatibleWebSnapshot,
     session: BrowserStoredPlayerSession,
   ): SnapshotApplication {
+    if (sessionReplacedRef.current) return "REJECTED";
     const incomingSnapshot = projectRoomSnapshotShell(compatible);
     const incomingLegacySnapshot =
       compatible.kind === "PLATFORM_V2_NUMBER_TILE" ||
@@ -642,6 +654,10 @@ export function useLobbyApp(): LobbyAppState {
       snapshotRef.current,
       incomingSnapshot,
     );
+    if (decision === "APPLY" || decision === "KEEP_EQUAL") {
+      savedGameStorageRef.current.save(session, incomingSnapshot.room.gameType);
+      setSavedGame(savedGameStorageRef.current.entry());
+    }
     switch (decision) {
       case "APPLY":
         if (
@@ -1510,9 +1526,16 @@ export function useLobbyApp(): LobbyAppState {
     };
 
     setOperationLabel("연결 복원 중...");
+    setResumePending(true);
+    setReconnectNeeded(true);
     const flight = (async () => {
       try {
         const acknowledgement = await client.resumeSession(command);
+        // A late ack must not revive a replaced tab or a different route/seat.
+        const activeSession = storedSessionForCurrentRoute();
+        if (sessionReplacedRef.current || clientRef.current !== client ||
+          activeSession?.playerId !== session.playerId ||
+          activeSession.credential.sessionToken !== session.credential.sessionToken) return;
         if (!acknowledgement.ok) {
           if (isStaleSessionError(acknowledgement.error)) {
             handleStaleSession();
@@ -1527,6 +1550,7 @@ export function useLobbyApp(): LobbyAppState {
           acknowledgement.data.snapshot,
           session,
         );
+        if (application !== "REJECTED" && client.connected) setReconnectNeeded(false);
         if (application === "CURRENT") {
           setErrorMessage(null);
         } else if (application === "REQUEST_SYNC") {
@@ -1543,6 +1567,7 @@ export function useLobbyApp(): LobbyAppState {
     } finally {
       if (resumeFlightRef.current === flight) {
         resumeFlightRef.current = null;
+        setResumePending(false);
         setOperationLabel(null);
       }
     }
@@ -1602,10 +1627,9 @@ export function useLobbyApp(): LobbyAppState {
     discardGemEditor();
     clearNumberActionFeedbackState();
 
-    const sessionStored = writeStoredPlayerSession(
-      window.sessionStorage,
-      nextSession,
-    );
+    const sessionStored = savedGameStorageRef.current.save(nextSession, nextSnapshot.room.gameType);
+    setSavedGame(savedGameStorageRef.current.entry());
+    setReconnectNeeded(false);
     if (sessionStored) {
       clearPendingRoomOperation(window.sessionStorage);
     }
@@ -1795,7 +1819,8 @@ export function useLobbyApp(): LobbyAppState {
     }
 
     const pending = readPendingRoomOperation(window.sessionStorage);
-    if (pending !== null && pendingMatchesRoute(pending, routeRef.current)) {
+    if (pending !== null && pendingMatchesRoute(pending, routeRef.current) &&
+      storedSessionForCurrentRoute() === null) {
       setNicknameState(pending.payload.nickname);
       if (pending.kind === "room:join") {
         setRoomCodeInputState(pending.payload.roomCode);
@@ -1907,6 +1932,8 @@ export function useLobbyApp(): LobbyAppState {
 
     const unsubscribeConnection = client.subscribeConnectionState((state) => {
       setConnectionState(state);
+      if (state !== "CONNECTED" && state !== "SESSION_REPLACED" &&
+        storedSessionForCurrentRoute() !== null) setReconnectNeeded(true);
     });
     const unsubscribeConnected = client.subscribeTransportConnected(() => {
       void recoverAfterTransportConnection();
@@ -1954,7 +1981,10 @@ export function useLobbyApp(): LobbyAppState {
       setSessionReplaced(true);
       setOperationLabel(null);
       setErrorMessage(null);
-      clearStoredPlayerSession(window.sessionStorage);
+      savedGameStorageRef.current.replaced();
+      setSavedGame(savedGameStorageRef.current.entry());
+      setReconnectNeeded(false);
+      setResumePending(false);
       clearPendingRoomOperation(window.sessionStorage);
       clearPendingGameStartRequest();
       clearPendingTurnSubmitRequest();
@@ -2031,10 +2061,27 @@ export function useLobbyApp(): LobbyAppState {
       }
     };
 
+    const refreshSavedEntry = () => setSavedGame(savedGameStorageRef.current.entry());
+    const recoverOnWake = () => {
+      if (document.visibilityState === "hidden" || sessionReplacedRef.current ||
+        snapshotIncompatibilityRef.current !== null) return;
+      refreshSavedEntry();
+      // Connected sockets already have a primary; waking alone is not a resume.
+      if (!client.connected) client.connect();
+    };
+    refreshSavedEntry();
+    window.addEventListener("storage", refreshSavedEntry);
+    window.addEventListener("online", recoverOnWake);
+    window.addEventListener("pageshow", recoverOnWake);
+    document.addEventListener("visibilitychange", recoverOnWake);
     window.addEventListener("popstate", handlePopState);
     client.connect();
 
     return () => {
+      window.removeEventListener("storage", refreshSavedEntry);
+      window.removeEventListener("online", recoverOnWake);
+      window.removeEventListener("pageshow", recoverOnWake);
+      document.removeEventListener("visibilitychange", recoverOnWake);
       window.removeEventListener("popstate", handlePopState);
       unsubscribeConnection();
       unsubscribeConnected();
@@ -2131,6 +2178,11 @@ export function useLobbyApp(): LobbyAppState {
 
     setNicknameState(nicknameResult.value);
     setRoomCodeInputState(roomCodeResult.value);
+    if (savedGameStorageRef.current.forRoom(roomCodeResult.value) !== null) {
+      navigateToRoom(roomCodeResult.value);
+      reconnect();
+      return;
+    }
     runEntryAction(() =>
       startJoinRoom(nicknameResult.value, roomCodeResult.value),
     );
@@ -2597,6 +2649,8 @@ export function useLobbyApp(): LobbyAppState {
     const negotiationWasRejected =
       snapshotIncompatibilityRef.current === "NEGOTIATION_REJECTED";
     updateSnapshot(null);
+    setReconnectNeeded(false);
+    setSavedGame(savedGameStorageRef.current.entry());
     clearSnapshotIncompatibility();
     clearPendingGameStartRequest();
     clearPendingTurnSubmitRequest();
@@ -2619,6 +2673,32 @@ export function useLobbyApp(): LobbyAppState {
     }
   }
 
+  function reconnect(): void {
+    if (resumeFlightRef.current !== null || entryFlightRef.current !== null || entryActionActiveRef.current ||
+      snapshotIncompatibilityRef.current !== null) return;
+    const currentRoute = routeRef.current;
+    const roomCode = currentRoute.kind === "ROOM" ? currentRoute.roomCode :
+      savedGameStorageRef.current.entry()?.roomCode;
+    if (roomCode === undefined || savedGameStorageRef.current.select(roomCode) === null) {
+      setErrorMessage(MISSING_RESUME_CREDENTIAL);
+      return;
+    }
+    const client = clientRef.current;
+    if (client === null) return;
+    if (sessionReplacedRef.current) {
+      sessionReplacedRef.current = false;
+      setSessionReplaced(false);
+      client.resetSessionReplacement();
+    }
+    navigateToRoom(roomCode);
+    setErrorMessage(null);
+    setReconnectNeeded(true);
+    // Also replace half-open mobile transports whose socket still says connected.
+    // The connected subscription resumes the existing credential exactly once.
+    if (client.connected) client.disconnect();
+    client.connect();
+  }
+
   return {
     route,
     nickname,
@@ -2626,7 +2706,11 @@ export function useLobbyApp(): LobbyAppState {
     snapshot,
     compatibleSnapshot,
     snapshotIncompatibility,
-    connectionState,
+    connectionState: reconnectNeeded && connectionState === "CONNECTED" ? "RECONNECTING" : connectionState,
+    savedGame,
+    reconnectNeeded,
+    resumePending,
+    reconnect,
     operationLabel,
     errorMessage,
     copyMessage,
