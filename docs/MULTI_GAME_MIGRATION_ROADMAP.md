@@ -1,6 +1,6 @@
 # Multi-game Platform Migration Roadmap
 
-> 상태: P11C SOURCE COMPLETE / P12 SOURCE GATE PASS / RAILWAY DEPLOYMENT PENDING USER ACTION
+> 상태: P11C SOURCE COMPLETE / P12 SOURCE GATE PASS / PUBLIC VERIFICATION BLOCKED (remaining browser checks)
 > 작성일: 2026-09-07
 > 기준선: `hangul-game-v1` / `abbfbb9`  
 > 원칙: 각 Phase는 앞 Phase의 Definition of Done을 만족한 뒤 별도 작업으로 시작한다.
@@ -1257,7 +1257,7 @@ Multi-game Platform P11C만 수행하라. docs/MULTI_GAME_MIGRATION_ROADMAP.md�
 
 **P12 SOURCE GATE PASS / RAILWAY DEPLOYMENT PENDING USER ACTION**. Baseline `55d20ec` 1,183 tests에서 raw three-game regression 19개를 추가하여 1,202 PASS(shared91/Web265/server846), typecheck/build/diff-check 및 production-serving 6/6을 통과했다. 실제 local production-build에서 세 게임 A/B setup/actions/resume, Number desktop drag/mobile tap/forced disconnect/Home resume, GEM tutorial/Guide/basic-first market 및 reserved purchase를 확인했다. Production source/rules/dependency 변경 없음.
 
-이 문서의 이전 `P12 NOT STARTED`/후속 후보 문구는 각 과거 checkpoint 기록이며 현재 상태는 본 절이 우선한다. Public release에는 사용자 최신 commit 배포·1 Replica 확인 뒤 public 3게임/WSS/privacy/reconnect 검증이 남아 있다. P12 COMPLETE, release tag, P13은 아직 진행하지 않는다. 상세 matrix/한계/수동 checklist: [THREE_GAME_PLATFORM_RELEASE_GATE.md](./THREE_GAME_PLATFORM_RELEASE_GATE.md).
+위 단락은 최초 source gate 기록이다. 이후 Number focus-layout fix `db0e6c6`에서 1,215 tests가 통과했고, 사용자가 배포한 해당 Active commit/1 Replica를 Dashboard에서 직접 확인했다. 현재 public raw 세 게임과 일부 browser smoke는 PASS지만, 실제 Web handshake/GEM UI 등 남은 browser checks는 확인창 자동화 제한으로 **PUBLIC VERIFICATION BLOCKED**다. 이전 NOT STARTED/deployment pending 문구는 historical checkpoint로 구분한다. P12 COMPLETE, release tag, P13은 아직 진행하지 않는다. 정확한 검증/미검증/한계는 [THREE_GAME_PLATFORM_RELEASE_GATE.md §9](./THREE_GAME_PLATFORM_RELEASE_GATE.md#9-public-railway-verification--2026-09-08)를 따른다.
 
 ### 목표
 

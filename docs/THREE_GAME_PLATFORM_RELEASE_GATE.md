@@ -1,9 +1,9 @@
 # P12 — Three-game platform release gate
 
-> 2026-09-08 · **P12 SOURCE GATE PASS / RAILWAY DEPLOYMENT PENDING USER ACTION**
-> Phase A (source/local runtime)와 Phase B (latest public deployment)를 분리한다. 아직 `P12 COMPLETE` 또는 `THREE-GAME PLATFORM V1 VERIFIED`가 아니다.
+> 2026-09-08 · **P12 SOURCE GATE PASS / PUBLIC VERIFICATION BLOCKED (browser checks incomplete)**
+> Phase A (source/local runtime)와 Phase B (latest public deployment)를 분리한다. 현재 public 결과는 §9를 따른다. 이전 절의 pending 문구는 당시 checkpoint 기록이다.
 
-> **Current release target update:** `b949463`은 아래 최초 source gate의 historical checkpoint이며 더 이상 최종 deployment target이 아니다. §8의 Number blocker fix를 포함하는 최신 `master` (`fix: allow flexible number tile rearrangement`)를 배포해야 한다. 정확한 새 HEAD는 해당 fix 완료 보고와 Git history에서 확인한다. Railway/public verification은 아직 시작하지 않았다.
+> **Current runtime release:** `db0e6c638835dc8164236fc3841f4f3a88db6054` — `fix: allow flexible number tile rearrangement`. `b949463`은 historical source checkpoint다. 사용자가 새 runtime을 배포했으며 §9에서 Active deployment identity와 1 Replica를 직접 확인했다.
 
 ## 1. Checkpoint and scope
 
@@ -167,3 +167,54 @@ Tag `three-game-platform-v1` is **not applicable yet**. Create/push only after e
 - Railway 배포/설정 변경 및 public verification 없음. 사용자는 새 latest commit을 Deploy Latest Commit하고 Active exact hash/1 Replica를 확인한 뒤 P12 public verification을 진행한다. Redeploy 시 기존 in-memory Room/Game/session 손실, 기존 탭 refresh 필요성을 유지한다. Release tag/P13은 아직 진행하지 않는다.
 
 **P12 SOURCE GATE PASS + NUMBER RELEASE BLOCKER FIXED / RAILWAY DEPLOYMENT PENDING USER ACTION**.
+
+## 9. Public Railway verification — 2026-09-08
+
+### Deployment evidence and scope
+
+- Verified runtime: `db0e6c638835dc8164236fc3841f4f3a88db6054`, `fix: allow flexible number tile rearrangement`, GitHub `master`.
+- **CODEX_VERIFIED** in Railway Dashboard Details: Active deployment `96774d76-4762-4e9a-8349-d351a376f514` links to the exact full GitHub commit above; `Deployment successful`; Number of replicas **1**. This is direct Dashboard evidence, not an inference from a healthy URL or the user's deploy action.
+- URL: [public production](https://hanglerummikub-production.up.railway.app). No deployment, scaling, variables, configuration, runtime source, rules, dependency or public debug endpoint was changed by Codex.
+- Deploy Logs showed `Starting Container` at 2026-09-08 15:22:31 GMT+9. The service remained Online during observation. Five independent health probes at 06:29:34–06:30:44 UTC returned **200 `{"ok":true}`**, with no observed raw transport failure. This bounded observation is not a long-term uptime guarantee.
+- Public assets were byte-identical to the clean release build: `index-X9kvMjBj.js` (487521 bytes, SHA256 `8aad660dc1ec0d41fb9390c49c04d421cd5da22485533943876fcba81f3d288c`) and `index-BqbIy0-v.css` (58378 bytes, SHA256 `5ae0430ba2f6613488266d2778b212953b279a18945ba40dfca39dfa47ede4a5`).
+
+### Public raw protocol, gameplay and security
+
+An independent Socket.IO client used the real HTTPS/WSS endpoint and ordinary commands only: **three 2-player Rooms, 212 commands, 141 parsed broadcasts, 8,990 individual predicate/schema/privacy assertions**. These are smoke assertions, not 8,990 new repository tests. Test credentials stayed in memory and were not saved or logged.
+
+| Game | Public results |
+| --- | --- |
+| Hangul legacy | Both capability fields omitted; create/join/start/Draw/resume remained flat V1 without snapshotVersion/gameType. Racks14/14, bags81/47, turn60s; consonant Draw → actor15, bags80/47, revision1 |
+| Number | V2 NUMBER_TILE, racks14/14, pool78, turn90s; Draw → actor15/pool77/revision1; exact game/rack/turn/deadline restored on resume |
+| GEM | V2 GEM_CARD, market9, each tier remaining deck12, basic supply7 each/PRISM5, turn45s. Natural Reserve + five Collects (basic and PRISM) + market and reserved Purchase reached revision8; refill/payment/ownership/discount/score checked, then exact resume |
+
+- All three: same-player Lobby resume, single-primary replacement, old primary UNAUTHENTICATED, wrong/missing token and nickname-only admission rejected. Non-host and offline start rejected; join extra gameType rejected. H/N Draw replay adds no mutation; changed payload under a reused request ID rejected.
+- All **20 foreign-game action cases** rejected without changing projected room/game/self/versions. Twelve existing Hangul/Number router guards return structured `INTERNAL_ERROR`; eight return capability errors. These expected wrong-game responses are not normal-flow runtime crashes. All **27 incompatible admission cases** also rejected.
+- H/N: own physical rack details only, opponent rackCount only; bag/pool count only. GEM: exact public resources/reserves/purchased cards permitted; future deck IDs absent (36 initially, 34 after purchases), deck projection only tier/slots/count. No credential/storage/idempotency/scheduler/offline-streak data in snapshots.
+- Six ordinary leave commands succeeded. All three raw games became FINISHED and former credentials failed resume. `roomClosed:false` reflects normal retention; Rooms were **not** administratively deleted. Public snapshot comparisons verify observable atomicity, not inspection of private canonical storage/scheduler internals.
+
+### Public browser evidence collected
+
+- Home in separate Chrome profiles and the in-app browser: exactly 한글 타일 게임 / 숫자 타일 게임 / 보석 카드 게임. No placeholder fourth game; invitation path remains `/room/{code}` without gameType.
+- Chrome Hangul A/B: actual create/direct invitation join/host start, two players/racks14, bags81/47; B Draw → rack15/bags80/47; refresh resumes the same seat/rack with two players. 390/320 document widths stayed within viewport. Opponent UI shows counts only.
+- Number in-app Web + independent raw B: actual create/start; natural R12/B12/K12 GROUP =36 initial points, **Submit succeeded** (rack14→11, revision0→1). B Draw → pool77/revision2; Web A Draw → rack12/pool76/revision3.
+- At 320px, Web A placed K7/B6 into a two-tile incomplete destination, selected canonical R12, then tapped the **whole destination button**. R12 moved into the destination even though the resulting meld was invalid; Undo restored the previous two-tile state and Reset restored the canonical GROUP. Invalid final Submit remained disabled. This verifies public intermediate editing, not the exact R2/B2/K2 natural deal. That exact A/B/C case remains covered by §8 regression fixtures/tests.
+- Number 390/320: fixed 80px turn HUD, one readable countdown, 40×52 public Table tiles, Rack wrapping with equal client/scroll width (339/339 at390, 269/269 at320), no document horizontal overflow. Board-centric layout, compact CSS, direct placement, whole-meld destination, sort controls and actions are deployed. The exact CSS asset equality also includes the `.active`-only helper fix, not the old `:focus-within` condition.
+- Number refresh, tab close→Home `진행 중인 게임`→`다시 접속하기`: same two players, gameRevision3/turn4/deadline1788849465700, pool76, racks12/15 and one canonical meld retained. The independent companion observed only presence2→3→4→5→6, not a new player. Companion normal leave ended the game as LAST_PLAYER_STANDING.
+- No natural Number Joker occurred in this browser deal. Colorless GROUP/unordered unique RUN/free role-change/conservation are preserved by the exact deployed bundle and the existing automated regressions; no public fixture/state manipulation was used to manufacture Joker cases.
+- Normal Hangul app console had no app-origin errors/schema/reconnect warnings. Chrome's installed MetaMask content script emitted MaxListenersExceeded/ObjectMultiplex warnings; these are explicitly **not** reported as zero total browser warnings or hidden as application errors. Number in-app normal-flow warn/error log was empty.
+
+### Remaining browser checks and limitations
+
+- Native leave confirmation handling stalled the automation in Chrome and the in-app browser. Tab-scoped input timed out; no source code was changed to bypass a confirmation. The user was asked to dismiss/approve those test-only dialogs. Native Chrome inspection was also stopped when it would have read an unrelated private foreground window.
+- Actual current-Web handshake frame inspection (rather than bundle/source inference), GEM tutorial/Guide/affordability/viewport UI checks, and final browser cleanup are still pending here. The raw client advertised the correct capabilities, but that is not itself proof of the browser's actual handshake. Update this subsection only after direct evidence.
+- Physical phone sound loudness, notch/OS background behavior and user-device review remain manual. Keep process-memory-only, redeploy Room/Game/session loss, 1 Replica, no durable DB/accounts or cross-device recovery credential, and Hangul `test-dictionary-v1`/30 words limitations.
+- No release tag created; existing `three-game-platform-v1` tag was absent. Do not claim TAG_READY or P12 COMPLETE until remaining functional verification is resolved.
+
+### Current verdict
+
+Final automated verification was repeated after the public-results documentation changes: root `npm run typecheck`, `npm test` (**1,215/1,215** = shared91/Web276/server848), `npm run build`, and `git diff --check` PASS. The independent same-runtime verification also passed P12 raw **19/19** and production-serving **6/6**. No new repository tests, deleted/skipped tests, runtime/rule/shared/wire/dependency changes. An initial sandbox-only localhost `listen EPERM` run failed and was rerun unchanged with the required local-listener permission; the final approved runs passed. A final additional public health probe returned 200 `{"ok":true}`.
+
+**BLOCKED — incomplete browser verification, not an observed gameplay/server regression.** Deployment identity/1 Replica, raw three-game protocol/security/actions/resume and the browser evidence above are verified. Actual Web handshake inspection, remaining GEM UI/Guide/affordability/390/320 checks and Number desktop public inspection must continue after the test confirmation dialogs are cleared. Do not substitute raw checks or exact asset identity for those unperformed UI/network observations.
+
+The six raw players and Number companion explicitly left. Browser Number is FINISHED; its own leave confirmation remains unresolved, so its remaining record uses normal retention. Chrome Hangul test clients also need their pending dialog/leave cleanup; no administrative deletion or retention change was attempted. No P13 or new feature work started. The public runtime target remains `db0e6c6`; this documentation-only status checkpoint does not require another runtime deployment.
