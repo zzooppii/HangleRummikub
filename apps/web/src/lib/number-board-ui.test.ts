@@ -92,7 +92,7 @@ test("Number-only board styles preserve mobile targets, focus, nonsticky large r
   assert.match(css, /@media \(max-width:600px\)/);
   assert.match(css, /width:40px; min-width:40px; min-height:52px/);
   assert.match(css, /button:focus-visible/);
-  assert.match(css, /\.number-meld-group:focus-within \.number-meld-helper/);
+  assert.match(css, /\.number-meld-group\.active \.number-meld-helper/);
   assert.match(editor, /조커는 조합당 1개까지 사용할 수 있습니다/);
   assert.match(css, /prefers-reduced-motion:reduce/);
   assert.match(css, /transition:none !important; animation:none !important/);
@@ -117,4 +117,15 @@ test("compact tiles are mobile-only, retain readable numbers and non-overlapping
   assert.match(mobile, /repeat\(auto-fill,minmax\(44px,1fr\)\); gap:4px/);
   assert.match(desktop, /\.number-activate-meld \{[^}]*inset:0;[^}]*min-height:44px/);
   assert.doesNotMatch(mobile, /number-tile-marker|\.number-tile\.joker|border-color:.*(?:d63c45|2f6fd6|e47a1f)/);
+});
+
+test("incomplete/invalid meld help cannot reflow a tap or mouse-drop target on pointer focus", () => {
+  // Pointer-down focuses the target before pointer-up/click. A :focus-within
+  // expansion can repack a short meld underneath the still-pressed pointer.
+  // Reveal help through explicit editor activation, after the move intent.
+  assert.doesNotMatch(css, /\.number-meld-group:focus-within\s+\.number-meld-helper/);
+  assert.match(css, /\.number-meld-group\.active\s+\.number-meld-helper\s*\{\s*display:block/);
+  assert.match(editor, /data-number-drop-meld-index=\{meldIndex\}/);
+  assert.match(editor, /const locked = isMeldLocked\(meldIndex\)/);
+  assert.match(editor, /disabled=\{locked\}/);
 });

@@ -1287,6 +1287,113 @@ test("a valid pool-empty Number Submit resets an earlier Pass from the canonical
   assert.equal(stored.game.table.melds.length, 1);
 });
 
+async function createRunToGroupRearrangementHarness() {
+  const harness = await createStartedHarness();
+  const actorPlayerId = harness.room.game.turn.activePlayerId;
+  const used = new Set<TileId>();
+  const redRun = ([2, 3, 4, 5] as const).map((number) =>
+    requireOrdinaryTileId(harness.room.game, "RED", number, used),
+  );
+  const blue2 = requireOrdinaryTileId(harness.room.game, "BLUE", 2, used);
+  const black2 = requireOrdinaryTileId(harness.room.game, "BLACK", 2, used);
+  const canonicalTable: NumberTileProposedTable = {
+    melds: [{ kind: "RUN", tiles: redRun.map(ordinaryPlacement) }],
+  };
+  const allocated = reallocatePlayingGame(
+    harness.room.game,
+    new Map([[actorPlayerId, [blue2, black2]]]),
+    { poolEmpty: false, table: canonicalTable },
+  );
+  const initialMeldCompleted = new Map(allocated.initialMeldCompleted);
+  initialMeldCompleted.set(actorPlayerId, true);
+  const room = await replacePlayingGame(
+    harness.persistence,
+    harness.room,
+    Object.freeze({ ...allocated, initialMeldCompleted }),
+  );
+  return { harness, room, actorPlayerId, redRun, blue2, black2 };
+}
+
+test("P12 flexible rearrangement: server commits R3/R4/R5 and R2/B2/K2 from canonical R2/R3/R4/R5", async () => {
+  const { harness, room, actorPlayerId, redRun, blue2, black2 } =
+    await createRunToGroupRearrangementHarness();
+  const proposedTable: NumberTileProposedTable = {
+    melds: [
+      { kind: "RUN", tiles: redRun.slice(1).map(ordinaryPlacement) },
+      {
+        kind: "GROUP",
+        tiles: [redRun[0]!, blue2, black2].map(ordinaryPlacement),
+      },
+    ],
+  };
+  const deadlinesBefore = harness.scheduler.deadlines.length;
+  const result = await createSubmitService(harness).submit({
+    roomId: room.roomId,
+    actorPlayerId,
+    requestId: v.parse(RequestIdSchema, "p12-flexible-rearrangement-valid"),
+    expectedGameRevision: room.game.gameRevision,
+    turnId: room.game.turn.turnId,
+    receivedAt: room.game.turn.startedAt,
+    proposedTable,
+    authorization: alwaysCurrent,
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) {
+    throw new Error("Expected the final RUN/GROUP rearrangement to commit.");
+  }
+  assert.equal(result.data.outcome, "ADVANCED");
+  const stored = await harness.persistence.findById(room.roomId);
+  if (
+    stored?.gameType !== NUMBER_TILE_GAME_TYPE ||
+    stored.game === null ||
+    stored.game.turn === null
+  ) {
+    throw new Error("Expected a committed playing Number room.");
+  }
+  assert.deepEqual(stored.game.table, proposedTable);
+  assert.deepEqual(
+    stored.game.racks.get(actorPlayerId),
+    room.game.racks.get(actorPlayerId)!.filter(
+      (tileId) => tileId !== blue2 && tileId !== black2,
+    ),
+  );
+  assert.deepEqual(stored.game.pool, room.game.pool);
+  assert.equal(stored.game.initialMeldCompleted.get(actorPlayerId), true);
+  assert.equal(stored.game.gameRevision, room.game.gameRevision + 1);
+  assert.equal(stored.roomRevision, room.roomRevision);
+  assert.notEqual(stored.game.turn.turnId, room.game.turn.turnId);
+  assert.equal(harness.scheduler.deadlines.length, deadlinesBefore + 1);
+});
+
+test("P12 flexible rearrangement: final two-tile GROUP is rejected without changing room, turn, racks or scheduling", async () => {
+  const { harness, room, actorPlayerId, redRun, blue2, black2 } =
+    await createRunToGroupRearrangementHarness();
+  const deadlinesBefore = [...harness.scheduler.deadlines];
+  const proposedTable: NumberTileProposedTable = {
+    melds: [
+      { kind: "RUN", tiles: redRun.map(ordinaryPlacement) },
+      { kind: "GROUP", tiles: [blue2, black2].map(ordinaryPlacement) },
+    ],
+  };
+  const result = await createSubmitService(harness).submit({
+    roomId: room.roomId,
+    actorPlayerId,
+    requestId: v.parse(RequestIdSchema, "p12-flexible-rearrangement-incomplete"),
+    expectedGameRevision: room.game.gameRevision,
+    turnId: room.game.turn.turnId,
+    receivedAt: room.game.turn.startedAt,
+    proposedTable,
+    authorization: alwaysCurrent,
+  });
+  assert.equal(result.ok, false);
+  if (result.ok) {
+    throw new Error("Expected final incomplete GROUP to be rejected.");
+  }
+  assert.equal(result.error.code, "INVALID_MELD");
+  assert.deepEqual(await harness.persistence.findById(room.roomId), room);
+  assert.deepEqual(harness.scheduler.deadlines, deadlinesBefore);
+});
+
 test("normal Number Submit commits a whole-table RUN rearrangement while table-only Submit stays atomic", async (t) => {
   await t.test("RUN split and bridge", async () => {
     const harness = await createStartedHarness();

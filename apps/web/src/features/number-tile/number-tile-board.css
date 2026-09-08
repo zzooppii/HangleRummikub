@@ -61,7 +61,9 @@
 .number-playing-shell .number-meld-group.empty { min-width:160px; padding:12px 40px 12px 12px; }
 .number-playing-shell .number-meld-group .empty-group-copy { font-size:.72rem; color:#d3ddcb; padding:5px; }
 .number-playing-shell .number-meld-helper { display:none; position:relative; max-width:26ch; margin:8px 2px 2px; color:#f5d9a4; font-size:.7rem; line-height:1.5; pointer-events:none; }
-.number-playing-shell .number-meld-group:focus-within .number-meld-helper { display:block; }
+/* Pointer focus precedes click/drop: keep destination geometry stable until
+   the editor explicitly activates it after processing the move intent. */
+.number-playing-shell .number-meld-group.active .number-meld-helper { display:block; }
 .number-playing-shell .number-remove-empty-meld { position:absolute; z-index:2; right:0; top:0; color:#f2e6cc; font-size:.62rem; padding:4px; }
 .number-playing-shell .number-joker-choice { position:relative; z-index:1; max-width:240px; margin-top:8px; color:#f1dab4; font-size:.7rem; }
 .number-playing-shell .number-joker-choice p { margin:0 0 5px; }

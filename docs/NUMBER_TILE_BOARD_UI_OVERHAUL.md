@@ -15,8 +15,10 @@ P11C at `ff1a792` is preserved; P12 has not started.
   not full-width dashboard cards. Valid status remains accessible without a large
   visible label. Incomplete/invalid groups have a small hint and dashed outline;
   active groups have a restrained outline/dot and an addition label when valid.
-  Focusing/tapping an incomplete or invalid group reveals a concise rule helper
-  locally, without a permanent large error card.
+  Explicitly activating an incomplete or invalid group reveals a concise rule
+  helper locally, without a permanent large error card. The P12 follow-up uses
+  editor `.active` rather than pointer focus, so a destination does not reflow
+  between pointer-down and click/drop (see the release gate follow-up).
 - A sage rack tray wraps vertically. Sorting is still view-only. Strong existing
   number colors, R/B/K/O markers, neutral Joker, exact physical IDs and native
   button labels are retained. A uniquely interpreted RUN Joker can display its

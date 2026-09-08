@@ -3,6 +3,8 @@
 > 2026-09-08 · **P12 SOURCE GATE PASS / RAILWAY DEPLOYMENT PENDING USER ACTION**
 > Phase A (source/local runtime)와 Phase B (latest public deployment)를 분리한다. 아직 `P12 COMPLETE` 또는 `THREE-GAME PLATFORM V1 VERIFIED`가 아니다.
 
+> **Current release target update:** `b949463`은 아래 최초 source gate의 historical checkpoint이며 더 이상 최종 deployment target이 아니다. §8의 Number blocker fix를 포함하는 최신 `master` (`fix: allow flexible number tile rearrangement`)를 배포해야 한다. 정확한 새 HEAD는 해당 fix 완료 보고와 Git history에서 확인한다. Railway/public verification은 아직 시작하지 않았다.
+
 ## 1. Checkpoint and scope
 
 - 시작: `55d20eca423941786776089c84f353e6e5abafa7` — `feat: compact number tiles on mobile`; clean `master === origin/master`.
@@ -129,3 +131,39 @@ Tag `three-game-platform-v1` is **not applicable yet**. Create/push only after e
 - No source release blocker found. Physical-device/audio review and minor cosmetic preferences are separate; missing public deployment identity/replica/smoke prevents P12 COMPLETE.
 
 **P12 SOURCE GATE PASS / RAILWAY DEPLOYMENT PENDING USER ACTION**.
+
+## 8. Release-blocker follow-up — flexible Number rearrangement ordering
+
+### Baseline and reproduction
+
+- 시작 HEAD `b949463429bcc927e4b5d6a6de63749030d6d792`; clean master/origin 일치. Typecheck/build/diff-check와 **1,202/1,202** (shared91/Web265/server846) baseline PASS.
+- 이후 실제 플레이에서 발견된 blocker: canonical `R2 R3 R4 R5`, rack `B2 K2`에서 `B2 → K2 → R2` 순서로 최종 `R3 R4 R5 / R2 B2 K2`를 만드는 조작이 실패했다. 최초 P12 테스트·자연 패 browser 결과는 위에 그대로 보존하며, 그 검증이 모든 hit-target 순서를 포괄했던 것으로 표현하지 않는다.
+- 순수 TurnDraft에서는 A/B/C 세 순서가 수정 전부터 모두 성공했다. Destination eligibility, mobile intent, pointer drop, active meld, normalization을 조사한 결과 classification에 따른 move rejection은 없었다.
+- 실제 390×844 production-mode 컴포넌트의 frozen BEFORE fixture에서 재현: B2/K2 destination은 90×70px이고 pointer-down focus로 `.number-meld-helper`가 펼쳐졌다. Flex packing이 이동하여 pointer-up 위치가 보드 빈 곳으로 해석됐고, R2가 목표 GROUP 대신 별도 세 번째 조합으로 갔다. **원인은 rule permission이 아니라 focus-dependent hit-target geometry**다.
+
+### Minimal fix and preserved boundaries
+
+- Production 변경은 `apps/web/src/features/number-tile/number-tile-board.css`의 도움말 표시 조건 하나다: `:focus-within` → explicit `.active`.
+- 포커스가 클릭/드롭 처리 전에 목적지 layout을 바꾸지 않는다. 도움말은 기존 editor가 move/activation intent를 처리한 후 지정하는 active 조합에서 표시된다. Enter/Space/native button/focus-visible/ARIA status와 전체 조합 target을 보존한다.
+- Empty/1/2-tile, incomplete/invalid intermediate draft는 기존처럼 편집 가능하다. Classification은 feedback/Submit preview이고 move permission이 아니다. 불필요한 draft/controller/domain rewrite 없음.
+- Final Submit의 strict server RuleEngine, initial own-rack-only ≥30, physical IDs/conservation/contribution, forged/private ID reject, canonical Table/Joker-to-Rack 금지, stale/opponent/session lock, colorless GROUP Joker/unordered RUN/free Joker rearrangement 모두 유지한다.
+- Server/shared production diff **0**; protocol/rules/GEM/Hangul/reconnect/audio/dependency 변경 **0**. Server 변경 파일은 regression test뿐이다.
+
+### Regression and actual browser evidence
+
+- 신규 **13 tests**: Web order/invariant tests10, focus-layout regression1, actual server Submit tests2. CSS regression은 수정 전 8/9(신규 case 실패), 수정 후 9/9 PASS. 기존 test 삭제/skip 없음.
+- A `R2→B2→K2`, B `B2→K2→R2`, C `B2→R2→K2`가 동일한 normalized physical Table/payload를 생성한다. 1/2-tile/invalid destination, tap intent, drop operation, Undo/Reset, forged/private identity 및 stale/initial locks를 고정했다.
+- 실제 server application fixture: 정상 final RUN/GROUP commit은 revision+1/next turn/scheduling; final B2/K2 2-tile GROUP은 INVALID_MELD이며 persisted Room와 scheduling unchanged.
+- 실제 local browser **390×844의 동일 tap 좌표**에서 AFTER는 올바른 GROUP으로 이동. **320×568 Order B/C tap 및 Order A keyboard**, **1280×720 mouse drag R2→incomplete B2/K2 전체 조합** PASS. Document horizontal overflow 없음, AFTER browser warn/error 0.
+- Drag 한 번이 history 한 번이며 Undo로 B2/K2 intermediate 상태 정확 복원, Reset으로 canonical RUN/Rack 복원. Intermediate 상태의 Submit 버튼은 계속 disabled.
+- 격리 fixture는 실제 production-mode React Playing screen/hook/serializer/CSS를 bundle했다. 자연 패 Room이 아니라 정확한 regression 패를 제공하는 repo 밖 test harness다. UI Submit은 **변경 없는 built server RuleEngine**을 호출하여 A/B/C와 drag final Table을 승인했다. 이는 domain validation evidence이며 실제 Room/revision commit이라고 주장하지 않는다; 그 commit은 위 application tests가 검증한다. Production debug endpoint/fixture 배포 없음.
+- 초기 임시 fixture의 공백 포함 nickname은 실제 schema에 거절되어 fixture에서만 수정했다. Application schema를 완화하지 않았다. Physical mobile/public Railway를 검증했다고 주장하지 않는다.
+
+### Updated source/deployment gate
+
+- Final typecheck/build/diff-check PASS; 전체 tests **연속 2회 1,215/1,215 PASS** = shared91 / Web276 / server848.
+- Targeted Number Web74/74, Number application44/44, domain/meld/state-adapter/persistence74/74, 기존 P12 raw19/19, production-serving6/6 PASS. 기존 three-game/snapshot/cross-game/reconnect/Joker/GEM/Hangul legacy tests 유지.
+- **UPDATED P12 RAILWAY DEPLOYMENT TARGET:** 이번 `fix: allow flexible number tile rearrangement` checkpoint를 포함하는 최신 `master`. 기존 `b949463` 배포는 이 blocker fix를 포함하지 않는다. 새 exact hash/push/origin 상태는 완료 보고에 기록한다.
+- Railway 배포/설정 변경 및 public verification 없음. 사용자는 새 latest commit을 Deploy Latest Commit하고 Active exact hash/1 Replica를 확인한 뒤 P12 public verification을 진행한다. Redeploy 시 기존 in-memory Room/Game/session 손실, 기존 탭 refresh 필요성을 유지한다. Release tag/P13은 아직 진행하지 않는다.
+
+**P12 SOURCE GATE PASS + NUMBER RELEASE BLOCKER FIXED / RAILWAY DEPLOYMENT PENDING USER ACTION**.
