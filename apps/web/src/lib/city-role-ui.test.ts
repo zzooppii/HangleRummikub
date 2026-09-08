@@ -16,6 +16,7 @@ import {
   cityCurrentHint, cityDestroyPreview, cityFinishReasonLabel, cityRoleLabel, cityTargetRoleOptions,
 } from "../features/city-role/city-role-ui.js";
 import { citySelectionFixture, cityActionFixture, cityFinishedFixture } from "./city-role-test-fixtures.js";
+import { CityBuildingArt, CityCategoryGuide, CityRoleEmblem, CITY_CATEGORY_HINTS } from "../features/city-role/CityVisuals.js";
 
 function playingProps(snapshot = citySelectionFixture()): CityRolePlayingScreenProps {
   return { snapshot, connectionLabel: "연결됨", connectionTone: "connected", errorMessage: null,
@@ -48,6 +49,79 @@ function ownCard(snapshot = cityActionFixture()) {
   assert.ok(card);
   return card;
 }
+
+test("CITY visual dock owns the only end-turn and build buttons after the hand and city board", () => {
+  const html = renderPlaying(cityActionFixture());
+  const dock = html.slice(html.indexOf('<footer class="city-action-dock"'));
+  assert.equal((html.match(/>역할 차례 마치기<\/button>/gu) ?? []).length, 1);
+  assert.match(dock, /역할 차례 마치기/u);
+  assert.match(dock, /건물 건설/u);
+  assert.ok(html.indexOf('class="city-action-dock"') > html.indexOf('id="city-hand-heading"'));
+  assert.doesNotMatch(html.slice(0, html.indexOf('<footer class="city-action-dock"')), /역할 차례 마치기/u);
+  assert.doesNotMatch(html, /class="city-end-action"|class="city-build-action"/u);
+});
+
+test("CITY visual dock preserves pending, disconnected, replaced-session and in-flight guards", () => {
+  for (const extra of [{ canAct: false }, { sessionReplaced: true }, { actionPending: true }, { retryPending: true }, { roomLeavePending: true }]) {
+    const html = renderPlaying(cityActionFixture(), extra);
+    assert.match(html, /class="primary-button city-end-turn" disabled=""/u);
+  }
+  assert.match(renderPlaying(cityActionFixture(true)), /class="primary-button city-end-turn" disabled=""/u);
+  assert.match(renderPlaying(cityActionFixture(true)), /먼저 가져올 카드 1장을 선택하세요/u);
+  assert.doesNotMatch(renderPlaying(citySelectionFixture()), /city-end-turn/u);
+});
+
+test("CITY five category scenes have distinct original paths plus text and icons, with rule-accurate hints", () => {
+  const scenes = Object.keys(CITY_CATEGORY_LABELS).map(key => {
+    const category = key as keyof typeof CITY_CATEGORY_LABELS;
+    return renderToStaticMarkup(createElement(CityBuildingArt, { category }));
+  });
+  assert.equal(new Set(scenes).size, 5);
+  for (const scene of scenes) assert.match(scene, /aria-hidden="true"/u);
+  const guide = renderToStaticMarkup(createElement(CityCategoryGuide));
+  for (const name of Object.values(CITY_CATEGORY_LABELS)) assert.ok(guide.includes(name));
+  for (const hint of Object.values(CITY_CATEGORY_HINTS)) assert.ok(guide.includes(hint));
+  assert.match(guide, /5분류를 모두 지으면 다양성 \+3점/u);
+  assert.match(guide, /건물 자체에는 특수 능력이 없습니다/u);
+  assert.doesNotMatch(guide, /파괴에 강함|높은 점수|추가 점수를 얻|금화 수급에 유리/u);
+});
+
+test("CITY eight role emblems are distinct and keep approved role IDs and order", () => {
+  const visuals = CITY_ROLE_IDS.map(roleId => renderToStaticMarkup(createElement(CityRoleEmblem, { roleId })));
+  assert.equal(new Set(visuals.map(html => html.match(/<path d="([^"]+)"/)?.[1])).size, 8);
+  for (const [index, html] of visuals.entries()) {
+    assert.ok(html.includes(`data-role-art="${CITY_ROLE_IDS[index]}"`));
+    assert.ok(html.includes(`<b>${index + 1}</b>`));
+  }
+});
+
+test("CITY empty city skyline and built illustrated cards preserve public card identity and score", () => {
+  assert.match(renderPlaying(cityActionFixture()), /아직 건물이 없어요/u);
+  for (const count of [4, 8]) {
+    const fixture = cityActionFixture();
+    const cards = Array.from({ length: count }, (_, index) => ({ ...ownCard(fixture), cardId: `public-${index}`, templateId: `CB-${index < 6 ? "CIV" : "CUL"}-0${index % 6 + 1}` }));
+    const snapshot = parse(CityRolePlayingPlatformSnapshotV2Schema, { ...fixture, game: { ...fixture.game,
+      playerStates: fixture.game.playerStates.map((player, index) => index === 0 ? { ...player, builtBuildings: cards, scorePreview: count } : player),
+    } });
+    const html = renderPlaying(snapshot);
+    assert.equal((html.match(/class="city-building is-built"/gu) ?? []).length, count);
+    assert.match(html, /data-category-art="CIVIC"/u);
+    assert.equal(snapshot.game.playerStates[0]?.scorePreview, count);
+    if (count === 8) assert.match(html, /city-built-grid is-dense/u);
+  }
+});
+
+test("CITY presentation CSS scopes responsive dock, touch, illustration and reduced-motion behavior", () => {
+  const css = readFileSync(new URL("../../src/features/city-role/city-role.css", import.meta.url), "utf8");
+  assert.match(css, /\.city-action-dock \{ position: fixed/u);
+  assert.match(css, /safe-area-inset-bottom/u);
+  assert.match(css, /prefers-reduced-motion: reduce/u);
+  assert.match(css, /max-width: 1023px/u);
+  assert.match(css, /max-width: 767px/u);
+  assert.match(css, /max-width: 359px/u);
+  assert.match(css, /min-height: 44px/u);
+  assert.doesNotMatch(css, /\.gem-|\.number-|^body\s*\{/mu);
+});
 function ownPlayer(snapshot = cityActionFixture()) {
   const player = snapshot.game.playerStates.find(row => row.playerId === snapshot.self.playerId);
   assert.ok(player);
@@ -157,7 +231,7 @@ test("CITY ten-second warning and expired display preserve the canonical deadlin
   const expired = parse(CityRolePlayingPlatformSnapshotV2Schema, { ...snapshot, serverTime: snapshot.game.window.deadlineAt });
   assert.match(renderPlaying(expired), /00:00/u);
   assert.match(renderPlaying(expired), /서버에서 시간 종료 결과를 확인/u);
-  assert.match(renderPlaying(expired), /disabled=""[^>]*>역할 차례 마치기/u);
+  assert.match(renderPlaying(expired), /class="primary-button city-end-turn" disabled="">(?:(?!<\/button>)[\s\S])*역할 차례 마치기<\/button>/u);
 });
 
 test("CITY basic acquisition before completion offers two concrete mutually exclusive actions", () => {
@@ -169,7 +243,7 @@ test("CITY basic acquisition before completion offers two concrete mutually excl
   const html = renderPlaying(visible);
   assert.match(html, /금화 2 받기/u);
   assert.match(html, /건물 카드 보기/u);
-  assert.match(html, /disabled=""[^>]*>역할 차례 마치기/u);
+  assert.match(html, /class="primary-button city-end-turn" disabled="">(?:(?!<\/button>)[\s\S])*역할 차례 마치기<\/button>/u);
   assert.equal(cityBuildPreview(visible.game, visible.self.playerId, ownCard(visible)).allowed, false);
 });
 
@@ -180,7 +254,7 @@ test("CITY pending draw renders owner-only choices and blocks abilities/build/en
   assert.equal((html.match(/이 카드 가져오기/gu) ?? []).length, 2);
   assert.match(html, /선택 중에도 행동 시간은 계속 흐릅니다/u);
   assert.match(html, /01:30/u);
-  assert.match(html, /disabled=""[^>]*>역할 차례 마치기/u);
+  assert.match(html, /class="primary-button city-end-turn" disabled="">(?:(?!<\/button>)[\s\S])*역할 차례 마치기<\/button>/u);
   assert.equal(cityBuildPreview(snapshot.game, snapshot.self.playerId, ownCard(snapshot)).allowed, false);
   assert.match(cityCurrentHint(snapshot.game, snapshot.self.playerId), /카드 1장/u);
 });

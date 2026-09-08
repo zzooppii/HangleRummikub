@@ -57,9 +57,6 @@
 .city-target-roles { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .city-choice { color: var(--city-ink); background: #f6f7f4; border: 1px solid #aabcc2; border-radius: 9px; padding: 10px 13px; }
 .city-choice[aria-pressed="true"], .city-selectable.is-selected { background: #e1f0ec; border-color: #236959; box-shadow: inset 0 0 0 2px #236959; }
-.city-end-action, .city-build-action { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 16px; }
-.city-end-action p, .city-build-action p { flex: 1 1 240px; margin: 0; font-size: .9rem; }
-.city-end-action { border-top: 1px solid var(--city-line); }
 .city-pending-choice { border: 2px solid #2a7061; background: #f1faf4; border-radius: 12px; padding: 16px; }
 .city-pending-choice > p { font-size: .88rem; }
 .city-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(130px, 100%), 1fr)); gap: 9px; min-width: 0; }
@@ -77,7 +74,7 @@
 .city-selectable { cursor: pointer; }
 .city-selectable:disabled { background: #f4f4ef; }
 .city-card-hint { font-size: .76rem; color: #4f625e; line-height: 1.5; margin-top: auto; }
-.city-city-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.city-city-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 14px; }
 .city-public-city { padding: 14px; background: #f6f4ed; border: 1px solid #d3d5cb; border-radius: 12px; min-width: 0; }
 .city-public-city.is-mine { border-color: #779e91; background: #f0f6ef; }
 .city-public-city > header, .city-result-row > header { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
@@ -90,7 +87,7 @@
 .city-built-label { font-size: .68rem; color: #4d6960; }
 .city-destruction-target { margin: 14px 0; }
 .city-destruction-target h4 { margin: 10px 0; }
-.city-helper, .city-authority-note { font-size: .82rem; line-height: 1.65; color: var(--city-muted); }
+.city-helper { font-size: .82rem; line-height: 1.65; color: var(--city-muted); }
 .city-final-round, .city-action-feedback { padding: 12px 16px; border-radius: 10px; font-size: .9rem; background: #f4e9c9; color: #664f18; }
 .city-action-feedback { background: #e5f3eb; color: #27553f; }
 .city-finish-hero { text-align: center; padding: 28px 16px; background: #edf5ef; border: 1px solid #b6d0c0; border-radius: 16px; }
@@ -107,6 +104,100 @@
 .city-score-details dt { font-size: .78rem; color: var(--city-muted); }
 .city-score-details dd { margin: 0; font-weight: 750; }
 .city-frozen-private summary { display: flex; align-items: center; cursor: pointer; font-weight: 700; }
+/* CITY-only original tabletop presentation. No global theme or gameplay state. */
+.city-playing-shell { --city-ink: #203641; --city-accent: #285c49; --city-line: #d4cbb6; --city-muted: #586963; background: radial-gradient(ellipse at 10% 10%, #fff8e8, transparent 55%), repeating-linear-gradient(115deg, #f5f1e700 0 6px, #ac916009 6px 7px), #f4f1e8; padding: 22px 24px 178px; border-radius: 24px; box-shadow: 0 12px 60px #233b3b13; }
+.city-icon { width: 24px; height: 24px; flex: 0 0 auto; vertical-align: middle; }
+.city-header { position: relative; isolation: isolate; padding-bottom: 40px; border-bottom: 1px solid #b8c4ad; }
+.city-header-title { display: flex; align-items: center; gap: 12px; }
+.city-header-title > .city-icon { width: 48px; height: 48px; color: #8b723e; }
+.city-skyline { width: 100%; height: auto; color: #829786; }
+.city-header > .city-skyline { position: absolute; z-index: -1; right: 0; bottom: 0; width: min(550px, 100%); height: 72px; opacity: .22; }
+.city-header h1, .city-panel h2, .city-turn-hud h2 { font-family: Georgia, "AppleMyungjo", serif; letter-spacing: -.035em; }
+.city-header-actions { position: relative; }
+.city-overview { display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; align-items: stretch; margin: 18px 0; }
+.city-overview .city-turn-hud { margin: 0; padding: 20px; border: 1px solid #bf9b5c; background: linear-gradient(120deg,#fff7e6,#f3e6c9); box-shadow: inset 0 0 0 4px #fffbef, inset 0 0 0 5px #dfcca5, 0 4px 9px #624a2612; }
+.city-turn-hourglass { width: 38px; height: 56px; color: #946a29; }
+.city-turn-hud.is-mine h2 { color: #174e3b; }
+.city-countdown strong { font-size: 2.65rem; color: #21533f; }
+.city-countdown progress { width: 100%; max-width: 110px; height: 8px; margin-top: 8px; accent-color: #377455; border: 0; border-radius: 8px; overflow: hidden; }
+.city-countdown progress::-webkit-progress-bar { background: #deccaa; }
+.city-countdown progress::-webkit-progress-value { background: #377455; }
+.city-turn-hud.is-urgent .city-countdown strong { color: #a04028; }
+.city-turn-hud.is-urgent progress { accent-color: #a04028; }
+.city-private-summary { border: 1px solid var(--city-line); background: linear-gradient(120deg,#fffdf8,#f0ece0); }
+.city-role-chip { display: flex; align-items: center; gap: 7px; max-width: 100%; padding: 7px 10px; box-shadow: 0 2px 3px #2133290b; }
+.city-role-chip.is-current { border-color: #397655; box-shadow: 0 0 0 2px #39765522; }
+.city-role-emblem { --role-color: #715980; position: relative; display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; flex: 0 0 auto; border-radius: 50%; color: var(--role-color); background: radial-gradient(circle at 35% 20%, #fffcef, #e9dabb); border: 1px solid #c4af88; box-shadow: inset 0 0 0 4px #fff8ea, 0 4px 7px #59462a17; }
+.city-role-emblem > .city-icon { width: 35px; height: 35px; }
+.city-role-emblem > b { position: absolute; right: -3px; bottom: -2px; background: var(--role-color); color: #fff; border-radius: 50%; min-width: 21px; height: 21px; font: bold 12px/21px system-ui; text-align: center; }
+.city-role-2 { --role-color: #92651e; }.city-role-3 { --role-color: #437269; }.city-role-4 { --role-color: #436582; }.city-role-5 { --role-color: #526e94; }.city-role-6 { --role-color: #986229; }.city-role-7 { --role-color: #536f72; }.city-role-8 { --role-color: #9a554b; }
+.city-role-chip .city-role-emblem { width: 40px; height: 40px; }.city-role-chip .city-icon { width: 25px; height: 25px; }
+.city-action-layout { display: grid; grid-template-columns: minmax(0,1.65fr) minmax(260px,1fr); gap: 18px; align-items: start; }
+.city-action-layout > div { min-width: 0; }.city-action-layout .city-panel { margin-top: 0; }
+.city-panel { background: #fffef9e8; box-shadow: 0 3px 10px #70552b08; }
+.city-category-guide { min-width: 0; padding: 18px; background: #fffdf7; border: 1px solid #d4cbb6; border-radius: 16px; color: #203641; }
+.city-category-guide summary { cursor: pointer; font-size: 1.1rem; font-weight: 750; min-height: 44px; }
+.city-category-guide summary > span { font-size: .72rem; color: #5b685f; font-weight: 400; margin-left: 5px; }
+.city-category-rows { display: grid; gap: 9px; }
+.city-category-row { border-radius: 10px; overflow: hidden; display: grid; grid-template-columns: minmax(0,1fr) 84px; align-items: center; min-height: 76px; }
+.city-category-row > div { padding: 8px; }.city-category-row p { font-size: .72rem; line-height: 1.5; margin: 5px 0 0; }
+.city-category-row > .city-building-art { height: 76px; width: 100%; object-fit: cover; }
+.city-category { display: inline-flex; align-items: center; gap: 4px; }.city-category .city-icon { width: 18px; height: 18px; }
+.city-acquisition-choices, .city-ability-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.city-acquisition-choices > button { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 94px; padding: 15px; text-align: left; }
+.city-acquisition-choices .city-icon { width: 43px; height: 43px; }
+.city-playing-shell .primary-button { background: linear-gradient(120deg,#255943,#347056); border-color: #255943; color: #fff; }
+.city-playing-shell .primary-button:disabled { background: #e6e9e2; border-color: #c8cec4; color: #667166; opacity: 1; }
+.city-acquisition-status { padding: 10px 14px; border-radius: 8px; background: #edf4e8; color: #315d3e; font-size: .86rem; }
+.city-ability-step { border-top: 1px solid var(--city-line); padding-top: 14px; }.city-ability-step .city-ability { border: 0; padding: 0; margin: 10px 0; }
+.city-ability-choices > button { display: flex; align-items: center; gap: 10px; min-height: 68px; text-align: left; }.city-ability-choices .city-icon { width: 32px; height: 32px; }
+.city-construction-step { border-top: 1px solid var(--city-line); display: flex; gap: 10px; align-items: center; padding-top: 14px; }.city-construction-step p { margin: 0; }
+.city-role-card { align-items: center; text-align: center; background: linear-gradient(145deg,#fffaf0,#eee3cf); border: 1px solid #cbbb9d; box-shadow: 0 3px 5px #57462b12; }
+.city-building { position: relative; overflow: hidden; padding: 9px; border: 1px solid #c8bca5; border-radius: 12px; background: #fffdf6; box-shadow: 0 3px 6px #54442715; transition: transform .15s ease, box-shadow .15s ease; }
+.city-building-art { display: block; width: 100%; height: auto; border-radius: 7px; flex-shrink: 0; }
+.city-building > .city-category { margin-top: -29px; position: relative; border: 1px solid #ffffffc0; box-shadow: 0 1px 4px #384c3822; }
+.city-building-value { align-items: center; }.city-building-value .city-icon { width: 19px; height: 19px; color: #92651e; }
+.city-hand-grid { grid-template-columns: repeat(auto-fill,minmax(156px,1fr)); gap: 13px; }.city-hand-grid .city-building { min-height: 248px; }
+.city-selectable.is-selected { transform: translateY(-4px); box-shadow: 0 0 0 2px #397454, 0 9px 13px #23433028; }
+.city-selectable.is-selected::after { content: '✓'; position: absolute; right: 6px; top: 6px; width: 25px; height: 25px; text-align: center; line-height: 25px; border-radius: 50%; background: #235c43; color: #fff; }
+.city-selectable:disabled { background: #f4f1e9; }.city-selectable:disabled .city-building-art { opacity: .82; }
+.city-public-city { background: linear-gradient(135deg,#f6f3ea,#efe9d9); }.city-public-city.is-mine { background: linear-gradient(135deg,#f0f7eb,#e7eee0); }
+.city-public-city.is-active { border-color: #658d6d; }.city-active-label { display: inline-block; margin-left: 7px; font: 600 .65rem system-ui; color: #2c6546; padding: 3px 6px; background: #deecd8; border-radius: 12px; }
+.city-empty-city { position: relative; min-height: 128px; border: 1px dashed #c3c8b4; border-radius: 10px; text-align: center; padding: 48px 10px 12px; overflow: hidden; }
+.city-empty-city .city-skyline { position: absolute; width: 75%; height: 65px; bottom: 30px; left: 12.5%; opacity: .14; }.city-empty-city p { position: relative; }
+.city-built-grid { grid-template-columns: repeat(auto-fill,minmax(115px,1fr)); }.city-built-grid.is-dense { grid-template-columns: repeat(auto-fill,minmax(95px,1fr)); }
+.city-built-grid.is-dense .city-building-name { font-size: .8rem; }.city-built-grid.is-dense .city-building-value { font-size: .7rem; }.city-built-grid.is-dense .city-building-value b { font-size: .9rem; }
+.city-action-dock { position: fixed; z-index: 12; bottom: 0; left: 50%; transform: translateX(-50%); width: min(1280px,100%); background: linear-gradient(110deg,#273f4a,#192f39); color: #f7f6eb; padding: 12px 24px calc(12px + env(safe-area-inset-bottom,0px)); border: 1px solid #59707a; border-bottom: 0; border-radius: 18px 18px 0 0; box-shadow: 0 -6px 30px #17302325; display: grid; grid-template-columns: auto 1fr; gap: 6px 24px; }
+.city-dock-inventory { display: flex; align-items: center; gap: 20px; }.city-dock-inventory > span { display: flex; align-items: center; gap: 6px; font-size: .85rem; }.city-dock-inventory b { font-size: 1.5rem; }.city-dock-inventory .city-icon { color: #e6c886; }
+.city-dock-reason { grid-column: 1; margin: 0; max-width: 400px; font-size: .76rem; line-height: 1.5; color: #dde6df; }
+.city-dock-buttons { grid-column: 2; grid-row: 1 / 3; display: flex; justify-content: flex-end; gap: 12px; align-items: center; }
+.city-dock-buttons > button { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 62px; padding: 12px 20px; }
+.city-dock-buttons .city-end-turn { min-width: 250px; font-size: 1.08rem; border: 2px solid #8dbc92; box-shadow: inset 0 0 0 3px #ffffff12; }.city-dock-buttons > .secondary-button { background: transparent; color: #fff9eb; border-color: #9daea9; }
+.city-dock-buttons > .secondary-button:disabled { color: #b7c3c3; border-color: #72848c; }
+.city-help-dialog .city-category-guide { margin-top: 16px; }.city-guide-role-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }.city-guide-role-grid > div { display: flex; gap: 12px; padding: 12px; border: 1px solid #d4cbb6; border-radius: 12px; }.city-guide-role-grid p { font-size: .8rem; margin: 5px 0; }
+.city-tutorial-art { display: flex; align-items: center; justify-content: center; gap: 28px; background: #f2ecdd; border-radius: 16px; margin: 18px 0; min-height: 110px; }.city-tutorial-art > .city-building-art { max-height: 140px; width: auto; }.city-tutorial-art > .city-icon { width: 64px; height: 64px; color: #8b6b35; }
+@media (hover: hover) { .city-selectable:not(:disabled):hover { transform: translateY(-3px); box-shadow: 0 7px 15px #4d54322a; } }
+@media (max-width: 1023px) {
+  .city-overview { grid-template-columns: 1fr; }.city-action-layout { grid-template-columns: 1fr; }.city-category-guide { margin-bottom: 16px; }
+  .city-dock-buttons .city-end-turn { min-width: 190px; }.city-dock-buttons > button { padding: 10px; }.city-dock-inventory { gap: 10px; }
+}
+@media (max-width: 767px) {
+  .city-playing-shell { padding: 12px 10px calc(224px + env(safe-area-inset-bottom,0px)); border-radius: 12px; }
+  .city-overview { display: contents; }.city-overview .city-turn-hud { margin: 10px 0; padding: 12px; }.city-turn-hourglass { display: none; }
+  .city-countdown strong { font-size: 1.95rem; }.city-countdown progress { max-width: 78px; }
+  .city-header-title > .city-icon { display: none; }.city-header { padding-bottom: 22px; }.city-header > .city-skyline { height: 50px; }
+  .city-private-summary { margin-bottom: 14px; }.city-role-chip { font-size: .78rem; padding: 6px; }.city-role-chips { gap: 10px; }
+  .city-acquisition-choices { grid-template-columns: 1fr; }.city-acquisition-choices > button { min-height: 70px; justify-content: flex-start; }
+  .city-ability-choices { grid-template-columns: 1fr; }.city-ability-choices > button { min-height: 60px; }
+  .city-hand-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }.city-hand-grid .city-building { min-height: 220px; }
+  .city-category-guide { padding: 12px; }.city-category-row { grid-template-columns: minmax(0,1fr) 72px; }
+  .city-action-dock { padding: 8px 12px calc(10px + env(safe-area-inset-bottom,0px)); grid-template-columns: 1fr; gap: 6px; border-radius: 12px 12px 0 0; }
+  .city-dock-inventory { justify-content: space-between; }.city-dock-inventory > span { font-size: .72rem; }.city-dock-inventory b { font-size: 1.1rem; }
+  .city-dock-reason { grid-column: 1; font-size: .72rem; max-width: none; }
+  .city-dock-buttons { grid-column: 1; grid-row: auto; display: grid; grid-template-columns: 1fr; gap: 6px; }.city-dock-buttons > button { min-height: 44px; padding: 7px; }.city-dock-buttons .city-end-turn { min-width: 0; min-height: 50px; font-size: 1rem; }
+  .city-guide-role-grid { grid-template-columns: 1fr; }.city-guide-role-grid .city-role-emblem { width: 48px; height: 48px; }
+}
+@media (prefers-reduced-motion: reduce) { .city-building { transition: none; }.city-selectable.is-selected, .city-selectable:not(:disabled):hover { transform: none; } }
 @media (hover: hover) {
   .city-role-card:not(:disabled):hover, .city-selectable:not(:disabled):hover, .city-choice:not(:disabled):hover { border-color: #236959; background: #edf6f0; }
 }
@@ -134,7 +225,6 @@
   .city-card-grid { grid-template-columns: repeat(auto-fill, minmax(min(112px, 100%), 1fr)); gap: 7px; }
   .city-building { padding: 9px; }
   .city-building-name { font-size: .9rem; }
-  .city-end-action > button, .city-build-action > button { width: 100%; }
   .city-result-row { padding: 14px; }
 }
 @media (max-width: 359px) {

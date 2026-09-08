@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { CITY_GUIDE_SECTIONS, CITY_TUTORIAL_STEPS, hasSeenCityTutorial, markCityTutorialSeen, nextCityTutorialStep } from "./city-role-guide.js";
+import { CityBuildingArt, CityCategoryGuide, CityIcon, CityRoleEmblem, CityRoleLegend } from "./CityVisuals.js";
 
 /** Native modal focus/inert behavior only; no gameplay or timer inputs. */
 export function CityHelpDialog({ tutorial, onTutorial, onDismiss, onFinish, returnFocusRef }: Readonly<{
@@ -36,11 +37,13 @@ export function CityHelpDialog({ tutorial, onTutorial, onDismiss, onFinish, retu
       {tutorial ? <section className="city-tutorial-step" aria-live="polite">
         <p className="city-help-progress">간단히 배우기 · {step + 1} / {CITY_TUTORIAL_STEPS.length}</p>
         <h2 ref={headingRef} id="city-help-heading" tabIndex={-1}>{content.title}</h2>
+        <div className="city-tutorial-art" aria-hidden="true">{step === 2 || step === 5 ? <><CityRoleEmblem roleId="CR-03" /><CityRoleEmblem roleId="CR-07" /></> : step === 3 ? <><CityIcon name="coin" /><CityIcon name="cards" /></> : <CityBuildingArt category={step === 6 ? "LANDMARK" : "CIVIC"} />}</div>
         <p>{content.body}</p><p className="city-tutorial-example">{content.example}</p>
       </section> : <>
         <h2 ref={headingRef} id="city-help-heading" tabIndex={-1}>비밀 도시 게임 방법</h2>
         <p>비밀 역할을 고르고, 금화와 카드로 나만의 도시를 건설하세요.</p>
         <button type="button" className="secondary-button" onClick={onTutorial}>7단계 튜토리얼 다시 보기</button>
+        <CityCategoryGuide /><CityRoleLegend />
         <div className="city-guide-sections">{CITY_GUIDE_SECTIONS.map((section, index) => <section key={section.title}>
           <h3><span>{String(index + 1).padStart(2, "0")}</span> {section.title}</h3><p>{section.body}</p>
         </section>)}</div>
