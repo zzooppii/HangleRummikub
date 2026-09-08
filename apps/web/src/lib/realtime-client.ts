@@ -1,4 +1,14 @@
 import {
+  validateCityClientCommand,
+  validateCitySelectRoleWireAck,
+  validateCityTakeIncomeWireAck,
+  validateCityDrawBuildingCardsWireAck,
+  validateCityChooseBuildingCardWireAck,
+  validateCityUseRoleAbilityWireAck,
+  validateCityBuildWireAck,
+  validateCityEndTurnWireAck,
+  type CityClientCommand,
+  type CityActionWireAck,
   validateGemCollectCommand,
   validateGemCollectWireAck,
   validateGemPurchaseCommand,
@@ -91,6 +101,7 @@ import {
 } from "socket.io-client";
 
 import { hasMatchingAcknowledgementRequestId } from "./ack-correlation.js";
+import { cityReceiptMatches } from "../features/city-role/city-role-actions.js";
 import {
   WEB_SUPPORTED_GAME_TYPES,
   WEB_SUPPORTED_SNAPSHOT_VERSIONS,
@@ -858,6 +869,29 @@ export class RealtimeClient {
         hasConsistentSnapshotAcknowledgement(acknowledgement) &&
         this.#acceptAcknowledgementSnapshotVersion(acknowledgement),
     );
+  }
+
+  /** Closed CITY command family; the wire always uses its concrete event. */
+  actCity(command: CityClientCommand): Promise<CityActionWireAck> {
+    const parsed = validateCityClientCommand(command);
+    if (!parsed.ok) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    const value = parsed.value;
+    const validators: Record<CityClientCommand["kind"], Validator<CityActionWireAck>> = {
+      "city:selectRole": validateCitySelectRoleWireAck, "city:takeIncome": validateCityTakeIncomeWireAck,
+      "city:drawBuildingCards": validateCityDrawBuildingCardsWireAck, "city:chooseBuildingCard": validateCityChooseBuildingCardWireAck,
+      "city:useRoleAbility": validateCityUseRoleAbilityWireAck, "city:build": validateCityBuildWireAck, "city:endTurn": validateCityEndTurnWireAck,
+    };
+    return this.#emitAcknowledged(value.kind, value.requestId, acknowledge => {
+      switch (value.kind) {
+        case "city:selectRole": this.#socket.emit("city:selectRole", value, acknowledge); break;
+        case "city:takeIncome": this.#socket.emit("city:takeIncome", value, acknowledge); break;
+        case "city:drawBuildingCards": this.#socket.emit("city:drawBuildingCards", value, acknowledge); break;
+        case "city:chooseBuildingCard": this.#socket.emit("city:chooseBuildingCard", value, acknowledge); break;
+        case "city:useRoleAbility": this.#socket.emit("city:useRoleAbility", value, acknowledge); break;
+        case "city:build": this.#socket.emit("city:build", value, acknowledge); break;
+        case "city:endTurn": this.#socket.emit("city:endTurn", value, acknowledge); break;
+      }
+    }, validators[value.kind], ack => cityReceiptMatches(value, ack));
   }
 
   #emitAcknowledged<

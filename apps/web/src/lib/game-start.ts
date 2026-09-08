@@ -1,12 +1,12 @@
 import {
   PROTOCOL_VERSION,
   type GameStartCommand,
+  type GameType,
   type RequestId,
   type RoomRevision,
 } from "@hangul-rummikub/shared";
 
 const MIN_GAME_PLAYERS = 2;
-const MAX_GAME_PLAYERS = 4;
 
 export type GameStartControl = Readonly<{
   isHost: boolean;
@@ -16,6 +16,7 @@ export type GameStartControl = Readonly<{
 
 export type GameStartSnapshot = Readonly<{
   room: Readonly<{
+    gameType?: GameType;
     phase: "LOBBY" | "PLAYING" | "FINISHED";
     players: readonly Readonly<{
       playerId: string;
@@ -30,6 +31,7 @@ export function getGameStartControl(
   snapshot: GameStartSnapshot,
   commandPending: boolean,
 ): GameStartControl {
+  const maxPlayers = snapshot.room.gameType === "CITY_ROLE" ? 6 : 4;
   const self = snapshot.room.players.find(
     (player) => player.playerId === snapshot.self.playerId,
   );
@@ -52,12 +54,12 @@ export function getGameStartControl(
 
   if (
     snapshot.room.players.length < MIN_GAME_PLAYERS ||
-    snapshot.room.players.length > MAX_GAME_PLAYERS
+    snapshot.room.players.length > maxPlayers
   ) {
     return {
       isHost: true,
       canStart: false,
-      guidance: "참가자가 2~4명일 때 시작할 수 있습니다.",
+      guidance: `참가자가 2~${maxPlayers}명일 때 시작할 수 있습니다.`,
     };
   }
 

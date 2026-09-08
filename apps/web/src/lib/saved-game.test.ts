@@ -37,6 +37,20 @@ test("saved game: refresh and closed/reopened tab restore exact room/player/toke
   assert.equal("credential" in (store.entry() ?? {}), false);
 });
 
+test("CITY saved game survives a fresh tab and advertises only presentation metadata, never a role or hand", () => {
+  const { browser, store, player } = fixture();
+  assert.equal(store.save(player, "CITY_ROLE"), true);
+  const reopened = new SavedGameStorage(new MemoryStorage(), browser);
+  assert.deepEqual(reopened.read(), { session: player, gameType: "CITY_ROLE" });
+  assert.deepEqual(reopened.entry(), { roomCode: player.credential.roomCode, gameType: "CITY_ROLE" });
+  assert.deepEqual(reopened.select(player.credential.roomCode), player);
+  assert.deepEqual(Object.keys(JSON.parse(browser.getItem(SAVED_GAME_KEY)!)).sort(), ["gameType", "session"]);
+  const html = renderToStaticMarkup(createElement(HomeScreen, { ...homeProps(), savedGame: reopened.entry(), onReconnect() {} }));
+  assert.match(html, /비밀 도시 게임/u);
+  assert.match(html, /다시 접속하기/u);
+  assert.doesNotMatch(html, new RegExp(player.credential.sessionToken));
+});
+
 test("saved game: existing tab-only sessions remain available before persistence migration", () => {
   const { tab, store, player } = fixture();
   writeStoredPlayerSession(tab, player);

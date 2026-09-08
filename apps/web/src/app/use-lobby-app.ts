@@ -1,4 +1,6 @@
 import {
+  type CityClientCommand,
+  type CityRolePlayingPlatformSnapshotV2,
   PROTOCOL_VERSION,
   validateNickname,
   validateRoomCode,
@@ -42,6 +44,7 @@ import {
   type GemCardActionKind,
   type PendingGemCardCommand,
 } from "../features/gem-card/gem-card-actions.js";
+import { createCityCommand, cityActionFeedback, cityErrorMessage, type CityActionIntent, type CityActionFeedback } from "../features/city-role/city-role-actions.js";
 import { DEFAULT_SELECTED_GAME_TYPE } from "../features/game-catalog/game-catalog.js";
 import {
   createOrReuseGameStartCommand,
@@ -145,6 +148,10 @@ type EntryAck = RoomCreateWireAck | RoomJoinWireAck;
 type SnapshotApplication = "CURRENT" | "REQUEST_SYNC" | "REJECTED";
 export type NumberTileCommandRetryKind = "SUBMIT" | "DRAW" | "PASS" | null;
 
+function isCityPlayingSnapshot(snapshot: Extract<CompatibleWebSnapshot, { kind: "PLATFORM_V2_CITY_ROLE" }>["platformSnapshot"]): snapshot is CityRolePlayingPlatformSnapshotV2 {
+  return snapshot.room.phase === "PLAYING" && snapshot.game !== null && "window" in snapshot.game;
+}
+
 function isGemCardPlayingSnapshot(
   snapshot: Extract<CompatibleWebSnapshot,
     { kind: "PLATFORM_V2_GEM_CARD" }>["platformSnapshot"],
@@ -198,6 +205,12 @@ export type LobbyAppState = Readonly<{
   gemCommandRetryKind: GemCardActionKind | null;
   gemActionFeedback: GemCardActionFeedback | null;
   gemSelectionResetGeneration: number;
+  cityActionPending: boolean;
+  cityRetryPending: boolean;
+  cityActionFeedback: CityActionFeedback | null;
+  citySelectionResetGeneration: number;
+  actCity: (intent: CityActionIntent) => void;
+  retryCityAction: () => void;
   roomLeavePending: boolean;
   turnDraftResetGeneration: number;
   setNickname: (value: string) => void;
@@ -323,6 +336,10 @@ export function useLobbyApp(): LobbyAppState {
   const [gemActionFeedback, setGemActionFeedback] =
     useState<GemCardActionFeedback | null>(null);
   const [gemSelectionResetGeneration, setGemSelectionResetGeneration] = useState(0);
+  const [cityActionPending, setCityActionPending] = useState(false);
+  const [cityRetryPending, setCityRetryPending] = useState(false);
+  const [cityFeedback, setCityFeedback] = useState<CityActionFeedback | null>(null);
+  const [citySelectionResetGeneration, setCitySelectionResetGeneration] = useState(0);
   const [turnDraftResetGeneration, setTurnDraftResetGeneration] = useState(0);
 
   const routeRef = useRef<AppRoute>(initialRoute);
@@ -358,6 +375,10 @@ export function useLobbyApp(): LobbyAppState {
   const gemRetryRequestedRef = useRef(false);
   const announcedGemActionRequestIdsRef = useRef<Set<RequestId>>(new Set());
   const gemContextGenerationRef = useRef(0);
+  const pendingCityCommandRef = useRef<CityClientCommand | null>(null);
+  const cityRetryRequestedRef = useRef(false);
+  const cityContextGenerationRef = useRef(0);
+  const announcedCityRequestIdsRef = useRef(new Set<RequestId>());
   const roomLeaveFlightRef = useRef<Promise<void> | null>(null);
   const pendingRoomLeaveCommandRef = useRef<RoomLeaveCommand | null>(null);
   const roomLeaveRetryRequestedRef = useRef(false);
@@ -409,7 +430,7 @@ export function useLobbyApp(): LobbyAppState {
   function currentLegacyHangulSnapshot(): StateSnapshot | null {
     const compatible = compatibleSnapshotRef.current;
     return compatible === null || compatible.kind === "PLATFORM_V2_NUMBER_TILE" ||
-      compatible.kind === "PLATFORM_V2_GEM_CARD"
+      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE"
       ? null
       : compatible.legacySnapshot;
   }
@@ -443,6 +464,22 @@ export function useLobbyApp(): LobbyAppState {
     gemRetryRequestedRef.current = false;
     setGemCommandRetryKind(null);
     if (settled) setGemActionPending(false);
+  }
+
+  function currentCityPlayingSnapshot(): CityRolePlayingPlatformSnapshotV2 | null {
+    const compatible = compatibleSnapshotRef.current;
+    if (compatible?.kind !== "PLATFORM_V2_CITY_ROLE") return null;
+    const current = compatible.platformSnapshot;
+    return isCityPlayingSnapshot(current) ? current : null;
+  }
+
+  function discardCityEditor(): void {
+    cityContextGenerationRef.current += 1;
+    pendingCityCommandRef.current = null;
+    cityRetryRequestedRef.current = false;
+    setCityActionPending(false); setCityRetryPending(false); setCityFeedback(null);
+    announcedCityRequestIdsRef.current.clear();
+    setCitySelectionResetGeneration(value => value + 1);
   }
 
   function discardGemEditor(): void {
@@ -516,6 +553,7 @@ export function useLobbyApp(): LobbyAppState {
     clearPendingTurnSubmitRequest();
     clearPendingTurnActionRequest();
     discardGemEditor();
+    discardCityEditor();
     clearPendingRoomLeaveRequest();
     resetTurnDraftFromAuthority();
     setOperationLabel(null);
@@ -549,6 +587,7 @@ export function useLobbyApp(): LobbyAppState {
     clearPendingTurnSubmitRequest();
     clearPendingTurnActionRequest();
     discardGemEditor();
+    discardCityEditor();
     clearPendingRoomLeaveRequest();
     updateSnapshot(null);
     clearSnapshotIncompatibility();
@@ -625,7 +664,7 @@ export function useLobbyApp(): LobbyAppState {
     const incomingSnapshot = projectRoomSnapshotShell(compatible);
     const incomingLegacySnapshot =
       compatible.kind === "PLATFORM_V2_NUMBER_TILE" ||
-      compatible.kind === "PLATFORM_V2_GEM_CARD"
+      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE"
         ? null
         : compatible.legacySnapshot;
     const incomingNumberSnapshot =
@@ -1405,6 +1444,66 @@ export function useLobbyApp(): LobbyAppState {
     }
   }
 
+  async function executeCityCommand(command: CityClientCommand): Promise<void> {
+    if (gameplayMutationFlightRef.current !== null) return gameplayMutationFlightRef.current;
+    const client = clientRef.current, session = storedSessionForCurrentRoute();
+    if (client === null || !client.connected || session === null || sessionReplacedRef.current || snapshotIncompatibilityRef.current !== null) {
+      setCityRetryPending(true);
+      setErrorMessage("연결을 복구한 뒤 같은 요청을 다시 확인해주세요.");
+      return;
+    }
+    const generation = cityContextGenerationRef.current;
+    const currentContext = () => clientRef.current === client && cityContextGenerationRef.current === generation && !sessionReplacedRef.current;
+    pendingCityCommandRef.current = command;
+    setCityActionPending(true); setCityRetryPending(false); setCityFeedback(null);
+    setOperationLabel("도시 게임 행동 확인 중..."); setErrorMessage(null);
+    const flight = runAsyncSingleFlight(gameplayMutationFlightRef, async () => {
+      try {
+        const ack = await client.actCity(command);
+        if (!currentContext()) return;
+        if (!ack.ok) {
+          pendingCityCommandRef.current = null;
+          if (isStaleSessionError(ack.error)) { handleStaleSession(); return; }
+          if (["STALE_GAME_REVISION", "NOT_YOUR_TURN", "TURN_EXPIRED", "INVALID_PHASE", "CARD_NOT_AVAILABLE"].includes(ack.error.code)) {
+            setCitySelectionResetGeneration(value => value + 1);
+            await requestLatestSnapshot();
+          }
+          if (currentContext()) setErrorMessage(cityErrorMessage(ack.error.code));
+          return;
+        }
+        // A commit receipt is not private state. Use fresh viewer projection;
+        // never infer cards, role ownership or successful outcome from revision alone.
+        await requestLatestSnapshot();
+        if (!currentContext()) return;
+        const visible = compatibleSnapshotRef.current;
+        if (visible?.kind !== "PLATFORM_V2_CITY_ROLE" || visible.platformSnapshot.game?.gameId !== ack.data.gameId ||
+          visible.platformSnapshot.game.gameRevision < ack.data.committedGameRevision) {
+          setErrorMessage("행동은 접수되었습니다. 최신 상태를 다시 확인해주세요.");
+          return;
+        }
+        pendingCityCommandRef.current = null;
+        setErrorMessage(null); setCitySelectionResetGeneration(value => value + 1);
+        const feedback = cityActionFeedback(command, announcedCityRequestIdsRef.current);
+        if (feedback !== null) setCityFeedback(feedback);
+      } catch (error: unknown) {
+        if (!currentContext()) return;
+        if (!isRetryableCommandFailure(error)) {
+          pendingCityCommandRef.current = null;
+          setCitySelectionResetGeneration(value => value + 1);
+          void requestLatestSnapshot();
+        }
+        setErrorMessage(clientFailureMessage(error));
+      }
+    });
+    try { await flight; }
+    finally { if (currentContext()) {
+      setCityActionPending(false); setOperationLabel(null); setCityRetryPending(pendingCityCommandRef.current !== null);
+    } }
+    if (!currentContext()) return;
+    const retry = cityRetryRequestedRef.current; cityRetryRequestedRef.current = false;
+    if (retry && pendingCityCommandRef.current !== null && client.connected) await executeCityCommand(pendingCityCommandRef.current);
+  }
+
   async function executeRoomLeaveCommand(
     command: RoomLeaveCommand,
   ): Promise<void> {
@@ -1625,6 +1724,7 @@ export function useLobbyApp(): LobbyAppState {
     clearPendingTurnSubmitRequest();
     clearPendingTurnActionRequest();
     discardGemEditor();
+    discardCityEditor();
     clearNumberActionFeedbackState();
 
     const sessionStored = savedGameStorageRef.current.save(nextSession, nextSnapshot.room.gameType);
@@ -1903,6 +2003,15 @@ export function useLobbyApp(): LobbyAppState {
       }
     }
 
+    const pendingCityCommand = pendingCityCommandRef.current;
+    if (pendingCityCommand !== null && !sessionReplacedRef.current) {
+      if (gameplayMutationFlightRef.current !== null) {
+        cityRetryRequestedRef.current = true;
+        await gameplayMutationFlightRef.current;
+      } else await executeCityCommand(pendingCityCommand);
+      return;
+    }
+
     const pendingGemCommand = pendingGemCommandRef.current;
     if (pendingGemCommand !== null && !sessionReplacedRef.current) {
       if (gameplayMutationFlightRef.current !== null) {
@@ -1990,6 +2099,7 @@ export function useLobbyApp(): LobbyAppState {
       clearPendingTurnSubmitRequest();
       clearPendingTurnActionRequest();
       discardGemEditor();
+      discardCityEditor();
       clearPendingRoomLeaveRequest();
       resetTurnDraftFromAuthority();
       clearSnapshotIncompatibility();
@@ -2049,6 +2159,7 @@ export function useLobbyApp(): LobbyAppState {
         clearPendingTurnSubmitRequest();
         clearPendingTurnActionRequest();
         discardGemEditor();
+        discardCityEditor();
         clearPendingRoomLeaveRequest();
         updateSnapshot(null);
         client.disconnect();
@@ -2092,6 +2203,7 @@ export function useLobbyApp(): LobbyAppState {
       unsubscribeReplaced();
       unsubscribeProtocolIssue();
       gemContextGenerationRef.current += 1;
+      cityContextGenerationRef.current += 1;
       client.destroy();
       if (clientRef.current === client) {
         clientRef.current = null;
@@ -2593,9 +2705,28 @@ export function useLobbyApp(): LobbyAppState {
     void executeGemCommand(pending);
   }
 
+  function actCity(intent: CityActionIntent): void {
+    if (gameplayMutationFlightRef.current !== null || resumeFlightRef.current !== null ||
+      entryFlightRef.current !== null || gameStartFlightRef.current !== null || roomLeaveFlightRef.current !== null ||
+      pendingRoomLeaveCommandRef.current !== null || operationLabel !== null || snapshotIncompatibilityRef.current !== null ||
+      pendingCityCommandRef.current !== null || sessionReplacedRef.current || !clientRef.current?.connected) return;
+    const current = currentCityPlayingSnapshot();
+    if (current === null || current.game.window.activePlayerId !== current.self.playerId ||
+      !current.game.playerStates.some(player => player.playerId === current.self.playerId && !player.forfeited)) return;
+    try { void executeCityCommand(createCityCommand(intent, current, createRequestId)); }
+    catch { setErrorMessage("선택한 행동을 확인해주세요."); }
+  }
+
+  function retryCityAction(): void {
+    const pending = pendingCityCommandRef.current;
+    if (pending === null || sessionReplacedRef.current || resumeFlightRef.current !== null || snapshotIncompatibilityRef.current !== null) return;
+    void executeCityCommand(pending);
+  }
+
   function leaveRoom(): void {
     if (
       pendingGemCommandRef.current !== null ||
+      pendingCityCommandRef.current !== null ||
       roomLeaveFlightRef.current !== null ||
       gameplayMutationFlightRef.current !== null ||
       pendingTurnSubmitCommandRef.current !== null ||
@@ -2656,6 +2787,7 @@ export function useLobbyApp(): LobbyAppState {
     clearPendingTurnSubmitRequest();
     clearPendingTurnActionRequest();
     discardGemEditor();
+    discardCityEditor();
     clearPendingRoomLeaveRequest();
     clearNumberActionFeedbackState();
     setErrorMessage(null);
@@ -2724,6 +2856,12 @@ export function useLobbyApp(): LobbyAppState {
     gemCommandRetryKind,
     gemActionFeedback,
     gemSelectionResetGeneration,
+    cityActionPending,
+    cityRetryPending,
+    cityActionFeedback: cityFeedback,
+    citySelectionResetGeneration,
+    actCity,
+    retryCityAction,
     roomLeavePending,
     turnDraftResetGeneration,
     setNickname,

@@ -1,6 +1,7 @@
 import type { GameStartControl } from "../../lib/game-start.js";
 import type { RoomSnapshotShell } from "../../lib/room-snapshot-shell.js";
 import { GemGameHelp } from "../gem-card/GemGameHelp.js";
+import { CityGameHelp } from "../city-role/CityGameHelp.js";
 
 export type LobbyScreenProps = Readonly<{
   snapshot: RoomSnapshotShell;
@@ -20,13 +21,14 @@ export type LobbyScreenProps = Readonly<{
 
 export function LobbyScreen(props: LobbyScreenProps) {
   const { room, self } = props.snapshot;
+  const maxPlayers = room.gameType === "CITY_ROLE" ? 6 : 4;
 
   return (
     <main className="app-shell lobby-shell">
       <header className="lobby-header">
         <div>
           <p className="eyebrow">
-            {room.gameType === "GEM_CARD"
+            {room.gameType === "CITY_ROLE" ? "비밀 도시 게임" : room.gameType === "GEM_CARD"
               ? "보석 카드 게임"
               : room.gameType === "NUMBER_TILE"
               ? "숫자 타일 게임"
@@ -41,6 +43,7 @@ export function LobbyScreen(props: LobbyScreenProps) {
       </header>
 
       {room.gameType === "GEM_CARD" ? <GemGameHelp placement="LOBBY" /> : null}
+      {room.gameType === "CITY_ROLE" ? <><CityGameHelp placement="LOBBY" /><p className="notice">2~6명이 함께합니다. 2~3명은 각자 역할 2개, 4~6명은 역할 1개를 선택합니다. 방장이 모두 연결된 뒤 시작할 수 있습니다.</p></> : null}
 
       {props.sessionReplaced ? (
         <section className="notice replaced-notice" role="alert">
@@ -90,8 +93,8 @@ export function LobbyScreen(props: LobbyScreenProps) {
               <p className="step-label">PLAYERS</p>
               <h2 id="players-heading">참가자</h2>
             </div>
-            <span className="player-count" aria-label={`참가자 ${room.players.length}명, 최대 4명`}>
-              {room.players.length} / 4
+            <span className="player-count" aria-label={`참가자 ${room.players.length}명, 최대 ${maxPlayers}명`}>
+              {room.players.length} / {maxPlayers}
             </span>
           </div>
 

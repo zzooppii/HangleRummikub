@@ -1,0 +1,35 @@
+.city-help-entry { min-width: 0; }
+.city-first-visit { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 14px; margin-bottom: 12px; border: 1px solid #d6c8a8; border-radius: 14px; background: #fbf5e8; }
+.city-first-visit > div { flex: 1 1 210px; min-width: 0; }
+.city-first-visit p { margin: 6px 0 0; line-height: 1.55; }
+.city-help-open { white-space: normal; }
+.city-help-dialog { box-sizing: border-box; width: min(640px, calc(100vw - 24px)); max-width: calc(100vw - 24px); max-height: min(780px, calc(100dvh - 24px)); margin: auto; padding: 0; border: 1px solid #cbb998; border-radius: 18px; color: #292e30; background: #fffdf7; box-shadow: 0 18px 70px #17242e40; overflow: hidden; }
+.city-help-dialog[open] { display: flex; flex-direction: column; }
+.city-help-dialog::backdrop { background: #152329a6; }
+.city-help-dialog button, .city-help-entry button { min-height: 44px; touch-action: manipulation; }
+.city-help-dialog button:focus-visible, .city-help-entry button:focus-visible { outline: 3px solid #29635c; outline-offset: 3px; }
+.city-help-header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 18px; border-bottom: 1px solid #e5dac7; }
+.city-help-header span { font-size: .88rem; font-weight: 700; }
+.city-help-header button { flex-shrink: 0; width: auto; }
+.city-help-scroll { overflow-y: auto; min-height: 0; padding: 16px 22px; overscroll-behavior: contain; overflow-wrap: anywhere; }
+.city-help-scroll h2 { font-size: clamp(1.25rem, 5vw, 1.65rem); line-height: 1.3; margin: 12px 0; }
+.city-help-scroll p { line-height: 1.7; }
+.city-help-timer { color: #625946; background: #f3ebd9; padding: 9px 12px; border-radius: 9px; font-size: .83rem; margin-top: 0; }
+.city-help-progress { color: #42635a; font-weight: 700; font-size: .85rem; }
+.city-tutorial-example { padding: 13px; border-left: 3px solid #678878; border-radius: 6px; background: #edf3ea; }
+.city-guide-sections { display: grid; gap: 18px; margin-top: 24px; }
+.city-guide-sections section { border-top: 1px solid #e6ddcb; padding-top: 10px; }
+.city-guide-sections h3 { margin: 8px 0; font-size: 1rem; }
+.city-guide-sections h3 span { color: #758975; font-size: .8rem; }
+.city-guide-sections p { margin: 7px 0; }
+.city-help-footer { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 18px; border-top: 1px solid #e5dac7; }
+.city-help-footer > div { display: flex; gap: 7px; }
+.city-help-footer button { width: auto; min-width: 50px; white-space: nowrap; flex-shrink: 0; }
+.city-help-footer small { line-height: 1.5; color: #625946; }
+@media (max-width: 420px) {
+  .city-help-header, .city-help-footer { padding: 8px 10px; }
+  .city-help-scroll { padding: 12px 14px; }
+  .city-help-header span { font-size: .78rem; }
+  .city-help-footer button { padding-left: 10px; padding-right: 10px; }
+  .city-first-visit { padding: 11px; }
+}

@@ -2,6 +2,9 @@ import {
   PLATFORM_SNAPSHOT_VERSION,
   validatePlatformSnapshotV2,
   validateStateSnapshot,
+  type CityRoleFinishedPlatformSnapshotV2,
+  type CityRoleLobbyPlatformSnapshotV2,
+  type CityRolePlayingPlatformSnapshotV2,
   type GemCardFinishedPlatformSnapshotV2,
   type GemCardLobbyPlatformSnapshotV2,
   type GemCardPlayingPlatformSnapshotV2,
@@ -19,7 +22,13 @@ export const WEB_SUPPORTED_GAME_TYPES = Object.freeze([
   "HANGUL_TILE",
   "NUMBER_TILE",
   "GEM_CARD",
+  "CITY_ROLE",
 ] as const);
+
+export type CityRolePlatformSnapshotV2 =
+  | CityRoleLobbyPlatformSnapshotV2
+  | CityRolePlayingPlatformSnapshotV2
+  | CityRoleFinishedPlatformSnapshotV2;
 
 export type GemCardPlatformSnapshotV2 =
   | GemCardLobbyPlatformSnapshotV2
@@ -32,6 +41,12 @@ export type NumberTilePlatformSnapshotV2 =
   | NumberTileFinishedPlatformSnapshotV2;
 
 export type CompatibleWebSnapshot =
+  | Readonly<{
+      kind: "PLATFORM_V2_CITY_ROLE";
+      snapshotVersion: typeof PLATFORM_SNAPSHOT_VERSION;
+      gameType: "CITY_ROLE";
+      platformSnapshot: CityRolePlatformSnapshotV2;
+    }>
   | Readonly<{
       kind: "LEGACY_HANGUL_V1";
       legacySnapshot: StateSnapshot;
@@ -101,6 +116,13 @@ function isGemCardPlatformSnapshot(
     (snapshot.game === null || snapshot.game.gameType === "GEM_CARD");
 }
 
+function isCityRolePlatformSnapshot(
+  snapshot: PlatformSnapshotV2,
+): snapshot is CityRolePlatformSnapshotV2 {
+  return snapshot.room.gameType === "CITY_ROLE" &&
+    (snapshot.game === null || snapshot.game.gameType === "CITY_ROLE");
+}
+
 function decodePlatformSnapshotV2(
   input: Record<string, unknown>,
 ): WebSnapshotDecodeResult {
@@ -118,7 +140,8 @@ function decodePlatformSnapshotV2(
   if (
     input.room.gameType !== "HANGUL_TILE" &&
     input.room.gameType !== "NUMBER_TILE" &&
-    input.room.gameType !== "GEM_CARD"
+    input.room.gameType !== "GEM_CARD" &&
+    input.room.gameType !== "CITY_ROLE"
   ) {
     return typeof input.room.gameType === "string"
       ? { kind: "INCOMPATIBLE", reason: "UNSUPPORTED_GAME_TYPE" }
@@ -128,6 +151,20 @@ function decodePlatformSnapshotV2(
   const validation = validatePlatformSnapshotV2(input);
   if (!validation.ok) {
     return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
+  }
+  if (input.room.gameType === "CITY_ROLE") {
+    if (!isCityRolePlatformSnapshot(validation.value)) {
+      return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
+    }
+    return {
+      kind: "COMPATIBLE",
+      value: {
+        kind: "PLATFORM_V2_CITY_ROLE",
+        snapshotVersion: PLATFORM_SNAPSHOT_VERSION,
+        gameType: "CITY_ROLE",
+        platformSnapshot: validation.value,
+      },
+    };
   }
   if (input.room.gameType === "GEM_CARD") {
     if (!isGemCardPlatformSnapshot(validation.value)) {

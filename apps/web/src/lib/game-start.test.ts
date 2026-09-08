@@ -12,6 +12,7 @@ import { createRequestId } from "./request-id.js";
 import {
   createOrReuseGameStartCommand,
   getGameStartControl,
+  type GameStartSnapshot,
 } from "./game-start.js";
 
 type LobbyPlayerFixture = Readonly<{
@@ -90,6 +91,19 @@ test("Host이고 2~4명 모두 접속했으며 command가 없을 때만 시작�
   });
   assert.equal(getGameStartControl(fourPlayerSnapshot, false).canStart, true);
   assert.equal(getGameStartControl(snapshot, true).canStart, false);
+});
+
+test("CITY alone permits 2–6 connected players; legacy and H/N/G retain the exact 2–4 start limit", () => {
+  for (const gameType of [undefined, "HANGUL_TILE", "NUMBER_TILE", "GEM_CARD", "CITY_ROLE"] as const) {
+    for (const count of [1, 2, 3, 4, 5, 6, 7]) {
+      const snapshot: GameStartSnapshot = { room: { phase: "LOBBY", ...(gameType === undefined ? {} : { gameType }), players: Array.from({ length: count }, (_, index) => ({ playerId: `P${index}`, isHost: index === 0, connectionStatus: "CONNECTED" })) }, self: { playerId: "P0" } };
+      assert.equal(getGameStartControl(snapshot, false).canStart, count >= 2 && count <= (gameType === "CITY_ROLE" ? 6 : 4));
+      assert.equal(getGameStartControl(snapshot, true).canStart, false);
+      assert.equal(getGameStartControl({ ...snapshot, self: { playerId: "P1" } }, false).canStart, false);
+      assert.equal(getGameStartControl({ ...snapshot, room: { ...snapshot.room, players: snapshot.room.players.map((player, index) => index === 0 ? { ...player, connectionStatus: "OFFLINE" } : player) } }, false).canStart, false);
+      if (count === 7) assert.match(getGameStartControl(snapshot, false).guidance, gameType === "CITY_ROLE" ? /2~6명/u : /2~4명/u);
+    }
+  }
 });
 
 test("non-Host에게 actionable 시작 control을 제공하지 않는다", () => {

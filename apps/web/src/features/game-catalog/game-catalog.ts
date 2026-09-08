@@ -22,6 +22,11 @@ export const GAME_CATALOG = Object.freeze([
     displayName: "보석 카드 게임",
     description: "자원을 모아 카드를 사고, 영구 할인을 쌓아 18점을 노리는 전략 게임입니다.",
   }),
+  Object.freeze({
+    gameType: "CITY_ROLE",
+    displayName: "비밀 도시 게임",
+    description: "2~6명이 비밀 역할을 고르고, 자원을 모아 도시를 건설하는 라운드형 전략 게임입니다.",
+  }),
 ] as const satisfies readonly GameCatalogItem[]);
 
 export const DEFAULT_SELECTED_GAME_TYPE = GAME_CATALOG[0].gameType;

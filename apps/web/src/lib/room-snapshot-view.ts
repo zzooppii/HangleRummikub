@@ -1,6 +1,8 @@
 import type { LegacyHangulRoomView } from "./legacy-hangul-room-view.js";
 import { resolveLegacyHangulRoomView } from "./legacy-hangul-room-view.js";
 import type {
+  CityRoleFinishedPlatformSnapshotV2,
+  CityRolePlayingPlatformSnapshotV2,
   GemCardFinishedPlatformSnapshotV2,
   GemCardPlayingPlatformSnapshotV2,
   NumberTileFinishedPlatformSnapshotV2,
@@ -40,6 +42,14 @@ function isNumberTileFinishedSnapshot(
 export type RoomSnapshotView =
   | LegacyHangulRoomView
   | Readonly<{
+      kind: "CITY_ROLE_PLAYING";
+      snapshot: CityRolePlayingPlatformSnapshotV2;
+    }>
+  | Readonly<{
+      kind: "CITY_ROLE_FINISHED";
+      snapshot: CityRoleFinishedPlatformSnapshotV2;
+    }>
+  | Readonly<{
       kind: "GEM_CARD_PLAYING";
       snapshot: GemCardPlayingPlatformSnapshotV2;
     }>
@@ -70,6 +80,20 @@ export function resolveRoomSnapshotView(
 ): RoomSnapshotView {
   if (decoded.kind === "LEGACY_HANGUL_V1") {
     return resolveLegacyHangulRoomView(decoded.legacySnapshot);
+  }
+
+  if (decoded.kind === "PLATFORM_V2_CITY_ROLE") {
+    const snapshot = decoded.platformSnapshot;
+    if (snapshot.room.gameType !== "CITY_ROLE" ||
+      (snapshot.game !== null && snapshot.game.gameType !== "CITY_ROLE")) {
+      return { kind: "INCOMPATIBLE", reason: "UNSUPPORTED_GAME_TYPE" };
+    }
+    if (snapshot.room.phase === "LOBBY" && snapshot.game === null) {
+      return { kind: "LOBBY" };
+    }
+    if (isCityPlayingSnapshot(snapshot)) return { kind: "CITY_ROLE_PLAYING", snapshot };
+    if (isCityFinishedSnapshot(snapshot)) return { kind: "CITY_ROLE_FINISHED", snapshot };
+    return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
   }
 
   if (decoded.kind === "PLATFORM_V2_GEM_CARD") {
@@ -142,6 +166,19 @@ function isGemPlayingSnapshot(
 ): snapshot is GemCardPlayingPlatformSnapshotV2 {
   return snapshot.room.phase === "PLAYING" && snapshot.game !== null &&
     "turn" in snapshot.game;
+}
+
+function isCityPlayingSnapshot(
+  snapshot: Extract<CompatibleWebSnapshot, { kind: "PLATFORM_V2_CITY_ROLE" }>["platformSnapshot"],
+): snapshot is CityRolePlayingPlatformSnapshotV2 {
+  return snapshot.room.phase === "PLAYING" && snapshot.game !== null &&
+    (snapshot.game.phase === "ROLE_SELECTION" || snapshot.game.phase === "ROLE_ACTION");
+}
+
+function isCityFinishedSnapshot(
+  snapshot: Extract<CompatibleWebSnapshot, { kind: "PLATFORM_V2_CITY_ROLE" }>["platformSnapshot"],
+): snapshot is CityRoleFinishedPlatformSnapshotV2 {
+  return snapshot.room.phase === "FINISHED" && snapshot.game !== null && snapshot.game.phase === "FINISHED";
 }
 
 function isGemFinishedSnapshot(
