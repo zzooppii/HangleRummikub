@@ -4,7 +4,7 @@ import test from "node:test";
 import { TileIdSchema, type TileId } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 
-import { validateNumberTileMeld } from "./games/number-tile/domain/rule-engine.js";
+import { normalizeNumberTileMeld, validateNumberTileMeld } from "./games/number-tile/domain/rule-engine.js";
 import type {
   NumberTileJokerPlacement,
   NumberTileMeld,
@@ -263,9 +263,11 @@ for (const [label, numbers] of [
   ["12-13-1 wrap", [12, 13, 1]],
   ["13-1-2 wrap", [13, 1, 2]],
 ] as const) {
-  test(`RUN ${label}은 거절한다`, () => {
+  test(`RUN ${label}은 ${label === "descending" ? "유일한 연속열로 정규화한다" : "거절한다"}`, () => {
     const fixture = new MeldFixture();
-    assertInvalid(
+    // Unordered unique RUNs are now legal; preserve the other invalid cases.
+    const verify = label === "descending" ? assertValid : assertInvalid;
+    verify(
       {
         kind: "RUN",
         tiles: numbers.map((number) => fixture.ordinary("RED", number)),
@@ -326,22 +328,71 @@ test("RUN은 Joker role을 ordered position에서 유일하게 유도한다", ()
   }
 });
 
-test("RUN의 ordered edge Joker는 1-13 밖 역할이면 거절한다", () => {
-  for (const tiles of [
-    (fixture: MeldFixture) => [
+test("RUN의 edge 위치가 범위를 벗어나도 유일한 1-13 interpretation으로 정규화한다", () => {
+  for (const [tiles, value] of [
+    [(fixture: MeldFixture) => [
       fixture.joker(),
       fixture.ordinary("RED", 1),
       fixture.ordinary("RED", 2),
-    ],
-    (fixture: MeldFixture) => [
+    ], 6],
+    [(fixture: MeldFixture) => [
       fixture.ordinary("RED", 12),
       fixture.ordinary("RED", 13),
       fixture.joker(),
-    ],
-  ]) {
+    ], 36],
+  ] as const) {
     const fixture = new MeldFixture();
-    assertInvalid({ kind: "RUN", tiles: tiles(fixture) }, fixture);
+    // Raw order is no longer a constraint when only one legal range exists.
+    assertValid({ kind: "RUN", tiles: tiles(fixture) }, fixture, value);
   }
+});
+
+function permutations<T>(values: readonly T[]): T[][] {
+  return values.length === 0 ? [[]] : values.flatMap((value, index) =>
+    permutations(values.filter((_entry, other) => other !== index))
+      .map(rest => [value, ...rest]));
+}
+
+test("orange 7, joker, orange 9, orange 6는 모든 raw permutation에서 6/7/J8/9와 value 30이다", () => {
+  const fixture = new MeldFixture();
+  const seven = fixture.ordinary("ORANGE", 7);
+  const joker = fixture.joker();
+  const nine = fixture.ordinary("ORANGE", 9);
+  const six = fixture.ordinary("ORANGE", 6);
+  for (const tiles of permutations([seven, joker, nine, six])) {
+    const before = [...tiles];
+    const result = normalizeNumberTileMeld({ kind: "RUN", tiles }, fixture.tilesById);
+    assert.equal(result.ok, true);
+    if (!result.ok) throw new Error("Unique unordered RUN must be valid.");
+    assert.equal(result.value.value, 30);
+    assert.deepEqual(result.value.meld.tiles, [six, seven, joker, nine]);
+    assert.deepEqual(tiles, before);
+    assert.deepEqual(result.value.meld.tiles[2], { kind: "JOKER", tileId: joker.tileId });
+  }
+});
+
+test("ordinary RUN permutation은 같은 physical IDs를 ascending으로 정규화하고 duplicate faces는 reject한다", () => {
+  const fixture = new MeldFixture();
+  const placements = [4, 5, 6].map(number => fixture.ordinary("BLUE", number as NumberTileNumber));
+  for (const tiles of permutations(placements)) {
+    const result = normalizeNumberTileMeld({ kind: "RUN", tiles }, fixture.tilesById);
+    assert.equal(result.ok, true);
+    if (result.ok) assert.deepEqual(result.value.meld.tiles, placements);
+  }
+  assertInvalid({ kind: "RUN", tiles: [
+    fixture.ordinary("BLUE", 5), fixture.ordinary("BLUE", 5), fixture.joker(),
+  ] }, fixture);
+});
+
+test("genuinely ambiguous unordered Joker RUN은 점수를 임의 선택하지 않고 fail closed한다", () => {
+  const fixture = new MeldFixture();
+  const five = fixture.ordinary("RED", 5);
+  const six = fixture.ordinary("RED", 6);
+  const joker = fixture.joker();
+  assertInvalid({ kind: "RUN", tiles: [five, joker, six] }, fixture);
+  assertInvalid({ kind: "RUN", tiles: [joker, six, five] }, fixture);
+  assertValid({ kind: "RUN", tiles: [joker, five, six] }, fixture, 15);
+  assertValid({ kind: "RUN", tiles: [five, six, joker] }, fixture, 18);
 });
 
 test("RUN에서 ordered position으로 연속열을 만들 수 없는 Joker gap은 거절한다", () => {

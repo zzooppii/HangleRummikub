@@ -254,7 +254,10 @@ test("Number 조합 UX는 하나의 생성 action과 derived classification만 �
   assert.match(numberEditorSource, /최종 유효성은 서버가 판정합니다/u);
   assert.match(numberUxSource, /classifyNumberTileDraftMeld/u);
   assert.doesNotMatch(numberUxSource, /AMBIGUOUS_JOKER/u);
-  assert.match(numberUxSource, /jokerRole:\s*\{/u);
+  assert.match(numberUxSource, /deriveNumberTileRun\(meld\.tiles\.map/u);
+  assert.match(numberUxSource, /jokerRole: run\.solution\.jokerNumber === null[\s\S]*number: run\.solution\.jokerNumber, color: ordinary\.color/u);
+  assert.match(numberEditorSource, /classification\.status === "AMBIGUOUS" && !locked/u);
+  assert.match(numberEditorSource, /props\.controller\.chooseJokerNumber\(meldIndex, candidate\.jokerNumber\)/u);
   assert.match(numberUxSource, /color:\s*null/u);
 });
 

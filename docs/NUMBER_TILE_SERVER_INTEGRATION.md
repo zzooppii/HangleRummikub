@@ -124,7 +124,7 @@ P8 source/local gate 결과는 shared 75, Web 142, server 699, 총 916 tests다.
 The Number Submit domain now treats Joker face as a derived property of the submitted final meld rather than persisted recovery state.
 
 - GROUP: ordinary number equality, distinct ordinary colors and unused-color existence; no `assignedColor`/`assignedNumber` input.
-- RUN: common ordinary color and ordered position derive the Joker role deterministically.
+- RUN: canonical ordinary faces define the unordered physical set. A unique consecutive range determines the Joker role regardless of submitted order; only genuine numeric ambiguity uses valid ordered intent. Successful Submit stores ascending order, while the state adapter still rejects non-normalized canonical RUNs. See [NUMBER_TILE_UNORDERED_RUN_FIX.md](./NUMBER_TILE_UNORDERED_RUN_FIX.md).
 - Rearrangement: previous role may change freely; exact replacement is not required.
 - Conservation: every pre-turn Joker `tileId` must remain exactly once in the final Table and may not move to a rack or pool.
 - Authority: transport/application pass the strict proposed Table through; Number RuleEngine independently resolves physical IDs and validates every final meld.

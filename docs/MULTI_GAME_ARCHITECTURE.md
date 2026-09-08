@@ -1109,7 +1109,7 @@ production Room/Registry/Socket/Web
 - Initial state는 narrow ID generator, `RandomSource`, `Clock`을 주입받아 2~4명 rack 14장, single pool, revision 0, immutable shuffled order와 정확히 90초 Turn을 만든다. Overall game deadline은 없다.
 - Number 전용 `Table`, `ProposedTable`, `Meld`, `GROUP`, `RUN`과 bare physical Joker placement를 사용한다. Hangul Board/WordGroup/RuleEngine을 import하거나 generic Tile/Meld/GameState를 만들지 않았다.
 - Submit RuleEngine은 canonical Table, actor rack, physical lookup과 proposed final Table만 받는다. Initial meld의 unchanged pre-table 관계, threshold 30, normal whole-table rearrangement, physical conservation과 rack contribution을 structured Number failure로 검증한다.
-- Joker correction 뒤 Stable meld ID나 previous-role comparison은 없다. GROUP role은 ordinary common number와 unused-color existence로 colorless하게 검증하고, RUN role은 ordinary common color와 ordered position으로 derive한다. Final duplicate/source/conservation/meld validity가 pre-turn Joker `tileId`의 exact-once Table 보존과 rack 이동 금지를 보장하며 exact ordinary replacement는 요구하지 않는다.
+- Joker correction 뒤 Stable meld ID나 previous-role comparison은 없다. GROUP role은 ordinary common number와 unused-color existence로 colorless하게 검증하고, RUN role은 unordered same-color physical set의 consecutive range로 derive한다. Unique range는 raw order와 무관하며 genuine numeric ambiguity만 valid ordered intent로 해소한다. Final duplicate/source/conservation/meld validity가 pre-turn Joker `tileId`의 exact-once Table 보존과 rack 이동 금지를 보장하며 exact ordinary replacement는 요구하지 않는다.
 - Draw는 이미 server가 선택한 한 장의 pure pool→rack transition만 제공한다. Pass/no-play, presence-independent eligibility, forfeit pruning, offline timeout streak와 `RACK_EMPTY > LAST_PLAYER_STANDING > STALEMATE` decision은 scheduler/Room 없이 pure function이다.
 - Result는 Number 전용 discriminated union이다. Single-winner reasons에는 rank를 만들지 않고, STALEMATE에만 non-forfeited 우선 및 forfeited subgroup competition ranking을 둔다. `TIME_LIMIT`과 `ALL_PLAYERS_FORFEITED`는 타입에 없다.
 - Import-boundary test는 Hangul/platform runtime 역의존, direct clock/random/timer, stable `meldId`를 거절한다. Production source가 Number domain을 import하지 않는 inertness도 고정했다.
@@ -1181,7 +1181,7 @@ NumberTilePlayingScreen
 
 `RoomSnapshotShell`은 Room/player/presence/revision과 canonical game type만 투영하며 Number state를 Hangul shape로 바꾸지 않는다. Lobby/start/session/reconnect는 이 shell을 사용하고 game 화면은 exact decoded projection을 받는다. Home selection은 create input일 뿐 renderer authority가 아니다.
 
-Number draft는 base game/revision/turn과 complete proposed Table, own rack identity, 최대 50 history를 소유한다. Intermediate invalid meld를 허용하고 `tileId` move/conservation, initial Table lock과 rack-origin return만 local operation으로 수행한다. GROUP Joker는 colorless하고 RUN role은 ordered meld에서 derive하므로 persisted assignment/reassignment state가 없다. RuleEngine, score, timeout outcome과 final Table legality는 client에 복제하지 않는다.
+Number draft는 base game/revision/turn과 complete proposed Table, own rack identity, 최대 50 history를 소유한다. Intermediate invalid meld를 허용하고 `tileId` move/conservation, initial Table lock과 rack-origin return만 local operation으로 수행한다. GROUP Joker는 colorless하고 RUN은 unique physical-set solution을 ascending으로 정규화한다. Genuine numeric ambiguity는 기존 valid ordered intent 또는 숫자만 선택하여 해소하므로 persisted assignment/reassignment state가 없다. Number-owned shared `deriveNumberTileRun`은 preview와 서버의 canonical-face 검증에서 사용하며 전체 RuleEngine, timeout outcome과 final Table legality의 authority는 서버에 남는다.
 
 `RealtimeClient`는 `[2,1]` snapshot과 exact `[HANGUL_TILE, NUMBER_TILE]` game capability를 광고하고 strict Number ack를 검증한다. `useLobbyApp`은 공통 connection/Room ordering과 game별 pending command를 조정하지만 Number/Hangul draft 타입을 합치지 않는다. Number에는 advisory가 없으며 game/start, scheduler, persistence와 server domain은 P7C에서 변경하지 않았다. 구체 UI와 mobile/reconnect 계약은 [NUMBER_TILE_WEB_IMPLEMENTATION.md](./NUMBER_TILE_WEB_IMPLEMENTATION.md)에 있다.
 
@@ -1199,7 +1199,7 @@ wrong command or cross-shaped payload
   -> fail closed before mutation/idempotency/advisory
 ```
 
-새 raw Socket.IO gate는 deterministic exact-29 reject와 exact-30 GROUP/RUN commit, 당시 exact Joker replacement와 same-Submit reuse, 별도 Hangul/Number Room의 양방향 wrong command, parallel Draw와 replay, recovery deadline 격리를 한 runtime에서 확인했다. 그 Joker assertion은 historical P8 evidence이며 current correction의 GROUP colorless/RUN ordered-role/final-conservation regression으로 superseded됐다. Production-serving gate는 실제 Number A/B create/join/start/Draw/privacy/resume를 추가했다. Web/source boundary gate는 두 feature 및 shared game namespace의 상호 import를 금지한다.
+새 raw Socket.IO gate는 deterministic exact-29 reject와 exact-30 GROUP/RUN commit, 당시 exact Joker replacement와 same-Submit reuse, 별도 Hangul/Number Room의 양방향 wrong command, parallel Draw와 replay, recovery deadline 격리를 한 runtime에서 확인했다. 그 Joker assertion은 historical P8 evidence이며 current correction의 GROUP colorless/RUN set-derived role/final-conservation regression으로 superseded됐다. Production-serving gate는 실제 Number A/B create/join/start/Draw/privacy/resume를 추가했다. Web/source boundary gate는 두 feature 및 shared game namespace의 상호 import를 금지한다.
 
 이 검증은 기존 구체 router/adapter/result를 공통 `GameModule`로 승격할 근거로 사용하지 않는다. 사용자가 `deafc39`의 Active/Successful/master/1 Replica를 확인했고, 해당 public deployment에서 exact Web capability, Home 두 card, Hangul/Number A/B create·join·start·Draw·resume, privacy, wrong-client/cross-game rejection, 390×844·320×568 responsive와 clean browser console을 검증했다. 상세 증거는 [MULTI_GAME_P8_TWO_GAME_E2E_GATE.md](./MULTI_GAME_P8_TWO_GAME_E2E_GATE.md)에 있다. P9A analysis-only Phase는 아래 판정으로 완료됐다.
 
@@ -1306,7 +1306,7 @@ Platform transport/application
   -> bare NUMBER_TILE proposed Table placement
      -> Number RuleEngine
         -> GROUP: common number + unused-color existence
-        -> RUN: common color + ordered-position number
+        -> RUN: common-color physical set -> unique range / explicit ambiguous numeric intent -> ascending order
         -> whole-table exact-once physical conservation
 ```
 

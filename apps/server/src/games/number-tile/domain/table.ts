@@ -15,7 +15,9 @@ export type NumberTileJokerPlacement = Readonly<{
 /**
  * A Table placement refers to one canonical physical Tile. Ordinary faces come
  * from the canonical Tile record. A Joker's role is derived from its containing
- * meld and its position instead of being persisted on the physical placement.
+ * final meld instead of being persisted on the physical placement. Canonical
+ * RUNs are normalized ascending; submitted order only disambiguates a genuinely
+ * ambiguous edge Joker when it already describes a complete ordered RUN.
  */
 export type NumberTilePlacement =
   | NumberTileOrdinaryPlacement

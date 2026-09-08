@@ -126,6 +126,55 @@ test("RUN의 Joker 역할은 ordered position에서 유도되고 placement에는
   );
 });
 
+test("production regression: O7 / J / O9 에 O6를 append해도 유일 RUN O6 / O7 / J / O9로 정렬된다", () => {
+  const result = normalizeNumberTileDraftMeld(meld([
+    ordinary("orange-7", 7, "ORANGE"), joker("orange-joker"),
+    ordinary("orange-9", 9, "ORANGE"), ordinary("orange-6", 6, "ORANGE"),
+  ]));
+  assert.equal(result.kind, "RUN");
+  assert.deepEqual(result.tiles.map(tile => tile.tileId), ["orange-6", "orange-7", "orange-joker", "orange-9"]);
+  assert.equal(numberTileInitialMeldValueHint([result]), 30);
+  assert.deepEqual(result.tiles.find(tile => tile.kind === "JOKER"), joker("orange-joker"));
+});
+
+test("unique Joker RUN은 모든 입력 permutation에서 같은 physical order와 derived number로 정규화된다", () => {
+  const tiles = [ordinary("o6", 6, "ORANGE"), ordinary("o7", 7, "ORANGE"), joker("j8"), ordinary("o9", 9, "ORANGE")];
+  function permutations(values: readonly NumberTileDraftPlacement[]): readonly NumberTileDraftPlacement[][] {
+    return values.length === 0 ? [[]] : values.flatMap((tile, index) =>
+      permutations(values.filter((_, other) => index !== other)).map(rest => [tile, ...rest]),
+    );
+  }
+  for (const input of permutations(tiles)) {
+    const before = JSON.stringify(input);
+    const normalized = normalizeNumberTileDraftMeld(meld(input));
+    assert.equal(normalized.kind, "RUN");
+    assert.deepEqual(normalized.tiles.map(tile => tile.tileId), ["o6", "o7", "j8", "o9"]);
+    const classification = classifyNumberTileDraftMeld(normalized);
+    assert.deepEqual(classification.status === "VALID" ? classification.interpretation.jokerRole : null, { number: 8, color: "ORANGE" });
+    assert.equal(JSON.stringify(input), before);
+  }
+});
+
+test("unordered R6 / J / R5는 숫자4/7 선택 전 ambiguous이고 기존 valid edge order는 의도를 유지한다", () => {
+  const input = meld([ordinary("r6", 6, "RED"), joker(), ordinary("r5", 5, "RED")]);
+  const classification = classifyNumberTileDraftMeld(input);
+  assert.equal(classification.status, "AMBIGUOUS");
+  if (classification.status !== "AMBIGUOUS") throw new Error("Expected numeric ambiguity.");
+  assert.deepEqual(classification.candidates.map(candidate => candidate.jokerNumber), [4, 7]);
+  assert.deepEqual(classification.candidates.map(candidate => candidate.value), [15, 18]);
+  const normalized = normalizeNumberTileDraftMeld(input);
+  assert.equal(normalized.kind, null);
+  assert.deepEqual(normalized.tiles, input.tiles);
+  for (const [tiles, expected] of [
+    [[joker(), ordinary("r5", 5, "RED"), ordinary("r6", 6, "RED")], 4],
+    [[ordinary("r5", 5, "RED"), ordinary("r6", 6, "RED"), joker()], 7],
+  ] as const) {
+    const result = classifyNumberTileDraftMeld(meld(tiles));
+    assert.equal(result.status, "VALID");
+    assert.equal(result.status === "VALID" ? result.interpretation.jokerRole?.number : null, expected);
+  }
+});
+
 test("GROUP Joker는 colorless wildcard로 즉시 분류되고 ordinary 확장에도 재배정이 없다", () => {
   const threeTiles = meld([
     ordinary("red-9", 9, "RED"),

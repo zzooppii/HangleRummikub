@@ -1,4 +1,4 @@
-import type { TileId } from "@hangul-rummikub/shared";
+import { deriveNumberTileRun, type TileId } from "@hangul-rummikub/shared";
 
 import {
   cloneNumberTile,
@@ -104,10 +104,11 @@ function canonicalTileForPlacement(
   return success(canonicalTile);
 }
 
-export function validateNumberTileMeld(
+/** Validates canonical physical faces, then orders only an unambiguous RUN. */
+export function normalizeNumberTileMeld(
   meld: NumberTileMeld,
   tilesById: ReadonlyMap<TileId, NumberTile>,
-): NumberTileRuleResult<NumberTileMeldValidation> {
+): NumberTileRuleResult<Readonly<{ value: number; meld: NumberTileMeld }>> {
   const tileIds = meld.tiles.map((placement) => placement.tileId);
   if (new Set(tileIds).size !== tileIds.length) {
     return failure("DUPLICATE_TILE_REFERENCE");
@@ -124,22 +125,19 @@ export function validateNumberTileMeld(
     return failure("INVALID_MELD");
   }
 
-  const ordinaryByIndex: Array<
-    Readonly<{ index: number; face: EffectiveFace }>
-  > = [];
-  for (const [index, placement] of meld.tiles.entries()) {
+  const ordinaryFaces: EffectiveFace[] = [];
+  const faces: Array<EffectiveFace | null> = [];
+  for (const placement of meld.tiles) {
     const tileResult = canonicalTileForPlacement(placement, tilesById);
     if (!tileResult.ok) {
       return tileResult;
     }
     if (tileResult.value.kind === "ORDINARY") {
-      ordinaryByIndex.push(Object.freeze({
-        index,
-        face: Object.freeze({
-          number: tileResult.value.number,
-          color: tileResult.value.color,
-        }),
-      }));
+      const face = Object.freeze({ number: tileResult.value.number, color: tileResult.value.color });
+      faces.push(face);
+      ordinaryFaces.push(face);
+    } else {
+      faces.push(null);
     }
   }
 
@@ -147,70 +145,69 @@ export function validateNumberTileMeld(
     if (
       meld.tiles.length < 3 ||
       meld.tiles.length > 4 ||
-      ordinaryByIndex.length === 0
+      ordinaryFaces.length === 0
     ) {
       return failure("INVALID_MELD");
     }
-    const expectedNumber = ordinaryByIndex[0]!.face.number;
+    const expectedNumber = ordinaryFaces[0]!.number;
     if (
-      ordinaryByIndex.some(({ face }) => face.number !== expectedNumber) ||
-      new Set(ordinaryByIndex.map(({ face }) => face.color)).size !==
-        ordinaryByIndex.length
+      ordinaryFaces.some((face) => face.number !== expectedNumber) ||
+      new Set(ordinaryFaces.map((face) => face.color)).size !==
+        ordinaryFaces.length
     ) {
       return failure("INVALID_MELD");
     }
     return success(
-      Object.freeze({ value: expectedNumber * meld.tiles.length }),
+      Object.freeze({ value: expectedNumber * meld.tiles.length, meld }),
     );
   } else {
-    if (meld.tiles.length < 3 || ordinaryByIndex.length === 0) {
-      return failure("INVALID_MELD");
-    }
-    const expectedColor = ordinaryByIndex[0]!.face.color;
-    if (ordinaryByIndex.some(({ face }) => face.color !== expectedColor)) {
-      return failure("INVALID_MELD");
-    }
-    const start = ordinaryByIndex[0]!.face.number - ordinaryByIndex[0]!.index;
-    if (
-      start < 1 ||
-      start + meld.tiles.length - 1 > 13 ||
-      ordinaryByIndex.some(
-        ({ index, face }) => face.number !== start + index,
-      )
-    ) {
+    const derived = deriveNumberTileRun(faces);
+    if (derived.status !== "VALID") {
+      // An ambiguous unordered edge Joker must not silently choose its value.
       return failure("INVALID_MELD");
     }
     return success(
       Object.freeze({
-        value: meld.tiles.reduce(
-          (total, _placement, index) => total + start + index,
-          0,
-        ),
+        value: derived.solution.value,
+        meld: Object.freeze({
+          kind: "RUN" as const,
+          tiles: Object.freeze(derived.solution.orderedIndices.map((index) => meld.tiles[index]!)),
+        }),
       }),
     );
   }
 }
 
-function validateCompleteTable(
+export function validateNumberTileMeld(
+  meld: NumberTileMeld,
+  tilesById: ReadonlyMap<TileId, NumberTile>,
+): NumberTileRuleResult<NumberTileMeldValidation> {
+  const result = normalizeNumberTileMeld(meld, tilesById);
+  return result.ok ? success(Object.freeze({ value: result.value.value })) : result;
+}
+
+function normalizeCompleteTable(
   table: NumberTileTable | NumberTileProposedTable,
   tilesById: ReadonlyMap<TileId, NumberTile>,
-): NumberTileRuleResult<null> {
+): NumberTileRuleResult<NumberTileTable> {
   const allTileIds = tileIdsInTable(table);
   if (new Set(allTileIds).size !== allTileIds.length) {
     return failure("DUPLICATE_TILE_REFERENCE");
   }
 
+  const melds: NumberTileMeld[] = [];
   for (const meld of table.melds) {
-    const result = validateNumberTileMeld(meld, tilesById);
+    const result = normalizeNumberTileMeld(meld, tilesById);
     if (!result.ok) {
       return result;
     }
+    melds.push(result.value.meld);
   }
-  return success(null);
+  return success(cloneNumberTileTable({ melds }));
 }
 
 function assertCanonicalInput(input: ValidateNumberTileSubmitInput): void {
-  const canonicalResult = validateCompleteTable(
+  const canonicalResult = normalizeCompleteTable(
     input.canonicalTable,
     input.tilesById,
   );
@@ -218,6 +215,11 @@ function assertCanonicalInput(input: ValidateNumberTileSubmitInput): void {
     throw new Error(
       `Invalid canonical Number Table: ${canonicalResult.error.code}.`,
     );
+  }
+  if (input.canonicalTable.melds.some((meld, index) =>
+    meld.kind === "RUN" && meld.tiles.some((tile, tileIndex) =>
+      tile.tileId !== canonicalResult.value.melds[index]!.tiles[tileIndex]!.tileId))) {
+    throw new Error("Invalid canonical Number Table: RUN order is not normalized.");
   }
 
   const tableIds = new Set(tileIdsInTable(input.canonicalTable));
@@ -316,13 +318,14 @@ export function validateNumberTileSubmit(
     return failure("TILE_CONSERVATION_FAILED");
   }
 
-  const tableValidation = validateCompleteTable(
+  const tableValidation = normalizeCompleteTable(
     input.proposedTable,
     input.tilesById,
   );
   if (!tableValidation.ok) {
     return tableValidation;
   }
+  const normalizedProposedTable = tableValidation.value;
 
   const proposedTileIdSet = new Set(proposedTileIds);
   const newlyUsedRackTileIds = Object.freeze(
@@ -336,7 +339,7 @@ export function validateNumberTileSubmit(
   if (!input.initialMeldCompleted) {
     const newMelds = initialNewMelds(
       input.canonicalTable,
-      input.proposedTable,
+      normalizedProposedTable,
     );
     if (newMelds === null) {
       return failure("TABLE_REARRANGEMENT_NOT_ALLOWED");
@@ -371,7 +374,7 @@ export function validateNumberTileSubmit(
 
   return success(
     Object.freeze({
-      table: cloneNumberTileTable(input.proposedTable),
+      table: normalizedProposedTable,
       newlyUsedRackTileIds,
       remainingRackTileIds,
       completesInitialMeld: !input.initialMeldCompleted,

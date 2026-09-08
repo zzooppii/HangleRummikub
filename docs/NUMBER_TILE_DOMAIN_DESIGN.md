@@ -49,13 +49,13 @@ Turn command의 pure 시간 판정은 `receivedAt < deadlineAt`만 유효하다.
 `NumberTileTable`과 `NumberTileProposedTable`은 complete final meld collection이다. Client drag sequence나 partial intermediate arrangement는 domain input이 아니다.
 
 - `GROUP`: ordinary number 동일, ordinary color distinct, 3~4장. Joker가 있으면 공통 number와 unused-color existence로 colorless하게 검증한다.
-- `RUN`: ordinary color 동일, 1~13 안에서 ordered ascending consecutive, 3장 이상. Joker role은 array position과 ordinary faces에서 derive한다.
+- `RUN`: ordinary color 동일, 1~13 consecutive range를 구성하는 physical set, 3~13장. Unique solution은 raw 순서 무관; canonical output은 ascending이다.
 - 두 kind 모두 meld당 Joker 최대 1장
 - Joker placement는 canonical physical kind/`tileId`와 일치해야 하며 client-provided number/color assignment는 없다.
 - 같은 표시 pattern의 두 meld는 distinct physical IDs이면 허용한다.
 - Table 전체에서 같은 `tileId` 중복은 허용하지 않는다.
 
-Ordered RUN의 derivation은 ordinary placement `(number, index)`마다 `start = number - index`가 같은지 검사한다. `start`와 `start + length - 1`이 1~13 안이면 Joker number는 `start + jokerIndex`, color는 ordinary common color다. `J,R5,R6`, `R4,J,R6`, `R5,R6,J`는 각각 Joker 4/5/7로 결정되고 `R4,J,R7`은 invalid다. GROUP은 ordinary common number만 derive하고 특정 unused color를 canonical fact로 선택하지 않는다.
+Number-owned browser-safe `deriveNumberTileRun`은 canonical physical lookup 후 받은 ordinary faces/Joker 표시로 가능한 full consecutive range를 열거한다. Unique 해는 입력 순서를 무시한다. `O7,J,O9,O6` → `O6,O7,J(8),O9`. Multiple 해는 이미 valid한 ordered sequence가 선택하는 해만 허용하고, unresolved ambiguity는 reject한다. `J,R5,R6`/`R5,R6,J`의 4/7 의도는 유지하고, `R6,J,R5`는 Web의 숫자 선택 후 같은 IDs를 재배열해야 한다. GROUP의 arbitrary color는 만들지 않는다.
 
 ## 5. Submit RuleEngine
 
@@ -79,7 +79,7 @@ validateNumberTileSubmit({
 
 ### 5.1 Initial meld
 
-Stable meld ID 대신 meld kind와 각 placement의 physical `tileId`/kind를 포함한 canonical meld-content signature multiset을 사용한다. Ordinary face는 canonical inventory에서 해석한다. GROUP 내부 순서와 Table meld 순서는 identity가 아니지만 RUN의 ordered placement sequence는 role derivation에 의미가 있다. Pre-table signature multiset이 final Table에 그대로 존재해야 하며 차감 뒤 남은 하나 이상의 새 meld만 actor rack Tile로 구성되어야 한다. 새 meld의 derive된 Joker number를 포함한 effective value 합은 30 이상이어야 한다.
+Stable meld ID 대신 meld kind와 physical `tileId`/kind의 canonical content signature multiset을 사용한다. Ordinary face는 canonical inventory에서 해석한다. GROUP 내부 순서와 Table meld 순서는 identity가 아니며 RUN은 정규화된 순서끼리 비교한다. Unique set의 raw permutation은 기존 Table 변경이 아니지만, ambiguous Joker 4→7처럼 실제 역할을 바꾼 ordered sequence는 다른 의미로 유지한다. Pre-table signature가 final Table에 그대로 남아야 하며 새 meld만 actor rack Tile로 구성돼야 한다. Canonical Joker number를 포함한 value 합이 30 이상이어야 한다.
 
 ### 5.2 Normal rearrangement와 conservation
 
@@ -91,7 +91,7 @@ Stable meld identity와 procedural recovery algorithm 없이 다음 deterministi
 
 1. Duplicate/source/conservation 검증으로 각 pre-table Joker `tileId`가 final Table에 정확히 한 번 존재함을 보장한다.
 2. 각 final GROUP의 Joker는 ordinary common number와 unused-color existence로 검증한다. 특정 color를 고르거나 저장하지 않는다.
-3. 각 final RUN의 Joker는 ordinary common color와 ordered position으로 number를 derive한다.
+3. 각 final RUN은 ordinary physical set에서 unique range를 derive하거나 명확한 ambiguous numeric intent를 검증한다. 성공 Table은 ascending으로 commit한다.
 4. Every final meld validity가 derive된 current role을 검증한다.
 5. Actor의 pre-turn rack에서 최소 한 physical Tile이 final Table에 새로 사용돼야 한다.
 

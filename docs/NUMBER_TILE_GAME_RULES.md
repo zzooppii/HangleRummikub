@@ -1,6 +1,6 @@
 # Number Tile Game Rules Gate
 
-> 상태: `CONFIRMED` — NUMBER_TILE Joker semantics correction applied
+> 상태: `CONFIRMED` — NUMBER_TILE Joker correction + unordered RUN canonicalization applied
 > 확정일: 2026-09-06
 > 사용자 결정: `ALL:A` (`NT-001`~`NT-044`) + consistency blocker clarification A/A/A
 > 내부 식별자: `NUMBER_TILE`
@@ -11,6 +11,8 @@
 ## 1. Document status
 
 이 문서는 두 번째 게임의 canonical 규칙을 구현 전에 확정한 P6 gate다. 사용자가 2026-09-06에 `ALL:A`와 세 consistency clarification의 A안을 선택하여 `NT-001`~`NT-044`를 모두 승인했다. 이후 실제 플레이에서 확인된 Joker 문제를 바로잡기 위해 `NT-012`, `NT-017`, `NT-018`의 canonical 의미를 final-meld-derived role과 final-state conservation으로 좁혀 수정했다. 이 correction은 기존 exact-replacement recovery 규칙을 대체하며 다른 rule ID나 game mechanic을 확장하지 않는다.
+
+2026-09-08 actual-play follow-up은 `O7,J,O9,O6`의 unique RUN을 raw 입력 순서 때문에 거절하던 결함을 수정한다. `NT-006`의 primary input은 physical tile set이며 canonical output은 ascending sequence다. 기존 ordered-position 해석은 genuinely ambiguous한 두 numeric outcome 사이에서 명확한 의도를 나타낼 때만 사용한다. GROUP과 나머지 규칙은 변경하지 않는다.
 
 현재 runtime은 `HANGUL_TILE`과 `NUMBER_TILE`을 지원한다. Joker correction은 NUMBER_TILE domain, Number V2 branch와 Number Web에만 적용하며 Hangul wire/rules와 GEM_CARD domain을 변경하지 않는다.
 
@@ -68,7 +70,7 @@ Joker, Pass/stalemate, timer/timeout, forfeit, scoring과 protocol도 아래 dec
 | `NT-003` | Initial rack 14장 | `CONFIRMED` |
 | `NT-004` | GROUP은 같은 number, distinct colors, 3~4장 | `CONFIRMED` |
 | `NT-005` | 같은 color의 physical copy 두 장을 한 GROUP에 함께 사용 금지 | `CONFIRMED` |
-| `NT-006` | RUN은 같은 color, strictly consecutive, length ≥3 | `CONFIRMED` |
+| `NT-006` | RUN은 같은 color의 physical set으로 consecutive range를 구성, length ≥3; unique 해는 입력 순서 무관, canonical output ascending | `CONFIRMED` |
 | `NT-007` | RUN은 1~13 범위이며 duplicate number와 wrap 금지 | `CONFIRMED` |
 | `NT-008` | Physical tile이 다르면 동일 pattern의 별도 meld 허용 | `CONFIRMED` |
 | `NT-009` | Initial meld 합계 30 이상 | `CONFIRMED` |
@@ -145,9 +147,13 @@ Joker가 있으면 ordinary tile은 모두 같은 number여야 하고 사용하�
 
 ### 8.2 `RUN`
 
-`RUN`은 같은 color의 number가 오름차순으로 1씩 증가하는 3장 이상 **ordered sequence**다. 1은 low-only, 13은 high-only이며 `12-13-1`과 `13-1-2`는 금지한다. 같은 number의 duplicate copy를 한 RUN에 함께 둘 수 없다.
+`RUN`은 같은 color의 physical tile set으로 1씩 증가하는 연속 구간을 만들 수 있는 3~13장 meld다. 클릭/드롭 순서는 unique RUN의 legality가 아니다. 1은 low-only, 13은 high-only이며 wrap과 같은 ordinary number의 duplicate copy는 금지한다.
 
-Joker가 있으면 color는 ordinary tile의 공통 color에서 derive하고, number는 submitted RUN에서 Joker의 array position으로 derive한다. Ordinary tile `(number, index)`마다 `start = number - index`가 같아야 하며 `1 <= start`와 `start + length - 1 <= 13`을 만족해야 한다. 그러므로 `Joker, RED 5, RED 6`은 Joker=`4`, `RED 4, Joker, RED 6`은 Joker=`5`, `RED 5, RED 6, Joker`는 Joker=`7`이다. `RED 4, Joker, RED 7`은 valid interpretation이 없으므로 invalid다. 이 ordered representation에서는 server의 hidden arbitrary choice나 color picker가 필요하지 않다.
+서버는 ordinary number를 모두 포함하는 길이 N의 `1..13` consecutive range를 열거한다. 각 후보에서 ordinary tile이 채우지 못한 위치 수는 Joker 수(0 또는 1)와 같아야 한다. 후보가 하나면 raw order와 무관하게 ascending으로 정규화하고, Joker는 missing number 위치에 놓는다. `O7,J,O9,O6`과 모든 permutation은 `O6,O7,J(8),O9`, Joker 없는 `O6,O4,O5`는 `O4,O5,O6`이 된다. `O4,J,O7`은 구간을 채울 수 없어 invalid다.
+
+후보가 둘 이상일 때만 이미 valid ordered sequence인 submitted order를 명확한 numeric intent로 사용한다. `J,R5,R6`은 Joker 4, `R5,R6,J`는 Joker 7이다. `R6,J,R5`처럼 어떤 후보의 ordered sequence도 아닌 입력은 자동으로 첫 후보를 선택하지 않는다. Web은 필요한 Joker **숫자만** 선택하게 하며, 선택은 같은 physical tile들을 해당 canonical 순서로 재배치해 표현한다. 미해결 입력은 Submit에서 fail-closed한다. Color는 항상 ordinary common color에서 derive하며 color picker나 persistent assignment는 없다.
+
+Unique solution이 우선이므로 raw 위치가 범위 밖 역할처럼 보여도 `J,R1,R2`는 유일한 `R1,R2,J(3)`, `R12,R13,J`는 `J(11),R12,R13`으로 valid하다. Wrap을 허용하는 것이 아니다.
 
 ### 8.3 Table model
 
@@ -161,7 +167,7 @@ Table {
 Meld = GROUP | RUN
 ```
 
-RUN의 order는 의미가 있다. GROUP은 rule상 order가 의미 없더라도 deterministic projection·fingerprint를 위해 canonical ordering을 두는 방안은 P7A 설계에서 결정할 수 있다. 이것은 gameplay rule 변경이 아니다.
+RUN 입력은 set-first이며, canonical stored/projected RUN은 ascending이다. Order는 genuinely ambiguous Joker numeric intent를 표현할 때만 입력 의미가 있다. Command fingerprint는 기존 raw full payload를 계속 구분하므로 같은 requestId에 다른 배열을 보내는 것은 replay가 아니다. GROUP의 colorless semantics와 기존 ordering 정책은 유지한다.
 
 ## 9. Initial meld
 
@@ -211,7 +217,7 @@ Joker도 고유 `tileId`를 가진 physical tile이지만 canonical face는 없�
 - Initial meld에 Joker를 사용할 수 있고 current meld에서 derive된 number를 threshold 합계에 사용한다.
 - 한 meld에는 Joker를 최대 1개만 사용할 수 있다.
 - GROUP Joker는 ordinary tile의 공통 number와 unused-color existence로 검증한다. 특정 `assignedColor`를 선택하거나 저장하지 않는다.
-- RUN Joker는 ordinary tile의 공통 color와 ordered array position으로 number를 derive한다. Color picker나 hidden server choice를 사용하지 않는다.
+- RUN Joker는 ordinary 공통 color와 가능한 consecutive range에서 derive한다. Unique 해는 입력 순서 무관; multiple 해는 valid ordered intent 또는 명시적 숫자 선택으로만 해소한다. Color picker나 hidden server choice는 없다.
 - Pre-turn Joker의 previous number/color/meld role은 final rearrangement를 제한하지 않는다. GROUP→RUN, RUN→GROUP, 또는 같은 kind 안의 다른 role로 자유롭게 바뀔 수 있다.
 - Exact ordinary replacement recovery는 요구하지 않는다. Server는 intermediate manipulation이 아니라 submitted final Table을 검증한다.
 - Pre-turn Table의 모든 Joker `tileId`는 final Table에 정확히 한 번 존재해야 하며, valid final GROUP/RUN 안에 있어야 한다. Joker를 rack이나 pool에 두고 turn을 끝낼 수 없다.
@@ -350,6 +356,8 @@ RED 11, BLUE 11, BLACK 11, ORANGE 11
 ```text
 RED 4, RED 5, RED 6
 BLUE 9, BLUE 10, BLUE 11, BLUE 12, BLUE 13
+ORANGE 7, Joker, ORANGE 9, ORANGE 6 -> ORANGE 6, ORANGE 7, Joker(8), ORANGE 9
+ORANGE 4, ORANGE 6, ORANGE 5 -> ORANGE 4, ORANGE 5, ORANGE 6
 ```
 
 ### Initial meld threshold
@@ -370,6 +378,9 @@ same-turn multiple-new-meld total       = 29
 
 RED 10, RED 11, Joker = 33
 -> valid; ordered RUN의 final position에서 Joker number 12를 server가 derive
+
+ORANGE 7, Joker, ORANGE 9, ORANGE 6 = 6 + 7 + 8 + 9 = 30
+-> valid; raw click/drop order와 무관한 unique solution의 initial value
 ```
 
 Initial failure leaves Table, rack, `initialMeldCompleted`, `gameRevision` and current turn unchanged.
@@ -412,7 +423,7 @@ final Table:    GROUP(RED 4, BLUE 4, BLACK 4)
                 RUN(BLUE 8, Joker J1, BLUE 10)
 ```
 
-The server derives `J1` as BLUE 9 from the final RUN order. It verifies every pre-turn physical ID including `J1` exactly once, the actor-rack contribution and all final melds. No exact RED 5 replacement or stable meld identity is required.
+The server derives `J1` as BLUE 9 from the final RUN's unique consecutive range. It verifies every pre-turn physical ID including `J1` exactly once, the actor-rack contribution and all final melds. No exact RED 5 replacement or stable meld identity is required.
 
 ### Score
 
@@ -456,7 +467,7 @@ Joker가 포함된 final meld가 어떤 role로도 valid하지 않음 # final me
 - pool empty, 한 장만 남은 pool, draw와 timeout race
 - 모든 player가 play하지 못하는 상황과 full no-play cycle
 - Joker-only rack, Joker로 마지막 rack tile을 낸 경우
-- 한 meld의 multiple Jokers, GROUP colorless existential validity, ordered RUN role derivation
+- 한 meld의 multiple Jokers, GROUP colorless validity, unordered unique RUN / explicit ambiguous RUN derivation
 - previous Joker role 변경, Joker final-Table 누락/중복/rack 이동
 - initial meld 정확히 threshold와 1 미만
 - duplicate physical copy와 duplicate `tileId` reference
@@ -477,9 +488,9 @@ Joker가 포함된 final meld가 어떤 role로도 valid하지 않음 # final me
 | Inventory | 모든 tile 생성, duplicate display copy, Joker | `tileId` unique, total/conservation exact | `NT-001`, `NT-003`, `NT-020` |
 | Player/start | min/max player, Host/non-Host, offline participant, deal/order | approved capacity·authority·presence만 start | `NT-002`, `NT-003`, `NT-037`, `NT-043` |
 | GROUP | 3/4 colors, same-color duplicate, duplicate pattern, size 2/5 | approved number/color/cardinality만 valid | `NT-004`, `NT-005`, `NT-008`, `NT-019` |
-| RUN | 1-2-3, 11-12-13, gaps, duplicate, wrap | approved boundary와 order만 valid | `NT-006`, `NT-007`, `NT-019` |
+| RUN | 1-2-3, 11-12-13, unordered ordinary/Joker, gaps, duplicate, wrap, true ambiguity | set-first unique solution / explicit ambiguous intent / ascending canonical output | `NT-006`, `NT-007`, `NT-019` |
 | Initial meld | threshold-1/exact/+1, multiple melds, old table reference | failure atomic, qualification only on success | `NT-009`~`NT-013`, `NT-044` |
-| Joker | GROUP colorless wildcard, ordered RUN role, previous-role change, missing/duplicate/rack move, last rack tile | physical Joker identity와 final-state conservation | `NT-011`, `NT-012`, `NT-017`~`NT-019` |
+| Joker | GROUP colorless wildcard, set-derived RUN role, genuine numeric ambiguity, previous-role change, missing/duplicate/rack move, last rack tile | physical Joker identity와 final-state conservation | `NT-011`, `NT-012`, `NT-017`~`NT-019` |
 | Rearrangement | split/merge, 4-group extraction, temporary invalid, final invalid | old table conserved, final full table valid | `NT-014`~`NT-016` |
 | Draw/Pass | pool full/one/empty, draw privacy, no-play cycle reset | server RNG, one canonical action/turn | `NT-020`~`NT-024`, `NT-029` |
 | Timer/race | `< deadline`, `== deadline`, stale/duplicate callback, submit/draw/pass race | Room lane에서 single commit | `NT-025`~`NT-027` |

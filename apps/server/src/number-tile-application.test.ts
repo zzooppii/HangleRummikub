@@ -50,6 +50,7 @@ import {
 } from "./games/number-tile/application/number-tile-submit-service.js";
 import { NumberTileTimeoutService } from "./games/number-tile/application/number-tile-timeout-service.js";
 import { projectNumberTileV2Game } from "./games/number-tile/compatibility/number-tile-v2-game-projector.js";
+import { NumberTileGameStateAdapter } from "./games/number-tile/compatibility/number-tile-game-state-adapter.js";
 import type { PlayingNumberTileGameState } from "./games/number-tile/domain/game-state.js";
 import type { OrdinaryNumberTile } from "./games/number-tile/domain/tile.js";
 import {
@@ -974,6 +975,95 @@ test("Number Submit commits an exact 30-point initial meld and atomically reject
       false,
     );
   });
+});
+
+test("Number Submit canonicalizes orange 7, joker, orange 9, orange 6 before commit, replay and V2 projection", async () => {
+  const harness = await createStartedHarness();
+  const actorPlayerId = harness.room.game.turn.activePlayerId;
+  const used = new Set<TileId>();
+  const seven = requireOrdinaryTileId(harness.room.game, "ORANGE", 7, used);
+  const joker = requireJokerTileId(harness.room.game, used);
+  const nine = requireOrdinaryTileId(harness.room.game, "ORANGE", 9, used);
+  const six = requireOrdinaryTileId(harness.room.game, "ORANGE", 6, used);
+  const proposedTable: NumberTileProposedTable = { melds: [{ kind: "RUN", tiles: [
+    ordinaryPlacement(seven), { tileId: joker, kind: "JOKER" },
+    ordinaryPlacement(nine), ordinaryPlacement(six),
+  ] }] };
+  const orderedIds = [six, seven, joker, nine];
+  const room = await replacePlayingGame(harness.persistence, harness.room,
+    reallocatePlayingGame(harness.room.game,
+      new Map([[actorPlayerId, [seven, joker, nine, six]]]), { poolEmpty: false }));
+  const input = { roomId: room.roomId, actorPlayerId,
+    requestId: v.parse(RequestIdSchema, "number-unordered-joker-submit"),
+    expectedGameRevision: room.game.gameRevision, turnId: room.game.turn.turnId,
+    receivedAt: room.game.turn.startedAt, authorization: alwaysCurrent, proposedTable };
+  const service = createSubmitService(harness);
+  const accepted = await service.submit(input);
+  assert.equal(accepted.ok, true);
+  if (!accepted.ok) throw new Error("Expected the unique 30-point RUN to commit.");
+  assert.equal(accepted.data.outcome, "ADVANCED");
+  assert.deepEqual(await service.submit(input), accepted);
+  const stored = await harness.persistence.findById(room.roomId);
+  if (stored?.gameType !== "NUMBER_TILE" || stored.game?.turn == null)
+    throw new Error("Expected normalized playing Number state.");
+  assert.equal(stored.game.gameRevision, room.game.gameRevision + 1);
+  assert.equal(stored.storageRevision, room.storageRevision + 1);
+  assert.equal(stored.game.initialMeldCompleted.get(actorPlayerId), true);
+  assert.deepEqual(stored.game.table.melds[0]!.tiles.map(tile => tile.tileId), orderedIds);
+  assert.deepEqual(stored.game.table.melds[0]!.tiles[2], { tileId: joker, kind: "JOKER" });
+  assert.equal(stored.game.racks.get(actorPlayerId)!.length, 10);
+  const cloned = new NumberTileGameStateAdapter().cloneAndValidate(stored.game);
+  assert.notEqual(cloned.table, stored.game.table);
+  assert.deepEqual(cloned.table, stored.game.table);
+  for (const selfPlayerId of stored.game.turnOrder) {
+    const projected: ReturnType<typeof projectNumberTileV2Game> = projectNumberTileV2Game({ phase: "PLAYING", game: stored.game,
+      playerIds: stored.game.turnOrder, selfPlayerId });
+    assert.equal(v.safeParse(NumberTilePlayingProjectionV2Schema, projected).success, true);
+    assert.deepEqual(projected.table.melds[0]!.tiles.map(tile => tile.tileId), orderedIds);
+    assert.deepEqual(projected.table.melds[0]!.tiles[2], { tileId: joker, kind: "JOKER" });
+  }
+  // Idempotency remains full raw-payload identity; normalization is not a
+  // license to reuse the request ID for a changed serialized request.
+  const conflict = await service.submit({ ...input, proposedTable: {
+    melds: [{ kind: "RUN", tiles: [ordinaryPlacement(six), ordinaryPlacement(seven),
+      { tileId: joker, kind: "JOKER" }, ordinaryPlacement(nine)] }],
+  } });
+  assert.equal(conflict.ok, false);
+  if (!conflict.ok) assert.equal(conflict.error.code, "REQUEST_ID_REUSED");
+  const after = await harness.persistence.findById(room.roomId);
+  assert.equal(after?.storageRevision, stored.storageRevision);
+  assert.equal(after?.game?.gameRevision, stored.game.gameRevision);
+  assert.deepEqual(proposedTable.melds[0]!.tiles.map(tile => tile.tileId), [seven, joker, nine, six]);
+});
+
+test("Number storage still rejects unordered canonical RUN while an ordered bare Joker round-trip is stable", async () => {
+  const harness = await createStartedHarness();
+  const used = new Set<TileId>();
+  const seven = requireOrdinaryTileId(harness.room.game, "ORANGE", 7, used);
+  const joker = requireJokerTileId(harness.room.game, used);
+  const nine = requireOrdinaryTileId(harness.room.game, "ORANGE", 9, used);
+  const six = requireOrdinaryTileId(harness.room.game, "ORANGE", 6, used);
+  const game = reallocatePlayingGame(harness.room.game, new Map(), {
+    poolEmpty: false, table: { melds: [{ kind: "RUN", tiles: [
+      ordinaryPlacement(seven), { tileId: joker, kind: "JOKER" },
+      ordinaryPlacement(nine), ordinaryPlacement(six),
+    ] }] },
+  });
+  const adapter = new NumberTileGameStateAdapter();
+  assert.throws(() => adapter.cloneAndValidate(game), /RUN order is not normalized/u);
+  await assert.rejects(harness.persistence.replace({ candidate: { ...harness.room, game },
+    expectedRoomRevision: harness.room.roomRevision,
+    expectedStorageRevision: harness.room.storageRevision }), /RUN order is not normalized/u);
+  assert.equal((await harness.persistence.findById(harness.room.roomId))?.storageRevision,
+    harness.room.storageRevision);
+  const canonical = { ...game, table: { melds: [{ kind: "RUN" as const, tiles: [
+    ordinaryPlacement(six), ordinaryPlacement(seven),
+    { tileId: joker, kind: "JOKER" as const }, ordinaryPlacement(nine),
+  ] }] } };
+  const cloned = adapter.cloneAndValidate(canonical);
+  assert.deepEqual(cloned.table, canonical.table);
+  assert.notEqual(cloned.table, canonical.table);
+  assert.deepEqual(adapter.cloneAndValidate(cloned).table, canonical.table);
 });
 
 test("Number Submit rejects deadline equality, stale revision, and a wrong-turn actor before any UoW mutation", async () => {

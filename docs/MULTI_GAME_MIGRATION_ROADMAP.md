@@ -1307,3 +1307,9 @@ Multi-game Platform P12 배포 gate만 수행하라. docs/MULTI_GAME_MIGRATION_R
 - GEM_CARD가 current interface에 맞지 않으면 game을 왜곡하지 않고 P9B contract를 더 작게 만드는 별도 변경을 제안한다.
 - protocol version 변경, storage migration, production enablement는 각각 해당 Phase의 명시적 DoD와 rollback 계획이 있어야 한다.
 - 매 Phase 완료 보고에는 변경 파일, 핵심 결정, 미확정 사항, test 수와 결과, production compatibility 영향을 포함한다.
+
+## 17. NUMBER_TILE unordered RUN focused follow-up
+
+`ff1a792`의 GEM P11C SOURCE COMPLETE를 보존하고 P12는 시작하지 않는다. 실제 `O7,J,O9,O6` bug는 same-color physical set의 unique consecutive solution을 canonical ascending RUN으로 만드는 Number-only correction으로 처리했다. Genuine numeric ambiguity만 valid ordered intent 또는 숫자 선택으로 해소하며 GROUP colorless Joker와 previous-role-independent conservation은 유지한다. 위 historical Joker checkpoint의 raw-position-first RUN 설명은 이번 규칙으로 superseded된다.
+
+Typecheck, 총 1,135 tests (shared 91 / Web 217 / server 827), build, production-serving 6/6과 diff-check를 통과했다. **SOURCE COMPLETE / MANUAL RAILWAY VERIFICATION PENDING**으로 public 배포와 구분한다. 이번 작업은 배포나 Railway 설정 변경을 수행하지 않는다. 상세는 [NUMBER_TILE_UNORDERED_RUN_FIX.md](./NUMBER_TILE_UNORDERED_RUN_FIX.md)를 따른다. 다음 사용자 요청 후보는 **NUMBER_TILE BOARD UI OVERHAUL — board-centric real-game interaction** 하나다.

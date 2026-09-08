@@ -50,22 +50,17 @@ Adding `K10` or `O10` to `R10, B10, J` cannot conflict with a previous arbitrary
 
 ## 4. RUN semantics
 
-RUN order is canonical intent. Ordinary Tiles must share one color. For each ordinary placement at zero-based index `i`, compute:
-
-```text
-start = ordinaryNumber - i
-```
-
-All ordinary placements must produce the same `start`, and the complete sequence must stay within 1–13. The Joker at index `j` has derived number `start + j` and the ordinary common color.
+The later [unordered RUN correction](./NUMBER_TILE_UNORDERED_RUN_FIX.md) supersedes the original raw-position-first rule. RUN legality uses the physical set: distinct ordinary numbers of one color, at most one Joker, and a complete consecutive range of the meld's size within 1–13. If exactly one range exists, its missing number is the Joker role regardless of click/drop order. The server commits ascending order with the same physical IDs.
 
 | Ordered RUN | Derived role |
 | --- | --- |
 | `J, R5, R6` | Joker = RED 4 |
 | `R4, J, R6` | Joker = RED 5 |
 | `R5, R6, J` | Joker = RED 7 |
+| `O7, J, O9, O6` | unique Joker = ORANGE 8; normalize to `O6, O7, J, O9` |
 | `R4, J, R7` | invalid; no consecutive interpretation |
 
-With at most one Joker, at least two ordinary Tiles in a valid length-three-or-more meld, and meaningful array order, the canonical representation leaves no unresolved numeric ambiguity. The server does not make a hidden choice and the Web needs neither a number picker nor a color picker. If the UI normalizes a valid RUN, it preserves physical `tileId` and the intended ordered role.
+Only genuinely ambiguous sets consult already-valid ascending array order as numeric intent: `J,R5,R6` means 4 and `R5,R6,J` means 7. For an unresolved order such as `R6,J,R5`, the Web offers only the two numeric choices and records the choice by ordering the same physical placements. Unresolved Submit fails closed. No color picker or persistent assignment field exists; unique solutions never require a picker.
 
 ## 5. Final-state rearrangement
 
@@ -92,7 +87,7 @@ This role change is legal when all other pre-turn Tiles are conserved elsewhere,
 The server calculates initial meld value from canonical ordinary faces plus each meld-derived Joker number.
 
 - GROUP: Joker value equals the common group number.
-- RUN: Joker value is derived from ordered position.
+- RUN: Joker value comes from the unique consecutive range, or the explicitly resolved ordered range when there are two valid possibilities.
 
 Therefore the 30-point threshold remains deterministic without client-claimed assignment. For example `R10, R11, J` is an ordered RUN worth 33 because the Joker derives as 12.
 
@@ -117,7 +112,7 @@ A strict old Number browser that already loaded the assignment-required schema m
 ## 8. Required regression boundary
 
 - GROUP: colorless 3/4-Tile cases, duplicate ordinary color, size 5, no picker, extension without old-color conflict.
-- RUN: middle and both edge Joker positions, out-of-range/gap rejection, no color picker.
+- RUN: unordered unique solutions, middle and both edge Joker roles, genuine numeric ambiguity, out-of-range/gap rejection, no color picker.
 - Rearrangement: previous role change, GROUP↔RUN, exact-once Joker conservation, Joker-to-rack rejection, missing/duplicate old Table Tile, rack contribution and invalid final meld.
 - Shared/persistence/projection: strict bare Joker schema, round-trip clone, public bare identity and no synthetic assignment.
 - Web: automatic classification, move/drag role re-derivation, Undo/Reset/Submit and no stale picker state.
@@ -126,6 +121,8 @@ A strict old Number browser that already loaded the assignment-required schema m
 The canonical rule details remain in [NUMBER_TILE_GAME_RULES.md](./NUMBER_TILE_GAME_RULES.md). Domain, wire, server and Web ownership are synchronized in [NUMBER_TILE_DOMAIN_DESIGN.md](./NUMBER_TILE_DOMAIN_DESIGN.md), [NUMBER_TILE_PROTOCOL_GATE.md](./NUMBER_TILE_PROTOCOL_GATE.md), [NUMBER_TILE_SERVER_INTEGRATION.md](./NUMBER_TILE_SERVER_INTEGRATION.md), and [NUMBER_TILE_WEB_IMPLEMENTATION.md](./NUMBER_TILE_WEB_IMPLEMENTATION.md).
 
 ## 9. Source checkpoint and manual production verification
+
+This section records the original 1,045-test checkpoint. The subsequent unordered RUN follow-up and its separate validation/deployment status are recorded in [NUMBER_TILE_UNORDERED_RUN_FIX.md](./NUMBER_TILE_UNORDERED_RUN_FIX.md).
 
 The user accepts the Codex Chrome connection limitation as a pending manual verification item rather than a source commit/push blocker. The final root typecheck, all 1,045 tests (shared 76, Web 179, server 790), build and diff-check pass; no tests are skipped. The production-serving regression passes all six cases. Direct two-window Chrome verification has not been performed by Codex.
 

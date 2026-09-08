@@ -1,9 +1,11 @@
 import {
   NUMBER_TILE_COLORS,
+  deriveNumberTileRun,
   type NumberTileColor,
   type NumberTileNumber,
   type NumberTilePrivateRackTileViewV2,
   type NumberTileTablePlacementV2,
+  type NumberTileRunSolution,
 } from "@hangul-rummikub/shared";
 
 import type {
@@ -48,6 +50,7 @@ export type NumberTileMeldInterpretation = Readonly<{
 export type NumberTileMeldClassification =
   | Readonly<{ status: "INCOMPLETE" }>
   | Readonly<{ status: "INVALID" }>
+  | Readonly<{ status: "AMBIGUOUS"; candidates: readonly NumberTileRunSolution[] }>
   | Readonly<{
       status: "VALID";
       interpretation: NumberTileMeldInterpretation;
@@ -86,58 +89,6 @@ function groupInterpretation(
   };
 }
 
-function runInterpretation(
-  meld: NumberTileDraftMeld,
-): NumberTileMeldInterpretation | null {
-  if (meld.tiles.length < 3) {
-    return null;
-  }
-  const ordinaryByIndex = meld.tiles.flatMap((tile, index) =>
-    tile.kind === "ORDINARY" ? [{ tile, index }] : [],
-  );
-  const jokerCount = meld.tiles.length - ordinaryByIndex.length;
-  if (jokerCount > 1 || ordinaryByIndex.length < 2) {
-    return null;
-  }
-
-  if (jokerCount === 0) {
-    const sorted = [...ordinaryByIndex].sort(
-      (left, right) => left.tile.number - right.tile.number,
-    );
-    if (
-      sorted.some(({ tile }) => tile.color !== sorted[0]?.tile.color) ||
-      sorted.some(
-        ({ tile }, index) =>
-          index > 0 && tile.number !== sorted[index - 1]!.tile.number + 1,
-      )
-    ) {
-      return null;
-    }
-    return { kind: "RUN", jokerRole: null };
-  }
-
-  const first = ordinaryByIndex[0]!;
-  const start = first.tile.number - first.index;
-  if (
-    start < 1 ||
-    start + meld.tiles.length - 1 > 13 ||
-    ordinaryByIndex.some(
-      ({ tile, index }) =>
-        tile.color !== first.tile.color || tile.number !== start + index,
-    )
-  ) {
-    return null;
-  }
-  const jokerIndex = meld.tiles.findIndex((tile) => tile.kind === "JOKER");
-  return {
-    kind: "RUN",
-    jokerRole: {
-      number: (start + jokerIndex) as NumberTileNumber,
-      color: first.tile.color,
-    },
-  };
-}
-
 /**
  * Browser-only guidance. The server still resolves physical Tiles and validates
  * the complete proposed Table independently on Submit.
@@ -156,10 +107,24 @@ export function classifyNumberTileDraftMeld(
     return { status: "INCOMPLETE" };
   }
 
-  const interpretation = groupInterpretation(meld) ?? runInterpretation(meld);
-  return interpretation === null
-    ? { status: "INVALID" }
-    : { status: "VALID", interpretation };
+  const group = groupInterpretation(meld);
+  if (group !== null) return { status: "VALID", interpretation: group };
+
+  const run = deriveNumberTileRun(meld.tiles.map(tile =>
+    tile.kind === "ORDINARY" ? { number: tile.number, color: tile.color } : null,
+  ));
+  if (run.status !== "VALID") return run;
+  const ordinary = meld.tiles.find(tile => tile.kind === "ORDINARY");
+  if (ordinary === undefined || ordinary.kind !== "ORDINARY") return { status: "INVALID" };
+  return {
+    status: "VALID",
+    interpretation: {
+      kind: "RUN",
+      jokerRole: run.solution.jokerNumber === null
+        ? null
+        : { number: run.solution.jokerNumber, color: ordinary.color },
+    },
+  };
 }
 
 function placementFaceForOrdering(
@@ -208,8 +173,9 @@ function comparePlacement(
     : String(left.tileId).localeCompare(String(right.tileId));
 }
 
-/** Derives the current meld role and orders valid melds without persisting a
- * Joker assignment. RUN order is canonical; GROUP Joker color stays neutral. */
+/** Unique RUN sets normalize regardless of insertion order. Genuine numeric
+ * ambiguity stays unresolved until ordered intent is explicit. No Joker face
+ * is persisted, and GROUP Joker color stays neutral. */
 export function normalizeNumberTileDraftMeld(
   meld: NumberTileDraftMeld,
 ): NumberTileDraftMeld {

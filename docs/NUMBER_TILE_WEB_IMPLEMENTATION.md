@@ -33,7 +33,7 @@ Draft는 browser memory에만 존재하며 base `gameId`, `gameRevision`, `turnI
 - 첫 등록 전 canonical Table은 읽기 전용이고 local meld에는 own rack tile만 놓는다. 합계 30 안내와 candidate 합계는 UX hint일 뿐 server 판정을 대체하지 않는다.
 - 첫 등록 뒤 split/merge/extend/rebuild가 가능한 whole-table editor를 제공하고 own rack tile 1개 사용 requirement를 안내한다.
 - 이번 turn의 rack-origin tile은 rack으로 되돌릴 수 있지만 pre-turn canonical Table tile은 rack으로 반환할 수 없다.
-- Joker는 같은 physical `tileId`만 유지한다. GROUP에서는 ordinary common number와 unused-color existence로 colorless하게 분류하며 color/number picker를 제공하지 않는다. RUN에서는 ordinary common color와 ordered position으로 role을 derive하므로 color picker가 없다. Previous role은 drag/rearrangement를 제한하지 않는다.
+- Joker는 같은 physical `tileId`만 유지한다. GROUP은 colorless이며 color/number picker가 없다. RUN은 unique physical set을 ascending으로 자동 정규화한다. Multiple solution은 valid ordered intent를 보존하며 그것도 없을 때만 숫자 선택을 요구한다. Color picker는 없고 previous role은 drag/rearrangement를 제한하지 않는다.
 - Undo는 click/drag move, meld create/delete와 rack return을 복원한다. Joker role은 draft meld에서 매번 derive되므로 stale assignment state를 history에 보관하지 않는다. 첫 combination 생성+첫 Tile 배치는 history 한 entry이며, 비워진 source combination은 같은 edit에서 제거된다. Reset은 authoritative baseline으로 돌아간다.
 
 ## 4. Command와 final-state validation
@@ -80,6 +80,6 @@ The second interaction pass adds an Editor-local active-combination pointer and 
 ## 9. Joker semantics and open-client compatibility
 
 - `R10, B10, Joker` is a complete same-number combination without a color picker. Adding either `K10` or `O10` remains valid because the Joker does not retain an arbitrary previous color.
-- Ordered RUN placement expresses numeric intent: `J,R5,R6`, `R4,J,R6`, and `R5,R6,J` derive Joker 4, 5, and 7. RUN color always comes from ordinary tiles and is never picked.
+- Unique RUN sets ignore raw insertion order: `O7,J,O9`에 `O6`을 추가하면 즉시 `O6,O7,J(8),O9`가 된다. Multiple numeric solutions만 valid ordered intent로 구분한다: `J,R5,R6`은 4, `R5,R6,J`는 7. Unresolved `R6,J,R5`는 숫자만 선택해 동일 IDs를 재정렬한다. RUN color는 ordinary tiles에서 derive하며 선택하지 않는다.
 - Moving a Joker between combinations immediately re-derives its preview; the Web does not enforce old-face replacement. The server remains authoritative for final Table conservation, rack contribution and all meld validity.
 - The corrected Number V2 command/projection shape removes Joker assignment fields without changing `protocolVersion`, `snapshotVersion`, event names or Hangul branches. A strict old Number browser already open on the previous schema must refresh; fake GROUP color is not emitted as a compatibility workaround.

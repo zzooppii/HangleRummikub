@@ -293,7 +293,7 @@ P0 문서는 이 결정들을 위한 seam과 검증 기준만 제공한다. Numb
 P6는 runtime 구현 전에 다음 경계를 확정했다.
 
 - 사용자가 `ALL:A`와 consistency clarification A/A/A를 승인해 `NT-001`~`NT-044`를 `CONFIRMED`로 만들고 `number-tile-rules-v1`을 canonical ruleset으로 기록했다.
-- Inventory 106장, 2~4명, rack 14장, GROUP/RUN, initial 30, whole-table rearrangement, 당시 exact Joker recovery, single-pool Draw/Pass, 90초 timer와 no overall deadline을 확정했다. Exact-recovery 부분은 이후 actual-play correction으로 superseded됐으며 current canonical rule은 colorless GROUP, ordered-role RUN과 previous-role-independent final-state conservation이다.
+- Inventory 106장, 2~4명, rack 14장, GROUP/RUN, initial 30, whole-table rearrangement, 당시 exact Joker recovery, single-pool Draw/Pass, 90초 timer와 no overall deadline을 확정했다. Exact-recovery 부분은 이후 actual-play correction으로 superseded됐으며 current canonical rule은 colorless GROUP, unordered set 기반 RUN canonicalization과 previous-role-independent final-state conservation이다. RUN 해가 유일하면 입력 순서와 무관하며, 진짜 숫자 ambiguity만 명시적인 ordered intent로 해소한다.
 - Finish reason은 `RACK_EMPTY`, `STALEMATE`, `LAST_PLAYER_STANDING`이며 Number에는 `ALL_PLAYERS_FORFEITED`와 `TIME_LIMIT`이 없다.
 - STALEMATE는 eligible/non-forfeited full no-play cycle로 판정하고 forfeited result entry는 non-forfeited 뒤에 별도 competition ranking하며 모두 `score = -penalty`를 사용한다.
 - Number 전용 `Table`/`Meld`/`ProposedTable`과 player-private projection을 확정 방향으로 두고 Hangul Board/RuleEngine/TurnDraft reuse를 금지했다.

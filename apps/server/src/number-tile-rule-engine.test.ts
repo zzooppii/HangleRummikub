@@ -778,17 +778,74 @@ test("Joker와 rack contribution을 모두 보존해도 final meld가 invalid면
   const red4 = fixture.ordinary("RED", 4);
   const joker = fixture.joker();
   const red6 = fixture.ordinary("RED", 6);
-  const red7 = fixture.ordinary("RED", 7);
+  // R4/J/R7/R6 is now the uniquely valid unordered 4/5/6/7 RUN.
+  // Use a genuine two-gap range to retain this invalid-final-state coverage.
+  const red8 = fixture.ordinary("RED", 8);
   assertFailure(
     submit(
       fixture,
       table(run(red4, joker, red6)),
-      table(run(red4, joker, red7, red6)),
-      [red7],
+      table(run(red4, joker, red8, red6)),
+      [red8],
       true,
     ),
     "INVALID_MELD",
   );
+});
+
+test("unique unordered Joker RUN의 initial value 30을 확정하고 canonical candidate만 ascending으로 만든다", () => {
+  const fixture = new RuleFixture();
+  const seven = fixture.ordinary("ORANGE", 7);
+  const joker = fixture.joker();
+  const nine = fixture.ordinary("ORANGE", 9);
+  const six = fixture.ordinary("ORANGE", 6);
+  const proposed = table(run(seven, joker, nine, six));
+  const result = submit(fixture, table(), proposed, [seven, joker, nine, six], false);
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error("Expected unique initial Joker RUN.");
+  assert.equal(result.value.initialMeldValue, 30);
+  assert.equal(result.value.completesInitialMeld, true);
+  assert.deepEqual(result.value.table, table(run(six, seven, joker, nine)));
+  assert.deepEqual(proposed, table(run(seven, joker, nine, six)));
+});
+
+test("초기 등록에서는 existing RUN의 raw 순서 차이를 normalized signature로 비교하지만 다른 Joker role은 금지한다", () => {
+  const fixture = new RuleFixture();
+  const four = fixture.ordinary("ORANGE", 4);
+  const six = fixture.ordinary("ORANGE", 6);
+  const five = fixture.ordinary("ORANGE", 5);
+  const joker = fixture.joker();
+  const own = ["RED", "BLUE", "BLACK"].map(color => fixture.ordinary(color as NumberTileColor, 10));
+  const result = submit(fixture, table(run(four, joker, six)),
+    table(run(six, four, joker), group(...own)), own, false);
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.value.initialMeldValue, 30);
+    assert.deepEqual(result.value.table.melds[0], run(four, joker, six));
+  }
+  assertFailure(submit(fixture, table(run(joker, five, six)),
+    table(run(five, six, joker), group(...own)), own, false), "TABLE_REARRANGEMENT_NOT_ALLOWED");
+});
+
+test("previously positional-invalid R4/J/R7/R6 rearrangement는 final valid range와 conservation으로 허용한다", () => {
+  const fixture = new RuleFixture();
+  const four = fixture.ordinary("RED", 4);
+  const joker = fixture.joker();
+  const six = fixture.ordinary("RED", 6);
+  const seven = fixture.ordinary("RED", 7);
+  const result = submit(fixture, table(run(four, joker, six)),
+    table(run(four, joker, seven, six)), [seven], true);
+  assert.equal(result.ok, true);
+  if (result.ok) assert.deepEqual(result.value.table, table(run(four, joker, six, seven)));
+});
+
+test("unsorted stored canonical RUN은 proposal normalization으로 숨기지 않고 fail fast한다", () => {
+  const fixture = new RuleFixture();
+  const four = fixture.ordinary("RED", 4);
+  const five = fixture.ordinary("RED", 5);
+  const six = fixture.ordinary("RED", 6);
+  assert.throws(() => submit(fixture, table(run(six, five, four)),
+    table(run(four, five, six)), [], true), /RUN order is not normalized/u);
 });
 
 test("성공 output Table은 input에서 detached되고 deep-frozen된다", () => {

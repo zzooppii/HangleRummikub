@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   validatePlatformSnapshotV2,
@@ -13,6 +15,7 @@ import {
   addNumberTileDraftMeld,
   appendNumberTileDraftTileToMeld,
   canEditNumberTileTurnDraft,
+  chooseNumberTileDraftJokerNumber,
   createNumberTileTurnDraft,
   decideNumberTileTurnDraftReconciliation,
   findNumberTileDraftReusableEmptyMeldIndex,
@@ -29,6 +32,9 @@ import {
   type NumberTileTurnDraftEditResult,
 } from "./number-tile-turn-draft.js";
 import { serializeNumberTileTurnDraft } from "../../lib/number-tile-actions.js";
+import { classifyNumberTileDraftMeld, numberTileInitialMeldValueHint } from "./number-tile-ux.js";
+import { NumberTileTurnDraftEditor } from "./NumberTileTurnDraftEditor.js";
+import type { NumberTileTurnDraftController } from "./use-number-tile-turn-draft.js";
 
 type SnapshotOptions = Readonly<{
   selfIsActive?: boolean;
@@ -663,6 +669,86 @@ test("Joker는 physical identity만 유지한 채 local 조합 사이를 이동�
   );
   assert.equal(findNumberTileDraftTile(draft, jokerId)?.source, "TABLE");
   assert.equal(tileOccurrences(draft, jokerId), 1);
+});
+
+test("direct click/drop append fixes O7/J/O9 + O6 in one Undo and serializes bare physical identities", () => {
+  const source = snapshot({ emptyTable: true, initialMeldCompleted: false });
+  source.game.privateState.rack = [
+    { tileId: "o7" as TileId, kind: "ORDINARY", number: 7, color: "ORANGE" },
+    { tileId: "j8" as TileId, kind: "JOKER" },
+    { tileId: "o9" as TileId, kind: "ORDINARY", number: 9, color: "ORANGE" },
+    { tileId: "o6" as TileId, kind: "ORDINARY", number: 6, color: "ORANGE" },
+  ];
+  source.game.playerStates[0]!.rackCount = 4;
+  source.game.remainingPoolCount = 99;
+  const baseline = requireDraft(createNumberTileTurnDraft(source));
+  let draft = requireEdit(placeNumberTileDraftTileInNewMeld(baseline, "o7" as TileId));
+  draft = requireEdit(appendNumberTileDraftTileToMeld(draft, "j8" as TileId, 0));
+  draft = requireEdit(appendNumberTileDraftTileToMeld(draft, "o9" as TileId, 0));
+  const previous = draft;
+  draft = requireEdit(appendNumberTileDraftTileToMeld(draft, "o6" as TileId, 0));
+  assert.equal(draft.history.length, previous.history.length + 1);
+  assert.deepEqual(draft.table.melds[0]?.tiles.map(tile => tile.tileId), ["o6", "o7", "j8", "o9"]);
+  assert.equal(numberTileInitialMeldValueHint(draft.table.melds), 30);
+  assert.deepEqual(serializeNumberTileTurnDraft(draft), { melds: [{ kind: "RUN", tiles: [
+    { tileId: "o6", kind: "ORDINARY" }, { tileId: "o7", kind: "ORDINARY" }, { tileId: "j8", kind: "JOKER" }, { tileId: "o9", kind: "ORDINARY" },
+  ] }] });
+  assert.deepEqual(requireEdit(undoNumberTileTurnDraft(draft)).table, previous.table);
+  assert.deepEqual(resetNumberTileTurnDraft(draft).availableRackTiles, baseline.availableRackTiles);
+  assert.equal(tileOccurrences(draft, "j8" as TileId), 1);
+});
+
+function ambiguousRunFixture() {
+  const source = snapshot({ emptyTable: true, initialMeldCompleted: false });
+  source.game.privateState.rack = [
+    { tileId: "r6" as TileId, kind: "ORDINARY", number: 6, color: "RED" },
+    { tileId: "numeric-joker" as TileId, kind: "JOKER" },
+    { tileId: "r5" as TileId, kind: "ORDINARY", number: 5, color: "RED" },
+  ];
+  const baseline = requireDraft(createNumberTileTurnDraft(source));
+  let draft = requireEdit(placeNumberTileDraftTileInNewMeld(baseline, "r6" as TileId));
+  draft = requireEdit(appendNumberTileDraftTileToMeld(draft, "numeric-joker" as TileId, 0));
+  draft = requireEdit(appendNumberTileDraftTileToMeld(draft, "r5" as TileId, 0));
+  return { source, baseline, draft };
+}
+
+test("genuine RUN numeric choice reorders only current physical placements as one Undo and rejects stale choices", () => {
+  const { baseline, draft } = ambiguousRunFixture();
+  assert.equal(classifyNumberTileDraftMeld(draft.table.melds[0]!).status, "AMBIGUOUS");
+  assert.equal(serializeNumberTileTurnDraft(draft), null);
+  const lower = requireEdit(chooseNumberTileDraftJokerNumber(draft, 0, 4));
+  const upper = requireEdit(chooseNumberTileDraftJokerNumber(draft, 0, 7));
+  assert.equal(lower.history.length, draft.history.length + 1);
+  assert.deepEqual(lower.table.melds[0]?.tiles.map(tile => tile.tileId), ["numeric-joker", "r5", "r6"]);
+  assert.deepEqual(upper.table.melds[0]?.tiles.map(tile => tile.tileId), ["r5", "r6", "numeric-joker"]);
+  assert.equal(numberTileInitialMeldValueHint(lower.table.melds), 15);
+  assert.equal(numberTileInitialMeldValueHint(upper.table.melds), 18);
+  assert.deepEqual(requireEdit(undoNumberTileTurnDraft(lower)).table, draft.table);
+  assert.deepEqual(resetNumberTileTurnDraft(lower).table, baseline.table);
+  assert.deepEqual(serializeNumberTileTurnDraft(lower)?.melds[0]?.tiles[0], { tileId: "numeric-joker", kind: "JOKER" });
+  expectEditError(chooseNumberTileDraftJokerNumber(draft, 0, 8), "INVALID_TARGET");
+  expectEditError(chooseNumberTileDraftJokerNumber(lower, 0, 7), "INVALID_TARGET");
+  assert.equal(tileOccurrences(lower, "numeric-joker" as TileId), 1);
+});
+
+test("Number editor shows only genuine numeric buttons, no color picker; choice hides after resolution", () => {
+  const { source, draft } = ambiguousRunFixture();
+  const controller = (value: NumberTileTurnDraft): NumberTileTurnDraftController => ({
+    draft: value, canEdit: true, isDirty: true, noticeMessage: null, editErrorMessage: null,
+    addMeld() {}, removeEmptyMeld() {}, placeTile() {}, appendTileToMeld() {}, placeTileInNewMeld() {}, returnTileToRack() {}, chooseJokerNumber() {}, undo() {}, reset() {}, clearFeedback() {},
+  });
+  const render = (value: NumberTileTurnDraft) => renderToStaticMarkup(createElement(NumberTileTurnDraftEditor, {
+    snapshot: source, controller: controller(value), submitPending: false, actionPending: false, commandRetryKind: null, canSubmit: true, canAct: true,
+    onSubmit() {}, onDraw() {}, onPass() {},
+  }));
+  const html = render(draft);
+  assert.match(html, /조커 숫자 4, 조합 합계 15점/);
+  assert.match(html, /조커 숫자 7, 조합 합계 18점/);
+  assert.match(html, /disabled=""[^>]*>조합 제출/);
+  assert.doesNotMatch(html, /<select|assignedColor|assignedNumber|색상 선택<\/button>/);
+  const resolved = render(requireEdit(chooseNumberTileDraftJokerNumber(draft, 0, 4)));
+  assert.doesNotMatch(resolved, /aria-label="조합 1 조커 숫자 선택"/);
+  assert.match(resolved, /✓ 연속 숫자 조합/);
 });
 
 test("canonical Joker는 valid whole-draft RUN role을 바꿔도 stale role 없이 serialize된다", () => {

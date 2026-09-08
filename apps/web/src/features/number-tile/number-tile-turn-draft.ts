@@ -13,7 +13,7 @@ import type {
 } from "@hangul-rummikub/shared";
 
 import { isSameGameplayIdentity } from "../../lib/gameplay-identity.js";
-import { normalizeNumberTileDraftMeld } from "./number-tile-ux.js";
+import { classifyNumberTileDraftMeld, normalizeNumberTileDraftMeld } from "./number-tile-ux.js";
 
 export const NUMBER_TILE_TURN_DRAFT_HISTORY_LIMIT = 50;
 
@@ -469,6 +469,32 @@ function isCanonicalMeldLocked(
   meld: NumberTileDraftMeld,
 ): boolean {
   return draft.mode === "INITIAL_MELD" && meld.origin === "CANONICAL_TABLE";
+}
+
+/** Resolves only genuine RUN numeric ambiguity by reordering the same physical
+ * placements. The choice adds one Undo entry, never an assignment field. */
+export function chooseNumberTileDraftJokerNumber(
+  draft: NumberTileTurnDraft,
+  meldIndex: number,
+  number: NumberTileNumber,
+): NumberTileTurnDraftEditResult {
+  const meld = draft.table.melds[meldIndex];
+  if (meld === undefined) return fail("MELD_NOT_FOUND");
+  if (isCanonicalMeldLocked(draft, meld)) return fail("INITIAL_MELD_TABLE_LOCKED");
+  const classification = classifyNumberTileDraftMeld(meld);
+  if (classification.status !== "AMBIGUOUS") return fail("INVALID_TARGET");
+  const candidate = classification.candidates.find(value => value.jokerNumber === number);
+  if (candidate === undefined) return fail("INVALID_TARGET");
+  const tiles: NumberTileDraftPlacement[] = [];
+  for (const index of candidate.orderedIndices) {
+    const tile = meld.tiles[index];
+    if (tile === undefined) return fail("INVALID_TARGET");
+    tiles.push(tile);
+  }
+  return succeed(commitEdit(draft, {
+    table: { melds: draft.table.melds.map((value, index) => index === meldIndex ? { ...value, tiles } : value) },
+    availableRackTiles: draft.availableRackTiles,
+  }, [meldIndex]));
 }
 
 /**

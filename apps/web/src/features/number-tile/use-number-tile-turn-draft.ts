@@ -1,5 +1,6 @@
 import type {
   NumberTilePlayingPlatformSnapshotV2,
+  NumberTileNumber,
   TileId,
 } from "@hangul-rummikub/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -8,6 +9,7 @@ import {
   addNumberTileDraftMeld,
   appendNumberTileDraftTileToMeld,
   canEditNumberTileTurnDraft,
+  chooseNumberTileDraftJokerNumber,
   createNumberTileTurnDraft,
   decideNumberTileTurnDraftReconciliation,
   isNumberTileTurnDraftDirty,
@@ -58,6 +60,7 @@ export type NumberTileTurnDraftController = Readonly<{
   appendTileToMeld: (tileId: TileId, meldIndex: number) => void;
   placeTileInNewMeld: (tileId: TileId) => void;
   returnTileToRack: (tileId: TileId) => void;
+  chooseJokerNumber: (meldIndex: number, number: NumberTileNumber) => void;
   undo: () => void;
   reset: () => void;
   clearFeedback: () => void;
@@ -189,6 +192,8 @@ export function useNumberTileTurnDraft(
       applyEdit((draft) => placeNumberTileDraftTileInNewMeld(draft, tileId)),
     returnTileToRack: (tileId) =>
       applyEdit((draft) => returnNumberTileDraftTileToRack(draft, tileId)),
+    chooseJokerNumber: (meldIndex, number) =>
+      applyEdit((draft) => chooseNumberTileDraftJokerNumber(draft, meldIndex, number)),
     undo: () => applyEdit(undoNumberTileTurnDraft),
     reset: () => {
       setState((current) => {

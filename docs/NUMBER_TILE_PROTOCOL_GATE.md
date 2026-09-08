@@ -91,7 +91,7 @@ type NumberPassCommandCandidate = {
 };
 ```
 
-Stable meld identity는 도입하지 않는다. Client가 ordinary tile face value나 Joker의 number/color를 보내고 서버가 믿는 구조는 금지한다. 서버는 `tileId`로 canonical physical tile을 찾고 containing meld에서 Joker role을 derive한다. GROUP은 ordinary common number와 unused-color existence로 검증하므로 Joker color를 wire fact로 만들지 않는다. RUN은 submitted `tiles` array order가 canonical role intent이며 ordinary faces와 Joker index로 color/number를 derive한다.
+Stable meld identity는 도입하지 않는다. Client가 ordinary tile face value나 Joker의 number/color를 보내고 서버가 믿는 구조는 금지한다. 서버는 `tileId`로 canonical physical tile을 찾고 containing meld에서 Joker role을 derive한다. GROUP은 ordinary common number와 unused-color existence로 검증하므로 Joker color를 wire fact로 만들지 않는다. RUN은 unordered physical set에서 unique consecutive solution을 먼저 찾고 ascending으로 commit한다. Multiple solution일 때만 valid ordered array가 numeric intent를 표현한다. Web 숫자 선택도 같은 IDs의 ordered array로 표현하며 새 assignment field는 없다. Public Number V2는 기존 strict ordered canonical shape를 유지한다.
 
 ### 4.1 Number V2 Joker contract correction
 

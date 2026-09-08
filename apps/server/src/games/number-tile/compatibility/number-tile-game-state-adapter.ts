@@ -44,7 +44,7 @@ import {
   type NumberTile,
 } from "../domain/tile.js";
 import { NUMBER_TILE_INVENTORY_TOTALS } from "../domain/tile-inventory.js";
-import { validateNumberTileMeld } from "../domain/rule-engine.js";
+import { normalizeNumberTileMeld } from "../domain/rule-engine.js";
 
 export type NumberTileGameLifecycleInspection =
   | Readonly<{
@@ -222,9 +222,15 @@ function cloneTable(
 ): NumberTileTable {
   const cloned = cloneNumberTileTable(table);
   for (const meld of cloned.melds) {
-    const validation = validateNumberTileMeld(meld, tilesById);
+    const validation = normalizeNumberTileMeld(meld, tilesById);
     if (!validation.ok) {
       throw new Error(`Invalid canonical Number Tile meld: ${validation.error.code}.`);
+    }
+    if (meld.kind === "RUN" && meld.tiles.some((placement, index) =>
+      placement.tileId !== validation.value.meld.tiles[index]!.tileId)) {
+      // Accepting unsorted proposals must not relax the persisted/projection
+      // boundary: successful Submit stores a normalized candidate beforehand.
+      throw new Error("Invalid canonical Number Tile meld: RUN order is not normalized.");
     }
   }
   return cloned;

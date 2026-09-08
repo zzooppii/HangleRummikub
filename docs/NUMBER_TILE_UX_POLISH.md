@@ -30,7 +30,7 @@ This checkpoint improves the existing `NUMBER_TILE` Web experience without chang
   - shorter melds remain incomplete; other shapes remain invalid.
 - User-facing status uses Korean descriptions (`같은 숫자 조합`, `연속 숫자 조합`) instead of requiring rules terminology first.
 - Valid RUNs are displayed and serialized in ascending number order; valid GROUPs use deterministic color order. Only touched source/target melds are normalized, so unrelated canonical Table order cannot create a dirty draft.
-- Joker is a bare physical `tileId`; its current role is derived from the containing meld. GROUP Joker is colorless and never opens a color/number picker. RUN color comes from ordinary tiles and the ordered position derives its number. A move simply re-derives the role, while physical identity is never replaced or duplicated.
+- Joker is a bare physical `tileId`; its current role is derived from the containing meld. GROUP Joker is colorless and never opens a color/number picker. RUN uses a unique consecutive solution irrespective of insertion order; only multiple solutions use valid ordered intent or an explicit number-only choice. RUN color always comes from ordinary tiles. Moving a tile re-derives the role without replacing/duplicating identity.
 - Undo keeps the existing 50-entry limit, inference/order changes share the same atomic edit history entry, and Reset restores the authoritative baseline. Rack sorting is not draft state.
 
 ## Direct interaction polish
@@ -49,7 +49,7 @@ This checkpoint improves the existing `NUMBER_TILE` Web experience without chang
 - An empty Table explains that the first registration must use only the player’s own Tiles and total at least 30 points.
 - Initial-meld mode displays a client-side contribution hint while explicitly stating that the server makes the final decision.
 - Client classification derives `meld.kind` and ordered RUN intent for the existing `number:submit` payload. The server still resolves `tileId` against canonical inventory and independently validates meld kind, meld-derived Joker role, Table conservation, initial-meld threshold, and rack contribution.
-- Duplicate identities and incomplete/invalid melds fail closed before serialization. Under the canonical ordered RUN representation, Joker position resolves edge meaning (`J,5,6` versus `5,6,J`) without a picker. This adds no event or protocol/snapshot version name.
+- Duplicate identities and incomplete/invalid/unresolved melds fail closed before serialization. Unique RUN sets normalize irrespective of input order. For genuinely ambiguous edge meaning, valid ordered intent (`J,5,6` versus `5,6,J`) resolves the number without a picker; otherwise only numeric choices are shown. This adds no event, assignment field or protocol/snapshot version name.
 
 ## Compatibility boundaries
 
@@ -78,7 +78,7 @@ This checkpoint improves the existing `NUMBER_TILE` Web experience without chang
 ## Joker semantics correction
 
 - GROUP Joker is a colorless wildcard. `RED 10, BLUE 10, Joker` is valid when an unused color exists, but the editor neither chooses nor persists which unused color it represents.
-- RUN Joker role is derived from the submitted ordered sequence and ordinary Tile faces. `Joker, RED 5, RED 6`, `RED 4, Joker, RED 6`, and `RED 5, RED 6, Joker` derive Joker number 4, 5, and 7 respectively, with no color picker. The Tile itself retains a neutral Joker visual.
+- RUN Joker role is derived from the consecutive ranges supported by the physical set. A unique range ignores input order; valid ordered intent only distinguishes genuinely ambiguous values. `Joker, RED 5, RED 6`, `RED 4, Joker, RED 6`, and `RED 5, RED 6, Joker` still derive 4, 5, and 7 respectively. `O7,J,O9,O6` automatically becomes `O6,O7,J(8),O9`. No color picker is used and the Tile retains a neutral Joker visual.
 - Dragging or clicking the same physical Joker into another combination re-derives its role. A previous GROUP/RUN role is not editor state and does not constrain the new final Table.
 - The server validates final-state legality: every pre-turn Joker `tileId` remains exactly once in the final Table, cannot move to the rack, and must belong to a valid final meld. Exact old-face replacement is not required.
 - The Number-only command/V2 Joker placement is now bare physical identity. Outer protocol/event/snapshot version names and Hangul contracts remain unchanged, but a strict old Number browser already open on the assignment-required schema must refresh to load the corrected bundle.

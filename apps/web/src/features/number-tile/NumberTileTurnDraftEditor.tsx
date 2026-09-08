@@ -139,6 +139,8 @@ function meldStatusLabel(classification: NumberTileMeldClassification): string {
       return "● 조합을 만드는 중";
     case "INVALID":
       return "! 아직 유효한 조합이 아닙니다";
+    case "AMBIGUOUS":
+      return "● 조커 숫자를 선택해주세요";
   }
 }
 
@@ -1059,6 +1061,27 @@ export function NumberTileTurnDraftEditor(
                     </span>
                   ) : null}
                 </div>
+                {classification.status === "AMBIGUOUS" && !locked ? (
+                  <div className="number-rule-hint" role="group" aria-label={`조합 ${meldIndex + 1} 조커 숫자 선택`}>
+                    <p>가능한 연속 숫자가 두 가지입니다. 조커가 대신할 숫자만 선택하세요.</p>
+                    <div className="number-meld-card-actions">
+                      {classification.candidates.map(candidate => candidate.jokerNumber === null ? null : (
+                        <button className="secondary-button compact-button" type="button" key={candidate.jokerNumber}
+                          disabled={!props.controller.canEdit}
+                          aria-label={`조커 숫자 ${candidate.jokerNumber}, 조합 합계 ${candidate.value}점`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (candidate.jokerNumber !== null) {
+                              props.controller.chooseJokerNumber(meldIndex, candidate.jokerNumber);
+                              setActiveMeldIndex(meldIndex);
+                              requestFocus({ kind: "MELD", meldIndex });
+                            }
+                          }}>조커 → {candidate.jokerNumber}</button>
+                      ))}
+                    </div>
+                    <small>숫자를 고르면 타일 순서로 반영됩니다. 색상 선택은 필요하지 않습니다.</small>
+                  </div>
+                ) : null}
               </article>
             );
           },
