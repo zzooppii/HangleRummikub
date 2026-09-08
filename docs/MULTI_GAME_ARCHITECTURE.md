@@ -1,6 +1,6 @@
 # Multi-game Platform Architecture
 
-> 상태: P11C SOURCE COMPLETE / P12 SOURCE GATE PASS / PUBLIC VERIFICATION BLOCKED (remaining browser checks)
+> 상태: P11C SOURCE COMPLETE / P12 COMPLETE / THREE-GAME PLATFORM V1 VERIFIED
 > 작성일: 2026-09-07
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
@@ -8,7 +8,7 @@
 
 ## P12 current release status (2026-09-08)
 
-아래 Phase별 설명은 해당 checkpoint의 history다. 현재 exact 세 GameType/identity-only Registry, Hangul/Number/GEM Room union과 concrete Web renderer를 보존한다. 최초 source gate 1,202 tests 이후 Number focus-layout blocker를 수정하여 1,215 tests가 통과했다. Recovery는 in-memory overdue sweeper이며 durable restart recovery가 아니다. 현재 Railway Active `db0e6c6`/1 Replica는 Dashboard에서 직접 확인했고 public raw 세 게임 gameplay/security/resume이 통과했다. 실제 Web handshake 및 GEM UI 등 일부 browser 검증은 확인창 자동화 제한으로 남아 있어 P12 COMPLETE가 아니다. 상세 근거와 남은 범위는 [THREE_GAME_PLATFORM_RELEASE_GATE.md §9](./THREE_GAME_PLATFORM_RELEASE_GATE.md#9-public-railway-verification--2026-09-08)를 따른다. 이번 public 확인에서 architecture/runtime 변경 없음.
+아래 Phase별 설명은 해당 checkpoint의 history다. 현재 exact 세 GameType/identity-only Registry, Hangul/Number/GEM Room union과 concrete Web renderer를 보존한다. 최초 source gate 1,202 tests 이후 Number focus-layout blocker를 수정하여 1,215 tests가 통과했다. Recovery는 in-memory overdue sweeper이며 durable restart recovery가 아니다. Railway Active `db0e6c6`/1 Replica와 public raw 세 게임 gameplay/security/resume 확인에 이어, 남은 GEM actual browser UI와 Number desktop을 포함한 public functional/responsive 검증을 완료했다. 실제 handshake frame은 `MANUAL HANDSHAKE FRAME UNOBSERVED`로 남기되 exact deployed bundle, 기존 public raw capability 검증, 실제 두 Chrome GEM admission/gameplay의 독립 근거를 함께 기록한다. **P12 COMPLETE / THREE-GAME PLATFORM V1 VERIFIED**이며 상세 근거는 [THREE_GAME_PLATFORM_RELEASE_GATE.md §10](./THREE_GAME_PLATFORM_RELEASE_GATE.md#10-public-browser-verification-closure)를 따른다. 검증된 runtime은 `db0e6c6`이고 이후 checkpoint는 docs-only다. Architecture/runtime 변경, tag 생성, P13 구현은 없으며 physical-device 체감 검토는 알려진 수동 한계로 유지한다.
 
 ## 1. 분석 범위와 방법
 

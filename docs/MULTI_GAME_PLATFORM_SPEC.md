@@ -1,11 +1,11 @@
 # Multi-game Platform Specification
 
-> 상태: P11C SOURCE COMPLETE / P12 SOURCE GATE PASS / PUBLIC VERIFICATION BLOCKED (remaining browser checks)
+> 상태: P11C SOURCE COMPLETE / P12 COMPLETE / THREE-GAME PLATFORM V1 VERIFIED
 > 작성일: 2026-09-07
 > 적용 범위: 현재 production 한글 타일 게임을 보존하면서 여러 턴제 보드게임을 수용하기 위한 제품 경계  
 > 비고: 이 문서는 구현 계약이 아니라 후속 Phase의 의사결정 기준이다.
 
-P12(2026-09-08) 최초 1,202-test source gate 뒤 Number focus-layout fix를 포함한 `db0e6c6`에서 1,215 tests가 통과했다. 해당 Railway Active commit/1 Replica 및 public raw 세 게임 검증을 직접 확인했다. 실제 Web handshake/GEM UI 등 남은 browser checks는 확인창 자동화 제한으로 미완료다. 이번 public 확인은 제품/규칙/runtime를 변경하지 않았으며 P12 COMPLETE를 주장하지 않는다. 과거 Phase 기록과 현재 release 판정을 구분하며 [THREE_GAME_PLATFORM_RELEASE_GATE.md §9](./THREE_GAME_PLATFORM_RELEASE_GATE.md#9-public-railway-verification--2026-09-08)를 최신 상태로 따른다.
+P12(2026-09-08) 최초 1,202-test source gate 뒤 Number focus-layout fix를 포함한 `db0e6c6`에서 1,215 tests가 통과했다. 해당 Railway Active commit/1 Replica 및 public raw 세 게임 검증에 이어, GEM actual browser UI/tutorial/Guide와 Number desktop을 포함한 남은 public functional/responsive 검증을 완료했다. 실제 handshake frame은 `MANUAL HANDSHAKE FRAME UNOBSERVED`이며 exact deployed bundle, 기존 raw capability 검증, 실제 두 Chrome GEM admission/gameplay를 함께 근거로 삼는다. **P12 COMPLETE / THREE-GAME PLATFORM V1 VERIFIED**. 이번 closure는 제품/규칙/runtime 변경 없는 docs-only이며 검증된 production runtime은 계속 `db0e6c6`다. Physical-device 체감 검토는 알려진 수동 한계로 유지한다. 과거 Phase 기록과 현재 release 판정을 구분하며 [THREE_GAME_PLATFORM_RELEASE_GATE.md §10](./THREE_GAME_PLATFORM_RELEASE_GATE.md#10-public-browser-verification-closure)를 최신 상태로 따른다.
 
 ## 1. 문서 목적
 

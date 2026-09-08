@@ -1,7 +1,7 @@
 # P12 — Three-game platform release gate
 
-> 2026-09-08 · **P12 SOURCE GATE PASS / PUBLIC VERIFICATION BLOCKED (browser checks incomplete)**
-> Phase A (source/local runtime)와 Phase B (latest public deployment)를 분리한다. 현재 public 결과는 §9를 따른다. 이전 절의 pending 문구는 당시 checkpoint 기록이다.
+> 2026-09-08 · **P12 COMPLETE / THREE-GAME PLATFORM V1 VERIFIED**
+> Phase A (source/local runtime)와 Phase B (public deployment)를 분리한다. 현재 최종 결과는 §10을 따른다. §§1–9의 pending/blocked 문구는 당시 checkpoint 기록으로 보존한다.
 
 > **Current runtime release:** `db0e6c638835dc8164236fc3841f4f3a88db6054` — `fix: allow flexible number tile rearrangement`. `b949463`은 historical source checkpoint다. 사용자가 새 runtime을 배포했으며 §9에서 Active deployment identity와 1 Replica를 직접 확인했다.
 
@@ -218,3 +218,47 @@ Final automated verification was repeated after the public-results documentation
 **BLOCKED — incomplete browser verification, not an observed gameplay/server regression.** Deployment identity/1 Replica, raw three-game protocol/security/actions/resume and the browser evidence above are verified. Actual Web handshake inspection, remaining GEM UI/Guide/affordability/390/320 checks and Number desktop public inspection must continue after the test confirmation dialogs are cleared. Do not substitute raw checks or exact asset identity for those unperformed UI/network observations.
 
 The six raw players and Number companion explicitly left. Browser Number is FINISHED; its own leave confirmation remains unresolved, so its remaining record uses normal retention. Chrome Hangul test clients also need their pending dialog/leave cleanup; no administrative deletion or retention change was attempted. No P13 or new feature work started. The public runtime target remains `db0e6c6`; this documentation-only status checkpoint does not require another runtime deployment.
+
+## 10. Public browser verification closure
+
+### Scope, identity and handshake evidence
+
+- Closure baseline: `363df5a` (`docs: record three-game public verification status`), clean `master === origin/master`, 1,215 tests. This follow-up completes only the missing browser/UI checks; §9's already-passed public raw/Hangul/Number/security/deployment checks were not repeated wholesale.
+- Verified deployed runtime remains **`db0e6c638835dc8164236fc3841f4f3a88db6054`**. Subsequent verification commits change documentation only; they are not claimed to be separately deployed. No runtime/shared/server/Web source, rules, tests, dependency, Railway config or deployment changed in this closure.
+- **MANUAL HANDSHAKE FRAME UNOBSERVED:** available tab tooling exposes DOM/screenshots/console but no Socket.IO frame capture. Do not claim the browser auth frame was directly observed. Per the user's explicit closure criterion, functional capability is independently supported by all three pieces of evidence: (1) §9's exact deployed bundle/build equality and current client auth code advertising `supportedSnapshotVersions: [2,1]` plus `HANGUL_TILE`, `NUMBER_TILE`, `GEM_CARD`; (2) §9's public raw negotiation/admission matrix; (3) this closure's actual independent Chrome A/B GEM create/join/start and canonical gameplay through the deployed Web UI. GEM admission requires V2 and GEM support. No debug instrumentation or credential logging was added.
+
+### Actual GEM browser UI and gameplay
+
+- Two separate Chrome profiles, `P12GemA` / `P12GemB`, created/joined public Room `84CQG2` through Home and its direct invitation URL. Both showed the two-player GEM Lobby; Host used the existing Web start button. Neither participant was a raw client.
+- Playing showed own/opponent turn, initial **00:45**, three tiers × three market slots, remaining decks12 each, public supply, own exact resources, player summary, score/target18 and **영구 할인**. Collect, card selection, Purchase, Reserve and conditional `행동 없이 턴 종료` (YIELD) controls were present. No fake Rack.
+- First-time tutorial: all six actual steps—goal, resources, purchase, permanent discount, PRISM, reserve—were visited. Previous/Next and final Complete worked. B opened and skipped the tutorial; A reopened it from the Guide and also skipped. Completion/skip returned to the Lobby with `게임 방법 보기` still available.
+- Guide reopened in both Lobby and Playing, with ten sections and the six-step tutorial re-entry. Playing's countdown continued **00:26 → 00:19** while the Guide was open; the guide explicitly states it does not pause the 45-second turn. Close restored the game-method button focus. No server timer/pause behavior was changed.
+- Unaffordable card selection displayed **구매 불가 · 자원 부족**, the individual missing basics, required PRISM and held PRISM. Example with no holdings: EMBER2/ECHO1 cost → required PRISM3, held0, shortage3. Later DAWN1/GROVE2/EMBER1 with PRISM1 → required4/held1/shortage3. Purchase was disabled; it did not show an isolated misleading payable-PRISM estimate.
+- User-facing cards, player engine and purchase calculation consistently used **영구 할인**, including `앞으로 해당 자원 비용 감소 · 소모되지 않음`; no return to a `생산 +1`-centered UI.
+- **Actual browser actions succeeded:** B collected EMBER1+ECHO1; A reserved a face-up tier1 card (reserved0→1, no reward, same-tier refill); B collected EMBER1; A collected PRISM1; B selected and purchased the EMBER2/ECHO1, GROVE-discount card. Purchase preview changed to `구매 가능`; B holdings EMBER2/ECHO1→0/0, supply EMBER/ECHO→7/7, GROVE permanent discount0→1, purchased card count0→1, score stayed0 for this zero-point card, and the same tier1 slot refilled. Turn advanced to A with a fresh00:45. Tier1 deck was10 after the reserve and purchase refills.
+- At320, an attempted resource click after the ordinary 45-second deadline was correctly disabled. On the next actual A turn, selecting TIDE and pressing Collect succeeded; holdings became TIDE1/PRISM1. This was normal server turn expiry, not a UI regression or a bypass.
+- Console throughout GEM Lobby/Playing/tutorial/Guide/Collect/card-select/Purchase: **app-origin error/warning0**, including no React/schema/unexpected Socket.IO errors. Installed MetaMask `chrome-extension://nkbihfbeogaeaoehlefnkodbefgpgknn/…` emitted MaxListenersExceeded/ObjectMultiplex warnings in both Chrome profiles; these are recorded separately, not hidden or described as zero total browser warnings.
+
+### Public responsive and Number desktop closure
+
+| Game | 1280×720 | 390×844 | 320×568 |
+| --- | --- | --- | --- |
+| HANGUL_TILE | Existing local/browser gate §4 retained; no new public desktop claim | Existing public §9 PASS | Existing public §9 PASS |
+| NUMBER_TILE | **Public PASS in this closure** | Existing public §9 PASS | Existing public §9 PASS |
+| GEM_CARD | **Public PASS in this closure** | **Public PASS in this closure** | **Public PASS in this closure** |
+
+- GEM desktop: market/action sidebar usable, all nine market cards present, compact player summary and scroll-reachable lower tiers; no document horizontal overflow (scrollWidth1265 ≤ viewport1280). Guide680px wide, within viewport.
+- GEM390: readable two-column market flow, selectable cards, accessible Purchase/Reserve/resource actions; no clipped horizontal buttons or document overflow (375 ≤390). Guide337×780 at x19/y32 within844px; its internal scroll area had clientHeight686/scrollHeight2181 and actually scrolled to scrollTop1495.
+- GEM320: readable single-column market cards (277px wide; card button font16px), usable resource grid and actual Collect, scroll-reachable actions, no horizontal button clipping or document overflow (305 ≤320). Guide267×544 within568px; tutorial Previous/Next/Skip controls remained within the viewport. Vertical scrolling is expected, not horizontal overflow.
+- Number desktop used a fresh public Web Room `332A2S`, in-app browser A plus independent Chrome B. Start/one B Draw provided A's normal active turn. **1280×720** showed the central board, compact meld groups, rack tray, desktop Rack tiles **56×68** and Table tiles **48×60**, document width1265 ≤1280. No old giant meld cards.
+- Actual mouse clicks placed R6/B6 into one incomplete local meld. Mouse drag moved B12 from Rack into board whitespace and created a second active meld. Undo removed exactly that drag-created meld; Reset restored empty canonical Table and all14 Rack tiles. No server Submit or rule change was needed for this visual closure; existing Submit/regression evidence remains in §§8–9. Number normal-flow in-app warn/error log was empty.
+
+### Error taxonomy, cleanup and final release status
+
+- The twelve §9 structured `INTERNAL_ERROR` responses were fail-closed **wrong-game error taxonomy**, not observed crashes/state corruption: Hangul's three turn actions against Number/GEM (6) and Number's three actions against Hangul/GEM (6) reject before service delegation. Existing P12 tests preserve Room/revision/timer/scheduler/binding/presence/idempotency. Error-code specificity is a post-release review candidate, not a release blocker; no error-code redesign performed.
+- No confirmation bypass was installed. Fresh independent browser tabs resolved the earlier verification obstruction. A later GEM test leave confirm again stalled the tool; normal confirmation/explicit-tab-close was attempted, not replaced with `window.confirm` hacks. Number test tabs were explicitly closed and their temporary viewport reset. Any remaining GEM test tab/record is disposable and uses existing disconnect/timeout/retention; no production state was administratively deleted. This tooling/cleanup limitation does not invalidate the completed gameplay/UI observations.
+- Known limitations from §9 remain: process-memory only; redeploy loses active Rooms/Games/sessions; exactly1 replica required; no durable DB/accounts/cross-device recovery credential; Hangul test dictionary30 words; physical speaker volume/notch/OS-device experience remains manual. These experiential checks are not functional blockers under the user's closure criteria.
+- Final automated sanity after these documentation changes: root typecheck **PASS**, full tests **1,215/1,215 PASS** (shared91/Web276/server848; fail/cancel/skip/todo0), build **PASS**, `git diff --check` **PASS**. Build retained the exact §9 asset filenames. An initial sandbox-only localhost `listen EPERM` run was repeated unchanged with approved local-listener permission and passed. No tests were added, deleted or skipped.
+- **RUNTIME_TAG_READY: `three-game-platform-v1`, target `db0e6c638835dc8164236fc3841f4f3a88db6054`.** The tag was checked absent and was not created/moved/pushed. A docs-only checkpoint ahead of the runtime does not require another Railway redeploy for this runtime tag. No Railway deployment was performed.
+
+**P12 COMPLETE / THREE-GAME PLATFORM V1 VERIFIED.** All required functional/public browser gates are satisfied using the explicitly permitted handshake-evidence fallback; no production functional regression remains. P13 is the next review stage only and has not started.
