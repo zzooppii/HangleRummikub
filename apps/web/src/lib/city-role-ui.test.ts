@@ -110,6 +110,30 @@ test("CITY observer selection never renders available roles or exact opponent ha
   assert.match(html, /금화 2 · 손패 1장/u);
 });
 
+test("P16 six-player completed secret choice explains waiting, not a second selection", () => {
+  const initial = citySelectionFixture(6);
+  const snapshot = parse(CityRolePlayingPlatformSnapshotV2Schema, { ...initial, game: { ...initial.game,
+    window: { ...initial.game.window, activePlayerId: "P1" },
+    privateState: { hand: initial.game.privateState.hand, selectedRoleIds: ["CR-08"], marks: [] },
+  } });
+  const html = renderPlaying(snapshot, { canAct: false });
+  assert.match(html, /이번 라운드의 역할 선택을 마쳤습니다/u);
+  assert.match(html, /내 선택 0개 남음/u);
+  assert.doesNotMatch(html, /내 선택 차례가 되면|이 역할 선택/u);
+});
+
+test("P16 two-role player still waiting for the second pick is not marked selection-complete", () => {
+  const initial = citySelectionFixture(3);
+  const snapshot = parse(CityRolePlayingPlatformSnapshotV2Schema, { ...initial, game: { ...initial.game,
+    window: { ...initial.game.window, activePlayerId: "P1" },
+    privateState: { hand: initial.game.privateState.hand, selectedRoleIds: ["CR-08"], marks: [] },
+  } });
+  const html = renderPlaying(snapshot, { canAct: false });
+  assert.match(html, /내 선택 1개 남음/u);
+  assert.match(html, /내 선택 차례가 되면/u);
+  assert.doesNotMatch(html, /이번 라운드의 역할 선택을 마쳤습니다/u);
+});
+
 test("CITY action layout exposes current role, actor, 90-second display, gold, city and private hand", () => {
   const html = renderPlaying(cityActionFixture());
   assert.match(html, /내 차례입니다/u);
