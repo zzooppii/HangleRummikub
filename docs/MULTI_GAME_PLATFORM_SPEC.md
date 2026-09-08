@@ -1,9 +1,11 @@
 # Multi-game Platform Specification
 
-> 상태: P0~P11B COMPLETE / PUBLIC TWO-GAME VERIFIED / P11C SOURCE COMPLETE / MANUAL PUBLIC VERIFICATION PENDING
+> 상태: P11C SOURCE COMPLETE / P12 SOURCE GATE PASS / RAILWAY DEPLOYMENT PENDING USER ACTION
 > 작성일: 2026-09-07
 > 적용 범위: 현재 production 한글 타일 게임을 보존하면서 여러 턴제 보드게임을 수용하기 위한 제품 경계  
 > 비고: 이 문서는 구현 계약이 아니라 후속 Phase의 의사결정 기준이다.
+
+P12(2026-09-08)는 현재 세 게임의 source/local runtime gate를 1,202 tests와 production-build browser로 통과했다. 제품/규칙/runtime 변경은 없으며 latest public deployment·1 Replica·three-game smoke는 별도 확인 대기다. 과거 Phase 기록과 현재 release 판정을 구분하며 [THREE_GAME_PLATFORM_RELEASE_GATE.md](./THREE_GAME_PLATFORM_RELEASE_GATE.md)를 최신 검증 상태로 따른다.
 
 ## 1. 문서 목적
 

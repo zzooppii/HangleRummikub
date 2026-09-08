@@ -1,10 +1,14 @@
 # Multi-game Platform Architecture
 
-> 상태: P0~P11B COMPLETE / PUBLIC TWO-GAME VERIFIED / P11C WEB DEFERRED
+> 상태: P11C SOURCE COMPLETE / P12 SOURCE GATE PASS / RAILWAY DEPLOYMENT PENDING USER ACTION
 > 작성일: 2026-09-07
 > 원칙: 현재 한글 게임을 기준 implementation으로 보존하고, 구현되지 않은 후보 contract나 directory를 완료된 것으로 해석하지 않는다.
 
 제품 범위는 [MULTI_GAME_PLATFORM_SPEC.md](./MULTI_GAME_PLATFORM_SPEC.md), 실행 순서와 Phase별 명령은 [MULTI_GAME_MIGRATION_ROADMAP.md](./MULTI_GAME_MIGRATION_ROADMAP.md)를 따른다. P1에서 확인한 exact wire, persistence/projector/service/scheduler/web ownership은 [MULTI_GAME_P1_CHARACTERIZATION.md](./MULTI_GAME_P1_CHARACTERIZATION.md)에 기록한다. 두 production game을 실제 구현 단위로 비교한 P9A 판정과 승인 대기 항목은 [MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md](./MULTI_GAME_P9A_ABSTRACTION_ANALYSIS.md)를 따른다.
+
+## P12 current release status (2026-09-08)
+
+아래 Phase별 설명은 해당 checkpoint의 history다. 현재는 exact 세 GameType/identity-only Registry, exact Hangul/Number/GEM Room union과 세 concrete Web renderer가 존재한다. Hangul legacy V1 + 세 게임 V2, capability admission, cross-game rejection, session/single-primary, UoW/CAS/idempotency, scheduler/retention을 1,202 tests와 실제 local production-build A/B browser로 재검증했다. P12는 architecture/runtime를 수정하지 않았다. Recovery는 in-memory overdue sweeper이며 durable restart recovery가 아니다. 최신 deployed commit/1 Replica/public smoke는 아직 확인하지 않았다. 상세 evidence와 Phase B handoff는 [THREE_GAME_PLATFORM_RELEASE_GATE.md](./THREE_GAME_PLATFORM_RELEASE_GATE.md)를 따른다.
 
 ## 1. 분석 범위와 방법
 
