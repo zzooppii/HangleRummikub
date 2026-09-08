@@ -107,7 +107,7 @@ test("GEM YIELD hint recognizes collect, reserve, purchase and no-action states 
 test("GEM resources all have distinct Korean labels, letter markers and meaningful card names", () => {
   assert.equal(new Set(GEM_RESOURCE_IDS.map(resource => GEM_RESOURCE_LABELS[resource])).size, 6);
   assert.equal(new Set(GEM_RESOURCE_IDS.map(resource => GEM_RESOURCE_MARKERS[resource])).size, 6);
-  assert.match(gemCardAccessibleLabel(card()), /1단계 카드, 승점 0점, 새벽 비용 3, 불씨 비용 2, 생산 물결 \+1/);
+  assert.match(gemCardAccessibleLabel(card()), /1단계 카드, 승점 0점, 새벽 비용 3, 불씨 비용 2, 물결 영구 할인 \+1/);
 });
 
 test("GEM Playing renders exactly 9 fixed slots, supply/resources/discounts/target and no fake rack", () => {
@@ -116,7 +116,7 @@ test("GEM Playing renders exactly 9 fixed slots, supply/resources/discounts/targ
   assert.match(html, /내 차례입니다/);
   assert.match(html, /00:45/);
   assert.match(html, /role="timer" aria-live="off"/);
-  assert.match(html, /생산 할인/);
+  assert.match(html, /영구 할인/);
   assert.match(html, /목표 18점/);
   assert.match(html, /공용 공급/);
   assert.match(html, /href="#gem-market-heading">시장 보기/);

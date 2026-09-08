@@ -57,13 +57,26 @@ export function gemCollectPreview(
 export function gemPaymentPreview(card: GemUiCard, player: GemUiPlayer) {
   const effective = { DAWN: 0, TIDE: 0, GROVE: 0, EMBER: 0, ECHO: 0 };
   const basicPayment = { ...effective };
+  const missing = { ...effective };
   let prismRequired = 0;
   for (const resource of GEM_BASIC_RESOURCE_IDS) {
     effective[resource] = Math.max(0, card.cost[resource] - player.production[resource]);
     basicPayment[resource] = Math.min(effective[resource], player.resources[resource]);
-    prismRequired += effective[resource] - basicPayment[resource];
+    missing[resource] = effective[resource] - basicPayment[resource];
+    prismRequired += missing[resource];
   }
-  return { effective, basicPayment, prismRequired, canAfford: prismRequired <= player.resources.PRISM };
+  return { effective, basicPayment, missing, prismRequired, prismOwned: player.resources.PRISM,
+    canAfford: prismRequired <= player.resources.PRISM,
+    isFree: GEM_BASIC_RESOURCE_IDS.every(resource => effective[resource] === 0) };
+}
+
+/** Informational copy only; never used to enable/disable or dispatch a command. */
+export function gemCurrentActionHint(game: GemCardPlayingProjectionV2, player: GemUiPlayer): string {
+  if (player.reservedCards.some(card => gemPaymentPreview(card, player).canAfford)) return "예약한 카드를 구매할 수 있습니다.";
+  if (game.market.some(tier => tier.slots.some(card => card !== null && gemPaymentPreview(card, player).canAfford)))
+    return player.purchasedCards.length === 0 ? "구매 가능한 카드가 생겼습니다. 카드를 사면 영구 할인이 쌓입니다." : "지금 구매 가능한 카드가 있습니다.";
+  if (gemResourceTotal(player.resources) === 0 && player.purchasedCards.length === 0 && player.reservedCards.length === 0) return "먼저 자원을 모아보세요.";
+  return "자원 받기 · 카드 구매 · 카드 예약 중 행동 하나를 선택하세요.";
 }
 
 /** Only controls the explanatory hint/disabled state; the server verifies YIELD independently. */
@@ -90,7 +103,7 @@ export function resolveGemSelectedCard(
 export function gemCardAccessibleLabel(card: GemUiCard): string {
   const costs = GEM_BASIC_RESOURCE_IDS.filter(resource => card.cost[resource] > 0)
     .map(resource => `${GEM_RESOURCE_LABELS[resource]} 비용 ${card.cost[resource]}`).join(", ");
-  return `${card.tier}단계 카드, 승점 ${card.victoryPoints}점, ${costs || "기본 비용 없음"}, 생산 ${GEM_RESOURCE_LABELS[card.productionResource]} +1`;
+  return `${card.tier}단계 카드, 승점 ${card.victoryPoints}점, ${costs || "기본 비용 없음"}, ${GEM_RESOURCE_LABELS[card.productionResource]} 영구 할인 +1`;
 }
 
 export function gemFinishReasonLabel(reason: GemCardFinishedProjectionV2["result"]["reason"]): string {

@@ -1,5 +1,6 @@
 import type { GameStartControl } from "../../lib/game-start.js";
 import type { RoomSnapshotShell } from "../../lib/room-snapshot-shell.js";
+import { GemGameHelp } from "../gem-card/GemGameHelp.js";
 
 export type LobbyScreenProps = Readonly<{
   snapshot: RoomSnapshotShell;
@@ -38,6 +39,8 @@ export function LobbyScreen(props: LobbyScreenProps) {
           {props.connectionLabel}
         </span>
       </header>
+
+      {room.gameType === "GEM_CARD" ? <GemGameHelp placement="LOBBY" /> : null}
 
       {props.sessionReplaced ? (
         <section className="notice replaced-notice" role="alert">

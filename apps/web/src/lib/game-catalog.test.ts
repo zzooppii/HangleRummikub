@@ -23,7 +23,7 @@ test("Web game catalog는 구현 완료된 Hangul/Number/GEM 세 게임을 같�
     {
       gameType: "GEM_CARD",
       displayName: "보석 카드 게임",
-      description: "자원을 모아 카드를 구매하고, 생산을 키워 18점을 향해 경쟁하세요.",
+      description: "자원을 모아 카드를 사고, 영구 할인을 쌓아 18점을 노리는 전략 게임입니다.",
     },
   ]);
   assert.equal(Object.isFrozen(GAME_CATALOG[0]), true);

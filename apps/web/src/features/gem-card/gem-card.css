@@ -148,3 +148,78 @@
   .gem-panel, .gem-player { padding: 14px; }
 }
 @media (prefers-reduced-motion: reduce) { .gem-card { transition: none; } }
+
+/* GEM onboarding is a local preference/reading surface, never a gameplay gate. */
+.gem-help-entry.in-lobby { margin: 0 0 20px; }
+.gem-first-visit { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 16px; margin-bottom: 10px; border: 1px solid #b8cabb; background: #e9efe4; border-radius: 12px; }
+.gem-first-visit > div { flex: 1 1 230px; }
+.gem-first-visit p { margin: 5px 0 0; font-size: .82rem; color: #455d50; }
+.gem-help-entry button { min-height: 44px; min-width: 0; font-size: .8rem; padding: 9px 13px; }
+.gem-help-open { white-space: nowrap; }
+.gem-help-dialog { width: min(680px, calc(100% - 24px)); max-height: min(780px, calc(100dvh - 24px)); padding: 0; border: 1px solid #b8c5b6; border-radius: 16px; background: #fdfbf3; color: #263c3c; box-shadow: 0 24px 90px #10222455; }
+.gem-help-dialog[open] { display: flex; flex-direction: column; }
+.gem-help-dialog::backdrop { background: #142b3cb3; }
+.gem-help-dialog * { min-width: 0; }
+.gem-help-dialog button { min-height: 44px; min-width: 0; padding: 9px 13px; font-size: .84rem; }
+.gem-help-dialog button:focus-visible, .gem-help-dialog [tabindex]:focus-visible, .gem-help-entry button:focus-visible { outline: 3px solid #396dab; outline-offset: 2px; }
+.gem-help-header, .gem-help-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; flex: 0 0 auto; }
+.gem-help-header { border-bottom: 1px solid #d5dbce; font-size: .75rem; color: #5b6b61; }
+.gem-help-footer { border-top: 1px solid #d5dbce; }
+.gem-help-footer > div { display: flex; gap: 8px; }
+.gem-help-footer button { width: auto; white-space: nowrap; flex-shrink: 0; min-width: 52px; }
+.gem-help-footer small { font-size: .7rem; color: #5b6b61; }
+.gem-help-scroll { overflow-y: auto; min-height: 0; padding: 18px 24px 24px; overscroll-behavior: contain; }
+.gem-help-scroll h2 { font-size: clamp(1.2rem, 4vw, 1.65rem); line-height: 1.4; margin: 12px 0; letter-spacing: -.03em; }
+.gem-help-scroll p { font-size: .9rem; line-height: 1.8; }
+.gem-help-scroll .gem-help-timer { background: #f3ecd9; color: #6b592d; padding: 8px 12px; border-radius: 6px; font-size: .73rem; margin: 0 0 18px; }
+.gem-help-progress { color: #587357; font-weight: 800; letter-spacing: .03em; }
+.gem-tutorial-example { background: #e7eedf; border-left: 3px solid #5c8059; border-radius: 0 8px 8px 0; padding: 16px; margin: 18px 0 8px; font-weight: 700; line-height: 1.7; }
+.gem-guide-sections { display: grid; gap: 18px; margin-top: 28px; }
+.gem-guide-sections section { border-top: 1px solid #dce0d5; padding-top: 16px; }
+.gem-guide-sections h3 { font-size: 1rem; margin: 0 0 8px; }
+.gem-guide-sections h3 span { color: #839278; margin-right: 6px; }
+.gem-guide-sections p { margin: 0; }
+.gem-guide-example { margin: 18px 0 0; padding: 16px; border: 1px solid #bcccaa; border-radius: 10px; background: #f0f3e5; }
+.gem-guide-example figcaption { font-weight: 800; margin-bottom: 12px; }
+.gem-guide-example table, .gem-payment-table { width: 100%; border-collapse: collapse; font-size: .8rem; margin: 12px 0; }
+.gem-guide-example caption, .gem-payment-table caption { text-align: left; font-weight: 700; margin-bottom: 8px; }
+.gem-guide-example th, .gem-guide-example td, .gem-payment-table th, .gem-payment-table td { padding: 7px 4px; text-align: center; border-bottom: 1px solid #cdd6c4; }
+.gem-guide-example th:first-child, .gem-payment-table th:first-child { text-align: left; }
+.gem-guide-example .gem-example-payment { padding: 8px 0; color: #345d3b; }
+.gem-guide-example small { font-size: .73rem; line-height: 1.6; display: block; }
+.gem-playing-shell .gem-header h1 { font-size: clamp(1.25rem, 2.5vw, 1.9rem); }
+.gem-playing-shell .gem-header { margin-bottom: 15px; }
+.gem-playing-shell .gem-card.is-selected { border-color: #8a702f; background: #fff7dc; box-shadow: 0 3px 0 #8a702f, 0 0 0 2px #e7d49b; }
+.gem-selected-benefit { display: flex; flex-direction: column; gap: 4px; margin: 12px 0; }
+.gem-selected-benefit > strong { font-size: 1.35rem; }
+.gem-selected-benefit > span { color: #426841; font-weight: 700; font-size: .9rem; }
+.gem-owned-preview { font-size: .78rem; line-height: 1.65; }
+.gem-purchase-availability { border-radius: 8px; padding: 12px; margin: 12px 0; font-size: .8rem; line-height: 1.7; }
+.gem-purchase-availability p { margin: 5px 0; }
+.gem-purchase-availability.available { background: #e3eedc; color: #2c542f; }
+.gem-purchase-availability.unavailable { background: #f5e8dc; color: #7b462a; }
+.gem-purchase-explanation > small { display: block; margin: 10px 0 14px; }
+.gem-context-hint { border-left: 3px solid #648052; padding: 7px 10px; background: #edf2e3; color: #385735; font-size: .83rem; line-height: 1.6; }
+.gem-collect-count { font-weight: 700; font-size: .76rem; margin: 10px 0 0; }
+.gem-compact-players { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.gem-compact-players > .gem-section-heading { grid-column: 1 / -1; margin-bottom: 2px; }
+.gem-compact-players .gem-player-summary { padding: 12px 14px; margin: 0; }
+.gem-player-summary > header { margin-bottom: 8px; }
+.gem-player-summary .gem-player-score { font-size: 1.4rem; }
+.gem-player-compact-counts { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: start; gap: 5px; }
+.gem-player-compact-counts > span { font-size: .66rem; color: #58695b; padding-top: 5px; }
+.gem-player-compact-counts .gem-resource-row { gap: 4px; margin: 0; }
+.gem-player-compact-counts .gem-resource-row li { padding: 3px; font-size: .65rem; }
+.gem-player-compact-counts .gem-resource-row .gem-resource-mark { width: 17px; height: 17px; flex-basis: 17px; font-size: .6rem; }
+.gem-player-summary .gem-player-card-details { gap: 10px; }
+.gem-player-summary summary { padding: 8px 0; }
+@media (max-width: 620px) {
+  .gem-compact-players { grid-template-columns: minmax(0, 1fr); }
+  .gem-help-header, .gem-help-footer { padding: 8px 12px; gap: 6px; }
+  .gem-help-scroll { padding: 12px 16px 18px; }
+  .gem-help-dialog button { padding: 8px 10px; font-size: .8rem; }
+  .gem-help-footer .text-button { padding-left: 0; }
+  .gem-guide-example { padding: 10px; }
+  .gem-help-scroll p { font-size: .85rem; }
+  .gem-payment-table { font-size: .75rem; }
+}
