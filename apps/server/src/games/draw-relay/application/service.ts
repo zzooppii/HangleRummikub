@@ -140,7 +140,7 @@ export class DrawRelayService {
           sessionMutation:{kind:"NONE"},idempotency:{scopeKey,requestId,payloadFingerprint:JSON.stringify([input.turnId,input.deadlineAt]),terminalResult:{drawTimeout:true},createdAt:now}}, {isSatisfied:()=>lease.isCurrent()});
         return committed.status==="COMMITTED";
       });
-      if(applied){await this.schedule(input.roomId);await this.notify(input.roomId);}
+      if(applied){await d.turnScheduler.cancelTimeout(input.turnId);await this.schedule(input.roomId);await this.notify(input.roomId);}
       return {status:applied?"APPLIED":"NO_OP"};
     }catch{return {status:"FAILED"};}
   }

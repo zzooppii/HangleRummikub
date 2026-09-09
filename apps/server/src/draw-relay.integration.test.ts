@@ -3,7 +3,7 @@ import test, { type TestContext } from "node:test";
 import { io, type Socket } from "socket.io-client";
 import { parse } from "valibot";
 import { DrawRelayPlayingPlatformSnapshotV2Schema, DrawRelayFinishedPlatformSnapshotV2Schema, LobbyPlatformSnapshotV2Schema,
-  SessionBootstrapAckSchema, StateSyncWireAckSchema, ServerTimeSchema } from "@hangul-rummikub/shared";
+  SessionBootstrapAckSchema, StateSyncWireAckSchema, ServerTimeSchema, TurnIdSchema, RoomLeaveAckSchema } from "@hangul-rummikub/shared";
 import { createHttpServer } from "./server.js";
 import { DRAW_PROMPTS } from "./games/draw-relay/domain/prompts-v1.js";
 
@@ -60,14 +60,17 @@ test("DRAW prompt pack: 600 original unique words, exact 200/250/150 buckets", (
   assert.deepEqual(["EASY", "NORMAL", "HARD"].map(d => DRAW_PROMPTS.filter(p => p.difficulty === d).length), [200, 250, 150]);
 });
 
-for (const count of [3, 4, 8]) test(`DRAW raw ${count} players: private assignments, barrier, Reveal prefix, Finished and same-room rematch`, async t => {
+for (const count of [3, 4, 5, 8]) test(`DRAW raw ${count} players: private assignments, barrier, Reveal prefix, Finished and same-room rematch`, async t => {
   const h = await harness(t, count), host = h.members[0]!;
   assert.equal(h.first.room.players.length, count);
   const stored = await h.server.runtime.persistence.findById(h.first.room.roomId); assert.ok(stored?.gameType === "DRAW_RELAY" && stored.game);
   for (const m of h.members) {
     const own = parse(DrawRelayPlayingPlatformSnapshotV2Schema, await h.sync(m.client));
     assert.equal(own.game.phase, "DRAW");
-    assert.ok(!JSON.stringify(own).includes(stored.game.state.books.find(b => b.ownerPlayerId === m.playerId)!.initialPrompt));
+    const ownerPrompt = stored.game.state.books.find(b => b.ownerPlayerId === m.playerId)!.initialPrompt;
+    const containsExact = (value: unknown): boolean => value === ownerPrompt ||
+      (value !== null && typeof value === "object" && Object.values(value).some(containsExact));
+    assert.equal(containsExact(own), false);
     assert.ok(!("books" in own.game));
   }
   let view = await h.relay(); assert.equal(view.game.phase, "REVEAL");
@@ -90,7 +93,10 @@ for (const count of [3, 4, 8]) test(`DRAW raw ${count} players: private assignme
 });
 
 test("DRAW Host grace: 59 seconds preserve, 60 seconds earliest connected; cursor and all Book state unchanged", async t => {
-  const h = await harness(t), view = await h.relay(), runtime = h.server.runtime;
+  const h = await harness(t), initial = await h.relay(), runtime = h.server.runtime;
+  let view = initial;
+  for (let i = 0; i < 2; i++) view = parse(DrawRelayPlayingPlatformSnapshotV2Schema, h.success(await h.call(h.members[0]!.client, "draw:revealNext", {}, {
+    gameId: view.game.gameId, stageToken: view.game.stageToken, expectedGameRevision: view.game.gameRevision })));
   const policy = runtime.drawRelayHostSuccession!; const host = h.members[0]!;
   const binding = runtime.connectionRegistry.listActiveBindings(view.room.roomId).find(b => b.playerId === host.playerId)!;
   runtime.connectionRegistry.disconnect(binding.socketId, binding.connectionGeneration);
@@ -104,7 +110,8 @@ test("DRAW Host grace: 59 seconds preserve, 60 seconds earliest connected; curso
   assert.equal(after.hostPlayerId, h.members[1]!.playerId); assert.deepEqual(after.game, before!.game);
   assert.equal(after.roomRevision, before!.roomRevision + 1);
   const successor = parse(DrawRelayPlayingPlatformSnapshotV2Schema, await h.sync(h.members[1]!.client));
-  assert.ok("books" in successor.game); assert.equal(successor.game.books[0]!.pages.length, 0);
+  assert.ok("books" in successor.game); assert.equal(successor.game.books[0]!.pages.length, 1);
+  assert.equal(successor.game.books.length, 1); assert.equal(successor.game.reveal.pageIndex, 1);
   const fresh = await h.connect();
   const resumed = parse(DrawRelayPlayingPlatformSnapshotV2Schema, h.success(await h.call(fresh, "session:resume", {
     credential: { ...host.credential, roomCode: view.room.roomCode }, lastSeenVersions: null })));
@@ -141,6 +148,46 @@ test("DRAW no eligible successor preserves Reveal; reconnect before grace preser
   assert.equal((await r.persistence.findById(view.room.roomId))!.hostPlayerId, host.playerId);
 });
 
+test("DRAW Reveal Host resumes at 59s: stale 60s callback cannot transfer or alter pages", async t => {
+  const h = await harness(t), view = await h.relay(), r = h.server.runtime, host = h.members[0]!, policy = r.drawRelayHostSuccession!;
+  const binding = r.connectionRegistry.listActiveBindings(view.room.roomId).find(b => b.playerId === host.playerId)!;
+  r.connectionRegistry.disconnect(binding.socketId, binding.connectionGeneration);
+  const now = r.clock.now(); policy.disconnected(view.room.roomId, host.playerId, now);
+  const before = await r.persistence.findById(view.room.roomId);
+  t.mock.method(r.clock, "now", () => parse(ServerTimeSchema, now + 59_000));
+  const fresh = await h.connect();
+  h.success(await h.call(fresh, "session:resume", { credential: { ...host.credential, roomCode: view.room.roomCode }, lastSeenVersions: null }));
+  t.mock.method(r.clock, "now", () => parse(ServerTimeSchema, now + 60_000));
+  assert.equal(await policy.evaluate(view.room.roomId), false);
+  const after = await r.persistence.findById(view.room.roomId);
+  assert.equal(after!.hostPlayerId, host.playerId); assert.deepEqual(after!.game, before!.game);
+});
+
+test("DRAW Finished offline Host succession enables same-room rematch without changing recap", async t => {
+  const h = await harness(t), r = h.server.runtime, host = h.members[0]!;
+  let view = await h.relay();
+  for (;;) {
+    const next = h.success(await h.call(host.client, "draw:revealNext", {}, { gameId: view.game.gameId, stageToken: view.game.stageToken, expectedGameRevision: view.game.gameRevision }));
+    if (next.room.phase === "FINISHED") break;
+    view = parse(DrawRelayPlayingPlatformSnapshotV2Schema, next);
+  }
+  const before = await r.persistence.findById(view.room.roomId);
+  const binding = r.connectionRegistry.listActiveBindings(view.room.roomId).find(b => b.playerId === host.playerId)!;
+  r.connectionRegistry.disconnect(binding.socketId, binding.connectionGeneration);
+  const now = r.clock.now(); r.drawRelayHostSuccession!.disconnected(view.room.roomId, host.playerId, now);
+  t.mock.method(r.clock, "now", () => parse(ServerTimeSchema, now + 60_000));
+  assert.equal(await r.drawRelayHostSuccession!.evaluate(view.room.roomId), true);
+  assert.deepEqual((await r.persistence.findById(view.room.roomId))!.game, before!.game);
+  const successor = h.members[1]!, finished = parse(DrawRelayFinishedPlatformSnapshotV2Schema, await h.sync(successor.client));
+  const command = h.request("draw:rematch", {}, { gameId: finished.game.gameId, stageToken: finished.game.stageToken,
+    expectedGameRevision: finished.game.gameRevision, expectedRoomRevision: finished.versions.roomRevision });
+  const lobby = parse(LobbyPlatformSnapshotV2Schema, h.success(await h.send(successor.client, command)));
+  assert.equal(lobby.room.roomCode, view.room.roomCode); assert.equal(lobby.room.players.length, 3);
+  assert.equal(lobby.room.players.find(p => p.isHost)?.playerId, successor.playerId);
+  h.success(await h.send(successor.client, command));
+  assert.equal((await r.persistence.findById(view.room.roomId))!.roomRevision, lobby.versions.roomRevision);
+});
+
 test("DRAW private draft reconnect, replay and concurrent submission barrier exact once", async t => {
   const h = await harness(t), host = h.members[0]!, game = h.first.game;
   const drawing = { strokes: [{ strokeId: "private-stroke", tool: "PEN", color: "#202838", width: 4, points: [{ x: 30, y: 40 }] }] };
@@ -158,4 +205,72 @@ test("DRAW private draft reconnect, replay and concurrent submission barrier exa
   const stored = await h.server.runtime.persistence.findById(h.first.room.roomId); assert.ok(stored?.gameType === "DRAW_RELAY" && stored.game);
   assert.equal(stored.game.state.stageIndex, 2); assert.equal(stored.game.gameRevision, 4);
   assert.ok(stored.game.state.books.every(b => b.pages.length === 1)); assert.equal(h.server.runtime.turnScheduler.scheduledCount, 1);
+});
+
+test("DRAW Host commit race: resume invalidates offline generation before atomic commit", async t => {
+  const h = await harness(t), view = await h.relay(), r = h.server.runtime, policy = r.drawRelayHostSuccession!, host = h.members[0]!;
+  const binding = r.connectionRegistry.listActiveBindings(view.room.roomId).find(b => b.playerId === host.playerId)!;
+  r.connectionRegistry.disconnect(binding.socketId, binding.connectionGeneration);
+  const now = r.clock.now(); policy.disconnected(view.room.roomId, host.playerId, now);
+  t.mock.method(r.clock, "now", () => parse(ServerTimeSchema, now + 60_000));
+  const before = await r.persistence.findById(view.room.roomId);
+  const commit = r.persistence.commit.bind(r.persistence);
+  t.mock.method(r.persistence, "commit", async (...args: Parameters<typeof commit>) => {
+    // Pause point after candidate/lease selection, before the real UoW guard.
+    // Resume synchronously invalidates the generation even when room-lane work is queued.
+    policy.resumed(view.room.roomId, host.playerId);
+    return commit(...args);
+  });
+  assert.equal(await policy.evaluate(view.room.roomId), false);
+  assert.deepEqual(await r.persistence.findById(view.room.roomId), before);
+  assert.equal(await policy.evaluate(view.room.roomId), false);
+});
+
+test("DRAW explicit leave retains routes, defaults future pages, excludes rematch and rejects stale resume", async t => {
+  const h = await harness(t), host = h.members[0]!, departed = h.members[1]!, r = h.server.runtime;
+  const ack = parse(RoomLeaveAckSchema, await h.call(departed.client, "room:leave", {}, {
+    expectedRoomRevision: h.first.versions.roomRevision, expectedGameRevision: h.first.game.gameRevision }));
+  assert.ok(ack.ok);
+  let view = parse(DrawRelayPlayingPlatformSnapshotV2Schema, await h.sync(host.client));
+  while (view.game.phase !== "REVEAL") {
+    for (const member of h.members.filter(m => m !== departed)) {
+      const own = parse(DrawRelayPlayingPlatformSnapshotV2Schema, await h.sync(member.client));
+      h.success(await h.call(member.client, own.game.phase === "DRAW" ? "draw:submitDrawing" : "draw:submitGuess",
+        own.game.phase === "DRAW" ? { drawing: { strokes: [] } } : { text: "함께 그린 그림" }, { gameId: own.game.gameId, stageToken: own.game.stageToken }));
+    }
+    view = parse(DrawRelayPlayingPlatformSnapshotV2Schema, await h.sync(host.client));
+  }
+  const stored = await r.persistence.findById(view.room.roomId); assert.ok(stored?.gameType === "DRAW_RELAY" && stored.game);
+  assert.equal(stored.game.state.books.length, 3);
+  assert.ok(stored.game.state.books.flatMap(b => b.pages).filter(p => p.authorPlayerId === departed.playerId).every(p => p.timedOut));
+  for (;;) {
+    const next = h.success(await h.call(host.client, "draw:revealNext", {}, { gameId: view.game.gameId, stageToken: view.game.stageToken, expectedGameRevision: view.game.gameRevision }));
+    if (next.room.phase === "FINISHED") {
+      const finished = parse(DrawRelayFinishedPlatformSnapshotV2Schema, next);
+      const lobby = parse(LobbyPlatformSnapshotV2Schema, h.success(await h.call(host.client, "draw:rematch", {}, {
+        gameId: finished.game.gameId, stageToken: finished.game.stageToken, expectedGameRevision: finished.game.gameRevision, expectedRoomRevision: finished.versions.roomRevision })));
+      assert.equal(lobby.room.players.length, 2); assert.ok(lobby.room.players.every(p => p.playerId !== departed.playerId));
+      break;
+    }
+    view = parse(DrawRelayPlayingPlatformSnapshotV2Schema, next);
+  }
+  const stale = parse(StateSyncWireAckSchema, await h.call(await h.connect(), "session:resume", { credential: { ...departed.credential, roomCode: view.room.roomCode }, lastSeenVersions: null }));
+  assert.equal(stale.ok, false);
+});
+
+test("DRAW timeout ignores saved draft, rejects late submit and applies duplicate callback only once", async t => {
+  const h = await harness(t), r = h.server.runtime, game = h.first.game, host = h.members[0]!;
+  assert.ok("deadlineAt" in game);
+  const drawing = { strokes: [{ strokeId: "not-submitted", tool: "PEN", color: "#202838", width: 4, points: [{ x: 1, y: 1 }] }] };
+  h.success(await h.call(host.client, "draw:draftSave", { drawing, expectedDraftRevision: 0 }, { gameId: game.gameId, stageToken: game.stageToken }));
+  t.mock.method(r.clock, "now", () => game.deadlineAt);
+  const deadline = { roomId: h.first.room.roomId, gameId: game.gameId, expectedGameRevision: game.gameRevision, turnId: parse(TurnIdSchema, game.stageToken), deadlineAt: game.deadlineAt };
+  const results = await Promise.all([r.drawRelayService!.timeout(deadline), r.drawRelayService!.timeout(deadline),
+    h.call(host.client, "draw:submitDrawing", { drawing }, { gameId: game.gameId, stageToken: game.stageToken })]);
+  assert.deepEqual(results.slice(0, 2), [{ status: "APPLIED" }, { status: "NO_OP" }]);
+  assert.equal(parse(StateSyncWireAckSchema, results[2]).ok, false);
+  const stored = await r.persistence.findById(h.first.room.roomId); assert.ok(stored?.gameType === "DRAW_RELAY" && stored.game);
+  assert.equal(stored.game.gameRevision, 2); assert.equal(stored.game.state.stageIndex, 2);
+  assert.ok(stored.game.state.books.every(b => b.pages.length === 1 && b.pages[0]!.kind === "DRAWING" && b.pages[0]!.drawing.strokes.length === 0));
+  assert.equal(r.turnScheduler.scheduledCount, 1);
 });
