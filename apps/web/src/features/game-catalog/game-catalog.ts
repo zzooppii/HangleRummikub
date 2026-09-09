@@ -28,6 +28,7 @@ export const GAME_CATALOG = Object.freeze([
     description: "2~6명이 비밀 역할을 고르고, 자원을 모아 도시를 건설하는 라운드형 전략 게임입니다.",
   }),
   Object.freeze({ gameType: "DRAW_RELAY", displayName: "그림 릴레이", description: "3~8명이 그림과 추측을 이어가며 처음 단어가 어떻게 변했는지 함께 보는 파티게임입니다." }),
+  Object.freeze({ gameType: "SNEAKY_LUNCH", displayName: "몰래 한입", description: "2~8명이 선생님 눈을 피해 도시락을 비우는 교실 눈치 파티게임입니다." }),
 ] as const satisfies readonly GameCatalogItem[]);
 
 export const DEFAULT_SELECTED_GAME_TYPE = GAME_CATALOG[0].gameType;

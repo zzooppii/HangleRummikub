@@ -1,4 +1,5 @@
 import { RelayDoodle } from "../draw-relay/RelayHelp.js";
+import { LunchboxArt } from "../sneaky-lunch/art.js";
 import {
   NICKNAME_MAX_CODE_POINTS,
   type GameType,
@@ -171,6 +172,7 @@ export function HomeScreen(props: HomeScreenProps) {
                             onClick={() => setSelectedGameType(game.gameType)}
                           >
                             {game.gameType === "DRAW_RELAY" ? <RelayDoodle/> : null}
+                            {game.gameType === "SNEAKY_LUNCH" ? <LunchboxArt small/> : null}
                             <span className="game-option-heading">
                               <strong>{game.displayName}</strong>
                               {isSelected ? (

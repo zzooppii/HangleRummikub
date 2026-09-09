@@ -9,9 +9,9 @@ import {
   GAME_CATALOG,
 } from "../features/game-catalog/game-catalog.js";
 
-test("Web game catalog는 구현 완료된 Hangul/Number/GEM/CITY 다섯 게임을 같은 계층으로 공개한다", () => {
+test("Web game catalog는 구현 완료된 여섯 게임을 같은 계층으로 공개한다", () => {
   assert.equal(Object.isFrozen(GAME_CATALOG), true);
-  assert.equal(GAME_CATALOG.length, 5);
+  assert.equal(GAME_CATALOG.length, 6);
   assert.deepEqual(GAME_CATALOG, [
     {
       gameType: "HANGUL_TILE",
@@ -34,6 +34,7 @@ test("Web game catalog는 구현 완료된 Hangul/Number/GEM/CITY 다섯 게임�
       description: "2~6명이 비밀 역할을 고르고, 자원을 모아 도시를 건설하는 라운드형 전략 게임입니다.",
     },
     { gameType: "DRAW_RELAY", displayName: "그림 릴레이", description: "3~8명이 그림과 추측을 이어가며 처음 단어가 어떻게 변했는지 함께 보는 파티게임입니다." },
+    { gameType: "SNEAKY_LUNCH", displayName: "몰래 한입", description: "2~8명이 선생님 눈을 피해 도시락을 비우는 교실 눈치 파티게임입니다." },
   ]);
   assert.equal(Object.isFrozen(GAME_CATALOG[0]), true);
   assert.equal(Object.isFrozen(GAME_CATALOG[1]), true);
@@ -43,13 +44,13 @@ test("Web game catalog는 구현 완료된 Hangul/Number/GEM/CITY 다섯 게임�
   assert.doesNotMatch(JSON.stringify(GAME_CATALOG), /준비중|COMING_SOON/u);
 });
 
-test("Home renders exactly five playable game choices including the approved CITY title and capacity", () => {
+test("Home renders exactly six playable game choices including the approved CITY title and capacity", () => {
   const html = renderToStaticMarkup(createElement(HomeScreen, {
     nickname: "", roomCodeInput: "", invitationRoomCode: null, routeErrorMessage: null,
     busyLabel: null, connectionLabel: "연결됨", connectionTone: "connected", errorMessage: null,
     onNicknameChange() {}, onRoomCodeChange() {}, onCreateRoom() {}, onJoinRoom() {}, onGoHome() {},
   }));
-  assert.equal((html.match(/class="game-option(?: selected)?"/gu) ?? []).length, 5);
+  assert.equal((html.match(/class="game-option(?: selected)?"/gu) ?? []).length, 6);
   for (const game of GAME_CATALOG) assert.ok(html.includes(game.displayName));
   assert.match(html, /2~6명이 비밀 역할을 고르고/u);
   assert.doesNotMatch(html, /COMING_SOON|준비중/u);

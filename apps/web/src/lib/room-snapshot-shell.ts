@@ -63,7 +63,7 @@ export function projectRoomSnapshotShell(
 
   const snapshot = compatible.platformSnapshot;
   return {
-    ...((compatible.kind === "PLATFORM_V2_NUMBER_TILE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY") ? { gameId: compatible.platformSnapshot.game?.gameId ?? null } : {}),
+    ...((compatible.kind === "PLATFORM_V2_NUMBER_TILE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY" || compatible.kind === "PLATFORM_V2_SNEAKY_LUNCH") ? { gameId: compatible.platformSnapshot.game?.gameId ?? null } : {}),
     protocolVersion: PROTOCOL_VERSION,
     versions: {
       roomRevision: snapshot.versions.roomRevision,

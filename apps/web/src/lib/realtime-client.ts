@@ -1,4 +1,5 @@
 import { DrawClientCommandSchema, type DrawClientCommand } from "@hangul-rummikub/shared";
+import { SneakyClientCommandSchema, type SneakyClientCommand } from "@hangul-rummikub/shared";
 import { safeParse as parseRematch } from "valibot";
 import { NumberRematchCommandSchema, type NumberRematchCommand } from "@hangul-rummikub/shared";
 import {
@@ -669,6 +670,17 @@ export class RealtimeClient {
         case "draw:revealNext": this.#socket.emit("draw:revealNext", command, acknowledge); break;
         case "draw:rematch": this.#socket.emit("draw:rematch", command, acknowledge); break;
         case "draw:configure": this.#socket.emit("draw:configure", command, acknowledge); break;
+      }
+    }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
+  }
+
+  actSneaky(command: SneakyClientCommand): Promise<StateSyncWireAck> {
+    if (!parseRematch(SneakyClientCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {
+      switch (command.kind) {
+        case "sneaky:configure": this.#socket.emit("sneaky:configure", command, acknowledge); break;
+        case "sneaky:eat": this.#socket.emit("sneaky:eat", command, acknowledge); break;
+        case "sneaky:rematch": this.#socket.emit("sneaky:rematch", command, acknowledge); break;
       }
     }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
   }

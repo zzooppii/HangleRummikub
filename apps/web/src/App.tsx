@@ -1,4 +1,6 @@
 import { DrawRelayScreen } from "./features/draw-relay/DrawRelayScreen.js";
+import { SneakyLunchScreen } from "./features/sneaky-lunch/SneakyLunchScreen.js";
+import "./features/sneaky-lunch/sneaky-lunch.css";
 import "./features/draw-relay/draw-relay.css";
 import { ReconnectBoundary } from "./features/platform/ReconnectBoundary.js";
 
@@ -321,6 +323,14 @@ export function App() {
     if (roomView.kind === "DRAW_RELAY") {
       return <ReconnectBoundary {...recovery}><DrawRelayScreen snapshot={roomView.snapshot}
         connected={app.connectionState === "CONNECTED" && !app.sessionReplaced} onCommand={app.actDraw}
+        onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
+        pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
+        error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;
+    }
+
+    if (roomView.kind === "SNEAKY_LUNCH") {
+      return <ReconnectBoundary {...recovery}><SneakyLunchScreen snapshot={roomView.snapshot}
+        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={app.actSneaky}
         onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
         pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
         error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;
