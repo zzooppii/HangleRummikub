@@ -8,10 +8,10 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { calculateServerClockOffset, calculateTurnCountdown } from "../../lib/turn-countdown.js";
 import {
-  GEM_RESOURCE_IDS, GEM_RESOURCE_LABELS, GEM_RESOURCE_MARKERS, GEM_TIER_LABELS,
+  GEM_RESOURCE_IDS, GEM_RESOURCE_LABELS, GEM_TIER_LABELS,
   formatGemCountdown, gemCardAccessibleLabel, gemCollectPreview, gemFairRoundLabel,
   gemHasMainActionHint, gemPaymentPreview, gemResourceTotal, resolveGemSelectedCard, gemCurrentActionHint,
-  toggleGemCollectSelection, type GemResource, type GemUiCard, type GemUiPlayer,
+  toggleGemCollectSelection, type GemUiCard, type GemUiPlayer,
 } from "./gem-card-ui.js";
 import {
   playGemSound, readGemSoundStorage, shouldAnnounceGemTurn, useGemActionSound,
@@ -19,6 +19,8 @@ import {
 } from "./gem-card-sound.js";
 import { GemGameHelp } from "./GemGameHelp.js";
 import { GemPurchasePreview } from "./GemPurchasePreview.js";
+import { GemCardArt, GemResourceMark } from "./GemVisuals.js";
+export { GemResourceMark } from "./GemVisuals.js";
 
 export type GemCardPlayingScreenProps = Readonly<{
   snapshot: GemCardPlayingPlatformSnapshotV2;
@@ -41,10 +43,6 @@ export type GemCardPlayingScreenProps = Readonly<{
   onGoHome: () => void;
 }>;
 
-export function GemResourceMark({ resource }: Readonly<{ resource: GemResource }>) {
-  return <span className={`gem-resource-mark gem-resource-${resource.toLowerCase()}`} aria-hidden="true">{GEM_RESOURCE_MARKERS[resource]}</span>;
-}
-
 export function GemResourceRow({ counts, label, production = false }: Readonly<{
   counts: GemUiPlayer["production"] | GemUiPlayer["resources"];
   label: string;
@@ -60,6 +58,7 @@ export function GemResourceRow({ counts, label, production = false }: Readonly<{
 export function GemCardFace({ card }: Readonly<{ card: GemUiCard }>) {
   return <>
     <span className="gem-card-top"><span>{GEM_TIER_LABELS[card.tier]} · {card.tier}단계</span><strong>{card.victoryPoints}<small> 승점</small></strong></span>
+    <GemCardArt card={card} />
     <span className="gem-card-production"><GemResourceMark resource={card.productionResource} /><span>{GEM_RESOURCE_LABELS[card.productionResource]} <strong>영구 할인 +1</strong></span></span>
     <span className="gem-card-cost-title">기본 비용</span>
     <span className="gem-card-costs">{GEM_BASIC_RESOURCE_IDS.filter(resource => card.cost[resource] > 0).map(resource =>
@@ -119,12 +118,13 @@ export function GemCardPlayingScreen(props: GemCardPlayingScreenProps) {
   function selectCard(source: GemPurchaseSourceDto, chosen: GemUiCard) {
     if (locked) return;
     setSelected({ source, cardId: chosen.cardId });
-    actionHeadingRef.current?.focus();
+    actionHeadingRef.current?.focus({ preventScroll: true });
+    actionHeadingRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
   }
 
   return <main className="app-shell gem-shell gem-playing-shell">
     <header className="gem-header">
-      <div><p className="eyebrow">보석 카드 게임 · ROOM {room.roomCode}</p><h1>자원을 모아, 다음 한 수.</h1></div>
+      <div><p className="eyebrow">보석 카드 게임 · ROOM {room.roomCode}</p><h1>빛을 모아, 나만의 컬렉션.</h1><p className="gem-header-subtitle">보석을 모으고 · 할인을 쌓고 · 18점을 향해</p></div>
       <div className="gem-header-actions">
         <GemGameHelp placement="PLAYING" />
         <span className={`connection-chip ${props.connectionTone}`}>{props.connectionLabel}</span>
@@ -136,12 +136,29 @@ export function GemCardPlayingScreen(props: GemCardPlayingScreenProps) {
     {props.errorMessage !== null ? <p className="notice error-notice" role="alert">{props.errorMessage}</p> : null}
     <section className={`gem-turn-banner${isMyTurn ? " is-self" : ""}${countdown.remainingSeconds <= 10 ? " warning" : ""}`} aria-label="현재 보석 카드 게임 차례">
       <div><h2>{turnLabel}</h2><p>{isMyTurn ? "행동 하나를 선택하세요 · 자원 받기 / 카드 구매 / 카드 예약" : "시장을 살펴보며 다음 차례를 준비하세요."}</p></div>
-      <time role="timer" aria-live="off" className="gem-countdown" aria-label={countdown.expired ? "제한 시간 종료 처리 중" : `남은 시간 ${countdown.remainingSeconds}초`}>{formatGemCountdown(countdown.remainingSeconds)}</time>
+      <div className="gem-clock"><small>남은 시간</small><time role="timer" aria-live="off" className="gem-countdown" aria-label={countdown.expired ? "제한 시간 종료 처리 중" : `남은 시간 ${countdown.remainingSeconds}초`}>{formatGemCountdown(countdown.remainingSeconds)}</time><progress max={45} value={Math.max(0, Math.min(45, countdown.remainingSeconds))} aria-label="남은 턴 시간" /></div>
     </section>
     {game.fairRound !== null ? <p className="gem-fair-round" role="status">{gemFairRoundLabel(game.fairRound.reason)}</p> : null}
     <p className="live-region" aria-live="polite">{turnLabel}</p>
     <p className="gem-action-feedback" role="status">{props.actionPending ? "서버에서 행동을 확인하고 있습니다…" : props.actionFeedback?.message ?? "카드를 사면 영구 할인과 승점이 쌓입니다."}</p>
     <nav className="gem-mobile-jump" aria-label="게임 영역 바로가기"><a href="#gem-market-heading">시장 보기</a><a href="#gem-my-actions">내 자원·행동</a></nav>
+    <section className="gem-quick-wallet" aria-label="내 보석 보관함"><div><span>내 컬렉션</span><strong>{player.score}<small> / 18점</small></strong></div><GemResourceRow counts={player.resources} label="내 보석 보관함 자원" /><span className="gem-wallet-cap">보유 {gemResourceTotal(player.resources)} / 9</span></section>
+
+    <section className="gem-panel gem-collect-panel" aria-labelledby="gem-collect-heading">
+      <div className="gem-section-heading"><h2 id="gem-collect-heading">자원 받기</h2><span>공용 공급</span></div>
+      {isMyTurn ? <p className="gem-context-hint">{gemCurrentActionHint(game, player)}</p> : null}
+      <p className="gem-muted">기본 자원 1~2종, 또는 프리즘 1개만.</p>
+      <div className="gem-supply-selectors">{GEM_RESOURCE_IDS.map(resource => {
+        const chosen = collect?.kind === "PRISM" ? resource === "PRISM" : resource !== "PRISM" && (collect?.resources.includes(resource) ?? false);
+        return <button type="button" key={resource} className={`gem-supply-selector${chosen ? " is-selected" : ""}`} aria-pressed={chosen}
+          disabled={locked || game.supply[resource] === 0 || gemResourceTotal(player.resources) >= 9}
+          aria-label={`${GEM_RESOURCE_LABELS[resource]}, 공급 ${game.supply[resource]}개, ${chosen ? "선택 취소" : "선택"}`}
+          onClick={() => setCollect(current => toggleGemCollectSelection(current, resource))}><GemResourceMark resource={resource} /><strong>{GEM_RESOURCE_LABELS[resource]}</strong><span>공급 {game.supply[resource]}</span></button>;
+      })}</div>
+      <p className="gem-collect-count">{collect?.kind === "PRISM" ? "프리즘 1개 선택" : `기본 자원 선택 ${collectPreview.count} / 2`} · 예상 보유 {gemResourceTotal(player.resources) + collectPreview.count} / 9</p>
+      <p className="gem-collect-hint" role="status">{collectPreview.message}</p>
+      <button type="button" className="primary-button" disabled={locked || !collectPreview.canCollect} onClick={() => { if (collect !== null) props.onCollect(collect); }}>선택한 자원 받기</button>
+    </section>
 
     <div className="gem-table-layout">
       <section className="gem-market" aria-labelledby="gem-market-heading">
@@ -167,9 +184,10 @@ export function GemCardPlayingScreen(props: GemCardPlayingScreenProps) {
           <div className="gem-my-score">내 승점 <strong>{player.score}<small> / 목표 18</small></strong></div>
         </section>
 
-        <section className="gem-panel" id="gem-selected-action" aria-labelledby="gem-selection-heading">
+        <section className="gem-panel gem-selection-panel" id="gem-selected-action" aria-labelledby="gem-selection-heading">
           <h2 id="gem-selection-heading" ref={actionHeadingRef} tabIndex={-1}>선택한 카드</h2>
-          {card === null || selected === null || payment === null ? <p className="gem-muted">시장 또는 내 예약 카드를 선택하면 구매와 예약을 확인할 수 있습니다. 선택만으로 행동이 실행되지는 않습니다.</p> : <>
+          {card === null || selected === null || payment === null ? <div className="gem-selection-empty"><GemResourceMark resource="PRISM" /><p className="gem-muted">마음에 드는 카드를 선택하세요.<br />구매 비용과 예약을 여기서 확인합니다.</p></div> : <>
+            <div className="gem-selected-art"><GemCardArt card={card} /><span>{GEM_TIER_LABELS[card.tier]} · {GEM_RESOURCE_LABELS[card.productionResource]} 카드<small>선택만으로 구매되지 않습니다.</small></span></div>
             <GemPurchasePreview card={card} player={player} />
             <div className="gem-button-row"><button type="button" className="primary-button" disabled={locked || !payment.canAfford} onClick={() => props.onPurchase(selected.source)}>구매</button>
               {selected.source.kind === "MARKET" ? <button type="button" className="secondary-button" disabled={locked || player.reservedCards.length >= 2} onClick={() => { const source = selected.source; if (source.kind === "MARKET") props.onReserve({ tier: source.tier, slotIndex: source.slotIndex }); }}>예약</button> : null}</div>
@@ -177,21 +195,6 @@ export function GemCardPlayingScreen(props: GemCardPlayingScreenProps) {
           </>}
         </section>
 
-        <section className="gem-panel" aria-labelledby="gem-collect-heading">
-          <div className="gem-section-heading"><h2 id="gem-collect-heading">자원 받기</h2><span>공용 공급</span></div>
-          {isMyTurn ? <p className="gem-context-hint">{gemCurrentActionHint(game, player)}</p> : null}
-          <p className="gem-muted">기본 자원 1~2종, 또는 프리즘 1개만.</p>
-          <div className="gem-supply-selectors">{GEM_RESOURCE_IDS.map(resource => {
-            const chosen = collect?.kind === "PRISM" ? resource === "PRISM" : resource !== "PRISM" && (collect?.resources.includes(resource) ?? false);
-            return <button type="button" key={resource} className={`gem-supply-selector${chosen ? " is-selected" : ""}`} aria-pressed={chosen}
-              disabled={locked || game.supply[resource] === 0 || gemResourceTotal(player.resources) >= 9}
-              aria-label={`${GEM_RESOURCE_LABELS[resource]}, 공급 ${game.supply[resource]}개, ${chosen ? "선택 취소" : "선택"}`}
-              onClick={() => setCollect(current => toggleGemCollectSelection(current, resource))}><GemResourceMark resource={resource} /><strong>{GEM_RESOURCE_LABELS[resource]}</strong><span>공급 {game.supply[resource]}</span></button>;
-          })}</div>
-          <p className="gem-collect-count">{collect?.kind === "PRISM" ? "프리즘 1개 선택" : `기본 자원 선택 ${collectPreview.count} / 2`} · 예상 보유 {gemResourceTotal(player.resources) + collectPreview.count} / 9</p>
-          <p className="gem-collect-hint" role="status">{collectPreview.message}</p>
-          <button type="button" className="primary-button" disabled={locked || !collectPreview.canCollect} onClick={() => { if (collect !== null) props.onCollect(collect); }}>선택한 자원 받기</button>
-        </section>
 
         <section className="gem-panel" aria-labelledby="gem-reserved-heading"><div className="gem-section-heading"><h2 id="gem-reserved-heading">내 예약 카드</h2><span>{player.reservedCards.length} / 2장</span></div>
           {player.reservedCards.length === 0 ? <p className="gem-muted">시장 카드를 예약해 두고 나중에 구매할 수 있습니다.</p> : <div className="gem-reserved-cards">{player.reservedCards.map(reserved => <button type="button" key={reserved.cardId} className={`gem-card${card?.cardId === reserved.cardId ? " is-selected" : ""}`} disabled={locked} aria-pressed={card?.cardId === reserved.cardId} aria-label={`내 예약 ${gemCardAccessibleLabel(reserved)}, 구매 선택`} onClick={() => selectCard({ kind: "RESERVED", cardId: reserved.cardId }, reserved)}><GemCardFace card={reserved} /></button>)}</div>}

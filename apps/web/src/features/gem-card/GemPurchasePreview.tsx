@@ -1,5 +1,6 @@
 import { GEM_BASIC_RESOURCE_IDS } from "@hangul-rummikub/shared";
 import { GEM_RESOURCE_IDS, GEM_RESOURCE_LABELS, gemPaymentPreview, type GemUiCard, type GemUiPlayer } from "./gem-card-ui.js";
+import { GemResourceMark } from "./GemVisuals.js";
 
 /** Pure snapshot explanation. Never supplies a payment plan to the command owner. */
 export function GemPurchasePreview({ card, player }: Readonly<{ card: GemUiCard; player: GemUiPlayer }>) {
@@ -7,10 +8,11 @@ export function GemPurchasePreview({ card, player }: Readonly<{ card: GemUiCard;
   const owned = GEM_RESOURCE_IDS.filter(resource => player.resources[resource] > 0).map(resource => `${GEM_RESOURCE_LABELS[resource]} ${player.resources[resource]}`).join(" · ");
   return <div className="gem-purchase-explanation">
     <div className="gem-selected-benefit"><strong>승점 {card.victoryPoints}점</strong><span>{GEM_RESOURCE_LABELS[card.productionResource]} 영구 할인 +1</span></div>
-    <table className="gem-payment-table"><caption>기본 비용 → 내 할인 적용 후</caption>
+    <div className="gem-effective-cost" aria-label="할인 적용 후 필요한 자원">{GEM_BASIC_RESOURCE_IDS.filter(resource => card.cost[resource] > 0).map(resource => <span key={resource}><GemResourceMark resource={resource} /><span>{GEM_RESOURCE_LABELS[resource]}<strong>{payment.effective[resource]}</strong></span></span>)}</div>
+    <details className="gem-payment-details"><summary>비용과 영구 할인 상세</summary><table className="gem-payment-table"><caption>기본 비용 → 내 할인 적용 후</caption>
       <thead><tr><th>자원</th><th>기본</th><th>영구 할인</th><th>실제 비용</th></tr></thead>
       <tbody>{GEM_BASIC_RESOURCE_IDS.filter(resource => card.cost[resource] > 0).map(resource => <tr key={resource}><th>{GEM_RESOURCE_LABELS[resource]}</th><td>{card.cost[resource]}</td><td>−{player.production[resource]}</td><td><strong>{payment.effective[resource]}</strong></td></tr>)}</tbody>
-    </table>
+    </table></details>
     <p className="gem-owned-preview">현재 보유 자원: {owned || "없음"}</p>
     {payment.canAfford ? <div className="gem-purchase-availability available" role="status">
       <strong>{payment.isFree ? "구매 가능 · 할인으로 무료" : "구매 가능"}</strong>

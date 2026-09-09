@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { GEM_GUIDE_SECTIONS, GEM_TUTORIAL_STEPS, hasSeenGemTutorial, markGemTutorialSeen, nextGemTutorialStep } from "./gem-card-guide.js";
+import { GemResourceLegend, GemResourceMark } from "./GemVisuals.js";
 
 export function GemPurchaseExample() {
   return <figure className="gem-guide-example">
@@ -42,10 +43,12 @@ export function GemHelpDialog({ tutorial, onTutorial, onDismiss, onFinish, retur
       {tutorial ? <section className="gem-tutorial-step" aria-live="polite">
         <p className="gem-help-progress">간단히 배우기 · {step + 1} / {GEM_TUTORIAL_STEPS.length}</p>
         <h2 ref={headingRef} id="gem-help-heading" tabIndex={-1}>{content.title}</h2>
+        <div className="gem-tutorial-visual" aria-hidden="true"><GemResourceMark resource={step === 4 ? "PRISM" : "DAWN"} /><span>→</span><img src="/gem-art/v1/dawn.webp" width="512" height="512" alt="" /><span>→</span><strong>{step === 0 ? "18점" : "영구 할인"}</strong></div>
         <p>{content.body}</p><div className="gem-tutorial-example">{content.example}</div>
       </section> : <>
         <h2 ref={headingRef} id="gem-help-heading" tabIndex={-1}>보석 카드 게임 방법</h2>
         <p className="gem-help-intro">자원을 모으고 → 카드를 사고 → 영구 할인과 승점을 쌓으세요.</p>
+        <GemResourceLegend />
         <button type="button" className="secondary-button" onClick={onTutorial}>6단계 튜토리얼 다시 보기</button>
         <div className="gem-guide-sections">{GEM_GUIDE_SECTIONS.map((section, index) => <section key={section.title}>
           <h3><span>{String(index + 1).padStart(2, "0")}</span> {section.title}</h3><p>{section.body}</p>

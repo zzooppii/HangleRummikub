@@ -1,0 +1,33 @@
+{
+  "generator": "OpenAI built-in image_gen",
+  "date": "2026-09-09",
+  "processing": "512x512 WebP q82; unchanged 1254x1254 original PNGs archived at image/gem/{id}.png (SHA-256 copy verified)",
+  "scope": "Five resource-family illustrations, not 45 unique card arts. No game-data changes or published artwork inputs.",
+  "scenes": [
+    {
+      "id": "dawn",
+      "prompt": "Use case: stylized-concept. One original premium tabletop GEM card environment illustration. Square full-bleed, no text, no border, no UI, no logos. Rich painterly miniature scene, a strong central gem focal point readable at 100px, believable architectural depth, jewel light and brushed metal details. Scene: a sunlit amber crystal observatory above clouds, warm golden faceted stones on a brass lens table, elegant sunrise rays. Independent fantasy craft world, no published board game references or copied assets.",
+      "source": "exec-a3c99c8c-d5c8-4fa6-b65b-c21055491588.png"
+    },
+    {
+      "id": "tide",
+      "prompt": "Use case: stylized-concept. One original premium tabletop GEM card environment illustration. Square full-bleed, no text, no border, no UI, no logos. Rich painterly miniature scene, a strong central gem focal point readable at 100px, believable architectural depth, jewel light and brushed metal details. Scene: a turquoise crystal grotto with a small stone waterwheel and luminous blue gems beside flowing pools, cool layered arches. Independent fantasy craft world, no published board game references or copied assets.",
+      "source": "exec-10393fcc-5f9c-4040-bdf9-21c3419f4665.png"
+    },
+    {
+      "id": "grove",
+      "prompt": "Use case: stylized-concept. One original premium tabletop GEM card environment illustration. Square full-bleed, no text, no border, no UI, no logos. Rich painterly miniature scene, a strong central gem focal point readable at 100px, believable architectural depth, jewel light and brushed metal details. Scene: an emerald gem cutting pavilion entwined with ancient tree roots, green crystals among fern terraces and gilded tools, lush natural depth. Independent fantasy craft world, no published board game references or copied assets.",
+      "source": "exec-be07a3f7-1bb6-4e0c-9e8f-fab3b338f4f3.png"
+    },
+    {
+      "id": "ember",
+      "prompt": "Use case: stylized-concept. One original premium tabletop GEM card environment illustration. Square full-bleed, no text, no border, no UI, no logos. Rich painterly miniature scene, a strong central gem focal point readable at 100px, believable architectural depth, jewel light and brushed metal details. Scene: a ruby glass and jewel furnace workshop, glowing orange-red gemstones on a dark anvil, warm sparks and copper machinery. Independent fantasy craft world, no published board game references or copied assets.",
+      "source": "exec-2dc997b3-23db-4c25-a2d6-9b5964dc1f95.png"
+    },
+    {
+      "id": "echo",
+      "prompt": "Use case: stylized-concept. One original premium tabletop GEM card environment illustration. Square full-bleed, no text, no border, no UI, no logos. Rich painterly miniature scene, a strong central gem focal point readable at 100px, believable architectural depth, jewel light and brushed metal details. Scene: a violet resonant crystal sanctuary, suspended amethyst chimes and concentric stone rings in moonlit purple mist, calm magical depth. Independent fantasy craft world, no published board game references or copied assets.",
+      "source": "exec-9ce82851-2c56-4641-a5f1-4ad758cf730b.png"
+    }
+  ]
+}
