@@ -1,0 +1,190 @@
+{
+  "generator": "OpenAI built-in image_gen",
+  "date": "2026-09-09",
+  "references": "User screenshots were quality/context references only, not image-edit inputs. No published game art supplied to generator.",
+  "processing": "Each original PNG converted to 512x512 WebP with cwebp q82. Source originals retained in Codex generated_images; distribution assets committed here.",
+  "promptPrefix": "Use case: stylized-concept. ONE original fantasy city environment illustration for a premium tabletop card. Square 1024x1024, full-bleed scene, no border, no text, no labels, no logos, no UI. Rich hand-painted gouache and oil-like texture, believable architectural perspective, foreground/midground/background depth, dramatic but readable lighting, strong silhouette readable at 120px. Not a flat icon, not an isolated object. Original independent architecture, never copy any published board game artwork. Subject: ",
+  "scenes": [
+    {
+      "id": "CB-CIV-01",
+      "category": "CIVIC",
+      "promptOverride": "Use case: stylized-concept. Create ONE original environment illustration for a small fantasy city-building game card, NO card border, NO text, NO icons, NO logo. Square 1024 image. Subject: civic token archive: an intimate high vaulted blue-stone municipal records vault with rows of wooden pigeonholes full of stamped entry tokens and rolled documents, tall ladder at an angle, a clerk's counter in foreground, cool daylight from a round clerestory falling across ordered shelves. Main silhouette is a towering wall of archives, not a generic house. Painterly premium tabletop environment art, rich hand-painted texture, strong readable focal shape at thumbnail size, atmospheric depth, believable perspective, warm paper highlights against slate blue stone. Original independent fantasy town architecture; do not reference or copy any published game artwork. Edge-to-edge scene, not an object on a plain background.",
+      "scene": "Civic token archive: high vaulted blue-stone municipal records vault, wooden pigeonholes of stamped tokens/documents, angled ladder and clerk counter, cool round-window daylight.",
+      "source": "exec-ddb303f6-0611-47bd-bf68-f86b4f57f88b.png"
+    },
+    {
+      "id": "CB-CIV-02",
+      "category": "CIVIC",
+      "scene": "an outdoor circular civic debating forum, concentric pale-blue limestone benches descend into a round speaker's platform, blue pennants and carved municipal notice slabs, bird's-eye diagonal viewpoint, serene morning sunlight, round geometry dominates",
+      "source": "exec-3ca831fc-a4e0-43e6-a26a-ecf7be87785d.png"
+    },
+    {
+      "id": "CB-CIV-03",
+      "category": "CIVIC",
+      "scene": "a steep fork in a cobbled town road, a prominent multi-direction wooden signpost beside a small blue slate-roofed guidance kiosk, stairways split left and right between orderly civic houses, view from the lower road looking uphill, cool blue morning mist",
+      "source": "exec-668b923a-fa36-45c6-9ffa-56dd110a97d9.png"
+    },
+    {
+      "id": "CB-CIV-04",
+      "category": "CIVIC",
+      "scene": "an intimate open-air council courtyard, a huge round stone discussion table with neatly arranged seats beneath a square pergola, petitions and scrolls on the table, blue tiled floor channels lead toward an open garden gate, oblique close elevated viewpoint",
+      "source": "exec-c7629d70-0808-4726-a2fa-defca65efa63.png"
+    },
+    {
+      "id": "CB-CIV-05",
+      "category": "CIVIC",
+      "scene": "a very long pale limestone postal arcade receding dramatically into the distance, mail pigeonholes and brass collection boxes built into its wall, satchels hung by arches, a courier crossing bands of morning light, blue slate and ivory civic order",
+      "source": "exec-2124a0be-c0ab-4e7a-b91b-36bf0c06eb19.png"
+    },
+    {
+      "id": "CB-CIV-06",
+      "category": "CIVIC",
+      "scene": "a grand broad low-roofed assembly hall spanning the composition, rhythmic tall pale stone columns and immense horizontal entablature, immense symmetrical blue-slate civic facade seen from across a reflecting rectangular pool, tiny citizens on wide stairs, architectural order and scale",
+      "source": "exec-21ca979a-fa34-41e2-bb4a-a8588babce9b.png"
+    },
+    {
+      "id": "CB-CUL-01",
+      "category": "CULTURE",
+      "scene": "an open timber papermaker's workshop with sheets drying from ropes under a plum tiled roof, shallow pulp vats, deckle frames and stacks of handmade cream paper, close view through an open window, dusty rose afternoon light and soft purple shadows, intimate handcrafted creativity",
+      "source": "exec-4927e1b8-10ea-4959-a590-231506a89a34.png"
+    },
+    {
+      "id": "CB-CUL-02",
+      "category": "CULTURE",
+      "scene": "a sheltered garden reading nook beneath a huge flowering tree, curved benches around a low reading lectern with an open book, mauve blossoms drift over mossy stepping stones and a small ornamental gate, quiet dappled rose light, no monumental building",
+      "source": "exec-1b546a35-07f5-4546-b5e9-daaee92aa82a.png"
+    },
+    {
+      "id": "CB-CUL-03",
+      "category": "CULTURE",
+      "scene": "a lively outdoor song courtyard stage with deep plum sweeping curtains, a harp and lute on a curved wooden platform, a few tiny performers and listeners, ribbons connect old balconies overhead, warm theatrical amber spotlights at twilight, stage as strong focal silhouette",
+      "source": "exec-ac0b851e-9a0d-46d2-ace3-32148f94b2f9.png"
+    },
+    {
+      "id": "CB-CUL-04",
+      "category": "CULTURE",
+      "scene": "an enchanting garden of engraved standing memory stones and small book alcoves threaded by curved paths, ivy climbs tilted stone tablets, delicate purple flowering trees and reflective shallow pools, misty lilac sunrise, elevated garden vista, inscriptions abstract not readable",
+      "source": "exec-80506aa3-cd92-4d07-b4ea-ed93ded5503d.png"
+    },
+    {
+      "id": "CB-CUL-05",
+      "category": "CULTURE",
+      "scene": "inside a circular observatory with a large brass telescope pointing through an open segmented dome at a vivid starry violet sky, curved library wall and celestial charts around the room, moonlight crosses the wooden floor, low-angle dramatic diagonal telescope silhouette",
+      "source": "exec-adf10cc4-726b-47ba-9e28-eba3d67f13df.png"
+    },
+    {
+      "id": "CB-CUL-06",
+      "category": "CULTURE",
+      "scene": "an ornate storytelling gallery at night, layered arches with flowing plum drapes frame a storyteller's dais, carved wooden panels and hanging lanterns, tiny seated listeners, distant golden window, a long theatrical diagonal composition with jewel-like purple and rose ornament",
+      "source": "exec-1f095b96-e71c-4e19-b04f-4f3ead0716fe.png"
+    },
+    {
+      "id": "CB-TRA-01",
+      "category": "TRADE",
+      "scene": "a sunny bustling weighing square, oversized practical brass balance scales on a market counter foreground, baskets of grain and copper coins, traders and ochre awnings enclose a broad cobbled plaza behind, low close viewpoint, lively golden light",
+      "source": "exec-c607e105-9848-41f3-83ac-dc96b9264dcf.png"
+    },
+    {
+      "id": "CB-TRA-02",
+      "category": "TRADE",
+      "scene": "an open roadside stone-paving workshop, masons cutting pale rectangular road blocks beside a timber shed, stacks of cobbles and chisels, an unfinished paved road bends into the warm town beyond, ochre dust in sunshine, strong diagonal road and angular blocks",
+      "source": "exec-f95eaf56-ef4c-4e6e-9e0a-4c71a8b6013a.png"
+    },
+    {
+      "id": "CB-TRA-03",
+      "category": "TRADE",
+      "scene": "a packed barter courtyard seen through a timber gateway, two opposing colorful ochre-and-rust canvas stalls with merchants exchanging cloth and ceramic goods across a central counter, crates and hanging scales, busy warm noon atmosphere and intimate triangular awning composition",
+      "source": "exec-c00ae4b4-d2f6-49aa-ae44-3b81fca0c319.png"
+    },
+    {
+      "id": "CB-TRA-04",
+      "category": "TRADE",
+      "scene": "a long covered merchants' passage with a continuous striped saffron awning roof, crowded shop fronts receding into the distance, hanging woven rugs, fruit stalls and pottery, late afternoon golden light filtering through cloth, bustling deep perspective corridor",
+      "source": "exec-9b960b4d-d146-445a-a84c-26f073350d0d.png"
+    },
+    {
+      "id": "CB-TRA-05",
+      "category": "TRADE",
+      "scene": "a prosperous trading ledger hall interior with broad oak counting desks, immense open ledgers, ink pots, balanced stacks of coins and numbered token drawers, golden high windows with dust beams, vaulted timber roof and mezzanine, grand warm commercial chamber",
+      "source": "exec-d295f4ae-c85c-4c61-a6cd-ce9f5551e4d2.png"
+    },
+    {
+      "id": "CB-TRA-06",
+      "category": "TRADE",
+      "scene": "a busy transport staging yard seen from above, three loaded wooden wagons form a diagonal queue beside tall warehouses and a lifting crane, tied bales barrels crates, porters and draft horses, golden dawn dust, logistics and motion, no market stalls",
+      "source": "exec-82ce4c9e-13d0-4d5d-bccb-cf55feb1b851.png"
+    },
+    {
+      "id": "CB-GUA-01",
+      "category": "GUARD",
+      "scene": "a lonely small stone sentry hut at a bend in a dark wall, a large glowing amber lantern hangs over its heavy timber door, wet cobblestones and a tiny watchman silhouette, deep iron-red and charcoal night palette, intimate pool of light against massive shadow",
+      "source": "exec-6f420643-b950-4585-9e0d-da3d4893fba8.png"
+    },
+    {
+      "id": "CB-GUA-02",
+      "category": "GUARD",
+      "scene": "a fortified road checkpoint wedged between cliffs, squat guardhouse with heavy barred window, a lowered striped timber barrier across the narrow road, a lookout watches from the roof, overcast rust-gray morning, constricted defensive silhouette",
+      "source": "exec-0430d5cc-4fbc-48b1-9f80-451992ef6875.png"
+    },
+    {
+      "id": "CB-GUA-03",
+      "category": "GUARD",
+      "scene": "a stone signal plaza high above town with a huge iron beacon brazier ablaze on a stepped central platform, red signal flags strain in wind between sturdy posts, distant answering watchtowers in haze, stormy charcoal sky, orange fire as the dominant silhouette",
+      "source": "exec-117d7a13-9fe0-48df-823f-b3c0dd94be29.png"
+    },
+    {
+      "id": "CB-GUA-04",
+      "category": "GUARD",
+      "scene": "an elevated patrol walkway winding along a thick crenellated fortress wall, alternating arches and square bastions, two tiny guards patrol the route, dramatic perspective over a sheer drop into mist, rust banners, slate-gray defensive mass, wall curves across whole scene",
+      "source": "exec-fd49f1f4-1848-4b49-98b7-52002f377c8e.png"
+    },
+    {
+      "id": "CB-GUA-05",
+      "category": "GUARD",
+      "scene": "a military map-training courtyard within thick stone walls, a large terrain model table in foreground, wooden practice targets and training lanes behind, an instructor points with a rod, red-brown banners and orderly equipment, angular austere daylight composition",
+      "source": "exec-13d78fd2-20a9-4470-a829-b2cdd9d68c5a.png"
+    },
+    {
+      "id": "CB-GUA-06",
+      "category": "GUARD",
+      "scene": "a massive fortified defensive hall built of dark stone, broad reinforced doors under two blunt square bastions, iron braces and geometric shield reliefs, low-angle view emphasizes impenetrable weight, red dusk cutting across charcoal walls and broad empty forecourt",
+      "source": "exec-8e01a7c7-0884-4a41-bdb1-4ac63ea4aafb.png"
+    },
+    {
+      "id": "CB-LAN-01",
+      "category": "LANDMARK",
+      "scene": "a delicate rainwater garden, copper rain chains descend from a small curved canopy into interconnected lily pools, ripples from falling rain and bright fresh leaves, stepping stones curve between basins, close low viewpoint, luminous jade and soft gold light after rain",
+      "source": "exec-30333510-2179-4f45-a708-807d65c423a7.png"
+    },
+    {
+      "id": "CB-LAN-02",
+      "category": "LANDMARK",
+      "scene": "a small ornate stone sundial in a secluded circular herb courtyard, triangular bronze gnomon casts one long precise shadow across radial engraved markings, sunlit honey-green stone and moss, near top-down intimate composition, time and stillness, no readable text",
+      "source": "exec-6c5f103f-4270-4e0e-afb7-b1a734691087.png"
+    },
+    {
+      "id": "CB-LAN-03",
+      "category": "LANDMARK",
+      "scene": "a monumental sculpted rippling-stone fountain plaza, three irregular concentric stone terraces shaped like waves with water cascading between them, sturdy curved stone benches, turquoise reflections and cream-gold highlights, wide low view, flowing geology not a generic tiered fountain",
+      "source": "exec-23a51514-b400-4f3a-a95c-36aeb26e6229.png"
+    },
+    {
+      "id": "CB-LAN-04",
+      "category": "LANDMARK",
+      "scene": "a remarkable narrow wind stair spiraling in exposed zigzags up a green sea cliff, slender handrails and fluttering streamers, a wind vane at the summit, clouds stream through open gaps, daring vertical diagonal silhouette, jade stone and golden dawn, no ordinary building",
+      "source": "exec-0a748646-3ef7-42da-949d-8c25d8a6ec2c.png"
+    },
+    {
+      "id": "CB-LAN-05",
+      "category": "LANDMARK",
+      "scene": "a mysterious moonlit colonnaded gallery beside still dark water, slender arches cast long crescent shadows across silver-green paving, a huge crescent moon reflected in the pool, ivy and pale blossoms, deep emerald night and restrained gold lights, strongly receding arcade",
+      "source": "exec-cb9af3d9-e4e9-4c14-88e5-0ab7b51af838.png"
+    },
+    {
+      "id": "CB-LAN-06",
+      "category": "LANDMARK",
+      "scene": "a singular seven-way memorial garden viewed from high above, EXACTLY seven paths radiate from a sculpted central bronze memorial on a heptagonal stone base, each path lined with different low plantings, jade and gold evening radiance, broad memorable radial silhouette",
+      "source": "exec-1a08fcad-cb42-489f-978a-ef1dd679d3f2.png"
+    }
+  ]
+}

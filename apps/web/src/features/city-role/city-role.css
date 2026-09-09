@@ -241,15 +241,62 @@
 .city-shell .city-landmark-effect strong { font-size: .73rem; color: #47622c; }
 .city-shell .city-landmark-status { display: block; padding: .25rem; color: #25432c; font-size: .75rem; }
 .city-landmark-guide { padding: 1rem; border-radius: .75rem; background: #edf4df; color: #25432c; }
-.city-shell .city-template-art { border: 1px solid #54442730; border-radius: 8px 8px 3px 3px; }
-.city-shell .city-building:has(.city-art-trade) { border-top: 4px solid #ab6d22; background: #fff9eb; }
-.city-shell .city-building:has(.city-art-civic) { border-top: 4px solid #50738f; background: #f5f9fc; }
-.city-shell .city-building:has(.city-art-culture) { border-top: 4px solid #885184; background: #fcf5fb; }
-.city-shell .city-building:has(.city-art-guard) { border-top: 4px solid #935348; background: #fcf6f2; }
-.city-shell .city-building:has(.city-art-landmark) { border-top: 4px solid #53795d; background: #f8faed; }
-.city-shell .city-building-value { width: 100%; border-top: 1px solid #54442725; padding-top: 5px; }
-.city-shell .city-landmark-effect { width: 100%; box-sizing: border-box; border: 1px solid #a78a43; border-left: 4px solid #9b782a; background: linear-gradient(115deg, #fff4ce, #eaf1db); color: #31492e; }
-.city-shell .city-landmark-effect strong { color: #735517; letter-spacing: .05em; }
+/* Original CITY card edition: category livery surrounds a full environmental plate.
+   All selectors stay inside CITY; no layout/rules are shared with other games. */
+.city-shell .city-card-grid { align-items: start; }
+.city-shell .city-building {
+  --card-ink: #244866; --card-paper: #f1f5f7; --card-trim: #92aebe;
+  min-height: 0; gap: 0; padding: 5px; border: 1px solid var(--card-trim);
+  border-radius: 10px; background: var(--card-paper);
+  box-shadow: 0 2px 2px #2537421a, 0 5px 12px #25374220;
+}
+.city-shell .city-building:has(.city-art-trade) { --card-ink: #70400d; --card-paper: #fff4db; --card-trim: #b88844; border-top: 4px solid #ad722a; }
+.city-shell .city-building:has(.city-art-civic) { --card-ink: #244866; --card-paper: #eef4f7; --card-trim: #8da8ba; border-top: 4px double #386780; border-radius: 5px; }
+.city-shell .city-building:has(.city-art-culture) { --card-ink: #673c64; --card-paper: #fcf0f7; --card-trim: #b28aaf; border-top: 4px solid #885184; border-radius: 17px 17px 8px 8px; }
+.city-shell .city-building:has(.city-art-guard) { --card-ink: #693c35; --card-paper: #f3e9e2; --card-trim: #a07769; border-top: 5px ridge #79534c; border-radius: 3px; }
+.city-shell .city-building:has(.city-art-landmark) { --card-ink: #254f48; --card-paper: #edf3e9; --card-trim: #aa934c; border: 2px solid var(--card-trim); background: linear-gradient(145deg,#fff3ca,#ecf2e7 38%,#dcebe2); box-shadow: 0 2px 3px #61491525,0 5px 14px #38695320; }
+.city-shell .city-building > .city-category { margin: 1px 2px 5px; border: 0; border-radius: 3px; background: none; color: var(--card-ink); box-shadow: none; font-size: .75rem; font-weight: 800; letter-spacing: .08em; padding: 2px 3px; }
+.city-shell .city-building > .city-category .city-icon { width: 19px; height: 19px; }
+.city-shell .city-template-art { display: block; overflow: hidden; width: 100%; aspect-ratio: 1; border: 1px solid #1b332a40; border-radius: 5px; background: #ded7c6; }
+.city-template-art img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.city-tutorial-art > .city-template-art { width: 140px; max-width: 100%; }
+.city-art-unavailable { display: grid; place-items: center; height: 100%; font-size: .8rem; }
+.city-shell .city-building-name { width: 100%; margin: 0; padding: 8px 4px 6px; color: var(--card-ink); font-size: .94rem; font-weight: 850; line-height: 1.35; letter-spacing: -.03em; }
+.city-shell .city-building-value { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 3px; padding: 5px 3px 7px; border-top: 1px solid var(--card-trim); color: #263b40; }
+.city-shell .city-building-value > span { color: inherit; }
+.city-card-cost, .city-card-vp { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; font-size: .75rem; }
+.city-shell .city-building-value b { font-size: 1.15rem; line-height: 1; }
+.city-card-vp svg { width: 14px; height: 14px; color: var(--card-ink); flex-shrink: 0; }
+.city-shell .city-building-value .city-icon { width: 17px; height: 17px; flex-shrink: 0; color: #896015; }
+.city-shell .city-landmark-effect { display: flex; flex-direction: column; gap: 5px; width: 100%; margin: 1px 0 4px; padding: 8px 7px; border: 1px solid #a9904b; border-radius: 3px 3px 10px 3px; background: linear-gradient(125deg,#fff4c9,#f5e6b7); box-shadow: inset 0 0 0 2px #fff8e4; color: #344c3b; font-size: .76rem; line-height: 1.55; }
+.city-shell .city-landmark-effect strong { color: #745112; font-size: .7rem; letter-spacing: .06em; border-bottom: 1px solid #b9a06570; padding-bottom: 3px; }
+.city-shell .city-landmark-status { padding: 4px; font-size: .73rem; line-height: 1.5; }
+.city-shell .city-built-label { margin: 3px 4px 2px; padding: 2px 6px; border-radius: 3px; background: #ffffff90; color: #41584c; font-size: .68rem; }
+.city-shell .city-built-grid, .city-shell .city-built-grid.is-dense { grid-template-columns: repeat(auto-fill,minmax(min(132px,100%),1fr)); gap: 10px; }
+.city-shell .city-built-grid.is-dense .city-building-name { font-size: .86rem; }
+.city-shell .city-built-grid.is-dense .city-building-value { font-size: .75rem; }
+.city-shell .city-built-grid.is-dense .city-building-value b { font-size: 1.1rem; }
+.city-shell .city-hand-grid { grid-template-columns: repeat(auto-fill,minmax(min(174px,100%),1fr)); gap: 14px; }
+.city-shell .city-building .city-card-hint { display: block; width: 100%; margin: 3px 0 0; padding: 7px 5px; border-radius: 4px; background: #e5e8e6; color: #43524f; font-size: .76rem; line-height: 1.45; }
+.city-shell .city-building[data-build-state="ready"] .city-card-hint { background: #dcebdd; color: #215037; border-left: 3px solid #438062; }
+.city-shell .city-building[data-build-state="unaffordable"] .city-card-hint { background: #fae6d4; color: #873d23; border-left: 3px solid #b66135; }
+.city-shell .city-building:disabled { opacity: 1; }
+.city-shell .city-building:disabled .city-building-art { opacity: .85; }
+.city-shell .city-building.is-selected { outline: 3px solid #226549; outline-offset: 2px; }
+.city-shell .city-selectable.is-selected::after { right: 7px; top: 6px; z-index: 1; }
+.city-shell .city-building:focus-visible { outline: 3px solid #075e9a; outline-offset: 3px; }
+@media (max-width: 600px) {
+  .city-shell .city-hand-grid, .city-shell .city-built-grid, .city-shell .city-built-grid.is-dense { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+  .city-shell .city-building { padding: 4px; }
+  .city-shell .city-building-name, .city-shell .city-built-grid.is-dense .city-building-name { font-size: .82rem; padding: 7px 2px 5px; }
+  .city-card-cost, .city-card-vp { font-size: .69rem; gap: 2px; }
+  .city-shell .city-building-value b { font-size: 1.05rem; }
+  .city-shell .city-landmark-effect { padding: 7px 5px; font-size: .74rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .city-shell .city-building { transition: none; }
+  .city-shell .city-selectable.is-selected, .city-shell .city-selectable:not(:disabled):hover { transform: none; }
+}
 .city-impact-card { display: block; width: 100%; }
 .city-impact-banner { position: fixed; z-index: 35; top: max(12px,env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(540px,calc(100% - 24px)); max-height: 34dvh; overflow: auto; pointer-events: none; }
 .city-impact { display: flex; align-items: center; gap: 12px; padding: 12px 16px; margin-bottom: 6px; background: #fff6de; color: #253d35; border: 2px solid #ab9150; border-radius: 14px; box-shadow: 0 6px 22px #172b3540; animation: city-impact-settle .35s ease-out; font-weight: 650; }

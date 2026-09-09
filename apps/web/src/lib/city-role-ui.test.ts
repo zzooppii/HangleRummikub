@@ -27,12 +27,16 @@ test("CITY template artwork covers all thirty templates with unique large silhou
   const expected = Object.keys(groups).flatMap(prefix => Array.from({ length: 6 }, (_, i) => `CB-${prefix}-0${i + 1}`));
   assert.deepEqual(Object.keys(CITY_TEMPLATE_ART).sort(), expected.sort());
   assert.equal(new Set(Object.values(CITY_TEMPLATE_ART).map(art => art.motif)).size, 30);
-  assert.equal(new Set(Object.values(CITY_TEMPLATE_ART).map(art => art.mass)).size, 30);
+  assert.equal(new Set(Object.values(CITY_TEMPLATE_ART).map(art => art.src)).size, 30);
   for (const [prefix, category] of Object.entries(groups)) for (let i = 1; i <= 6; i++) {
     const id = `CB-${prefix}-0${i}`, html = renderToStaticMarkup(createElement(CityTemplateArt, { templateId: id, category }));
     assert.ok(html.includes(`data-template-art="${id}"`));
     assert.ok(html.includes(`data-category-art="${category}"`));
-    assert.match(html, /aria-hidden="true"/u); assert.match(html, /focusable="false"/u);
+    assert.match(html, /aria-hidden="true"/u); assert.match(html, /alt=""/u);
+    assert.match(html, /loading="lazy"/u);
+    assert.match(html, /decoding="async"/u);
+    assert.match(html, /width="512" height="512"/u);
+    assert.doesNotMatch(html, /tabindex|onerror/u);
     assert.doesNotMatch(html, /<image|https:|<animate|<script/u);
   }
 });

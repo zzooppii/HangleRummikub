@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import type { CityRoleId } from "@hangul-rummikub/shared";
 import { CITY_CATEGORY_LABELS, CITY_ROLE_HELP, cityRoleOrder, type CityUiCard } from "./city-role-ui.js";
+import { CityTemplateArt } from "./CityTemplateArt.js";
 
 type Category = CityUiCard["category"];
 type IconName = "coin" | "cards" | "exchange" | "compass" | "shield" | "market" | "plan" | "hammer" | "mask" | "civic" | "culture" | "landmark" | "hourglass" | "check";
@@ -22,6 +23,7 @@ const paths: Record<IconName, string> = {
 };
 const roleIcons: Record<CityRoleId, IconName> = { "CR-01": "mask", "CR-02": "coin", "CR-03": "exchange", "CR-04": "compass", "CR-05": "shield", "CR-06": "market", "CR-07": "plan", "CR-08": "hammer" };
 const categoryIcons: Record<Category, IconName> = { CIVIC: "civic", CULTURE: "culture", TRADE: "market", GUARD: "shield", LANDMARK: "landmark" };
+const categoryExample: Record<Category, string> = { CIVIC: "CB-CIV-06", CULTURE: "CB-CUL-03", TRADE: "CB-TRA-03", GUARD: "CB-GUA-04", LANDMARK: "CB-LAN-05" };
 export const CITY_CATEGORY_HINTS: Readonly<Record<Category, string>> = {
   CIVIC: "길잡이 시작 시, 시정 건물마다 금화 +1",
   CULTURE: "수호꾼 시작 시, 문화 건물마다 금화 +1",
@@ -98,7 +100,7 @@ export function CityCategoryGuide({ rulesVersion = "city-rules-v1" }: Readonly<{
     viewport.addEventListener("change", update);
     return () => viewport.removeEventListener("change", update);
   }, []);
-  return <aside className="city-category-guide" aria-label="건물 카테고리"><details open={expanded} onToggle={event => setExpanded(event.currentTarget.open)}><summary>건물 카테고리 <span>5분류 알아보기</span></summary><div className="city-category-rows">{(Object.keys(CITY_CATEGORY_LABELS) as Category[]).map(category => <div className={`city-category-row city-category-${category.toLowerCase()}`} key={category}><div><CityCategoryBadge category={category}/><p>{CITY_CATEGORY_HINTS[category]}</p></div><CityBuildingArt category={category}/></div>)}</div><p className="city-helper">{rulesVersion === "city-rules-v2" ? "명소는 각각 고유한 특수 능력을 가진 건물입니다. 다른 분류에는 특수 능력이 없으며, 명소도 5분류 다양성에 포함됩니다." : "최종 도시에 5분류를 모두 지으면 다양성 +3점. 건물 자체에는 특수 능력이 없습니다."}</p></details></aside>;
+  return <aside className="city-category-guide" aria-label="건물 카테고리"><details open={expanded} onToggle={event => setExpanded(event.currentTarget.open)}><summary>건물 카테고리 <span>5분류 알아보기</span></summary><div className="city-category-rows">{(Object.keys(CITY_CATEGORY_LABELS) as Category[]).map(category => <div className={`city-category-row city-category-${category.toLowerCase()}`} key={category}><div><CityCategoryBadge category={category}/><p>{CITY_CATEGORY_HINTS[category]}</p></div><CityTemplateArt category={category} templateId={categoryExample[category]}/></div>)}</div><p className="city-helper">{rulesVersion === "city-rules-v2" ? "명소는 각각 고유한 특수 능력을 가진 건물입니다. 다른 분류에는 특수 능력이 없으며, 명소도 5분류 다양성에 포함됩니다." : "최종 도시에 5분류를 모두 지으면 다양성 +3점. 건물 자체에는 특수 능력이 없습니다."}</p></details></aside>;
 }
 export function CityRoleLegend() {
   return <div className="city-guide-role-grid">{(Object.keys(CITY_ROLE_HELP) as CityRoleId[]).map(roleId => <div key={roleId}><CityRoleEmblem roleId={roleId}/><div><strong>{CITY_ROLE_HELP[roleId].name}</strong><p>{CITY_ROLE_HELP[roleId].summary}</p></div></div>)}</div>;

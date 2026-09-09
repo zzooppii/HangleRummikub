@@ -11,13 +11,13 @@ import {
   CITY_ROLE_HELP, cityBuildLimit, cityBuildPreview,
   cityCardLabel, cityCurrentHint, cityDestroyPreview, cityRoleLabel,
   cityRoleOrder, cityTargetRoleOptions,
-  type CityActionFeedback, type CityActionIntent, type CityUiCard,
+  type CityActionFeedback, type CityActionIntent,
 } from "./city-role-ui.js";
-import { cityLandmarkText } from "./city-landmarks.js";
-import { CityTemplateArt } from "./CityTemplateArt.js";
+import { CityBuildingFace } from "./CityBuildingFace.js";
+export { CityBuildingFace } from "./CityBuildingFace.js";
 import { CityGameHelp } from "./CityGameHelp.js";
 import { useCitySound } from "./city-role-sound.js";
-import { CityCategoryBadge, CityCategoryGuide, CityIcon, CityRoleEmblem, CitySkyline } from "./CityVisuals.js";
+import { CityCategoryGuide, CityIcon, CityRoleEmblem, CitySkyline } from "./CityVisuals.js";
 
 export type CityRolePlayingScreenProps = Readonly<{
   snapshot: CityRolePlayingPlatformSnapshotV2;
@@ -36,16 +36,6 @@ export type CityRolePlayingScreenProps = Readonly<{
   onLeaveRoom: () => void;
   onGoHome: () => void;
 }>;
-
-export function CityBuildingFace({ card, rulesVersion = "city-rules-v1" }: Readonly<{ card: CityUiCard; rulesVersion?: string }>) {
-  const effect = cityLandmarkText(rulesVersion, card.templateId);
-  return <>
-    <CityCategoryBadge category={card.category} /><span className="city-impact-card" data-impact-card={card.cardId}><CityTemplateArt category={card.category} templateId={card.templateId} /></span>
-    <strong className="city-building-name">{card.name}</strong>
-    <span className="city-building-value"><CityIcon name="coin" />금화 <b>{card.cost}</b><span>· {card.victoryPoints}점</span></span>
-    {effect ? <span className="city-landmark-effect" title={effect.detail}><strong>★ 특수 능력</strong>{effect.short}</span> : null}
-  </>;
-}
 
 function CityRoleFace({ roleId }: Readonly<{ roleId: CityRoleId }>) {
   const role = CITY_ROLE_HELP[roleId];
@@ -216,7 +206,7 @@ export function CityRolePlayingScreen(props: CityRolePlayingScreenProps) {
     <section className="city-panel city-hand" aria-labelledby="city-hand-heading"><div className="city-panel-heading"><div><span className="city-private-badge">나에게만 보임</span><h2 id="city-hand-heading">내 건물 카드 · {game.privateState.hand.length}장</h2></div>{game.phase === "ROLE_ACTION" && myTurn && action !== undefined ? <span className="city-budget">건설 {action.buildingsBuilt}/{cityBuildLimit(game.window.activeRoleId)}</span> : null}</div>
       {game.privateState.hand.length === 0 ? <p className="city-empty-city">손패가 없습니다. 내 차례의 기본 획득에서 건물 카드를 볼 수 있습니다.</p> : <div className="city-card-grid city-hand-grid">{game.privateState.hand.map(card => {
         const preview = cityBuildPreview(game, self.playerId, card);
-        return <button type="button" className={`city-building city-selectable${selectedCardId === card.cardId ? " is-selected" : ""}`} key={card.cardId} disabled={locked}
+        return <button type="button" className={`city-building city-selectable${selectedCardId === card.cardId ? " is-selected" : ""}`} data-build-state={locked ? "unavailable" : preview.allowed ? "ready" : preview.missingGold > 0 ? "unaffordable" : "unavailable"} key={card.cardId} disabled={locked}
           aria-label={`${cityCardLabel(card)}, 내 손패, ${preview.message}`} aria-pressed={selectedCardId === card.cardId} onClick={() => setSelectedCardId(id => id === card.cardId ? null : card.cardId)}><CityBuildingFace card={card} rulesVersion={game.rulesVersion} /><span className="city-card-hint">{preview.message}</span></button>;
       })}</div>}
 

@@ -1,7 +1,8 @@
 import { CITY_LANDMARK_TEXT, CITY_LANDMARK_NAMES } from "./city-landmarks.js";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { CITY_GUIDE_SECTIONS, CITY_TUTORIAL_STEPS, hasSeenCityTutorial, markCityTutorialSeen, nextCityTutorialStep } from "./city-role-guide.js";
-import { CityBuildingArt, CityCategoryGuide, CityIcon, CityRoleEmblem, CityRoleLegend } from "./CityVisuals.js";
+import { CityCategoryGuide, CityIcon, CityRoleEmblem, CityRoleLegend } from "./CityVisuals.js";
+import { CityTemplateArt } from "./CityTemplateArt.js";
 
 /** Native modal focus/inert behavior only; no gameplay or timer inputs. */
 export function CityHelpDialog({ tutorial, onTutorial, onDismiss, onFinish, returnFocusRef, rulesVersion = "city-rules-v1" }: Readonly<{
@@ -39,7 +40,7 @@ export function CityHelpDialog({ tutorial, onTutorial, onDismiss, onFinish, retu
       {tutorial ? <section className="city-tutorial-step" aria-live="polite">
         <p className="city-help-progress">간단히 배우기 · {step + 1} / {CITY_TUTORIAL_STEPS.length}</p>
         <h2 ref={headingRef} id="city-help-heading" tabIndex={-1}>{content.title}</h2>
-        <div className="city-tutorial-art" aria-hidden="true">{step === 2 || step === 5 ? <><CityRoleEmblem roleId="CR-03" /><CityRoleEmblem roleId="CR-07" /></> : step === 3 ? <><CityIcon name="coin" /><CityIcon name="cards" /></> : <CityBuildingArt category={step === 6 ? "LANDMARK" : "CIVIC"} />}</div>
+        <div className="city-tutorial-art" aria-hidden="true">{step === 2 || step === 5 ? <><CityRoleEmblem roleId="CR-03" /><CityRoleEmblem roleId="CR-07" /></> : step === 3 ? <><CityIcon name="coin" /><CityIcon name="cards" /></> : <CityTemplateArt category={step === 6 ? "LANDMARK" : "CIVIC"} templateId={step === 6 ? "CB-LAN-05" : "CB-CIV-06"} />}</div>
         <p>{content.body}</p>{rulesVersion === "city-rules-v2" && step === 4 ? <p>명소는 각각 고유한 특수 능력을 가진 건물입니다. 카드의 ★ 표시를 확인하세요. 바람계단 할인은 일반 건물에만 적용됩니다.</p> : null}<p className="city-tutorial-example">{content.example}</p>{rulesVersion === "city-rules-v2" && step === 6 ? <p>달그림회랑은 다양성에 빠진 일반 분류 1종만 보완하고, 일곱길기념뜰은 실제 일반 분류마다 최대 4점을 더합니다. 기권 시 두 보너스는 없습니다.</p> : null}
       </section> : <>
         <h2 ref={headingRef} id="city-help-heading" tabIndex={-1}>비밀 도시 게임 방법</h2>

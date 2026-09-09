@@ -1,5 +1,5 @@
 import type { CityRoleFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
-import { CityBuildingFace } from "./CityRolePlayingScreen.js";
+import { CityBuildingFace } from "./CityBuildingFace.js";
 import { cityCardLabel, cityFinishReasonLabel, cityRoleLabel, type CityActionFeedback } from "./city-role-ui.js";
 import { CityGameHelp } from "./CityGameHelp.js";
 import { useCitySound } from "./city-role-sound.js";
