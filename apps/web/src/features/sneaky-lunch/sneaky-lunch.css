@@ -14,6 +14,7 @@
 @media(max-width:340px){.lunch-header h1{font-size:27px}.lunch-header nav{gap:4px}.lunch-header nav button{padding:4px 6px}.lunch-connection{width:auto}.lunch-scene{height:196px}.lunch-scene>.lunch-classroom-art{width:485px}.lunch-front h2{font-size:14px}.lunch-eat-guidance strong{font-size:16px}.lunch-box-choice{gap:4px}.lunch-setup{padding:17px 12px}}
 @media(prefers-reduced-motion:reduce){.lunch-shell *,.lunch-shell *:before,.lunch-shell *:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.lunch-shell button:not(:disabled):active{transform:none}}
 .lunch-header nav button{min-height:44px}
+.teacher-returning .teacher-front{opacity:1;transform:scaleX(.35);transform-origin:58px 65px}.teacher-returning .teacher-back{opacity:0}
 .lunch-chew{transform-origin:60px 60px;animation:lunch-chew .25s ease-out}
 @keyframes lunch-chew{50%{transform:scale(1.25,.45)}}
 @media(max-width:430px){.lunch-eat-dock{grid-template-columns:90px 1fr}}
