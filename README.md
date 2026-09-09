@@ -1,6 +1,30 @@
-# 한글 루미큐브
+# 보드게임 서버
 
-Roadmap Phase 18까지의 첫 playable MVP와 Railway single-origin production 배포를 완료한 실시간 한글 타일 게임이다. Room 생성·참가부터 server-authoritative Game start, browser-only TurnDraft, Submit/Draw/Pass/timeout, disconnect/resume/leave/forfeit, 다섯 종료 reason과 Room cleanup까지 하나의 lifecycle로 연결되어 있다.
+친구들과 브라우저에서 함께 즐기는 실시간 온라인 보드게임 플랫폼이다. 한글 타일 게임으로 시작해 숫자 타일, 보석 카드, 비밀 도시 게임까지 지원한다.
+
+하나의 Room/초대 코드 체계에서 게임을 선택하고 참가할 수 있다. 서버가 게임 규칙·차례·시간·결과를 판정하며, 세션 기반 재접속과 플레이어별 비공개 정보 보호를 제공한다. Web과 Socket.IO 서버는 production에서 하나의 origin으로 제공한다.
+
+## 지원 게임
+
+| 게임 | 내용 | 규칙 / 상세 문서 |
+| --- | --- | --- |
+| 한글 타일 게임 (`HANGUL_TILE`) | 한글 타일로 단어를 구성하는 게임 | [한글 규칙](./docs/GAME_RULES.md) |
+| 숫자 타일 게임 (`NUMBER_TILE`) | GROUP/RUN 구성과 테이블 재배열, 패를 비운 순서에 따른 순위, 같은 방 재게임 | [숫자 규칙](./docs/NUMBER_TILE_GAME_RULES.md) · [순위/재게임](./docs/NUMBER_TILE_PLACEMENT_REMATCH.md) |
+| 보석 카드 게임 (`GEM_CARD`) | 자원 수집·예약·구매와 영구 할인을 활용하는 카드 게임 | [보석 규칙](./docs/GEM_CARD_GAME_RULES.md) |
+| 비밀 도시 게임 (`CITY_ROLE`) | 비밀 역할 선택과 도시 건설, 명소 6종의 특수 능력 | [도시 규칙](./docs/CITY_ROLE_GAME_RULES.md) · [명소 V2](./docs/CITY_ROLE_GAME_RULES_V2.md) |
+
+현재 소스의 기능과 실제 public 배포 상태는 구분한다. 기존 3게임의 공개 검증 이력은 [release gate](./docs/THREE_GAME_PLATFORM_RELEASE_GATE.md), CITY의 로컬 검증 이력은 [CITY local gate](./docs/CITY_ROLE_LOCAL_RELEASE_GATE.md)에 기록되어 있다. 이후 변경이 모두 Railway에 배포되었다는 의미는 아니다.
+
+## 프로젝트 구성
+
+- `apps/web`: 브라우저 UI와 게임별 화면
+- `apps/server`: 서버 권위형 게임 도메인, Room/세션, Socket.IO
+- `packages/shared`: 공용 DTO와 런타임 검증 계약
+- `docs`: 게임 규칙, 설계, 검증 기록
+- [`image/city`](./image/city/README.md): CITY 건물 30종의 원본 PNG 일러스트
+- `apps/web/public/city-art/illustrated-v1`: 게임에서 사용하는 최적화 WebP 이미지
+
+CITY 카드 아트는 자체 제작된 독립 일러스트다. 원본은 보관용이며 Web에서는 경량 배포 이미지를 사용한다. [카드 비주얼 상세](./docs/CITY_ROLE_CARD_VISUAL_POLISH.md)
 
 ## 요구 환경
 
@@ -20,7 +44,11 @@ npm run dev
 server는 `PORT` 환경 변수가 있으면 해당 port를 사용하고, 없으면 `3001`을 사용한다.
 개발 중 web은 같은 origin의 `/socket.io` 경로를 사용하며 Vite가 이를 `http://127.0.0.1:3001`로 proxy한다.
 
-## 로컬 MVP 확인
+## 로컬 플레이 확인
+
+Home에서 게임을 선택하고 닉네임으로 방을 만든 뒤, 초대 URL을 다른 브라우저 세션에 공유한다. 참가자들이 연결되면 방장이 게임을 시작한다. 같은 브라우저 프로필의 여러 탭보다 별도 프로필/시크릿 창을 이용하면 독립 참가자 테스트를 구분하기 쉽다.
+
+### 한글 타일 게임 상세 확인
 
 1. <http://localhost:5173>에서 Player A의 닉네임을 입력하고 Room을 만든다.
 2. Lobby의 초대 URL을 별도 browser tab 또는 session에서 연다.
@@ -37,7 +65,9 @@ server는 `PORT` 환경 변수가 있으면 해당 port를 사용하고, 없으�
 
 TurnDraft의 rack/Board 편집은 해당 tab 메모리에서만 동작한다. 모든 canonical mutation과 deadline 판정은 server가 수행한다.
 
-## Release candidate 검증 범위
+## 초기 한글 MVP 검증 이력과 운영 제한
+
+아래는 초기 한글 게임의 검증 기록이다. 이후 추가된 게임의 규칙과 검증 범위는 위 게임별 문서를 따른다.
 
 - 실제 Socket.IO 통합 테스트에서 2·3·4인 lifecycle, 5번째 참가 거절, non-Host start, stale/duplicate command, unauthorized Tile probe와 reconnect storm을 검증한다.
 - Codex in-app browser에서 1280×720 desktop, 390×844와 320×568 viewport의 Home/Lobby/Playing 흐름, tap-to-place, local-only draft, Draw, timeout, refresh discard와 presence-only draft 보존을 확인했다.
@@ -51,6 +81,7 @@ TurnDraft의 rack/Board 편집은 해당 tab 메모리에서만 동작한다. �
 npm run typecheck
 npm test
 npm run build
+git diff --check
 ```
 
 `npm test`는 Node.js 내장 test runner로 shared contract, web 순수 로직과 server test를 실제 실행한다.
@@ -82,6 +113,8 @@ SPA fallback은 GET에만 적용하며 `/health`, `/api`, `/socket.io`, `/assets
 ## Railway production 배포
 
 Public URL: <https://hanglerummikub-production.up.railway.app>
+
+아래는 기존 배포 설정과 확인 이력이다. 최신 로컬/source 변경의 public 배포 여부는 별도로 확인해야 한다. README 제목 변경은 GitHub 저장소 이름이나 Railway service/domain을 자동으로 변경하지 않는다.
 
 현재 Railway 신규 service에서는 legacy `railway.json`/`railway.toml` Config as Code를 새로 적용할 수 없으므로 deprecated file을 repository에 추가하지 않는다. project-level `.railway/railway.ts`는 linked Railway project/service 이름과 실제 account state를 읽은 뒤 도입해야 하며, 이 repository에는 Railway SDK나 CLI를 application dependency로 추가하지 않았다.
 
