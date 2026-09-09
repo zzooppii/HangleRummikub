@@ -40,7 +40,7 @@ export type CityRolePlayingScreenProps = Readonly<{
 export function CityBuildingFace({ card, rulesVersion = "city-rules-v1" }: Readonly<{ card: CityUiCard; rulesVersion?: string }>) {
   const effect = cityLandmarkText(rulesVersion, card.templateId);
   return <>
-    <CityCategoryBadge category={card.category} /><CityTemplateArt category={card.category} templateId={card.templateId} />
+    <CityCategoryBadge category={card.category} /><span className="city-impact-card" data-impact-card={card.cardId}><CityTemplateArt category={card.category} templateId={card.templateId} /></span>
     <strong className="city-building-name">{card.name}</strong>
     <span className="city-building-value"><CityIcon name="coin" />금화 <b>{card.cost}</b><span>· {card.victoryPoints}점</span></span>
     {effect ? <span className="city-landmark-effect" title={effect.detail}><strong>★ 특수 능력</strong>{effect.short}</span> : null}
@@ -147,7 +147,7 @@ export function CityRolePlayingScreen(props: CityRolePlayingScreenProps) {
   }, [props.snapshot.serverTime, game.window.actionId]);
   useEffect(() => { const interval = window.setInterval(() => setNow(Date.now()), 1_000); return () => window.clearInterval(interval); }, []);
   useEffect(() => { setSelectedCardId(null); }, [game.gameId, game.gameRevision, game.window.actionId, props.selectionResetGeneration, props.sessionReplaced]);
-  const sound = useCitySound(props.snapshot, props.actionFeedback, props.sessionReplaced);
+  const sound = useCitySound(props.snapshot, props.actionFeedback, props.sessionReplaced, true);
   const countdown = calculateTurnCountdown(game.window.deadlineAt, clockAnchor.offset, Math.max(now, clockAnchor.receivedAt));
   const nickname = (id: PlayerId) => room.players.find(player => player.playerId === id)?.nickname ?? "참가자";
   const player = game.playerStates.find(candidate => candidate.playerId === self.playerId);

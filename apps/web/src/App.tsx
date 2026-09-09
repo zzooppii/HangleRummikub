@@ -9,6 +9,7 @@ import { GemCardFinishedScreen } from "./features/gem-card/GemCardFinishedScreen
 import "./features/gem-card/gem-card.css";
 import { CityRolePlayingScreen } from "./features/city-role/CityRolePlayingScreen.js";
 import { CityRoleFinishedScreen } from "./features/city-role/CityRoleFinishedScreen.js";
+import { CityImpactLayer } from "./features/city-role/CityImpactLayer.js";
 import "./features/city-role/city-role.css";
 import "./features/city-role/city-role-help.css";
 import { NumberTileFinishedScreen } from "./features/number-tile/NumberTileFinishedScreen.js";
@@ -317,19 +318,19 @@ export function App() {
       const canAct = app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.roomLeavePending &&
         app.operationLabel === null && current.game.window.activePlayerId === current.self.playerId &&
         current.game.playerStates.some(player => player.playerId === current.self.playerId && !player.forfeited);
-      return <ReconnectBoundary {...recovery}><CityRolePlayingScreen snapshot={current}
+      return <ReconnectBoundary {...recovery}><CityImpactLayer snapshot={current} connected={connection.tone === "connected" && !app.sessionReplaced} feedback={app.cityActionFeedback}><CityRolePlayingScreen snapshot={current}
         connectionLabel={connectionLabel} connectionTone={connection.tone} errorMessage={app.errorMessage}
         sessionReplaced={app.sessionReplaced} actionPending={app.cityActionPending} retryPending={app.cityRetryPending}
         actionFeedback={app.cityActionFeedback} selectionResetGeneration={app.citySelectionResetGeneration}
         roomLeavePending={app.roomLeavePending} canAct={canAct} onAction={app.actCity} onRetry={app.retryCityAction}
-        onLeaveRoom={app.leaveRoom} onGoHome={app.goHome} /></ReconnectBoundary>;
+        onLeaveRoom={app.leaveRoom} onGoHome={app.goHome} /></CityImpactLayer></ReconnectBoundary>;
     }
     if (roomView.kind === "CITY_ROLE_FINISHED") {
-      return <ReconnectBoundary {...recovery}><CityRoleFinishedScreen snapshot={roomView.snapshot}
+      return <ReconnectBoundary {...recovery}><CityImpactLayer snapshot={roomView.snapshot} connected={connection.tone === "connected" && !app.sessionReplaced} feedback={app.cityActionFeedback}><CityRoleFinishedScreen snapshot={roomView.snapshot}
         connectionLabel={connectionLabel} connectionTone={connection.tone} errorMessage={app.errorMessage}
         sessionReplaced={app.sessionReplaced} actionFeedback={app.cityActionFeedback}
         actionPending={app.cityActionPending} retryPending={app.cityRetryPending} onRetry={app.retryCityAction}
-        roomLeavePending={app.roomLeavePending} onLeaveRoom={app.leaveRoom} onGoHome={app.goHome} /></ReconnectBoundary>;
+        roomLeavePending={app.roomLeavePending} onLeaveRoom={app.leaveRoom} onGoHome={app.goHome} /></CityImpactLayer></ReconnectBoundary>;
     }
 
     if (roomView.kind === "GEM_CARD_PLAYING") {

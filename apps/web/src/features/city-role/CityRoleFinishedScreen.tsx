@@ -21,7 +21,7 @@ export type CityRoleFinishedScreenProps = Readonly<{
 
 export function CityRoleFinishedScreen(props: CityRoleFinishedScreenProps) {
   const { room, game, self } = props.snapshot;
-  const sound = useCitySound(props.snapshot, props.actionFeedback, props.sessionReplaced);
+  const sound = useCitySound(props.snapshot, props.actionFeedback, props.sessionReplaced, true);
   const winners = game.result.winnerPlayerIds.map(id => room.players.find(player => player.playerId === id)?.nickname ?? "참가자");
   return <main className="app-shell city-shell city-finished-shell">
     <header className="city-header"><div><p className="eyebrow">비밀 도시 게임 · ROOM {room.roomCode}</p><h1>우리 도시의 마지막 기록.</h1></div><div className="city-header-actions"><span className={`connection-chip ${props.connectionTone}`}>{props.connectionLabel}</span><CityGameHelp placement="PLAYING" rulesVersion={game.rulesVersion} /><button type="button" className="text-button" aria-pressed={sound.enabled} onClick={sound.toggle}>사운드 {sound.enabled ? "켜짐" : "꺼짐"}</button></div></header>

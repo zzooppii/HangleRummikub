@@ -1,11 +1,27 @@
 import type { CityClientCommand, CityRoleFinishedPlatformSnapshotV2, CityRolePlayingPlatformSnapshotV2, RequestId } from "@hangul-rummikub/shared";
 import { useEffect, useRef, useState } from "react";
 import { markRequestFeedbackSeen } from "../../lib/request-feedback.js";
+import type { CityImpactCue } from "./city-impact.js";
 
-export type CitySoundCue = "SELECTION_START" | "ROLE_START" | "BUILD_SUCCESS" | "ROUND_END";
+export type CitySoundCue = "SELECTION_START" | "ROLE_START" | "BUILD_SUCCESS" | "ROUND_END" | CityImpactCue;
 export type CitySoundFeedback = Readonly<{ requestId: RequestId; kind: CityClientCommand["kind"]; message: string }>;
 export const CITY_SOUND_PREFERENCE = "hangul-rummikub:preferences:city-sound-enabled";
-export const CITY_SOUND_CUES: Readonly<Record<CitySoundCue, Readonly<{ frequencies: readonly number[]; duration: number; gain: number }>>> = Object.freeze({
+export const CITY_SOUND_CUES: Readonly<Record<CitySoundCue, Readonly<{ frequencies: readonly number[]; duration: number; gain: number; wave?: OscillatorType }>>> = Object.freeze({
+  STRIKE: { frequencies: [280, 90], duration: .24, gain: .065, wave: "sawtooth" },
+  COIN_GAIN: { frequencies: [880, 1320], duration: .19, gain: .03, wave: "triangle" },
+  COIN_LOSS: { frequencies: [1100, 640, 220], duration: .3, gain: .055, wave: "triangle" },
+  SHUFFLE: { frequencies: [180, 270, 150, 230], duration: .3, gain: .035, wave: "triangle" },
+  DRAW: { frequencies: [390, 580], duration: .18, gain: .025 },
+  BUILD: { frequencies: [130, 220, 520], duration: .3, gain: .045, wave: "triangle" },
+  BREAK: { frequencies: [190, 110, 60], duration: .34, gain: .065, wave: "sawtooth" },
+  SHIELD: { frequencies: [350, 700, 1050], duration: .3, gain: .045, wave: "triangle" },
+  LEADER: { frequencies: [440, 550, 660], duration: .45, gain: .045 },
+  WATER: { frequencies: [700, 1050, 1400], duration: .3, gain: .035 },
+  TICK: { frequencies: [1300, 650], duration: .16, gain: .035, wave: "triangle" },
+  WIND: { frequencies: [320, 480, 720], duration: .32, gain: .035 },
+  MOON: { frequencies: [520, 780, 1040], duration: .48, gain: .035 },
+  BELL: { frequencies: [660, 880, 660], duration: .48, gain: .045 },
+  VICTORY: { frequencies: [440, 550, 660, 880], duration: .65, gain: .06 },
   SELECTION_START: Object.freeze({ frequencies: Object.freeze([510, 680]), duration: 0.22, gain: 0.055 }),
   ROLE_START: Object.freeze({ frequencies: Object.freeze([440, 660, 780]), duration: 0.27, gain: 0.06 }),
   BUILD_SUCCESS: Object.freeze({ frequencies: Object.freeze([520, 650]), duration: 0.20, gain: 0.05 }),
@@ -59,7 +75,7 @@ export function playCitySound(cue: CitySoundCue): void {
     for (const [index, frequency] of config.frequencies.entries()) {
       const oscillator = audio.createOscillator(), gain = audio.createGain();
       const at = start + index * noteLength;
-      oscillator.type = "sine";
+      oscillator.type = config.wave ?? "sine";
       oscillator.frequency.setValueAtTime(frequency, at);
       gain.gain.setValueAtTime(0.0001, at);
       gain.gain.exponentialRampToValueAtTime(config.gain, at + 0.012);
@@ -70,6 +86,9 @@ export function playCitySound(cue: CitySoundCue): void {
     }
     latestEnd = start + config.duration;
   } catch { /* Device/audio failures must not interrupt the UI. */ }
+}
+export function playCityImpactSound(cue: CityImpactCue): void {
+  if (readCitySoundStorage("localStorage", CITY_SOUND_PREFERENCE) !== "false") playCitySound(cue);
 }
 export function disposeCityAudio(screenChanging = false): void {
   const audio = context;
@@ -87,7 +106,7 @@ export function disposeCityAudio(screenChanging = false): void {
   else close();
 }
 
-export function useCitySound(snapshot: CityRolePlayingPlatformSnapshotV2 | CityRoleFinishedPlatformSnapshotV2, feedback: CitySoundFeedback | null, sessionReplaced: boolean) {
+export function useCitySound(snapshot: CityRolePlayingPlatformSnapshotV2 | CityRoleFinishedPlatformSnapshotV2, feedback: CitySoundFeedback | null, sessionReplaced: boolean, presentationOwnsCues = false) {
   const [enabled, setEnabled] = useState(() => readCitySoundStorage("localStorage", CITY_SOUND_PREFERENCE) !== "false");
   const seenFeedback = useRef(new Set<RequestId>());
   const seenWindows = useRef(new Set<string>());
@@ -105,16 +124,16 @@ export function useCitySound(snapshot: CityRolePlayingPlatformSnapshotV2 | CityR
   }, [enabled, sessionReplaced]);
   useEffect(() => () => disposeCityAudio(true), []);
   useEffect(() => {
-    if (sessionReplaced || game.phase === "FINISHED") return;
+    if (presentationOwnsCues || sessionReplaced || game.phase === "FINISHED") return;
     const key = `hangul-rummikub:city-window-cue:${scope}`;
     const identity = `${scope}:${game.window.actionId}`;
     if (!shouldAnnounceCityWindow(readCitySoundStorage("sessionStorage", key), game.window.actionId, game.window.activePlayerId, snapshot.self.playerId) || seenWindows.current.has(identity)) return;
     seenWindows.current.add(identity);
     writeCitySoundStorage("sessionStorage", key, game.window.actionId);
     if (enabled) playCitySound(game.phase === "ROLE_SELECTION" ? "SELECTION_START" : "ROLE_START");
-  }, [game, snapshot.self.playerId, scope, enabled, sessionReplaced]);
+  }, [game, snapshot.self.playerId, scope, enabled, sessionReplaced, presentationOwnsCues]);
   useEffect(() => {
-    if (sessionReplaced) return;
+    if (presentationOwnsCues || sessionReplaced) return;
     const key = `hangul-rummikub:city-round-cue:${scope}`;
     const persisted = readCitySoundStorage("sessionStorage", key);
     const parsed = persisted !== null && /^[1-9][0-9]*$/u.test(persisted) ? Number(persisted) : null;
@@ -126,15 +145,15 @@ export function useCitySound(snapshot: CityRolePlayingPlatformSnapshotV2 | CityR
     writeCitySoundStorage("sessionStorage", key, String(game.roundNumber));
     if (game.phase === "FINISHED") { seenFinished.current.add(scope); writeCitySoundStorage("sessionStorage", finishedKey, "true"); }
     if (cue && enabled) playCitySound("ROUND_END");
-  }, [game, scope, enabled, sessionReplaced]);
+  }, [game, scope, enabled, sessionReplaced, presentationOwnsCues]);
   useEffect(() => {
-    if (sessionReplaced || feedback === null || !markRequestFeedbackSeen(seenFeedback.current, feedback.requestId)) return;
+    if (presentationOwnsCues || sessionReplaced || feedback === null || !markRequestFeedbackSeen(seenFeedback.current, feedback.requestId)) return;
     const key = `hangul-rummikub:city-feedback-cue:${scope}:${feedback.requestId}`;
     if (readCitySoundStorage("sessionStorage", key) === "seen") return;
     writeCitySoundStorage("sessionStorage", key, "seen");
     const cue = cityFeedbackCue(feedback);
     if (cue !== null && enabled) playCitySound(cue);
-  }, [feedback, scope, enabled, sessionReplaced]);
+  }, [feedback, scope, enabled, sessionReplaced, presentationOwnsCues]);
   return { enabled, toggle() {
     const next = !enabled;
     writeCitySoundStorage("localStorage", CITY_SOUND_PREFERENCE, String(next));

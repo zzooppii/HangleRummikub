@@ -44,7 +44,7 @@ import {
   type GemCardActionKind,
   type PendingGemCardCommand,
 } from "../features/gem-card/gem-card-actions.js";
-import { createCityCommand, cityActionFeedback, cityErrorMessage, type CityActionIntent, type CityActionFeedback } from "../features/city-role/city-role-actions.js";
+import { createCityCommand, cityActionFeedback, cityProtectionRejection, cityErrorMessage, type CityActionIntent, type CityActionFeedback } from "../features/city-role/city-role-actions.js";
 import { DEFAULT_SELECTED_GAME_TYPE } from "../features/game-catalog/game-catalog.js";
 import {
   createOrReuseGameStartCommand,
@@ -1468,7 +1468,14 @@ export function useLobbyApp(): LobbyAppState {
             setCitySelectionResetGeneration(value => value + 1);
             await requestLatestSnapshot();
           }
-          if (currentContext()) setErrorMessage(cityErrorMessage(ack.error.code));
+          if (currentContext()) {
+            setErrorMessage(cityErrorMessage(ack.error.code));
+            const current = compatibleSnapshotRef.current;
+            if (current?.kind === "PLATFORM_V2_CITY_ROLE" && current.platformSnapshot.room.phase !== "LOBBY" && current.platformSnapshot.game !== null) {
+              const impact = cityProtectionRejection(command, ack.error.code, current.platformSnapshot);
+              if (impact) setCityFeedback(impact);
+            }
+          }
           return;
         }
         // A commit receipt is not private state. Use fresh viewer projection;
@@ -1483,7 +1490,7 @@ export function useLobbyApp(): LobbyAppState {
         }
         pendingCityCommandRef.current = null;
         setErrorMessage(null); setCitySelectionResetGeneration(value => value + 1);
-        const feedback = cityActionFeedback(command, announcedCityRequestIdsRef.current);
+        const feedback = cityActionFeedback(command, announcedCityRequestIdsRef.current, visible.platformSnapshot);
         if (feedback !== null) setCityFeedback(feedback);
       } catch (error: unknown) {
         if (!currentContext()) return;

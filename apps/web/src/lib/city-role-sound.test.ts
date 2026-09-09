@@ -5,6 +5,7 @@ import { RequestIdSchema } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 import { CITY_SOUND_CUES, CITY_SOUND_PREFERENCE, cityFeedbackCue, disposeCityAudio, playCitySound, readCitySoundStorage, shouldAnnounceCityRound, shouldAnnounceCityWindow, unlockCityAudio, writeCitySoundStorage } from "../features/city-role/city-role-sound.js";
 import { markRequestFeedbackSeen } from "./request-feedback.js";
+import { playCityImpactSound } from "../features/city-role/city-role-sound.js";
 
 class FakeAudioContext {
   static instances: FakeAudioContext[] = [];
@@ -24,6 +25,16 @@ class FakeAudioContext {
   createOscillator() { return { type: "sine", frequency: { setValueAtTime: (value: number) => this.frequencies.push(value) }, connect() {}, disconnect: () => { this.disconnected++; }, addEventListener: (_event: string, callback: () => void) => { this.ended.push(callback); }, start() {}, stop() {} }; }
   createGain() { return { gain: { setValueAtTime() {}, exponentialRampToValueAtTime: (value: number) => { if (value > .0001) this.gains.push(value); } }, connect() {}, disconnect: () => { this.disconnected++; } }; }
 }
+test("CITY impact mute drops sound immediately without delayed replay", async () => {
+  let muted = true;
+  await withWindow({ AudioContext: FakeAudioContext, localStorage: { getItem: () => muted ? "false" : "true" } }, async () => {
+    unlockCityAudio(); await Promise.resolve();
+    const audio = FakeAudioContext.instances[0]!;
+    playCityImpactSound("STRIKE"); assert.deepEqual(audio.frequencies, []);
+    muted = false; assert.deepEqual(audio.frequencies, []);
+    playCityImpactSound("SHIELD"); assert.deepEqual(audio.frequencies, CITY_SOUND_CUES.SHIELD.frequencies);
+  });
+});
 async function withWindow(value: object, run: () => void | Promise<void>) {
   disposeCityAudio();
   const original = Object.getOwnPropertyDescriptor(globalThis, "window");
@@ -107,7 +118,8 @@ test("CITY Playing to Finished handoff preserves unlocked context for the immedi
   });
 });
 test("CITY four original sine cues are short, distinct and disconnect finished notes", async () => {
-  assert.equal(new Set(Object.values(CITY_SOUND_CUES).map(cue => cue.frequencies.join(","))).size, 4);
+  assert.equal(new Set(["SELECTION_START", "ROLE_START", "BUILD_SUCCESS", "ROUND_END"].map(cue => Object.entries(CITY_SOUND_CUES).find(([key]) => key === cue)?.[1].frequencies.join(","))).size, 4);
+  assert.equal(new Set(Object.values(CITY_SOUND_CUES).map(cue => cue.frequencies.join(","))).size, 19);
   for (const cue of ["SELECTION_START", "ROLE_START", "BUILD_SUCCESS", "ROUND_END"] as const) await withWindow({ AudioContext: FakeAudioContext }, () => {
     unlockCityAudio();
     const audio = FakeAudioContext.instances[0]!;
