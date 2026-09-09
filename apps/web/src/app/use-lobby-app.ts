@@ -224,6 +224,7 @@ export type LobbyAppState = Readonly<{
   submitNumberTurn: (draft: NumberTileTurnDraft) => void;
   drawNumberTurn: () => void;
   passNumberTurn: () => void;
+  rematchNumber: () => void;
   collectGemResources: (selection: GemCollectSelectionDto) => void;
   purchaseGemCard: (source: GemPurchaseSourceDto) => void;
   reserveGemCard: (source: GemMarketSourceDto) => void;
@@ -348,6 +349,7 @@ export function useLobbyApp(): LobbyAppState {
   const snapshotIncompatibilityRef =
     useRef<SnapshotIncompatibility | null>(null);
   const clientRef = useRef<RealtimeClient | null>(null);
+  const numberRematchFlightRef = useRef(false);
   const entryFlightRef = useRef<Promise<void> | null>(null);
   const entryActionActiveRef = useRef(false);
   const pendingRetryRequestedRef = useRef(false);
@@ -433,6 +435,27 @@ export function useLobbyApp(): LobbyAppState {
       compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE"
       ? null
       : compatible.legacySnapshot;
+  }
+
+  function rematchNumber(): void {
+    const compatible = compatibleSnapshotRef.current, client = clientRef.current, session = storedSessionForCurrentRoute();
+    if (numberRematchFlightRef.current || sessionReplacedRef.current || !client?.connected || session === null || compatible?.kind !== "PLATFORM_V2_NUMBER_TILE") return;
+    const current = compatible.platformSnapshot;
+    if (current.room.phase !== "FINISHED" || current.game === null || !("result" in current.game) || !current.room.players.some(p => p.playerId === current.self.playerId && p.isHost)) return;
+    numberRematchFlightRef.current = true;
+    setOperationLabel("같은 방에서 다시 준비하는 중..."); setErrorMessage(null);
+    void client.rematchNumber({ kind: "number:rematch", protocolVersion: 1, requestId: createRequestId(),
+      expectedRoomRevision: current.versions.roomRevision, expectedGameRevision: current.game.gameRevision, payload: { gameId: current.game.gameId } }).then(ack => {
+      if (clientRef.current !== client || sessionReplacedRef.current || storedSessionForCurrentRoute()?.playerId !== session.playerId || storedSessionForCurrentRoute()?.credential.roomCode !== session.credential.roomCode) return;
+      if (!ack.ok) { setErrorMessage(getUserErrorMessage(ack.error.code)); return; }
+      pendingNumberSubmitCommandRef.current = null; pendingNumberActionCommandRef.current = null;
+      announcedNumberActionRequestIdsRef.current.clear(); setNumberActionFeedback(null); setNumberCommandRetryKind(null);
+      resetTurnDraftFromAuthority(); applyWireSnapshot(ack.data.snapshot, session);
+    }).catch(() => {
+      if (clientRef.current !== client || sessionReplacedRef.current || storedSessionForCurrentRoute()?.playerId !== session.playerId) return;
+      setErrorMessage("다시 하기 결과를 확인하지 못했습니다. 방 상태를 확인해주세요."); void requestLatestSnapshot();
+    })
+      .finally(() => { numberRematchFlightRef.current = false; setOperationLabel(null); });
   }
 
   function currentNumberTilePlayingSnapshot(): NumberTilePlayingPlatformSnapshotV2 | null {
@@ -2882,6 +2905,7 @@ export function useLobbyApp(): LobbyAppState {
     submitNumberTurn,
     drawNumberTurn,
     passNumberTurn,
+    rematchNumber,
     collectGemResources,
     purchaseGemCard,
     reserveGemCard,

@@ -4,6 +4,7 @@ import { formatCountdownMmSs } from "../../lib/turn-countdown.js";
 
 export type NumberTileSoundCue =
   | "TURN_START"
+  | "PLACEMENT"
   | "SUBMIT_SUCCESS"
   | "DRAW_SUCCESS"
   | "PASS_SUCCESS";
@@ -113,6 +114,7 @@ export const NUMBER_TILE_AUDIO_CUES: Readonly<Record<NumberTileSoundCue, Readonl
   frequencies: readonly number[]; duration: number; gain: number;
 }>>> = {
   TURN_START: { frequencies: [659, 880], duration: 0.42, gain: 0.24 },
+  PLACEMENT: { frequencies: [659, 784, 1047], duration: 0.4, gain: 0.18 },
   SUBMIT_SUCCESS: { frequencies: [523, 659, 1047], duration: 0.45, gain: 0.23 },
   DRAW_SUCCESS: { frequencies: [440, 587], duration: 0.18, gain: 0.095 },
   PASS_SUCCESS: { frequencies: [440, 392], duration: 0.14, gain: 0.055 },

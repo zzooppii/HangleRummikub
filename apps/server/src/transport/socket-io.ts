@@ -1,5 +1,7 @@
 import { validateGemCollectCommand, validateGemPurchaseCommand, validateGemReserveCommand, validateGemYieldCommand, type GemCollectWireAck, type GemCardPlayingPlatformSnapshotV2, type GemCardFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import { validateCityClientCommand, type CityClientCommand, type CityActionWireAck } from "@hangul-rummikub/shared";
+import { safeParse as parseNumberRematch } from "valibot";
+import { NumberRematchCommandSchema } from "@hangul-rummikub/shared";
 import {
   PROTOCOL_VERSION,
   validateNumberDrawCommand,
@@ -2660,6 +2662,26 @@ function registerNumberPassHandler(
   });
 }
 
+function registerNumberRematchHandler(io: RealtimeServer, socket: RealtimeSocket, runtime: ApplicationRuntime): void {
+  socket.on("number:rematch", (raw, acknowledge) => {
+    const now = runtime.clock.now(), parsed = parseNumberRematch(NumberRematchCommandSchema, raw);
+    if (!parsed.success) { acknowledgeIfPresent(acknowledge, failureAck(raw, { code: "INVALID_PAYLOAD", message: "Invalid rematch request.", recoverable: false }, now)); return; }
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(createSocketId(socket.id));
+      if (!binding) { acknowledgeIfPresent(acknowledge, failureAck(raw, UNAUTHENTICATED_ERROR, now)); return; }
+      const command = parsed.output;
+      const result = await runtime.numberTileRematchService.rematch({ roomId: binding.roomId, actorPlayerId: binding.playerId,
+        requestId: command.requestId, gameId: command.payload.gameId, expectedRoomRevision: command.expectedRoomRevision, expectedGameRevision: command.expectedGameRevision,
+        authorization: { isCurrent: () => socket.connected && isCurrentBinding(runtime, binding) } });
+      if (!result.ok) { acknowledgeIfPresent(acknowledge, failureAck(raw, result.error, now)); return; }
+      const loaded = await loadSnapshotForSocket(runtime, socket, binding.roomId, binding.playerId);
+      if (!loaded || !socket.connected || !isCurrentBinding(runtime, binding)) return;
+      await fanOutRoomSnapshots(io, runtime, binding.roomId);
+      acknowledgeIfPresent(acknowledge, snapshotSuccessAck(command.requestId, loaded.metadata, loaded.wireSnapshot));
+    })().catch(() => acknowledgeIfPresent(acknowledge, failureAck(raw, INTERNAL_ERROR, now)));
+  });
+}
+
 function registerRoomLeaveHandler(
   io: RealtimeServer,
   socket: RealtimeSocket,
@@ -2984,6 +3006,7 @@ export function registerSocketIoHandlers(
     registerNumberSubmitHandler(io, socket, runtime);
     registerNumberDrawHandler(io, socket, runtime);
     registerNumberPassHandler(io, socket, runtime);
+    registerNumberRematchHandler(io, socket, runtime);
     registerRoomLeaveHandler(io, socket, runtime, authenticationExecutor);
     registerDisconnectHandler(io, socket, runtime);
   });

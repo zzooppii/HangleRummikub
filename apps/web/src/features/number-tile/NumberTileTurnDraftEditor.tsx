@@ -52,7 +52,7 @@ type TileButtonProps = Readonly<{
   onPointerDown?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 }>;
 
-function TileButton(props: TileButtonProps) {
+export function TileButton(props: TileButtonProps) {
   const color =
     props.tile.kind === "ORDINARY"
       ? props.tile.color

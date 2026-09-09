@@ -300,6 +300,8 @@ export function App() {
       return (
         <ReconnectBoundary {...recovery}>
           <NumberTileFinishedScreen
+            onRematch={app.rematchNumber}
+            rematchPending={app.operationLabel !== null}
             snapshot={roomView.snapshot}
             connectionLabel={connectionLabel}
             connectionTone={connection.tone}

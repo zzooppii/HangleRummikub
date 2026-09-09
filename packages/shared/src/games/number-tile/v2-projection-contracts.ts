@@ -464,11 +464,19 @@ export type NumberTileStalemateResultV2 = v.InferOutput<
   typeof NumberTileStalemateResultV2Schema
 >;
 
-export const NumberTileGameResultV2Schema = v.variant("reason", [
+export const NumberTilePlacementResultV2Schema = v.pipe(v.strictObject({
+  rankingMode: v.literal("PLACEMENT"),
+  reason: v.picklist(["PLACEMENT_COMPLETE", "STALEMATE", "LAST_PLAYER_STANDING"]),
+  finishedAt: ServerTimeSchema,
+  winnerPlayerIds: v.pipe(v.array(PlayerIdSchema), v.length(1)),
+  rankings: v.pipe(v.array(v.strictObject({ playerId: PlayerIdSchema, rank: v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(4)), forfeited: v.boolean(), remainingRackCount: NumberTileCountSchema })), v.minLength(2), v.maxLength(4)),
+}), v.check(result => new Set(result.rankings.map(p => p.playerId)).size === result.rankings.length && result.rankings.every((p,i) => p.rank === i + 1) && !result.rankings[0]!.forfeited && result.winnerPlayerIds[0] === result.rankings[0]!.playerId && result.rankings.every((p,i) => !result.rankings.slice(0,i).some(previous => previous.forfeited && !p.forfeited)), "Placement ranks must be unique, ordered, complete and non-forfeited first."));
+
+export const NumberTileGameResultV2Schema = v.union([NumberTilePlacementResultV2Schema, v.variant("reason", [
   NumberTileRackEmptyResultV2Schema,
   NumberTileLastPlayerStandingResultV2Schema,
   NumberTileStalemateResultV2Schema,
-]);
+])]);
 export type NumberTileGameResultV2 = v.InferOutput<
   typeof NumberTileGameResultV2Schema
 >;
@@ -503,6 +511,7 @@ function numberTileProjectionConservesCounts(projection: {
 }
 
 const NumberTilePlayingProjectionV2ObjectSchema = v.strictObject({
+  placementOrder: v.optional(v.array(PlayerIdSchema)),
   gameType: v.literal("NUMBER_TILE"),
   gameId: GameIdSchema,
   gameRevision: GameRevisionSchema,
@@ -515,11 +524,13 @@ const NumberTilePlayingProjectionV2ObjectSchema = v.strictObject({
 
 export const NumberTilePlayingProjectionV2Schema = v.pipe(
   NumberTilePlayingProjectionV2ObjectSchema,
+  v.check(p => p.placementOrder === undefined || new Set(p.placementOrder).size === p.placementOrder.length && p.placementOrder.every(id => p.playerStates.some(s => s.playerId === id && !s.forfeited && s.rackCount === 0)) && p.playerStates.filter(s => !s.forfeited && !p.placementOrder?.includes(s.playerId)).length >= 2 && p.playerStates.every(s => s.forfeited || p.placementOrder?.includes(s.playerId) || s.rackCount > 0), "Placement state must contain unique completed players and leave active play."),
   v.check(
     (projection) =>
       projection.playerStates.some(
         (player) =>
           player.playerId === projection.turn.activePlayerId &&
+          !projection.placementOrder?.includes(player.playerId) &&
           !player.forfeited,
       ),
     "The active Number Tile Player must be eligible.",
@@ -538,6 +549,7 @@ export type NumberTilePlayingProjectionV2 = v.InferOutput<
 >;
 
 const NumberTileFinishedProjectionV2ObjectSchema = v.strictObject({
+  placementOrder: v.optional(v.array(PlayerIdSchema)),
   gameType: v.literal("NUMBER_TILE"),
   gameId: GameIdSchema,
   gameRevision: GameRevisionSchema,
@@ -550,6 +562,15 @@ const NumberTileFinishedProjectionV2ObjectSchema = v.strictObject({
 
 export const NumberTileFinishedProjectionV2Schema = v.pipe(
   NumberTileFinishedProjectionV2ObjectSchema,
+  v.check(p => "rankingMode" in p.result ? p.placementOrder !== undefined && new Set(p.placementOrder).size === p.placementOrder.length && p.placementOrder.every((id,i) => "rankingMode" in p.result && p.result.rankings[i]?.playerId === id && p.result.rankings[i]?.remainingRackCount === 0) : p.placementOrder === undefined, "Number result format must match placement state."),
+  v.check(p => {
+    if (!("rankingMode" in p.result)) return true;
+    const placed = p.placementOrder ?? [];
+    if (!placed.every(id => p.playerStates.some(s => s.playerId === id && !s.forfeited && s.rackCount === 0))) return false;
+    const remaining = p.playerStates.filter(s => !s.forfeited && !placed.includes(s.playerId));
+    return p.result.reason === "STALEMATE" ? remaining.length >= 2 && p.remainingPoolCount === 0
+      : remaining.length === 1 && (p.result.reason !== "PLACEMENT_COMPLETE" || placed.length > 0);
+  }, "Number terminal placement population must match its finish reason."),
   v.check(
     (projection) => hasPrivateRackSeparatedFromTable(projection),
     "A physical Number Tile cannot appear on the Table and private rack.",
@@ -560,7 +581,7 @@ export const NumberTileFinishedProjectionV2Schema = v.pipe(
   ),
   v.check((projection) => {
     const resultEntries =
-      projection.result.reason === "STALEMATE"
+      "rankingMode" in projection.result || projection.result.reason === "STALEMATE"
         ? projection.result.rankings
         : projection.result.playerResults;
     const playerIds = new Set(

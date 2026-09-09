@@ -7,6 +7,7 @@ import {
   NicknameSchema,
   NumberTileFinishedProjectionV2Schema,
   NumberTilePlayingProjectionV2Schema,
+  NumberTileProposedTableSchema,
   PlayerIdSchema,
   PresenceVersionSchema,
   RequestIdSchema,
@@ -39,6 +40,7 @@ import { LegacyHangulV1CommandRouter } from "./games/hangul-tile/compatibility/l
 import { NumberTileCommandRouter } from "./games/number-tile/application/number-tile-command-router.js";
 import { NumberTileDrawService } from "./games/number-tile/application/number-tile-draw-service.js";
 import { NumberTilePassService } from "./games/number-tile/application/number-tile-pass-service.js";
+import { NumberTileRematchService } from "./games/number-tile/application/number-tile-rematch-service.js";
 import {
   applyNumberTilePlayingLeave,
   planNumberTilePresenceRestored,
@@ -206,6 +208,7 @@ type StartedHarness = Readonly<{
   idGenerator: FakeIdGenerator;
   randomSource: LastIndexRandomSource;
   scheduler: RecordingTurnScheduler;
+  startService: NumberTileStartService;
   players: readonly TestPlayer[];
   room: NumberTileRoomRecord & Readonly<{ game: PlayingNumberTileGameState }>;
 }>;
@@ -274,6 +277,7 @@ async function createStartedHarness(playerCount = 2): Promise<StartedHarness> {
     idGenerator,
     randomSource,
     scheduler,
+    startService,
     players: currentPlayers,
     room: Object.freeze({ ...room, game: room.game }),
   };
@@ -531,6 +535,323 @@ function createPassService(harness: StartedHarness): NumberTilePassService {
     clock: harness.clock,
     idGenerator: harness.idGenerator,
     turnScheduler: harness.scheduler,
+  });
+}
+
+async function placementHarness(playerCount: number): Promise<StartedHarness> {
+  const harness = await createStartedHarness(playerCount);
+  const used = new Set<TileId>();
+  const colors: readonly NumberTileColor[] = ["RED", "BLUE", "BLACK", "ORANGE"];
+  const racks = new Map(harness.room.game.turnOrder.map((id, index) => [id,
+    ([10, 11, 12] as const).map(number => requireOrdinaryTileId(harness.room.game, colors[index]!, number, used))]));
+  const game = Object.freeze({ ...harness.room.game, racks,
+    pool: Object.freeze([...harness.room.game.tilesById.keys()].filter(id => !used.has(id))) });
+  return { ...harness, room: await replacePlayingGame(harness.persistence, harness.room, game) };
+}
+
+async function placeCurrentPlayer(harness: StartedHarness, room: PlayingNumberRoom) {
+  const input = { roomId: room.roomId, actorPlayerId: room.game.turn.activePlayerId,
+    requestId: v.parse(RequestIdSchema, `place-${room.game.turn.turnId}`),
+    expectedGameRevision: room.game.gameRevision, turnId: room.game.turn.turnId,
+    receivedAt: room.game.turn.startedAt, authorization: alwaysCurrent,
+    proposedTable: v.parse(NumberTileProposedTableSchema, { melds: [...room.game.table.melds, { kind: "RUN",
+      tiles: room.game.racks.get(room.game.turn.activePlayerId)!.map(ordinaryPlacement) }] }) };
+  const service = createSubmitService(harness);
+  const result = await service.submit(input);
+  assert.equal(result.ok, true, JSON.stringify(result));
+  const stored = await harness.persistence.findById(room.roomId);
+  assert.ok(stored?.gameType === "NUMBER_TILE" && stored.game !== null);
+  assert.equal(stored.game.gameRevision, room.game.gameRevision + 1);
+  const replay = await service.submit(input);
+  assert.equal(replay.ok, true);
+  assert.equal((await harness.persistence.findById(room.roomId))?.storageRevision, stored.storageRevision);
+  return stored;
+}
+
+for (const count of [2, 3, 4]) {
+  test(`Number ${count}-player placements continue until auto-last, replay once and preserve original order`, async () => {
+    const harness = await placementHarness(count);
+    let room = harness.room;
+    const originalOrder = room.game.turnOrder;
+    for (let index = 0; index < count - 1; index++) {
+      assert.equal(room.game.turn.activePlayerId, originalOrder[index]);
+      const stored = await placeCurrentPlayer(harness, room);
+      assert.deepEqual(stored.game!.placementOrder, originalOrder.slice(0, index + 1));
+      assert.deepEqual(stored.game!.turnOrder, originalOrder);
+      assert.ok(stored.phase !== "LOBBY");
+      const projected = projectNumberTileV2Game({ phase: stored.phase, playerIds: originalOrder,
+        selfPlayerId: originalOrder[0]!, game: stored.game! });
+      if (index < count - 2) {
+        assert.equal(stored.phase, "PLAYING");
+        assert.ok(stored.game?.turn !== null && stored.game?.result === null);
+        assert.equal(v.safeParse(NumberTilePlayingProjectionV2Schema, projected).success, true);
+        room = { ...stored, game: stored.game };
+        const rejected = await createDrawService(harness).draw({ roomId: room.roomId,
+          actorPlayerId: originalOrder[0]!, requestId: v.parse(RequestIdSchema, `placed-draw-${index}`),
+          expectedGameRevision: room.game.gameRevision, turnId: room.game.turn.turnId,
+          receivedAt: room.game.turn.startedAt, authorization: alwaysCurrent });
+        assert.equal(rejected.ok, false);
+      } else {
+        assert.equal(stored.phase, "FINISHED");
+        assert.equal(stored.game!.turn, null);
+        const result = stored.game!.result;
+        assert.ok(result !== null && "rankingMode" in result);
+        assert.equal(result.reason, "PLACEMENT_COMPLETE");
+        assert.deepEqual(result.rankings.map(entry => [entry.playerId, entry.rank]), originalOrder.map((id, i) => [id, i + 1]));
+        assert.deepEqual(result.winnerPlayerIds, [originalOrder[0]]);
+        assert.equal(result.rankings.at(-1)?.remainingRackCount, 3);
+        assert.equal(v.safeParse(NumberTileFinishedProjectionV2Schema, projected).success, true);
+      }
+    }
+  });
+}
+
+test("Number rematch resets the game once, keeps Room identities and rejects non-host/phase/stale authorization", async () => {
+  const harness = await placementHarness(2);
+  const finished = await placeCurrentPlayer(harness, harness.room);
+  assert.ok(finished.game !== null);
+  const service = new NumberTileRematchService({ roomRepository: harness.persistence,
+    idempotencyRepository: harness.persistence, roomUnitOfWork: harness.persistence,
+    roomMutationExecutor: immediateRoomLane, clock: harness.clock,
+    idGenerator: harness.idGenerator, turnScheduler: harness.scheduler });
+  const input = { roomId: finished.roomId, actorPlayerId: finished.hostPlayerId!,
+    requestId: v.parse(RequestIdSchema, "rematch-once"), expectedRoomRevision: finished.roomRevision,
+    gameId: finished.game.gameId, expectedGameRevision: finished.game.gameRevision, authorization: alwaysCurrent };
+  assert.equal((await service.rematch({ ...input, authorization: { isCurrent: () => false } })).ok, false);
+  assert.equal((await service.rematch({ ...input, actorPlayerId: finished.players.find(p => p.playerId !== finished.hostPlayerId)!.playerId })).ok, false);
+  assert.equal((await service.rematch(input)).ok, true);
+  const lobby = await harness.persistence.findById(finished.roomId);
+  assert.ok(lobby !== null);
+  assert.equal(lobby.phase, "LOBBY");
+  assert.equal(lobby.game, null);
+  assert.equal(lobby.roomCode, finished.roomCode);
+  assert.equal(lobby.hostPlayerId, finished.hostPlayerId);
+  assert.deepEqual(lobby.players, finished.players);
+  assert.equal((await service.rematch(input)).ok, true);
+  assert.equal((await harness.persistence.findById(finished.roomId))?.storageRevision, lobby.storageRevision);
+  assert.equal((await service.rematch({ ...input, requestId: v.parse(RequestIdSchema, "rematch-wrong-phase") })).ok, false);
+  assert.equal((await service.rematch({ ...input, expectedRoomRevision: lobby.roomRevision })).ok, false);
+  const started = await harness.startService.start({ roomId: lobby.roomId, actorPlayerId: lobby.hostPlayerId!,
+    expectedRoomRevision: lobby.roomRevision, requestId: v.parse(RequestIdSchema, "second-number-game"), authorization: alwaysCurrent });
+  assert.equal(started.ok, true);
+  const second = await harness.persistence.findById(lobby.roomId);
+  assert.ok(second?.gameType === "NUMBER_TILE" && second.game?.turn !== null && second.game?.result === null);
+  assert.notEqual(second.game.gameId, finished.game.gameId);
+  assert.notEqual(second.game.turn.turnId, harness.room.game.turn.turnId);
+  assert.deepEqual(second.game.placementOrder, []);
+  assert.equal(second.game.forfeitedPlayerIds.size, 0);
+  assert.equal(second.game.table.melds.length, 0);
+  assert.ok([...second.game.racks.values()].every(rack => rack.length === 14));
+  assert.ok([...second.game.offlineTimeoutStreakByPlayerId.values()].every(streak => streak === 0));
+  assert.ok([...second.game.tilesById.keys()].every(id => !finished.game!.tilesById.has(id)));
+  const beforeReplay = second.storageRevision;
+  assert.equal((await service.rematch(input)).ok, true);
+  assert.equal((await harness.persistence.findById(lobby.roomId))?.storageRevision, beforeReplay);
+  const staleTimeout = new NumberTileTimeoutService({ roomRepository: harness.persistence,
+    idempotencyRepository: harness.persistence, roomUnitOfWork: harness.persistence,
+    roomMutationExecutor: immediateRoomLane, clock: harness.clock, idGenerator: harness.idGenerator,
+    randomSource: harness.randomSource, turnScheduler: harness.scheduler,
+    presenceLeaseReader: { acquirePlayerPresenceLease: async () => ({ connectionStatus: "OFFLINE", connectionGeneration: null, isCurrent: () => true }) } });
+  const ignored = await staleTimeout.timeout({ roomId: lobby.roomId, gameId: harness.room.game.gameId,
+    expectedGameRevision: harness.room.game.gameRevision, turnId: harness.room.game.turn.turnId,
+    deadlineAt: harness.room.game.turn.deadlineAt });
+  assert.notEqual(ignored.status, "APPLIED");
+  assert.equal((await harness.persistence.findById(lobby.roomId))?.storageRevision, beforeReplay);
+});
+
+for (const leaveHost of [false, true]) {
+  test(`Number finished explicit ${leaveHost ? "Host" : "participant"} leave preserves results and excludes only that identity from rematch`, async () => {
+    const harness = await placementHarness(4);
+    let playing = harness.room;
+    for (let index = 0; index < 2; index++) {
+      const next = await placeCurrentPlayer(harness, playing);
+      assert.ok(next.game?.turn !== null && next.game?.result === null);
+      playing = { ...next, game: next.game };
+    }
+    const finished = await placeCurrentPlayer(harness, playing);
+    assert.ok(finished.game !== null && finished.game.result !== null);
+    const actor = leaveHost ? finished.hostPlayerId! : finished.players.find(p => p.playerId !== finished.hostPlayerId)!.playerId;
+    const verificationData = { algorithm: "SHA-256" as const, digestHex: "c".repeat(64) };
+    await harness.persistence.saveUnbound(createUnboundSessionRecord(verificationData, harness.clock.now()));
+    await harness.persistence.promoteUnbound({ verificationData, roomId: finished.roomId, playerId: actor, now: harness.clock.now() });
+    const leave = new RoomLeaveService({ roomRepository: harness.persistence,
+      idempotencyRepository: harness.persistence, roomUnitOfWork: harness.persistence,
+      roomCleanupUnitOfWork: harness.persistence, roomMutationExecutor: immediateRoomLane,
+      clock: harness.clock, presenceReader: {
+        acquireLobbyDisconnectLease: async () => ({ connectionStatus: "OFFLINE", connectionGeneration: null, isCurrent: () => true }),
+        acquireRoomPresenceLease: async () => ({ presenceVersion: v.parse(PresenceVersionSchema, 1),
+          connectionStatusByPlayerId: new Map(finished.players.map(p => [p.playerId, "OFFLINE"] as const)), isCurrent: () => true }),
+      }, playerLifecycleActions: {
+        applyPlayingLeave: () => { throw new Error("Finished leave cannot rewrite the game."); },
+        planPresenceRestored: () => ({ status: "NO_CHANGE" }),
+      } });
+    const result = await leave.leave({ roomId: finished.roomId, actorPlayerId: actor,
+      requestId: v.parse(RequestIdSchema, "placement-explicit-leave"), expectedRoomRevision: finished.roomRevision,
+      expectedGameRevision: finished.game.gameRevision, authorization: alwaysCurrent });
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(await harness.persistence.findByVerificationData(verificationData), null);
+    const afterLeave = await harness.persistence.findById(finished.roomId);
+    assert.ok(afterLeave?.gameType === "NUMBER_TILE" && afterLeave.game !== null);
+    assert.deepEqual(afterLeave.game, finished.game);
+    assert.deepEqual(afterLeave.players, finished.players);
+    assert.deepEqual(afterLeave.departedPlayerIds, [actor]);
+    const remaining = finished.players.filter(p => p.playerId !== actor);
+    assert.equal(afterLeave.hostPlayerId, leaveHost ? remaining[0]!.playerId : finished.hostPlayerId);
+    const rematch = new NumberTileRematchService({ roomRepository: harness.persistence,
+      idempotencyRepository: harness.persistence, roomUnitOfWork: harness.persistence,
+      roomMutationExecutor: immediateRoomLane, clock: harness.clock,
+      idGenerator: harness.idGenerator, turnScheduler: harness.scheduler });
+    assert.equal((await rematch.rematch({ roomId: afterLeave.roomId, actorPlayerId: afterLeave.hostPlayerId!,
+      gameId: afterLeave.game.gameId, expectedGameRevision: afterLeave.game.gameRevision,
+      expectedRoomRevision: afterLeave.roomRevision, requestId: v.parse(RequestIdSchema, "after-leave-rematch"), authorization: alwaysCurrent })).ok, true);
+    const lobby = await harness.persistence.findById(finished.roomId);
+    assert.ok(lobby?.gameType === "NUMBER_TILE");
+    assert.equal(lobby.game, null);
+    assert.deepEqual(lobby.players, remaining);
+    assert.equal(lobby.roomCode, finished.roomCode);
+    assert.equal(lobby.departedPlayerIds, undefined);
+    // Every remaining player was OFFLINE. Rematch preserves them; start owns connectivity validation.
+    assert.equal(lobby.players.length, 3);
+    assert.deepEqual(finished.game.result, afterLeave.game.result);
+  });
+}
+
+test("Number stalemate preserves the placed prefix and breaks equal rack counts by original order, not tile values", async () => {
+  const harness = await placementHarness(4);
+  const first = await placeCurrentPlayer(harness, harness.room);
+  assert.ok(first.game?.turn !== null && first.game?.result === null);
+  const [placed, second, third, fourth] = first.game.turnOrder;
+  const tableIds = new Set(first.game.table.melds.flatMap(meld => meld.tiles.map(tile => tile.tileId)));
+  const rest = [...first.game.tilesById.keys()].filter(id => !tableIds.has(id));
+  const racks = new Map([[placed!, []], [second!, rest.slice(0, 2)], [third!, rest.slice(2, 4)], [fourth!, rest.slice(4)]]);
+  let room = await replacePlayingGame(harness.persistence, { ...first, game: first.game }, { ...first.game, racks, pool: [] });
+  for (let index = 0; index < 3; index++) {
+    const result = await createPassService(harness).pass({ roomId: room.roomId, actorPlayerId: room.game.turn.activePlayerId,
+      requestId: v.parse(RequestIdSchema, `placement-pass-${index}`), expectedGameRevision: room.game.gameRevision,
+      turnId: room.game.turn.turnId, receivedAt: room.game.turn.startedAt, authorization: alwaysCurrent });
+    assert.equal(result.ok, true, JSON.stringify(result));
+    const next = await harness.persistence.findById(room.roomId);
+    assert.ok(next?.gameType === "NUMBER_TILE" && next.game !== null);
+    if (index < 2) {
+      assert.ok(next.game.turn !== null && next.game.result === null);
+      room = { ...next, game: next.game };
+    } else {
+      const final = next.game.result;
+      assert.ok(final !== null && "rankingMode" in final);
+      assert.equal(final.reason, "STALEMATE");
+      assert.deepEqual(final.rankings.map(entry => entry.playerId), first.game.turnOrder);
+      assert.deepEqual(final.winnerPlayerIds, [placed]);
+    }
+  }
+});
+
+test("Number Draw and timeout after first placement keep skipping the completed player", async () => {
+  const harness = await placementHarness(3);
+  const first = await placeCurrentPlayer(harness, harness.room);
+  assert.ok(first.game?.turn !== null && first.game?.result === null);
+  const placed = first.game.placementOrder![0]!;
+  const drawActor = first.game.turn.activePlayerId;
+  const draw = await createDrawService(harness).draw({ roomId: first.roomId, actorPlayerId: drawActor,
+    requestId: v.parse(RequestIdSchema, "draw-after-placement"), expectedGameRevision: first.game.gameRevision,
+    turnId: first.game.turn.turnId, receivedAt: first.game.turn.startedAt, authorization: alwaysCurrent });
+  assert.equal(draw.ok, true);
+  const afterDraw = await harness.persistence.findById(first.roomId);
+  assert.ok(afterDraw?.gameType === "NUMBER_TILE" && afterDraw.game?.turn !== null && afterDraw.game?.result === null);
+  assert.equal(afterDraw.game.racks.get(drawActor)?.length, 4);
+  assert.notEqual(afterDraw.game.turn.activePlayerId, placed);
+  const timeout = new NumberTileTimeoutService({ roomRepository: harness.persistence,
+    idempotencyRepository: harness.persistence, roomUnitOfWork: harness.persistence,
+    roomMutationExecutor: immediateRoomLane, clock: harness.clock, idGenerator: harness.idGenerator,
+    randomSource: harness.randomSource, turnScheduler: harness.scheduler,
+    presenceLeaseReader: { acquirePlayerPresenceLease: async () => ({ connectionStatus: "CONNECTED", connectionGeneration: 1, isCurrent: () => true }) } });
+  harness.clock.set(afterDraw.game.turn.deadlineAt);
+  assert.equal((await timeout.timeout({ roomId: first.roomId, gameId: afterDraw.game.gameId,
+    expectedGameRevision: afterDraw.game.gameRevision, turnId: afterDraw.game.turn.turnId,
+    deadlineAt: afterDraw.game.turn.deadlineAt })).status, "APPLIED");
+  const afterTimeout = await harness.persistence.findById(first.roomId);
+  assert.ok(afterTimeout?.gameType === "NUMBER_TILE" && afterTimeout.game?.turn !== null && afterTimeout.game?.result === null);
+  assert.equal(afterTimeout.game.turn.activePlayerId, drawActor);
+  assert.deepEqual(afterTimeout.game.placementOrder, [placed]);
+  assert.equal(afterTimeout.game.racks.get(placed)?.length, 0);
+  assert.equal(afterTimeout.game.forfeitedPlayerIds.has(placed), false);
+});
+
+test("Number placed winner survives later LPS; a placed leave never changes forfeit or placement state", async () => {
+  const harness = await placementHarness(3);
+  const first = await placeCurrentPlayer(harness, harness.room);
+  assert.ok(first.game?.turn !== null && first.game?.result === null);
+  const placed = first.game.placementOrder![0]!;
+  const placedLeave = applyNumberTilePlayingLeave({ room: first, actorPlayerId: placed, occurredAt: harness.clock.now(), idGenerator: harness.idGenerator });
+  assert.deepEqual(placedLeave.candidate.game, first.game);
+  const forfeit = applyNumberTilePlayingLeave({ room: first, actorPlayerId: first.game.turn.activePlayerId,
+    occurredAt: harness.clock.now(), idGenerator: harness.idGenerator });
+  assert.ok(forfeit.candidate.gameType === "NUMBER_TILE" && forfeit.candidate.game !== null && forfeit.candidate.game.result !== null);
+  const result = forfeit.candidate.game.result;
+  assert.ok("rankingMode" in result);
+  assert.equal(result.reason, "LAST_PLAYER_STANDING");
+  assert.deepEqual(result.winnerPlayerIds, [placed]);
+  assert.deepEqual(result.rankings.map(entry => [entry.rank, entry.forfeited]), [[1, false], [2, false], [3, true]]);
+  assert.equal(forfeit.finishedGameId, first.game.gameId);
+  assert.equal(forfeit.nextTurnIdentity, null);
+});
+
+test("Number rematch retains timeout-forfeited participants and credentials, then starts them without old flags", async () => {
+  const harness = await placementHarness(2);
+  const actor = harness.room.game.turn.activePlayerId;
+  const verificationData = { algorithm: "SHA-256" as const, digestHex: "d".repeat(64) };
+  await harness.persistence.saveUnbound(createUnboundSessionRecord(verificationData, harness.clock.now()));
+  await harness.persistence.promoteUnbound({ verificationData, roomId: harness.room.roomId, playerId: actor, now: harness.clock.now() });
+  const streaks = new Map(harness.room.game.offlineTimeoutStreakByPlayerId);
+  streaks.set(actor, 1);
+  const room = await replacePlayingGame(harness.persistence, harness.room, { ...harness.room.game, offlineTimeoutStreakByPlayerId: streaks });
+  harness.clock.set(room.game.turn.deadlineAt);
+  const timeout = new NumberTileTimeoutService({ roomRepository: harness.persistence,
+    idempotencyRepository: harness.persistence, roomUnitOfWork: harness.persistence,
+    roomMutationExecutor: immediateRoomLane, clock: harness.clock,
+    idGenerator: harness.idGenerator, randomSource: harness.randomSource, turnScheduler: harness.scheduler,
+    presenceLeaseReader: { acquirePlayerPresenceLease: async () => ({ connectionStatus: "OFFLINE", connectionGeneration: null, isCurrent: () => true }) } });
+  const timedOut = await timeout.timeout({ roomId: room.roomId, gameId: room.game.gameId,
+    expectedGameRevision: room.game.gameRevision, turnId: room.game.turn.turnId, deadlineAt: room.game.turn.deadlineAt });
+  assert.equal(timedOut.status, "APPLIED");
+  const finished = await harness.persistence.findById(room.roomId);
+  assert.ok(finished?.gameType === "NUMBER_TILE" && finished.game !== null && finished.game.result !== null);
+  assert.equal(finished.game.forfeitedPlayerIds.has(actor), true);
+  const credentialBefore = await harness.persistence.findByVerificationData(verificationData);
+  const service = new NumberTileRematchService({ roomRepository: harness.persistence,
+    idempotencyRepository: harness.persistence, roomUnitOfWork: harness.persistence,
+    roomMutationExecutor: immediateRoomLane, clock: harness.clock, idGenerator: harness.idGenerator, turnScheduler: harness.scheduler });
+  assert.equal((await service.rematch({ roomId: room.roomId, actorPlayerId: finished.hostPlayerId!,
+    gameId: finished.game.gameId, expectedGameRevision: finished.game.gameRevision,
+    expectedRoomRevision: finished.roomRevision, requestId: v.parse(RequestIdSchema, "forfeit-rematch"), authorization: alwaysCurrent })).ok, true);
+  const lobby = await harness.persistence.findById(room.roomId);
+  assert.ok(lobby !== null);
+  assert.deepEqual(lobby.players, room.players);
+  assert.deepEqual(await harness.persistence.findByVerificationData(verificationData), credentialBefore);
+  assert.equal((await harness.startService.start({ roomId: lobby.roomId, actorPlayerId: lobby.hostPlayerId!,
+    expectedRoomRevision: lobby.roomRevision, requestId: v.parse(RequestIdSchema, "forfeit-fresh-start"), authorization: alwaysCurrent })).ok, true);
+  const second = await harness.persistence.findById(room.roomId);
+  assert.ok(second?.gameType === "NUMBER_TILE" && second.game !== null);
+  assert.equal(second.game.forfeitedPlayerIds.size, 0);
+  assert.equal(second.game.offlineTimeoutStreakByPlayerId.get(actor), 0);
+  assert.equal(second.game.racks.get(actor)?.length, 14);
+  assert.deepEqual(second.game.placementOrder, []);
+});
+
+for (const gameType of ["HANGUL_TILE", "GEM_CARD", "CITY_ROLE"] as const) {
+  test(`number:rematch rejects ${gameType} without mutation`, async () => {
+    const persistence = new InMemoryPersistence();
+    const lobby = { ...lobbyCandidate(allPlayers.slice(0, 2)), gameType };
+    assert.equal((await persistence.createIfAbsent(lobby)).status, "CREATED");
+    const before = await persistence.findById(lobby.roomId);
+    const service = new NumberTileRematchService({ roomRepository: persistence,
+      idempotencyRepository: persistence, roomUnitOfWork: persistence,
+      roomMutationExecutor: immediateRoomLane, clock: new FakeClock(10_000),
+      idGenerator: new FakeIdGenerator(), turnScheduler: new RecordingTurnScheduler() });
+    const result = await service.rematch({ roomId: lobby.roomId, actorPlayerId: lobby.hostPlayerId!,
+      expectedRoomRevision: lobby.roomRevision, gameId: v.parse(GameIdSchema, "wrong-game-rematch"),
+      expectedGameRevision: v.parse(GameRevisionSchema, 1), requestId: v.parse(RequestIdSchema, "wrong-game-rematch"), authorization: alwaysCurrent });
+    assert.equal(result.ok, false);
+    assert.deepEqual(await persistence.findById(lobby.roomId), before);
   });
 }
 
@@ -1608,7 +1929,7 @@ test("Number Submit persists a freely rearranged bare Joker by physical identity
   assert.equal(stored.game.racks.get(actorPlayerId)?.includes(red6), false);
 });
 
-test("Number Submit gives RACK_EMPTY terminal precedence and persists its canonical result", async () => {
+test("Number two-player Submit completes placement and persists its canonical result", async () => {
   const harness = await createStartedHarness();
   const actorPlayerId = harness.room.game.turn.activePlayerId;
   const used = new Set<TileId>();
@@ -1665,7 +1986,7 @@ test("Number Submit gives RACK_EMPTY terminal precedence and persists its canoni
   if (!result.ok || result.data.outcome !== "FINISHED") {
     throw new Error("Expected Number rack-empty Submit to finish.");
   }
-  assert.equal(result.data.finishReason, "RACK_EMPTY");
+  assert.equal(result.data.finishReason, "PLACEMENT_COMPLETE");
   assert.deepEqual(result.data.winnerPlayerIds, [actorPlayerId]);
   const stored = await harness.persistence.findById(room.roomId);
   if (
@@ -1676,7 +1997,7 @@ test("Number Submit gives RACK_EMPTY terminal precedence and persists its canoni
   ) {
     throw new Error("Expected persisted Number rack-empty result.");
   }
-  assert.equal(stored.game.result.reason, "RACK_EMPTY");
+  assert.equal(stored.game.result.reason, "PLACEMENT_COMPLETE");
   assert.equal(stored.game.racks.get(actorPlayerId)?.length, 0);
 
   const verificationData = Object.freeze({
@@ -2038,7 +2359,9 @@ test("a second consecutive offline Number timeout applies its draw before last-p
   assert.equal(stored.game.racks.get(actorPlayerId)?.length, 15);
   assert.equal(stored.game.pool.length, original.pool.length - 1);
   assert.equal(stored.game.result.reason, "LAST_PLAYER_STANDING");
-  assert.equal(Object.hasOwn(stored.game.result, "rankings"), false);
+  assert.ok("rankingMode" in stored.game.result);
+  assert.deepEqual(stored.game.result.rankings.map(entry => [entry.rank, entry.forfeited]), [[1, false], [2, true]]);
+  assert.equal(stored.game.result.rankings[1]?.playerId, actorPlayerId);
 });
 
 test("overdue recovery reads a canonical Number deadline and routes one timeout commit", async () => {
@@ -2574,12 +2897,14 @@ test("Number STALEMATE integration ranks every eligible Player ahead of a lower-
     throw new Error("Expected canonical Number STALEMATE state.");
   }
   const result = stored.game.result;
+  assert.ok("rankingMode" in result);
   const forfeitedEntry = result.rankings.find(
     (entry) => entry.playerId === forfeitedPlayerId,
   )!;
-  assert.equal(forfeitedEntry.penaltyCost, 1);
+  assert.equal(forfeitedEntry.remainingRackCount, 1);
   assert.equal(forfeitedEntry.rank, 4);
-  assert.equal(forfeitedEntry.score, -1);
+  assert.equal(Object.hasOwn(forfeitedEntry, "score"), false);
+  assert.equal(Object.hasOwn(forfeitedEntry, "penaltyCost"), false);
   assert.equal(
     result.rankings.slice(0, 3).every((entry) => !entry.forfeited),
     true,

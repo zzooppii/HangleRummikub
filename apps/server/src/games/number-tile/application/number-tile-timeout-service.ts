@@ -1,3 +1,4 @@
+import { numberIneligiblePlayers, createNumberPlacementResult } from "../domain/placement-ranking.js";
 import {
   GameIdSchema,
   GameRevisionSchema,
@@ -337,7 +338,7 @@ export class NumberTileTimeoutService {
     } else {
       noPlayPlayerIds = recordNumberTileNoPlay({
         turnOrder: game.turnOrder,
-        forfeitedPlayerIds: game.forfeitedPlayerIds,
+        forfeitedPlayerIds: numberIneligiblePlayers(game),
         noPlayPlayerIds,
         actorPlayerId: game.turn.activePlayerId,
         poolTileCount: 0,
@@ -386,7 +387,7 @@ export class NumberTileTimeoutService {
     });
     const finish = evaluateNumberTileFinish({
       turnOrder: gameBase.turnOrder,
-      forfeitedPlayerIds: gameBase.forfeitedPlayerIds,
+      forfeitedPlayerIds: numberIneligiblePlayers(gameBase),
       noPlayPlayerIds: gameBase.noPlayPlayerIds,
       poolTileCount: gameBase.pool.length,
       rackEmptyPlayerId: null,
@@ -402,8 +403,9 @@ export class NumberTileTimeoutService {
         forfeitedPlayerIds: gameBase.forfeitedPlayerIds,
         finishedAt: committedAt,
       } as const;
-      const result =
-        finish.reason === "STALEMATE"
+      const result = gameBase.placementOrder !== undefined
+        ? createNumberPlacementResult(gameBase, finish.reason === "STALEMATE" ? "STALEMATE" : "LAST_PLAYER_STANDING", committedAt)
+        : finish.reason === "STALEMATE"
           ? createNumberTileStalemateResult(resultInput)
           : createNumberTileLastPlayerStandingResult(resultInput);
       const transition = createNumberTileFinishedRoomTransition(

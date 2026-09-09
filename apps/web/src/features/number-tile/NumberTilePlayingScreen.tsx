@@ -69,6 +69,19 @@ export function NumberTilePlayingScreen(
   const [soundEnabled, setSoundEnabled] = useState(() =>
     typeof window === "undefined" ? true : readNumberTileSoundEnabled(window.localStorage)
   );
+  const placementRef = useRef({ gameId: game.gameId, count: game.placementOrder?.length ?? 0, connected: props.connectionTone === "connected" });
+  const [placementMessage, setPlacementMessage] = useState("");
+  useEffect(() => {
+    const previous = placementRef.current, count = game.placementOrder?.length ?? 0, connected = props.connectionTone === "connected";
+    placementRef.current = { gameId: game.gameId, count, connected };
+    if (previous.gameId === game.gameId && previous.connected && connected && count > previous.count) {
+      const id = game.placementOrder?.[count - 1];
+      setPlacementMessage(`${room.players.find(p => p.playerId === id)?.nickname ?? "참가자"}님이 ${count}위를 확정했습니다!`);
+      // The actor already receives the accepted Submit cue; spectators hear placement.
+      if (soundEnabled && id !== self.playerId) playNumberTileSound("PLACEMENT");
+    }
+  }, [game.gameId, game.placementOrder, props.connectionTone, room.players, soundEnabled, self.playerId]);
+  const ownRank = (game.placementOrder?.indexOf(self.playerId) ?? -1) + 1;
   const turnSoundTrackerRef = useRef<{
     scope: string;
     lastAnnouncedTurnId: typeof game.turn.turnId | null;
@@ -149,6 +162,8 @@ export function NumberTilePlayingScreen(
           ) : null}
         </div>
       </header>
+      {placementMessage ? <p className="notice number-placement-notice" role="status">{placementMessage}</p> : null}
+      {ownRank > 0 ? <section className="notice"><strong>{ownRank}위를 확정했습니다!</strong><p>다른 참가자들의 순위 결정이 진행 중입니다.</p></section> : null}
 
       {props.sessionReplaced ? (
         <section className="notice replaced-notice" role="alert">
@@ -235,7 +250,7 @@ export function NumberTilePlayingScreen(
                 </small>
               </span>
               <span className="number-player-stats">
-                {playerState?.rackCount ?? 0}개
+                {game.placementOrder?.includes(player.playerId) ? `${game.placementOrder.indexOf(player.playerId) + 1}위 · 완료` : `${playerState?.rackCount ?? 0}개`}
               </span>
             </div>
           );

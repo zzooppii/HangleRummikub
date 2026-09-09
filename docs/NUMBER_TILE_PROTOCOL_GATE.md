@@ -1,5 +1,7 @@
 # Number Tile Protocol Gate
 
+> 후속 NUMBER wire 계약: [NUMBER_TILE_PLACEMENT_REMATCH.md](NUMBER_TILE_PLACEMENT_REMATCH.md). 새 결과는 `rankingMode: PLACEMENT`의 scoreless rankings이며 `number:rematch`가 추가되었다. 기존 scoring DTO는 기존 저장 게임 해석에만 유지한다.
+
 > 상태: `IMPLEMENTED` — P6/P7A/P7B/P7C/P8 COMPLETE / PUBLIC TWO-GAME VERIFIED / P9A READY
 > 확정일: 2026-09-06
 > 사용자 결정: `ALL:A` + consistency blocker clarification A/A/A

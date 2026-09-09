@@ -378,6 +378,11 @@ export const NumberPassCommandSchema = v.strictObject({
 });
 export type NumberPassCommand = v.InferOutput<typeof NumberPassCommandSchema>;
 
+export const NumberRematchCommandSchema = v.strictObject({ kind: v.literal("number:rematch"), protocolVersion: ProtocolVersionSchema,
+  requestId: RequestIdSchema, expectedRoomRevision: RoomRevisionSchema, expectedGameRevision: GameRevisionSchema,
+  payload: v.strictObject({ gameId: GameIdSchema }) });
+export type NumberRematchCommand = v.InferOutput<typeof NumberRematchCommandSchema>;
+
 export const GemCollectCommandSchema = v.strictObject({
   kind: v.literal("gem:collect"), protocolVersion: ProtocolVersionSchema,
   requestId: RequestIdSchema, expectedGameRevision: GameRevisionSchema, turnId: TurnIdSchema,
@@ -452,6 +457,7 @@ export const ClientCommandSchema = v.variant("kind", [
   NumberSubmitCommandSchema,
   NumberDrawCommandSchema,
   NumberPassCommandSchema,
+  NumberRematchCommandSchema,
   GemCollectCommandSchema,
   GemPurchaseCommandSchema,
   GemReserveCommandSchema,

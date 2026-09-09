@@ -163,3 +163,13 @@
 @media (prefers-reduced-motion:reduce) {
   .number-playing-shell *, .number-playing-shell *::before, .number-playing-shell *::after { transition:none !important; animation:none !important; }
 }
+.number-result-modal { width: min(32rem, calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow: auto; box-sizing: border-box; border: 1px solid #bccbc3; border-radius: 18px; padding: 20px; background: #fffdf7; color: #183c30; }
+.number-result-modal::backdrop { background: #10291eb3; }
+.number-result-modal button { min-height: 44px; margin: 6px 0; width: 100%; }
+.number-result-modal .score-list { padding: 0; }
+.number-result-modal .score-list li { display: flex; gap: 14px; padding: 12px 0; }
+.number-result-modal small { display: block; }
+.number-final-meld { display: inline-flex; flex-wrap: wrap; gap: 4px; margin: 8px; padding: 8px; background: #fff8; border-radius: 9px; max-width: calc(100% - 16px); }
+.number-final-rack > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.number-placement-finished .number-tile:disabled { opacity: 1; }
+.number-placement-notice { border-left: 4px solid #b59137; }

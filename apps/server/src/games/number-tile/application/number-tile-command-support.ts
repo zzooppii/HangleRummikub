@@ -56,6 +56,7 @@ export const NumberTileFinishedDataSchema = v.strictObject({
   outcome: v.literal("FINISHED"),
   finishReason: v.picklist([
     "RACK_EMPTY",
+    "PLACEMENT_COMPLETE",
     "STALEMATE",
     "LAST_PLAYER_STANDING",
   ]),

@@ -220,6 +220,7 @@ export class NumberTileStartService {
 
     const startedAt = this.#dependencies.clock.now();
     const game = createInitialNumberTileGameState({
+      placementRanking: true,
       playerIds: room.players.map((player) => player.playerId),
       idGenerator: this.#dependencies.idGenerator,
       randomSource: this.#dependencies.randomSource,

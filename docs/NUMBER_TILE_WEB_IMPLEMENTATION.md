@@ -1,5 +1,7 @@
 # Number Tile Web Implementation
 
+> 후속 NUMBER UX: [NUMBER_TILE_PLACEMENT_REMATCH.md](NUMBER_TILE_PLACEMENT_REMATCH.md). 새 게임의 FINISHED는 최종 board 위 close/reopen 가능한 scoreless result modal이며 Host가 동일 Room에서 Lobby로 돌아갈 수 있다. 아래 독립 Finished scoring 화면은 legacy 결과 경로에만 남는다.
+
 > 상태: P7C IMPLEMENTED / P8 COMPLETE / PUBLIC TWO-GAME VERIFIED / NUMBER_TILE UX POLISH
 > Canonical ruleset: `number-tile-rules-v1`
 > Wire: protocol v1 additive Number commands + `PlatformSnapshotV2` only

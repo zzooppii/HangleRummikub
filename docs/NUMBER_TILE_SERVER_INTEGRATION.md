@@ -1,5 +1,7 @@
 # Number Tile Server Integration
 
+> 후속 NUMBER placement/rematch 계약은 [NUMBER_TILE_PLACEMENT_REMATCH.md](NUMBER_TILE_PLACEMENT_REMATCH.md)를 따른다. 새 게임은 rack-empty 이후 계속 진행하고, NUMBER 전용 `number:rematch`가 FINISHED→LOBBY를 수행한다. 아래 초기 scoring/즉시 종료 설명은 legacy history다.
+
 > 상태: P7B IMPLEMENTED / P7C WEB INTEGRATED / P8 COMPLETE / PUBLIC TWO-GAME VERIFIED / P9A READY
 > 기준 규칙: `number-tile-rules-v1`
 > 적용 범위: shared wire, server application, persistence, projection, scheduling, admission

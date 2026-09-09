@@ -43,6 +43,7 @@ import type {
   GameStartCommand,
   NumberDrawCommand,
   NumberPassCommand,
+  NumberRematchCommand,
   NumberSubmitCommand,
   RoomCreateCommand,
   RoomJoinCommand,
@@ -406,7 +407,7 @@ export type TurnStartedEvent = v.InferOutput<typeof TurnStartedEventSchema>;
 
 const GameFinishedEventPayloadObjectSchema = v.strictObject({
   gameId: GameIdSchema,
-  reason: GameFinishReasonSchema,
+  reason: v.union([GameFinishReasonSchema, v.literal("PLACEMENT_COMPLETE")]),
   winnerPlayerIds: v.pipe(
     v.array(PlayerIdSchema),
     v.maxLength(4),
@@ -431,6 +432,7 @@ export const GameFinishedEventPayloadSchema = v.pipe(
   v.check(
     (payload) =>
       payload.reason === "RACK_EMPTY" ||
+      payload.reason === "PLACEMENT_COMPLETE" ||
       payload.reason === "LAST_PLAYER_STANDING"
         ? payload.winnerPlayerIds.length === 1
         : true,
@@ -593,6 +595,7 @@ export interface SnapshotWireClientToServerEvents {
     command: NumberPassCommand,
     acknowledge: SocketAcknowledgement<NumberPassWireAck>,
   ) => void;
+  "number:rematch": (command: NumberRematchCommand, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
 }
 
 export type SnapshotWireServerToClientEvents = Omit<

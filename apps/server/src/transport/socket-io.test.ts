@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { NumberTileRematchService } from "../games/number-tile/application/number-tile-rematch-service.js";
 import {
   GameRevisionSchema,
   NumberTilePlayingPlatformSnapshotV2Schema,
@@ -767,6 +768,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
 
   return {
     runtime: {
+      numberTileRematchService: new NumberTileRematchService({ roomRepository: persistence, idempotencyRepository: persistence, roomUnitOfWork: persistence, roomMutationExecutor, clock, idGenerator, turnScheduler }),
       cityRoleCommandRouter: new CityRoleCommandRouter({ roomRepository: persistence, capability: {
         gameType: "CITY_ROLE",
         selectRole: async () => { throw new Error("Unexpected CITY action."); },

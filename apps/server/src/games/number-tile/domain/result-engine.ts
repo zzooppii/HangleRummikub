@@ -5,6 +5,7 @@ import type {
 } from "@hangul-rummikub/shared";
 
 import { cloneNumberTile, type NumberTile } from "./tile.js";
+import type { NumberPlacementResult } from "./placement-ranking.js";
 
 export type NumberTileSingleWinnerFinishReason =
   | "RACK_EMPTY"
@@ -42,6 +43,7 @@ export type NumberTileStalemateResult = Readonly<{
 }>;
 
 export type NumberTileGameResult =
+  | NumberPlacementResult
   | NumberTileSingleWinnerResult
   | NumberTileStalemateResult;
 

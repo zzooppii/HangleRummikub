@@ -6,6 +6,7 @@ import type {
 } from "@hangul-rummikub/shared";
 
 import { nextGameRevision } from "../../../domain/game-revision.js";
+import { createNumberPlacementResult, numberActivePlayers } from "../domain/placement-ranking.js";
 import {
   notifyGameFinishedBestEffort,
   type GameFinishedPostCommit,
@@ -225,12 +226,13 @@ export class NumberTileSubmitService {
       table: validation.value.table,
       initialMeldCompleted: initialMeldState,
       noPlayPlayerIds: resetNumberTileNoPlayTracker(),
+      ...(latest.game.placementOrder === undefined ? {} : { placementOrder: Object.freeze(validation.value.remainingRackTileIds.length === 0 ? [...latest.game.placementOrder, input.actorPlayerId] : [...latest.game.placementOrder]) }),
     });
 
     let terminalResult;
     let candidate;
-    if (validation.value.remainingRackTileIds.length === 0) {
-      const result = createNumberTileRackEmptyResult(
+    if (validation.value.remainingRackTileIds.length === 0 && (gameBase.placementOrder === undefined || numberActivePlayers(gameBase).length === 1)) {
+      const result = gameBase.placementOrder !== undefined ? createNumberPlacementResult(gameBase, "PLACEMENT_COMPLETE", committedAt) : createNumberTileRackEmptyResult(
         {
           playerIds: gameBase.turnOrder,
           racks: gameBase.racks,
@@ -254,7 +256,7 @@ export class NumberTileSubmitService {
         roomRevision: transition.roomCandidate.roomRevision,
         gameRevision: transition.finishedGame.gameRevision,
         outcome: "FINISHED" as const,
-        finishReason: "RACK_EMPTY" as const,
+        finishReason: result.reason,
         winnerPlayerIds: [...result.winnerPlayerIds],
       });
     } else {
@@ -262,7 +264,7 @@ export class NumberTileSubmitService {
         latest.game.gameRevision,
       );
       const turn = createNextNumberTileTurn(
-        latest.game,
+        gameBase,
         committedAt,
         this.#dependencies.idGenerator,
       );

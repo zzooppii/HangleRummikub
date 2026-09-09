@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+import { TileButton } from "./NumberTileTurnDraftEditor.js";
 import type {
   NumberTileFinishedPlatformSnapshotV2,
   NumberTilePlayerResultEntryV2,
@@ -13,6 +15,7 @@ function reasonLabel(
   switch (reason) {
     case "RACK_EMPTY":
       return "한 참가자가 랙을 모두 비웠습니다.";
+    case "PLACEMENT_COMPLETE": return "모든 참가자의 순위가 확정되었습니다.";
     case "STALEMATE":
       return "풀 소진 후 한 바퀴 동안 배치가 없어 종료되었습니다.";
     case "LAST_PLAYER_STANDING":
@@ -29,13 +32,39 @@ export type NumberTileFinishedScreenProps = Readonly<{
   roomLeavePending: boolean;
   onLeaveRoom: () => void;
   onGoHome: () => void;
+  onRematch?: () => void;
+  rematchPending?: boolean;
 }>;
+
+function NumberPlacementFinished(props: NumberTileFinishedScreenProps) {
+  const { game, room } = props.snapshot, dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => { const modal = dialog.current; if (modal && !modal.open) modal.showModal(); }, [game.gameId]);
+  if (!("rankingMode" in game.result)) return null;
+  const host = room.players.some(p => p.playerId === props.snapshot.self.playerId && p.isHost);
+  const face = (tile: (typeof game.privateState.rack)[number]) => <TileButton key={tile.tileId} tile={tile} locationLabel="마지막 게임판" interactionLabel="보기 전용" disabled onSelect={() => {}} />;
+  return <main className="app-shell playing-shell number-playing-shell number-placement-finished">
+    <header className="lobby-header"><div><p className="eyebrow">숫자 타일 게임 · ROOM {room.roomCode}</p><h1>순위 결정 완료</h1></div>
+      <span className={`connection-chip ${props.connectionTone}`}>{props.connectionLabel}</span>
+      <button type="button" onClick={() => dialog.current?.showModal()}>게임 결과</button>
+      <button type="button" disabled={props.roomLeavePending} onClick={props.onLeaveRoom}>방 나가기</button></header>
+    {props.errorMessage ? <p role="alert">{props.errorMessage}</p> : null}
+    <section className="number-board-surface" aria-label="마지막 공용 테이블">{game.table.melds.map((meld,i) => <div className="number-final-meld" key={i}>{meld.tiles.map(face)}</div>)}</section>
+    <section aria-label="내 남은 랙" className="number-final-rack"><h2>내 남은 타일 · {game.privateState.rack.length}개</h2><div>{game.privateState.rack.map(face)}</div></section>
+    <dialog ref={dialog} className="number-result-modal" aria-labelledby="number-placement-result-heading">
+      <h2 id="number-placement-result-heading">게임 결과</h2><p>{game.result.reason === "LAST_PLAYER_STANDING" ? "기권으로 남은 참가자의 순위가 확정되었습니다." : reasonLabel(game.result.reason)}</p>
+      <ol className="score-list">{game.result.rankings.map(entry => <li key={entry.playerId}><strong>{entry.rank}위</strong><span>{room.players.find(p => p.playerId === entry.playerId)?.nickname ?? "참가자"}{entry.forfeited ? " · 기권" : ""}<small>남은 타일 {entry.remainingRackCount}개</small></span></li>)}</ol>
+      <button type="button" onClick={() => dialog.current?.close()}>결과 닫기</button>
+      {host ? <button type="button" className="primary-button" disabled={props.sessionReplaced || props.connectionTone !== "connected" || props.rematchPending} onClick={props.onRematch}>같은 방에서 다시 하기</button> : <p>방장이 새 게임을 준비할 때까지 기다려 주세요.</p>}
+    </dialog>
+  </main>;
+}
 
 export function NumberTileFinishedScreen(
   props: NumberTileFinishedScreenProps,
 ) {
   const { game, room, self } = props.snapshot;
   const result = game.result;
+  if ("rankingMode" in result) return <NumberPlacementFinished {...props} />;
   const entries: readonly NumberTilePlayerResultEntryV2[] =
     result.reason === "STALEMATE" ? result.rankings : result.playerResults;
   const winnerIds = new Set(result.winnerPlayerIds);

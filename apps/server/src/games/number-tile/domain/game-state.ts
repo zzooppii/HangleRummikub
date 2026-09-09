@@ -73,6 +73,8 @@ type NumberTileGameStateBase = Readonly<{
   forfeitedPlayerIds: ReadonlySet<PlayerId>;
   /** Eligible players already counted in the current pool-empty no-play cycle. */
   noPlayPlayerIds: readonly PlayerId[];
+  /** Undefined only for legacy persisted scoring games; new room starts opt in. */
+  placementOrder?: readonly PlayerId[];
 }>;
 
 export type PlayingNumberTileGameState = NumberTileGameStateBase &
@@ -97,6 +99,7 @@ export type NumberTileSetupIdGenerator = Pick<
 >;
 
 export type CreateInitialNumberTileGameStateInput = Readonly<{
+  placementRanking?: boolean;
   playerIds: readonly PlayerId[];
   idGenerator: NumberTileSetupIdGenerator;
   randomSource: RandomSource;
@@ -301,6 +304,7 @@ export function createInitialNumberTileGameState(
     turnOrder,
     forfeitedPlayerIds: createNumberTileReadonlyPlayerSet(),
     noPlayPlayerIds: Object.freeze([]),
+    ...(input.placementRanking ? { placementOrder: Object.freeze([]) } : {}),
     turn: Object.freeze({
       turnId: parse(TurnIdSchema, input.idGenerator.generateTurnId()),
       turnNumber: 1,

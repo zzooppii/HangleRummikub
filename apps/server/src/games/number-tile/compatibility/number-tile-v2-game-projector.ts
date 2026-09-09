@@ -146,6 +146,7 @@ function projectPrivateState(
 }
 
 function projectResult(result: NumberTileGameResult) {
+  if ("rankingMode" in result) return { ...result, rankings: result.rankings.map(entry => ({ ...entry })), winnerPlayerIds: [...result.winnerPlayerIds] };
   return result.reason === "STALEMATE"
     ? {
         reason: result.reason,
@@ -166,6 +167,7 @@ function projectCommon(input: ProjectNumberTileV2GameInput) {
     gameType: "NUMBER_TILE" as const,
     gameId: input.game.gameId,
     gameRevision: input.game.gameRevision,
+    ...(input.game.placementOrder === undefined ? {} : { placementOrder: [...input.game.placementOrder] }),
     remainingPoolCount: input.game.pool.length,
     table: projectTable(input.game),
     playerStates: projectPlayerStates(input.game, input.playerIds),

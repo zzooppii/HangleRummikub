@@ -14,6 +14,8 @@ import {
 import type { CompatibleWebSnapshot } from "./snapshot-wire-decoder.js";
 
 export type RoomSnapshotShell = Readonly<{
+  /** NUMBER rematch ordering: gameRevision is scoped to this game, not the Room. */
+  gameId?: string | null;
   protocolVersion: typeof PROTOCOL_VERSION;
   versions: StateVersions;
   serverTime: ServerTime;
@@ -61,6 +63,7 @@ export function projectRoomSnapshotShell(
 
   const snapshot = compatible.platformSnapshot;
   return {
+    ...(compatible.kind === "PLATFORM_V2_NUMBER_TILE" ? { gameId: compatible.platformSnapshot.game?.gameId ?? null } : {}),
     protocolVersion: PROTOCOL_VERSION,
     versions: {
       roomRevision: snapshot.versions.roomRevision,

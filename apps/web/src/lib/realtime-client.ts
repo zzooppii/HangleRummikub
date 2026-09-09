@@ -1,3 +1,5 @@
+import { safeParse as parseRematch } from "valibot";
+import { NumberRematchCommandSchema, type NumberRematchCommand } from "@hangul-rummikub/shared";
 import {
   validateCityClientCommand,
   validateCitySelectRoleWireAck,
@@ -654,6 +656,13 @@ export class RealtimeClient {
         hasConsistentSnapshotAcknowledgement(acknowledgement) &&
         this.#acceptAcknowledgementSnapshotVersion(acknowledgement),
     );
+  }
+
+  rematchNumber(command: NumberRematchCommand): Promise<StateSyncWireAck> {
+    if (!parseRematch(NumberRematchCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    return this.#emitAcknowledged("number:rematch", command.requestId,
+      acknowledge => this.#socket.emit("number:rematch", command, acknowledge), validateStateSyncWireAck,
+      ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
   }
 
   startGame(command: GameStartCommand): Promise<GameStartWireAck> {

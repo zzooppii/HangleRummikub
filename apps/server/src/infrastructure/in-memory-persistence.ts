@@ -230,6 +230,8 @@ function cloneRoomWriteCandidate(
       });
     }
     case "NUMBER_TILE": {
+      const departedPlayerIds = candidate.departedPlayerIds === undefined ? undefined : Object.freeze([...candidate.departedPlayerIds]);
+      if (departedPlayerIds !== undefined && (candidate.phase === "LOBBY" && departedPlayerIds.length > 0 || new Set(departedPlayerIds).size !== departedPlayerIds.length || departedPlayerIds.some(id => !candidate.players.some(p => p.playerId === id)))) throw new Error("Invalid Number departed roster.");
       const game =
         candidate.game === null
           ? null
@@ -240,6 +242,7 @@ function cloneRoomWriteCandidate(
       return Object.freeze({
         ...shell,
         gameType: "NUMBER_TILE" as const,
+        ...(departedPlayerIds === undefined ? {} : { departedPlayerIds }),
         game,
       });
     }

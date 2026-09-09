@@ -4621,6 +4621,7 @@ test("runtime Socket.IO map은 Number events를 additive하게 제공하고 lega
     | "number:submit"
     | "number:draw"
     | "number:pass"
+    | "number:rematch"
     | "gem:collect"
     | "gem:purchase"
     | "gem:reserve"

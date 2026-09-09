@@ -1,3 +1,4 @@
+import { numberIneligiblePlayers, createNumberPlacementResult } from "../domain/placement-ranking.js";
 import type {
   GameId,
   GameRevision,
@@ -90,6 +91,7 @@ export function applyNumberTilePlayingLeave(input: {
 }): NumberTilePlayingLeaveActionResult {
   const room = requirePlayingNumberRoom(input.room);
   const game = room.game;
+  if (game.placementOrder?.includes(input.actorPlayerId)) return Object.freeze({ candidate: { ...room, updatedAt: input.occurredAt }, nextTurnIdentity: null, finishedGameId: null, advisory: "NONE" });
   const forfeit = applyNumberTileForfeit(
     game.turnOrder,
     game.forfeitedPlayerIds,
@@ -112,7 +114,7 @@ export function applyNumberTilePlayingLeave(input: {
   });
   const finish = evaluateNumberTileFinish({
     turnOrder: gameBase.turnOrder,
-    forfeitedPlayerIds: gameBase.forfeitedPlayerIds,
+    forfeitedPlayerIds: numberIneligiblePlayers(gameBase),
     noPlayPlayerIds: gameBase.noPlayPlayerIds,
     poolTileCount: gameBase.pool.length,
     rackEmptyPlayerId: null,
@@ -125,8 +127,9 @@ export function applyNumberTilePlayingLeave(input: {
       forfeitedPlayerIds: gameBase.forfeitedPlayerIds,
       finishedAt: input.occurredAt,
     } as const;
-    const result =
-      finish.reason === "STALEMATE"
+    const result = gameBase.placementOrder !== undefined
+      ? createNumberPlacementResult(gameBase, finish.reason === "STALEMATE" ? "STALEMATE" : "LAST_PLAYER_STANDING", input.occurredAt)
+      : finish.reason === "STALEMATE"
         ? createNumberTileStalemateResult(resultInput)
         : createNumberTileLastPlayerStandingResult(resultInput);
     const transition = createNumberTileFinishedRoomTransition(

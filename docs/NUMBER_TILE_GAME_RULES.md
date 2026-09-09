@@ -92,12 +92,12 @@ Joker, Pass/stalemate, timer/timeout, forfeit, scoring과 protocol도 아래 dec
 | `NT-025` | Server-authoritative turn timer 90초 | `CONFIRMED` |
 | `NT-026` | Timeout 시 pool이 있으면 1장 Draw, empty면 no-tile turn 후 종료 | `CONFIRMED` |
 | `NT-027` | Overall game deadline 없음 | `CONFIRMED` |
-| `NT-028` | `RACK_EMPTY`, `STALEMATE`, `LAST_PLAYER_STANDING`; `ALL_PLAYERS_FORFEITED`/`TIME_LIMIT` 없음 | `CONFIRMED` |
+| `NT-028` | 새 게임: `PLACEMENT_COMPLETE`, `STALEMATE`, `LAST_PLAYER_STANDING`; rack-empty는 해당 player 순위 확정 | `CONFIRMED` |
 | `NT-029` | Pool empty 뒤 eligible non-forfeited players의 full no-play cycle로 STALEMATE | `CONFIRMED` |
-| `NT-030` | Ordinary penalty는 face value, Joker penalty는 30 | `CONFIRMED` |
-| `NT-031` | Rack-empty/last-standing winner는 상대 penalty 합, losers는 자기 penalty의 음수 | `CONFIRMED` |
-| `NT-032` | STALEMATE는 non-forfeited를 먼저 낮은 penalty 순 competition ranking하고 forfeited를 뒤에서 같은 방식으로 ranking; 모두 score = -penalty | `CONFIRMED` |
-| `NT-033` | PLAYING explicit leave는 즉시 forfeit; rack 동결·score 반영 | `CONFIRMED` |
+| `NT-030` | 새 placement 게임은 penalty/score 계산·표시 없음; 기존 값은 legacy 저장 게임에만 적용 | `CONFIRMED` |
+| `NT-031` | Rack-empty 발생 순서로 확정, 마지막 정상 player 자동 순위; rank 1만 winner | `CONFIRMED` |
+| `NT-032` | 확정 prefix 보존; STALEMATE 잔여 정상 player는 tile count→원래 turnOrder; forfeited는 뒤에서 원래 turnOrder; 공동 순위 없음 | `CONFIRMED` |
+| `NT-033` | 미완주 player PLAYING explicit leave는 forfeit/rack 동결. Placed player는 기권 전환 없이 확정 순위 보존. 명시적 퇴장자만 다음 Lobby 제외 | `CONFIRMED` |
 | `NT-034` | Offline 자기 turn timeout 2회 연속 후 두 번째 action을 먼저 적용하고 forfeit; resume 시 reset | `CONFIRMED` |
 | `NT-035` | FINISHED에서도 상대 rack detail 비공개, count/value/result summary만 공개 | `CONFIRMED` |
 | `NT-036` | Page refresh/session replacement 시 local draft 폐기; same game/turn/revision의 presence-only update에는 유지 | `CONFIRMED` |
@@ -260,6 +260,10 @@ Local draft는 canonical server state가 아니다. Page refresh와 session repl
 
 ## 16. End conditions
 
+새 placement 게임은 `PLACEMENT_COMPLETE`(마지막 정상 참가자 자동 순위), `STALEMATE`(남은 eligible full no-play), `LAST_PLAYER_STANDING`(forfeit로 active 1명)으로 종료한다. 첫 rack-empty 자체는 전체 종료가 아니며 확정 순위를 얻은 player만 turn 대상에서 빠진다.
+
+### Legacy end conditions
+
 Number Tile v1의 확정 finish reason:
 
 - `RACK_EMPTY`: successful submit으로 player rack이 0장
@@ -268,7 +272,15 @@ Number Tile v1의 확정 finish reason:
 
 `ALL_PLAYERS_FORFEITED`와 `TIME_LIMIT`은 Number Tile v1 finish reason이 아니다. `LAST_PLAYER_STANDING`으로 종료된 뒤 마지막 player를 추가 forfeit시키는 post-terminal 흐름도 없다. Pool이 empty라는 사실만으로 즉시 finish하지 않는다. 아직 table에 놓을 수 있는 rack tile이 있을 수 있기 때문이다. 전체 legal move를 server solver로 증명하지 않는다.
 
-## 17. Scoring / ranking
+## 17. Placement ranking (current new games)
+
+사용자 최종 승인으로 NUMBER의 새 게임에는 점수/벌점 기반 순위와 공동 winner를 사용하지 않는다. Rack-empty 발생 순서가 확정 순위이며 마지막 정상 참가자는 자동 마지막 순위다. Placed player는 관전하고 turn 대상에서 제외된다. 정상 종료는 `PLACEMENT_COMPLETE`다.
+
+STALEMATE에서는 확정 prefix를 보존하고 남은 정상 참가자만 tile count → immutable turnOrder로 정렬한다. Forfeited subgroup은 모든 정상 참가자 뒤에 immutable turnOrder로 배치한다. Rank는 중복 없는 1..N, winner는 rank 1 한 명이다. LPS는 종료 원인일 뿐 이미 확정된 1위를 변경하지 않는다.
+
+같은 방 재게임과 명시적 퇴장자/단순 disconnect의 차이는 [NUMBER_TILE_PLACEMENT_REMATCH.md](NUMBER_TILE_PLACEMENT_REMATCH.md)에 정의한다. 이 승인 내용이 위 요약표와 아래 역사적 NT-030~032 scoring 문구보다 우선한다.
+
+### Legacy scoring history (existing stored games only)
 
 `NT-030`~`NT-032` 확정 규칙:
 

@@ -1,3 +1,4 @@
+import { NumberTileRematchService } from "./games/number-tile/application/number-tile-rematch-service.js";
 import { createGemCardRegistration } from "./games/gem-card/gem-card-registration.js";
 import { createCityRoleRegistration } from "./games/city-role/city-role-registration.js";
 import { CityRoleGameStateAdapter } from "./games/city-role/compatibility/city-role-game-state-adapter.js";
@@ -111,6 +112,7 @@ export type ApplicationRuntime = Readonly<{
   legacyHangulServerActionRouter: LegacyHangulServerActionRouting;
   legacyHangulV1CommandRouter: LegacyHangulV1CommandRouting;
   numberTileCommandRouter: NumberTileCommandRouter;
+  numberTileRematchService: NumberTileRematchService;
   gemCardCommandRouter: GemCardCommandRouter;
   cityRoleCommandRouter: CityRoleCommandRouter;
   subscribeCityRoleTimeoutApplied(listener: Parameters<CityRoleTimeoutService["subscribeApplied"]>[0]): () => void;
@@ -708,6 +710,7 @@ export function createApplicationRuntime(
     legacyHangulServerActionRouter,
     legacyHangulV1CommandRouter,
     numberTileCommandRouter,
+    numberTileRematchService: new NumberTileRematchService({ roomRepository: persistence, idempotencyRepository: persistence, roomUnitOfWork: persistence, roomMutationExecutor, clock, idGenerator, turnScheduler }),
     gemCardCommandRouter,
     cityRoleCommandRouter,
     subscribeCityRoleTimeoutApplied(listener) { return cityRoleTimeoutService.subscribeApplied(listener); },

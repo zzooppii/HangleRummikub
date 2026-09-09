@@ -14,6 +14,7 @@ export type SnapshotUpdateDecision =
 export type AdvisorySnapshotDecision = "IGNORE" | "REQUEST_SYNC";
 
 export type SnapshotOrderingState = Readonly<{
+  gameId?: string | null;
   versions: StateVersions;
   room: Readonly<{ roomId: string; gameType?: string }>;
   self: Readonly<{ playerId: string }>;
@@ -104,6 +105,19 @@ export function decideSnapshotUpdate(
       incomingSnapshot.room.gameType !== undefined &&
       currentSnapshot.room.gameType !== incomingSnapshot.room.gameType)
   ) {
+    return "REQUEST_SYNC";
+  }
+
+  // NUMBER's rematch can reset gameRevision or remove the old game entirely.
+  // Room revision orders these scope changes; a delayed old-game snapshot
+  // must never replace a new Lobby or a newer game with a smaller revision.
+  if (currentSnapshot.room.gameType === "NUMBER_TILE" &&
+      incomingSnapshot.room.gameType === "NUMBER_TILE" &&
+      currentSnapshot.gameId !== undefined && incomingSnapshot.gameId !== undefined &&
+      currentSnapshot.gameId !== incomingSnapshot.gameId) {
+    if (incomingSnapshot.versions.roomRevision < currentSnapshot.versions.roomRevision) return "IGNORE_STALE";
+    if (incomingSnapshot.versions.roomRevision > currentSnapshot.versions.roomRevision &&
+        incomingSnapshot.versions.presenceVersion >= currentSnapshot.versions.presenceVersion) return "APPLY";
     return "REQUEST_SYNC";
   }
 

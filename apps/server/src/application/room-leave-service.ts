@@ -353,6 +353,18 @@ export class RoomLeaveService {
             return failure(ERRORS.INTERNAL_ERROR);
           }
 
+          if (candidate.gameType === "NUMBER_TILE") {
+            const departedPlayerIds = Object.freeze([...new Set([...(candidate.departedPlayerIds ?? []), input.actorPlayerId])]);
+            const remaining = candidate.players.filter(p => !departedPlayerIds.includes(p.playerId));
+            const hostPlayerId = candidate.hostPlayerId === input.actorPlayerId
+              ? [...remaining].sort((a,b) => a.joinOrder - b.joinOrder)[0]?.playerId ?? candidate.hostPlayerId
+              : candidate.hostPlayerId;
+            // Room membership metadata changes, never the completed Game/result.
+            const roomRevision = incrementRoomRevision(candidate.roomRevision);
+            candidate = { ...candidate, departedPlayerIds, hostPlayerId, roomRevision };
+            terminalResult = { ...terminalResult, roomRevision };
+          }
+
           const committed = await this.#dependencies.roomUnitOfWork.commit(
             {
               roomMutation: {

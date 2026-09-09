@@ -23,6 +23,28 @@ import {
   decideTurnStartedAdvisory,
 } from "./snapshot-state.js";
 
+test("NUMBER rematch game scopes accept newer Lobby/new game and reject delayed prior-game snapshots", () => {
+  const state = (roomRevision: number, gameRevision: number | null, gameId: string | null, presenceVersion = 5) => {
+    const versions = validateStateVersions({ roomRevision, gameRevision, presenceVersion });
+    assert.equal(versions.ok, true);
+    if (!versions.ok) throw new Error("Invalid test revisions");
+    return { versions: versions.value, gameId, room: { roomId: "number-room", gameType: "NUMBER_TILE" }, self: { playerId: "self" } };
+  };
+  const finished = state(10, 47, "old-game");
+  const lobby = state(11, null, null);
+  const next = state(12, 0, "new-game");
+  assert.equal(decideSnapshotUpdate(finished, lobby), "APPLY");
+  assert.equal(decideSnapshotUpdate(lobby, next), "APPLY");
+  assert.equal(decideSnapshotUpdate(finished, next), "APPLY");
+  assert.equal(decideSnapshotUpdate(next, finished), "IGNORE_STALE");
+  assert.equal(decideSnapshotUpdate(next, lobby), "IGNORE_STALE");
+  assert.equal(decideSnapshotUpdate(finished, state(10, 0, "unexpected-game")), "REQUEST_SYNC");
+  assert.equal(decideSnapshotUpdate(finished, state(11, null, null, 4)), "REQUEST_SYNC");
+  assert.equal(decideSnapshotUpdate(finished, state(11, 46, "old-game")), "REQUEST_SYNC");
+  assert.equal(decideSnapshotUpdate({ ...finished, room: { ...finished.room, gameType: "GEM_CARD" } },
+    { ...lobby, room: { ...lobby.room, gameType: "GEM_CARD" } }), "REQUEST_SYNC");
+});
+
 function snapshot(
   roomRevision: number,
   presenceVersion: number,

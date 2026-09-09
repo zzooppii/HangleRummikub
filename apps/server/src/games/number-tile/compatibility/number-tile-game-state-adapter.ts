@@ -1,3 +1,4 @@
+import { createNumberPlacementResult, numberActivePlayers, numberIneligiblePlayers } from "../domain/placement-ranking.js";
 import {
   GameIdSchema,
   GameRevisionSchema,
@@ -283,6 +284,19 @@ function sameResult(
   actual: NumberTileGameResult,
   expected: NumberTileGameResult,
 ): boolean {
+  if ("rankingMode" in actual || "rankingMode" in expected) {
+    if (!("rankingMode" in actual) || !("rankingMode" in expected)) return false;
+    return actual.rankingMode === expected.rankingMode && actual.reason === expected.reason &&
+      actual.finishedAt === expected.finishedAt &&
+      actual.winnerPlayerIds.length === expected.winnerPlayerIds.length &&
+      actual.winnerPlayerIds.every((id, index) => id === expected.winnerPlayerIds[index]) &&
+      actual.rankings.length === expected.rankings.length &&
+      actual.rankings.every((entry, index) => {
+        const other = expected.rankings[index];
+        return other !== undefined && entry.playerId === other.playerId && entry.rank === other.rank &&
+          entry.forfeited === other.forfeited && entry.remainingRackCount === other.remainingRackCount;
+      });
+  }
   if (
     actual.reason !== expected.reason ||
     actual.finishedAt !== expected.finishedAt ||
@@ -326,6 +340,11 @@ function cloneValidatedResult(
 ): NumberTileGameResult {
   if (state.result === null) {
     throw new Error("Finished Number Tile state requires a result.");
+  }
+  if ("rankingMode" in state.result) {
+    const expected = createNumberPlacementResult(state, state.result.reason, parse(ServerTimeSchema, state.result.finishedAt));
+    if (!sameResult(state.result, expected)) throw new Error("Number placement result does not match canonical state.");
+    return expected;
   }
   const input = {
     playerIds: turnOrder,
@@ -427,9 +446,12 @@ export class NumberTileGameStateAdapter implements NumberTileGameStateStorage {
     const noPlayPlayerIds = Object.freeze(
       state.noPlayPlayerIds.map((playerId) => parse(PlayerIdSchema, playerId)),
     );
+    const placementOrder = state.placementOrder === undefined ? undefined : Object.freeze(state.placementOrder.map(id => parse(PlayerIdSchema, id)));
+    if (placementOrder !== undefined && (new Set(placementOrder).size !== placementOrder.length || placementOrder.some(id => !turnOrder.includes(id) || forfeitedPlayerIds.has(id) || racks.get(id)?.length !== 0))) throw new Error("Invalid Number placement history.");
+    const ineligible = numberIneligiblePlayers({ forfeitedPlayerIds, ...(placementOrder === undefined ? {} : { placementOrder }) });
     const canonicalNoPlayPlayerIds = pruneNumberTileNoPlayTracker(
       turnOrder,
-      forfeitedPlayerIds,
+      ineligible,
       noPlayPlayerIds,
     );
     if (
@@ -473,6 +495,19 @@ export class NumberTileGameStateAdapter implements NumberTileGameStateStorage {
       forfeitedPlayerIds,
       noPlayPlayerIds,
     } as const;
+
+    if (placementOrder !== undefined) {
+      const placedBase = { ...base, placementOrder };
+      if (state.turn === null) {
+        if (state.result === null || !("rankingMode" in state.result)) throw new Error("Placement game requires placement result.");
+        const candidate = { ...placedBase, turn: null, result: state.result };
+        return Object.freeze({ ...candidate, result: cloneValidatedResult(candidate, turnOrder, racks, tilesById, forfeitedPlayerIds) });
+      }
+      const turn = cloneTurn(state.turn);
+      const active = numberActivePlayers(placedBase);
+      if (state.result !== null || active.length < 2 || !active.includes(turn.activePlayerId) || active.some(id => racks.get(id)?.length === 0) || pool.length === 0 && active.every(id => noPlayPlayerIds.includes(id))) throw new Error("Invalid active placement game.");
+      return Object.freeze({ ...placedBase, turn, result: null });
+    }
 
     if (state.turn === null) {
       const result = cloneValidatedResult(

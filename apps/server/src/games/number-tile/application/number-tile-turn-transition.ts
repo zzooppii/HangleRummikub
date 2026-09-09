@@ -20,6 +20,7 @@ import type {
 import { NUMBER_TILE_RULES } from "../domain/game-state.js";
 import type { NumberTileGameResult } from "../domain/result-engine.js";
 import { nextEligibleNumberTilePlayer } from "../domain/stalemate.js";
+import { numberIneligiblePlayers } from "../domain/placement-ranking.js";
 import type {
   NumberTileRoomRecord,
   RoomWriteCandidate,
@@ -53,7 +54,7 @@ export function createNextNumberTileTurn(
 ): NumberTileTurn {
   const activePlayerId = nextEligibleNumberTilePlayer(
     game.turnOrder,
-    forfeitedPlayerIds,
+    numberIneligiblePlayers({ ...game, forfeitedPlayerIds }),
     game.turn.activePlayerId,
   );
   if (activePlayerId === null) {
@@ -109,6 +110,7 @@ export function createNumberTileFinishedRoomTransition(
       roomId: room.roomId,
       roomCode: room.roomCode,
       gameType: "NUMBER_TILE",
+      ...(room.departedPlayerIds === undefined ? {} : { departedPlayerIds: room.departedPlayerIds }),
       phase: "FINISHED",
       hostPlayerId: room.hostPlayerId,
       players: room.players,

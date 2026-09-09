@@ -1,3 +1,4 @@
+import { numberIneligiblePlayers, createNumberPlacementResult } from "../domain/placement-ranking.js";
 import type { GameRevision, TurnId } from "@hangul-rummikub/shared";
 
 import { nextGameRevision } from "../../../domain/game-revision.js";
@@ -165,7 +166,7 @@ export class NumberTilePassService {
     const committedAt = this.#dependencies.clock.now();
     const noPlayPlayerIds = recordNumberTileNoPlay({
       turnOrder: latest.game.turnOrder,
-      forfeitedPlayerIds: latest.game.forfeitedPlayerIds,
+      forfeitedPlayerIds: numberIneligiblePlayers(latest.game),
       noPlayPlayerIds: latest.game.noPlayPlayerIds,
       actorPlayerId: input.actorPlayerId,
       poolTileCount: latest.game.pool.length,
@@ -176,7 +177,7 @@ export class NumberTilePassService {
     });
     const finish = evaluateNumberTileFinish({
       turnOrder: gameBase.turnOrder,
-      forfeitedPlayerIds: gameBase.forfeitedPlayerIds,
+      forfeitedPlayerIds: numberIneligiblePlayers(gameBase),
       noPlayPlayerIds: gameBase.noPlayPlayerIds,
       poolTileCount: gameBase.pool.length,
       rackEmptyPlayerId: null,
@@ -192,8 +193,9 @@ export class NumberTilePassService {
         forfeitedPlayerIds: gameBase.forfeitedPlayerIds,
         finishedAt: committedAt,
       } as const;
-      const result =
-        finish.reason === "STALEMATE"
+      const result = gameBase.placementOrder !== undefined
+        ? createNumberPlacementResult(gameBase, finish.reason === "STALEMATE" ? "STALEMATE" : "LAST_PLAYER_STANDING", committedAt)
+        : finish.reason === "STALEMATE"
           ? createNumberTileStalemateResult(resultInput)
           : createNumberTileLastPlayerStandingResult(resultInput);
       const transition = createNumberTileFinishedRoomTransition(

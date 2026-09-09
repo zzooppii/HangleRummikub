@@ -66,6 +66,8 @@ export type NumberTileRoomRecord = RoomRecordBase &
   Readonly<{
     gameType: "NUMBER_TILE";
     game: NumberTileGameState | null;
+    /** Explicit leave only; result roster remains intact until rematch. */
+    departedPlayerIds?: readonly PlayerId[];
   }>;
 
 /**

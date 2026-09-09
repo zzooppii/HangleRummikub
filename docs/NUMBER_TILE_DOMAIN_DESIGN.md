@@ -1,5 +1,7 @@
 # Number Tile Domain Design
 
+> 후속 NUMBER placement/rematch 계약은 [NUMBER_TILE_PLACEMENT_REMATCH.md](NUMBER_TILE_PLACEMENT_REMATCH.md)를 따른다. 이 문서의 즉시 rack-empty 종료/벌점 scoring 부분은 기존 저장 게임의 legacy 설명이다.
+
 > 상태: P7A DOMAIN COMPLETE / P7B SERVER INTEGRATED / P7C WEB INTEGRATED
 > Canonical ruleset: `number-tile-rules-v1`
 > 기준 문서: [NUMBER_TILE_GAME_RULES.md](./NUMBER_TILE_GAME_RULES.md)
