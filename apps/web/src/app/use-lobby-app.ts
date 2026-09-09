@@ -1,3 +1,4 @@
+import type { DrawClientCommand } from "@hangul-rummikub/shared";
 import {
   type CityClientCommand,
   type CityRolePlayingPlatformSnapshotV2,
@@ -225,6 +226,7 @@ export type LobbyAppState = Readonly<{
   drawNumberTurn: () => void;
   passNumberTurn: () => void;
   rematchNumber: () => void;
+  actDraw: (command: DrawClientCommand) => Promise<void>;
   collectGemResources: (selection: GemCollectSelectionDto) => void;
   purchaseGemCard: (source: GemPurchaseSourceDto) => void;
   reserveGemCard: (source: GemMarketSourceDto) => void;
@@ -432,9 +434,19 @@ export function useLobbyApp(): LobbyAppState {
   function currentLegacyHangulSnapshot(): StateSnapshot | null {
     const compatible = compatibleSnapshotRef.current;
     return compatible === null || compatible.kind === "PLATFORM_V2_NUMBER_TILE" ||
-      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE"
+      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY"
       ? null
       : compatible.legacySnapshot;
+  }
+
+  async function actDraw(command: DrawClientCommand): Promise<void> {
+    const client = clientRef.current, session = storedSessionForCurrentRoute();
+    if (!client?.connected || session === null || sessionReplacedRef.current || compatibleSnapshotRef.current?.kind !== "PLATFORM_V2_DRAW_RELAY") throw new Error("연결을 확인하고 다시 시도해주세요.");
+    const ack = await client.actDraw(command);
+    if (clientRef.current !== client || sessionReplacedRef.current || storedSessionForCurrentRoute()?.playerId !== session.playerId ||
+      storedSessionForCurrentRoute()?.credential.roomCode !== session.credential.roomCode) throw new Error("게임 연결이 변경되었습니다.");
+    if (!ack.ok) { void requestLatestSnapshot(); throw new Error(getUserErrorMessage(ack.error.code)); }
+    applyWireSnapshot(ack.data.snapshot, session);
   }
 
   function rematchNumber(): void {
@@ -687,7 +699,7 @@ export function useLobbyApp(): LobbyAppState {
     const incomingSnapshot = projectRoomSnapshotShell(compatible);
     const incomingLegacySnapshot =
       compatible.kind === "PLATFORM_V2_NUMBER_TILE" ||
-      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE"
+      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY"
         ? null
         : compatible.legacySnapshot;
     const incomingNumberSnapshot =
@@ -2906,6 +2918,7 @@ export function useLobbyApp(): LobbyAppState {
     drawNumberTurn,
     passNumberTurn,
     rematchNumber,
+    actDraw,
     collectGemResources,
     purchaseGemCard,
     reserveGemCard,

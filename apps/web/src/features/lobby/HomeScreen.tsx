@@ -1,3 +1,4 @@
+import { RelayDoodle } from "../draw-relay/RelayHelp.js";
 import {
   NICKNAME_MAX_CODE_POINTS,
   type GameType,
@@ -169,6 +170,7 @@ export function HomeScreen(props: HomeScreenProps) {
                             disabled={isBusy}
                             onClick={() => setSelectedGameType(game.gameType)}
                           >
+                            {game.gameType === "DRAW_RELAY" ? <RelayDoodle/> : null}
                             <span className="game-option-heading">
                               <strong>{game.displayName}</strong>
                               {isSelected ? (

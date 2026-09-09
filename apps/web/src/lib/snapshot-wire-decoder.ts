@@ -1,3 +1,4 @@
+import type { DrawRelayLobbyPlatformSnapshotV2, DrawRelayPlayingPlatformSnapshotV2, DrawRelayFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import {
   PLATFORM_SNAPSHOT_VERSION,
   validatePlatformSnapshotV2,
@@ -23,6 +24,7 @@ export const WEB_SUPPORTED_GAME_TYPES = Object.freeze([
   "NUMBER_TILE",
   "GEM_CARD",
   "CITY_ROLE",
+  "DRAW_RELAY",
 ] as const);
 
 export type CityRolePlatformSnapshotV2 =
@@ -40,7 +42,9 @@ export type NumberTilePlatformSnapshotV2 =
   | NumberTilePlayingPlatformSnapshotV2
   | NumberTileFinishedPlatformSnapshotV2;
 
+export type DrawRelayWebSnapshot = DrawRelayLobbyPlatformSnapshotV2 | DrawRelayPlayingPlatformSnapshotV2 | DrawRelayFinishedPlatformSnapshotV2;
 export type CompatibleWebSnapshot =
+  | Readonly<{kind: "PLATFORM_V2_DRAW_RELAY"; snapshotVersion: 2; gameType: "DRAW_RELAY"; platformSnapshot: DrawRelayWebSnapshot }>
   | Readonly<{
       kind: "PLATFORM_V2_CITY_ROLE";
       snapshotVersion: typeof PLATFORM_SNAPSHOT_VERSION;
@@ -141,7 +145,7 @@ function decodePlatformSnapshotV2(
     input.room.gameType !== "HANGUL_TILE" &&
     input.room.gameType !== "NUMBER_TILE" &&
     input.room.gameType !== "GEM_CARD" &&
-    input.room.gameType !== "CITY_ROLE"
+    input.room.gameType !== "CITY_ROLE" && input.room.gameType !== "DRAW_RELAY"
   ) {
     return typeof input.room.gameType === "string"
       ? { kind: "INCOMPATIBLE", reason: "UNSUPPORTED_GAME_TYPE" }
@@ -151,6 +155,11 @@ function decodePlatformSnapshotV2(
   const validation = validatePlatformSnapshotV2(input);
   if (!validation.ok) {
     return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
+  }
+  if (input.room.gameType === "DRAW_RELAY") {
+    const snapshot = validation.value;
+    if (!isDrawSnapshot(snapshot)) return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
+    return { kind: "COMPATIBLE", value: { kind: "PLATFORM_V2_DRAW_RELAY", snapshotVersion: 2, gameType: "DRAW_RELAY", platformSnapshot: snapshot } };
   }
   if (input.room.gameType === "CITY_ROLE") {
     if (!isCityRolePlatformSnapshot(validation.value)) {
@@ -238,3 +247,5 @@ export function decodeWebSnapshot(input: unknown): WebSnapshotDecodeResult {
       }
     : { kind: "INVALID_LEGACY_V1" };
 }
+
+function isDrawSnapshot(s: PlatformSnapshotV2): s is DrawRelayWebSnapshot { return s.room.gameType === "DRAW_RELAY" && (s.game === null || s.game.gameType === "DRAW_RELAY"); }

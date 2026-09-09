@@ -1,3 +1,4 @@
+import type { DrawRelayWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { LegacyHangulRoomView } from "./legacy-hangul-room-view.js";
 import { resolveLegacyHangulRoomView } from "./legacy-hangul-room-view.js";
 import type {
@@ -40,6 +41,7 @@ function isNumberTileFinishedSnapshot(
 }
 
 export type RoomSnapshotView =
+  | Readonly<{ kind: "DRAW_RELAY"; snapshot: DrawRelayWebSnapshot }>
   | LegacyHangulRoomView
   | Readonly<{
       kind: "CITY_ROLE_PLAYING";
@@ -78,6 +80,7 @@ export type RoomSnapshotView =
 export function resolveRoomSnapshotView(
   decoded: CompatibleWebSnapshot,
 ): RoomSnapshotView {
+  if (decoded.kind === "PLATFORM_V2_DRAW_RELAY") return { kind: "DRAW_RELAY", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "LEGACY_HANGUL_V1") {
     return resolveLegacyHangulRoomView(decoded.legacySnapshot);
   }

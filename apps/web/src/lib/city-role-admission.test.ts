@@ -8,8 +8,8 @@ import { cityActionFixture, cityFinishedFixture, cityLobbyFixture, citySelection
 import { resolveRoomSnapshotView } from "./room-snapshot-view.js";
 import { projectRoomSnapshotShell } from "./room-snapshot-shell.js";
 
-test("P15C activates exactly four-game Web capability and Home after the CITY server gate", () => {
-  assert.deepEqual([...WEB_SUPPORTED_GAME_TYPES], ["HANGUL_TILE", "NUMBER_TILE", "GEM_CARD", "CITY_ROLE"]);
+test("P19D preserves CITY admission and activates exactly five-game capability and Home", () => {
+  assert.deepEqual([...WEB_SUPPORTED_GAME_TYPES], ["HANGUL_TILE", "NUMBER_TILE", "GEM_CARD", "CITY_ROLE", "DRAW_RELAY"]);
   assert.deepEqual(GAME_CATALOG.map(item => item.gameType), [...WEB_SUPPORTED_GAME_TYPES]);
 });
 

@@ -1,3 +1,5 @@
+import { DrawRelayScreen } from "./features/draw-relay/DrawRelayScreen.js";
+import "./features/draw-relay/draw-relay.css";
 import { ReconnectBoundary } from "./features/platform/ReconnectBoundary.js";
 
 import { useLobbyApp } from "./app/use-lobby-app.js";
@@ -314,6 +316,14 @@ export function App() {
           />
         </ReconnectBoundary>
       );
+    }
+
+    if (roomView.kind === "DRAW_RELAY") {
+      return <ReconnectBoundary {...recovery}><DrawRelayScreen snapshot={roomView.snapshot}
+        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced} onCommand={app.actDraw}
+        onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
+        pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
+        error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;
     }
 
     if (roomView.kind === "CITY_ROLE_PLAYING") {

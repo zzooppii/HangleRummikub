@@ -111,8 +111,8 @@ export function decideSnapshotUpdate(
   // NUMBER's rematch can reset gameRevision or remove the old game entirely.
   // Room revision orders these scope changes; a delayed old-game snapshot
   // must never replace a new Lobby or a newer game with a smaller revision.
-  if (currentSnapshot.room.gameType === "NUMBER_TILE" &&
-      incomingSnapshot.room.gameType === "NUMBER_TILE" &&
+  if ((currentSnapshot.room.gameType === "NUMBER_TILE" || currentSnapshot.room.gameType === "DRAW_RELAY") &&
+      incomingSnapshot.room.gameType === currentSnapshot.room.gameType &&
       currentSnapshot.gameId !== undefined && incomingSnapshot.gameId !== undefined &&
       currentSnapshot.gameId !== incomingSnapshot.gameId) {
     if (incomingSnapshot.versions.roomRevision < currentSnapshot.versions.roomRevision) return "IGNORE_STALE";
