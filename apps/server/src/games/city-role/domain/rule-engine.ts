@@ -4,6 +4,7 @@ import { parseCityActionId, parseCityGameId, parseCityPlayerId, type BuildingCar
 import { CITY_ROLE_IDS, CITY_ROLESET_VERSION, CITY_RULES_VERSION, cityRoleOrder, isCityRoleId, type CityRoleId } from "./role.js";
 import { calculateCityResult } from "./result-engine.js";
 import { assertCityGameState } from "./state-validator.js";
+import { CITY_RULES_V2, CITY_CARDSET_V2, initialCityLandmarkHistory, cityLandmarkDiscount, type CityLandmarkHistory } from "./landmarks-v2.js";
 
 export type CityRuleFailure = "INVALID_SETUP" | "INVALID_STATE" | "STALE_ACTION" | "WRONG_ACTOR" | "INVALID_PHASE" | "INVALID_ROLE" | "INVALID_CARD" | "ACQUISITION_REQUIRED" | "PENDING_CHOICE" | "ACQUISITION_TAKEN" | "ABILITY_UNAVAILABLE" | "BUILD_LIMIT" | "INSUFFICIENT_GOLD" | "DUPLICATE_TEMPLATE" | "INVALID_TARGET" | "EMPTY_SUPPLY" | "INVALID_ENTROPY" | "ALREADY_FINISHED";
 export class CityRuleError extends Error {
@@ -156,14 +157,42 @@ function chooseBuildingCard(s: CityWorkingState, cardId: BuildingCardId): void {
   s.deck = [...s.deck, ...choice.cards.filter(id => id !== cardId)];
   completeAcquisition(s);
 }
-function build(s: CityWorkingState, cardId: BuildingCardId): void {
+function updateLandmarkHistory(s: CityWorkingState, history: CityLandmarkHistory): void {
+  requireRule(s.rulesVersion === CITY_RULES_V2 && s.landmarkHistory !== undefined, "INVALID_STATE");
+  s.landmarkHistory = s.landmarkHistory.map(row => row.playerId === history.playerId ? history : row);
+}
+function expireStaircase(s: CityWorkingState, playerId: CityPlayerId): void {
+  const history = s.landmarkHistory?.find(row => row.playerId === playerId);
+  if (history !== undefined) updateLandmarkHistory(s, { ...history, staircaseRemaining: 0 });
+}
+function build(s: CityWorkingState, cardId: BuildingCardId, entropy: CityEntropy): void {
   const w = readyAction(s), p = player(s, w.activePlayerId);
   requireRule(p.hand.includes(cardId), "INVALID_CARD");
   const card = template(s, cardId);
   requireRule(!p.city.some(id => template(s, id).templateId === card.templateId), "DUPLICATE_TEMPLATE");
   requireRule(w.buildingsBuilt < (w.activeRoleId === "CR-07" ? 3 : 1), "BUILD_LIMIT");
-  requireRule(p.gold >= card.cost, "INSUFFICIENT_GOLD");
-  putPlayer(s, { ...p, gold: p.gold - card.cost, hand: p.hand.filter(id => id !== cardId), city: [...p.city, cardId] });
+  const history = s.landmarkHistory?.find(row => row.playerId === p.playerId);
+  const discount = cityLandmarkDiscount(history, s.round.roundNumber, p.city.map(id => template(s, id)), card);
+  requireRule(p.gold >= card.cost - discount, "INSUFFICIENT_GOLD");
+  putPlayer(s, { ...p, gold: p.gold - card.cost + discount, hand: p.hand.filter(id => id !== cardId), city: [...p.city, cardId] });
+  if (history !== undefined) {
+    let next = history;
+    if (discount > 0) next = { ...next, staircaseRemaining: next.staircaseRemaining - 1,
+      staircaseSpent: next.staircaseSpent + 1, lastDiscountRound: s.round.roundNumber };
+    if (card.templateId === "CB-LAN-01" && !next.gardenUsed) {
+      next = { ...next, gardenUsed: true };
+      addGold(s, p.playerId, 1);
+    }
+    if (card.templateId === "CB-LAN-02" && !next.sundialUsed) {
+      next = { ...next, sundialUsed: true };
+      const cards = draw(s, 1, entropy), current = player(s, p.playerId);
+      putPlayer(s, { ...current, hand: [...current.hand, ...cards] });
+    }
+    if (card.templateId === "CB-LAN-04" && !next.staircaseInitialized) {
+      next = { ...next, staircaseInitialized: true, staircaseRemaining: 3 };
+    }
+    updateLandmarkHistory(s, next);
+  }
   s.window = { ...w, buildingsBuilt: w.buildingsBuilt + 1 };
   if (s.firstCompletion === null && p.city.length + 1 >= 8) {
     s.firstCompletion = { playerId: p.playerId, roundNumber: s.round.roundNumber };
@@ -206,11 +235,13 @@ function useAbility(s: CityWorkingState, ability: CityAbility, entropy: CityEntr
       const target = s.players.find(other => other.playerId === ability.targetPlayerId);
       requireRule(target !== undefined && !target.forfeited && target.playerId !== p.playerId && target.city.length < 8 && !s.round.protectedPlayerIds.includes(target.playerId), "INVALID_TARGET");
       requireRule(target.city.includes(ability.cardId), "INVALID_CARD");
-      const cost = Math.max(0, template(s, ability.cardId).cost - 1);
+      const destroyed = template(s, ability.cardId);
+      const cost = Math.max(0, destroyed.cost - 1) + (s.rulesVersion === CITY_RULES_V2 && destroyed.templateId === "CB-LAN-03" ? 1 : 0);
       requireRule(p.gold >= cost, "INSUFFICIENT_GOLD");
       putPlayer(s, { ...p, gold: p.gold - cost });
       putPlayer(s, { ...target, city: target.city.filter(id => id !== ability.cardId) });
       s.discard = [...s.discard, ability.cardId];
+      if (destroyed.templateId === "CB-LAN-04") expireStaircase(s, target.playerId);
       break;
     }
     default: throw new CityRuleError("ABILITY_UNAVAILABLE");
@@ -339,8 +370,10 @@ export function createInitialCityGameState(input: Readonly<{
   cards: readonly CityBuildingCard[]; deck: readonly BuildingCardId[];
   initialHands: readonly Readonly<{ playerId: CityPlayerId; cardIds: readonly BuildingCardId[] }>[];
   actionId: CityActionId; roleOrder: readonly CityRoleId[];
+  rulesVersion?: "city-rules-v1" | "city-rules-v2";
 }>): CityGameState {
   try {
+    requireRule(input.rulesVersion === undefined || input.rulesVersion === "city-rules-v1" || input.rulesVersion === CITY_RULES_V2, "INVALID_SETUP");
     requireRule(input.playerIds.length >= 2 && input.playerIds.length <= 6 && sameSet(input.seatOrder, input.playerIds), "INVALID_SETUP");
     requireRule(input.initialHands.length === input.playerIds.length && sameSet(input.initialHands.map(h => h.playerId), input.playerIds), "INVALID_SETUP");
     const players = input.playerIds.map(id => {
@@ -350,6 +383,8 @@ export function createInitialCityGameState(input: Readonly<{
     });
     const s: CityWorkingState = {
       gameId: parseCityGameId(input.gameId), rulesVersion: CITY_RULES_VERSION, cardSetVersion: CITY_CARDSET_VERSION, roleSetVersion: CITY_ROLESET_VERSION,
+      ...(input.rulesVersion === CITY_RULES_V2 ? { rulesVersion: CITY_RULES_V2, cardSetVersion: CITY_CARDSET_V2,
+        landmarkHistory: players.map(p => initialCityLandmarkHistory(p.playerId)) } : {}),
       cards: validateCityCards(input.cards), players, seatOrder: [...input.seatOrder], leaderPlayerId: input.seatOrder[0]!,
       deck: [...input.deck], discard: [], marks: [], revealedRoles: [], pendingChoice: null, firstCompletion: null, result: null,
       window: { kind: "ROLE_SELECTION", actionId: parseCityActionId(input.actionId), activePlayerId: input.seatOrder[0]! },
@@ -371,7 +406,7 @@ export function applyCityAction(state: CityGameState, context: CityActionContext
     case "TAKE_INCOME": takeIncome(s); break;
     case "DRAW_BUILDING_CARDS": drawBuildingCards(s, entropy); break;
     case "CHOOSE_BUILDING_CARD": chooseBuildingCard(s, action.cardId); break;
-    case "BUILD": build(s, action.cardId); break;
+    case "BUILD": build(s, action.cardId, entropy); break;
     case "USE_ROLE_ABILITY": useAbility(s, action.ability, entropy); break;
     case "END_TURN": endRole(s); advance(s, entropy, previous); break;
     default: throw new CityRuleError("INVALID_PHASE");
@@ -387,6 +422,7 @@ function cleanForfeits(s: CityWorkingState, ids: readonly CityPlayerId[]): void 
     if (s.pendingChoice?.ownerPlayerId === id) s.pendingChoice = null;
     s.discard = [...s.discard, ...p.hand, ...pending];
     putPlayer(s, { ...p, gold: 0, hand: [], forfeited: true });
+    expireStaircase(s, id);
     s.marks = s.marks.map(m => m.sourcePlayerId === id && m.status === "UNRESOLVED" ? { ...m, status: "CANCELLED" } : m);
     s.round = { ...s.round, protectedPlayerIds: s.round.protectedPlayerIds.filter(owner => owner !== id),
       assignments: s.round.assignments.map(a => a.playerId === id ? { ...a, status: "TOMBSTONED" } : a) };

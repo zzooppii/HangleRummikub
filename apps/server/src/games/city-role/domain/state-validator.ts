@@ -24,10 +24,14 @@ const Window = v.variant("kind", [
 ]);
 const Result = v.strictObject({ reason: v.picklist(["CITY_COMPLETION_ROUND_END", "LAST_PLAYER_STANDING", "NO_ELIGIBLE_PLAYERS"]),
   rankings: v.array(v.strictObject({ playerId: CityPlayerIdSchema, rank: Positive, score: Natural,
-    buildingVP: Natural, completionBonus: Natural, diversityBonus: Natural, buildingCount: Natural,
+    buildingVP: Natural, completionBonus: Natural, diversityBonus: Natural, landmarkBonus: v.exactOptional(v.pipe(Natural, v.maxValue(4))), buildingCount: Natural,
     forfeited: v.boolean(), winner: v.boolean() })) });
 const Base = {
-  gameId: CityGameIdSchema, rulesVersion: v.literal("city-rules-v1"), cardSetVersion: v.literal("city-cardset-v1"), roleSetVersion: v.literal("city-roles-v1"),
+  gameId: CityGameIdSchema, rulesVersion: v.picklist(["city-rules-v1", "city-rules-v2"]), cardSetVersion: v.picklist(["city-cardset-v1", "city-cardset-v2"]), roleSetVersion: v.literal("city-roles-v1"),
+  landmarkHistory: v.exactOptional(v.array(v.strictObject({ playerId: CityPlayerIdSchema,
+    gardenUsed: v.boolean(), sundialUsed: v.boolean(), staircaseInitialized: v.boolean(),
+    staircaseRemaining: v.pipe(Natural, v.maxValue(3)), staircaseSpent: v.pipe(Natural, v.maxValue(3)),
+    lastDiscountRound: v.nullable(Positive) }))),
   cards: v.array(v.strictObject({ cardId: BuildingCardIdSchema, templateId: v.picklist(CITY_BUILDING_TEMPLATES.map(template => template.templateId)) })),
   players: v.pipe(v.array(v.strictObject({ playerId: CityPlayerIdSchema, gold: Natural, hand: CardIds,
     city: CardIds, forfeited: v.boolean(), offlineTimeoutStreak: v.pipe(Natural, v.maxValue(3)) })), v.minLength(2), v.maxLength(6)),
@@ -64,6 +68,25 @@ export function assertCityGameState(state: unknown): asserts state is CityGameSt
   const eligible = game.players.filter(player => !player.forfeited);
   const player = (id: string) => game.players.find(candidate => candidate.playerId === id);
   const { round } = game;
+  const v2 = game.rulesVersion === "city-rules-v2";
+  requireCity(game.cardSetVersion === (v2 ? "city-cardset-v2" : "city-cardset-v1") &&
+    (game.landmarkHistory !== undefined) === v2, "exact rules/cardset/history version correlation");
+  if (game.landmarkHistory !== undefined) {
+    requireCity(sameSequence(game.landmarkHistory.map(row => row.playerId), playerIds), "landmark history roster/order");
+    for (const row of game.landmarkHistory) {
+      const owner = player(row.playerId)!;
+      const has = (id: string) => owner.city.some(cardId => cards.find(card => card.cardId === cardId)?.templateId === id);
+      requireCity(!has("CB-LAN-01") || row.gardenUsed, "garden first build history");
+      requireCity(!has("CB-LAN-02") || row.sundialUsed, "sundial first build history");
+      requireCity(!has("CB-LAN-04") || row.staircaseInitialized, "staircase first build history");
+      requireCity(row.staircaseInitialized || row.staircaseRemaining === 0 && row.staircaseSpent === 0 && row.lastDiscountRound === null, "uninitialized staircase budget");
+      requireCity(row.staircaseRemaining + row.staircaseSpent <= 3 &&
+        (row.staircaseSpent === 0) === (row.lastDiscountRound === null) &&
+        (row.lastDiscountRound === null || row.lastDiscountRound <= round.roundNumber && row.staircaseSpent <= row.lastDiscountRound), "staircase lifetime/round budget");
+      requireCity(row.staircaseRemaining === 0 || has("CB-LAN-04") && !owner.forfeited, "destroy/forfeit burns remaining discounts");
+    }
+  }
+  requireCity(game.result === null || game.result.rankings.every(row => (row.landmarkBonus !== undefined) === v2), "versioned landmark scoring");
   requireCity(new Set(playerIds).size === playerIds.length && new Set(game.seatOrder).size === playerIds.length &&
     game.seatOrder.length === playerIds.length && playerIds.every(id => game.seatOrder.includes(id)), "participant roster");
   requireCity(player(game.leaderPlayerId) !== undefined && (eligible.length === 0 || player(game.leaderPlayerId)?.forfeited === false), "leader eligibility");
@@ -164,7 +187,7 @@ export function assertCityGameState(state: unknown): asserts state is CityGameSt
       const expected = calculated.rankings[index];
       return expected !== undefined && row.playerId === expected.playerId && row.rank === expected.rank &&
         row.score === expected.score && row.buildingVP === expected.buildingVP && row.completionBonus === expected.completionBonus &&
-        row.diversityBonus === expected.diversityBonus && row.buildingCount === expected.buildingCount &&
+        row.diversityBonus === expected.diversityBonus && row.landmarkBonus === expected.landmarkBonus && row.buildingCount === expected.buildingCount &&
         row.forfeited === expected.forfeited && row.winner === expected.winner;
     }), "result must match approved scoring/ranking");
     if (game.result.reason === "CITY_COMPLETION_ROUND_END") requireCity(round.ended && round.resolutionCursor === 8 &&

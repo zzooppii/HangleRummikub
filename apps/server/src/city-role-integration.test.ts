@@ -92,11 +92,11 @@ async function harness(count = 3, autoStart = true) {
     const duration = state.window?.kind === "ROLE_SELECTION" ? 45_000 : 90_000;
     await seed({ ...room.game, state, windowStartedAt: state.window === null ? null : clock.now(), deadlineAt: state.window === null ? null : parse(ServerTimeSchema, clock.now() + duration), finishedAt: state.window === null ? clock.now() : null });
   }
-  async function roleFixture(roleId: CityRoleId, picks: readonly CityRoleId[] = ["CR-01", "CR-02", "CR-03", "CR-04", "CR-05", "CR-06"]) {
+  async function roleFixture(roleId: CityRoleId, picks: readonly CityRoleId[] = ["CR-01", "CR-02", "CR-03", "CR-04", "CR-05", "CR-06"], rulesVersion: "city-rules-v1" | "city-rules-v2" = "city-rules-v1") {
     const room = await playing(), state = room.game.state;
     const hidden = (["CR-08", "CR-07", "CR-06", "CR-05", "CR-04", "CR-03", "CR-02", "CR-01"] as const).find((role) => !picks.includes(role))!;
     const roleOrder: readonly CityRoleId[] = [hidden, ...(["CR-01", "CR-02", "CR-03", "CR-04", "CR-05", "CR-06", "CR-07", "CR-08"] as const).filter((id) => id !== hidden)];
-    let next = completeCityDraft(createInitialCityGameState({ gameId: state.gameId, playerIds: state.players.map((player) => player.playerId), seatOrder: state.seatOrder, cards: state.cards, deck: state.deck, initialHands: state.players.map((player) => ({ playerId: player.playerId, cardIds: player.hand })), actionId: state.window!.actionId, roleOrder }), picks);
+    let next = completeCityDraft(createInitialCityGameState({ rulesVersion, gameId: state.gameId, playerIds: state.players.map((player) => player.playerId), seatOrder: state.seatOrder, cards: state.cards, deck: state.deck, initialHands: state.players.map((player) => ({ playerId: player.playerId, cardIds: player.hand })), actionId: state.window!.actionId, roleOrder }), picks);
     while (next.window?.kind === "ROLE_ACTION" && next.window.activeRoleId !== roleId) {
       next = actCity(actCity(next, { kind: "TAKE_INCOME" }), { kind: "END_TURN" });
     }
@@ -129,6 +129,28 @@ function roomWithoutWindow(room: Awaited<ReturnType<Awaited<ReturnType<typeof ha
   const { window: _window, ...stored } = room;
   return stored;
 }
+
+for (const templateId of ["CB-LAN-01", "CB-LAN-02"] as const) test(`CITY v2 ${templateId} concurrent build/replay commits one reward, revision and entropy checkpoint`, async () => {
+  const h = await harness();
+  await h.roleFixture("CR-03", undefined, "city-rules-v2");
+  assert.equal((await h.service.takeIncome(await h.input("landmark-income"))).ok, true);
+  const original = (await h.playing()).game.state, actor = cityPlayer(original).playerId;
+  const cardId = cityCard(original, templateId);
+  await h.seedState(withCityZones(original, { hands: [{ playerId: actor, cardIds: [cardId] }] }));
+  const before = await h.playing(), input = { ...await h.input("landmark-build"), cardId };
+  const [first, duplicate] = await Promise.all([h.service.build(input), h.service.build(input)]);
+  assert.equal(first.ok, true, JSON.stringify(first)); assert.deepEqual(duplicate, first);
+  const after = await h.playing();
+  assert.equal(after.game.gameRevision, before.game.gameRevision + 1);
+  assert.equal(after.game.deadlineAt, before.game.deadlineAt);
+  assert.equal(cityPlayer(after.game.state).gold, cityPlayer(before.game.state).gold - (templateId === "CB-LAN-01" ? 0 : 2));
+  assert.equal(cityPlayer(after.game.state).hand.length, templateId === "CB-LAN-02" ? 1 : 0);
+  assert.deepEqual(await h.service.build(input), first);
+  assert.deepEqual(await h.read(), roomWithoutWindow(after));
+  const replayed = new CityRoleGameStateAdapter().cloneAndValidate(JSON.parse(JSON.stringify(after.game)));
+  assert.deepEqual(replayed.state.landmarkHistory, after.game.state.landmarkHistory);
+  assert.equal(replayed.entropyCounter, after.game.entropyCounter);
+});
 
 test("CITY start Host/readiness/stale/current-primary failures consume no game state or start entropy", async () => {
   const h = await harness(3, false), before = await h.read();

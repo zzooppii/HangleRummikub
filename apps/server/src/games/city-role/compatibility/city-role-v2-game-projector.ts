@@ -29,6 +29,11 @@ export function projectCityRoleV2Game(input: {
   const common = {
     gameType: "CITY_ROLE", gameId: input.game.gameId, gameRevision: input.game.gameRevision,
     rulesVersion: state.rulesVersion, cardSetVersion: state.cardSetVersion, roleSetVersion: state.roleSetVersion,
+    ...(state.landmarkHistory === undefined ? {} : { landmarkHistory: state.landmarkHistory.map(row => ({
+      playerId: row.playerId, gardenUsed: row.gardenUsed, sundialUsed: row.sundialUsed,
+      staircaseInitialized: row.staircaseInitialized, staircaseRemaining: row.staircaseRemaining,
+      staircaseSpent: row.staircaseSpent, lastDiscountRound: row.lastDiscountRound,
+    })) }),
     roundNumber: state.round.roundNumber, seatOrder: [...state.seatOrder], leaderPlayerId: state.leaderPlayerId,
     rolesPerPlayer: state.round.rolesPerPlayer, publicRemovedRoleIds: [...state.round.publicRemoved],
     revealedRoles: state.revealedRoles.map(role => ({ roundNumber: role.roundNumber, roleId: role.roleId, playerId: role.playerId, kind: role.kind })),

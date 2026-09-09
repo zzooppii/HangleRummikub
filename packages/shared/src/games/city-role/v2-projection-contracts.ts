@@ -17,7 +17,11 @@ const PendingCards = v.pipe(Cards, v.minLength(1), v.maxLength(2));
 const ActionBudget = v.strictObject({ acquisition: v.picklist(["NOT_TAKEN", "PENDING", "COMPLETE"]), abilityUsed: v.boolean(), buildingsBuilt: v.pipe(Natural, v.maxValue(3)) });
 const Common = {
   gameType: v.literal("CITY_ROLE"), gameId: GameIdSchema, gameRevision: GameRevisionSchema,
-  rulesVersion: v.literal("city-rules-v1"), cardSetVersion: v.literal("city-cardset-v1"), roleSetVersion: v.literal("city-roles-v1"),
+  rulesVersion: v.picklist(["city-rules-v1", "city-rules-v2"]), cardSetVersion: v.picklist(["city-cardset-v1", "city-cardset-v2"]), roleSetVersion: v.literal("city-roles-v1"),
+  landmarkHistory: v.optional(v.pipe(v.array(v.strictObject({ playerId: PlayerIdSchema,
+    gardenUsed: v.boolean(), sundialUsed: v.boolean(), staircaseInitialized: v.boolean(),
+    staircaseRemaining: v.pipe(Natural, v.maxValue(3)), staircaseSpent: v.pipe(Natural, v.maxValue(3)),
+    lastDiscountRound: v.nullable(Positive) })), v.minLength(2), v.maxLength(6))),
   roundNumber: Positive, seatOrder: PlayerIds, leaderPlayerId: PlayerIdSchema, rolesPerPlayer: v.picklist([1, 2]),
   playerStates: v.pipe(v.array(v.strictObject({ playerId: PlayerIdSchema, gold: Natural,
     handCount: v.pipe(Natural, v.maxValue(60)), builtBuildings: Cards, scorePreview: Natural, forfeited: v.boolean() })), v.minLength(2), v.maxLength(6)),
@@ -37,6 +41,7 @@ const ActionObject = v.strictObject({ ...Common, phase: v.literal("ROLE_ACTION")
 });
 const Ranking = v.strictObject({ playerId: PlayerIdSchema, rank: v.pipe(Positive, v.maxValue(6)),
   score: Natural, buildingVP: Natural, completionBonus: v.picklist([0, 2, 4]), diversityBonus: v.picklist([0, 3]),
+  landmarkBonus: v.optional(v.pipe(Natural, v.maxValue(4))),
   buildingCount: v.pipe(Natural, v.maxValue(30)), forfeited: v.boolean(), winner: v.boolean() });
 export const CityRoleResultV2Schema = v.strictObject({ reason: CityFinishReasonSchema, finishedAt: ServerTimeSchema,
   rankings: v.pipe(v.array(Ranking), v.minLength(2), v.maxLength(6)), winnerPlayerIds: v.pipe(v.array(PlayerIdSchema), v.maxLength(6)) });
@@ -45,6 +50,21 @@ const FinishedObject = v.strictObject({ ...Common, phase: v.literal("FINISHED"),
 
 type VisibleCity = v.InferOutput<typeof SelectionObject> | v.InferOutput<typeof ActionObject> | v.InferOutput<typeof FinishedObject>;
 function coherent(game: VisibleCity): boolean {
+  const v2 = game.rulesVersion === "city-rules-v2";
+  if (game.cardSetVersion !== (v2 ? "city-cardset-v2" : "city-cardset-v1") || (game.landmarkHistory !== undefined) !== v2) return false;
+  if (game.landmarkHistory !== undefined) {
+    if (game.landmarkHistory.length !== game.playerStates.length || !game.landmarkHistory.every((row, index) => row.playerId === game.playerStates[index]?.playerId)) return false;
+    for (const row of game.landmarkHistory) {
+      const owner = game.playerStates.find(player => player.playerId === row.playerId);
+      if (owner === undefined) return false;
+      const has = (id: string) => owner.builtBuildings.some(card => card.templateId === id);
+      if (has("CB-LAN-01") && !row.gardenUsed || has("CB-LAN-02") && !row.sundialUsed || has("CB-LAN-04") && !row.staircaseInitialized) return false;
+      if (!row.staircaseInitialized && (row.staircaseRemaining !== 0 || row.staircaseSpent !== 0 || row.lastDiscountRound !== null)) return false;
+      if (row.staircaseRemaining + row.staircaseSpent > 3 || (row.staircaseSpent === 0) !== (row.lastDiscountRound === null) ||
+        row.lastDiscountRound !== null && (row.lastDiscountRound > game.roundNumber || row.staircaseSpent > row.lastDiscountRound)) return false;
+      if (row.staircaseRemaining > 0 && (!has("CB-LAN-04") || owner.forfeited)) return false;
+    }
+  }
   const ids = game.playerStates.map(player => player.playerId);
   if (new Set(ids).size !== ids.length || ids.length !== game.seatOrder.length || !game.seatOrder.every(id => ids.includes(id)) || !ids.includes(game.leaderPlayerId)) return false;
   const eligible = game.playerStates.filter(player => !player.forfeited);
@@ -80,8 +100,14 @@ export const CityRoleFinishedProjectionV2Schema = v.pipe(FinishedObject, v.check
     const player = game.playerStates.find(entry => entry.playerId === row.playerId);
     if (player === undefined) return false;
     const complete = player.forfeited ? 0 : game.firstCompletion?.playerId === player.playerId ? 4 : player.builtBuildings.length >= 8 ? 2 : 0;
-    const diversity = !player.forfeited && new Set(player.builtBuildings.map(card => card.category)).size === 5 ? 3 : 0;
-    return row.buildingVP === player.scorePreview && row.buildingCount === player.builtBuildings.length && row.forfeited === player.forfeited && row.completionBonus === complete && row.diversityBonus === diversity && row.score === row.buildingVP + complete + diversity;
+    const categories = new Set(player.builtBuildings.map(card => card.category));
+    const ordinary = [...categories].filter(category => category !== "LANDMARK").length;
+    const v2 = game.rulesVersion === "city-rules-v2";
+    const has = (id: string) => player.builtBuildings.some(card => card.templateId === id);
+    const diversity = !player.forfeited && (categories.size === 5 || v2 && has("CB-LAN-05") && ordinary === 3) ? 3 : 0;
+    const landmark = v2 && !player.forfeited && has("CB-LAN-06") ? ordinary : 0;
+    return (row.landmarkBonus !== undefined) === v2 && (row.landmarkBonus ?? 0) === landmark &&
+      row.buildingVP === player.scorePreview && row.buildingCount === player.builtBuildings.length && row.forfeited === player.forfeited && row.completionBonus === complete && row.diversityBonus === diversity && row.score === row.buildingVP + complete + diversity + landmark;
   })) return false;
   if (!rankings.every((row, i) => {
     const prior = rankings[i - 1];

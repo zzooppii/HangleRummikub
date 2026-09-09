@@ -13,6 +13,7 @@ import {
   cityRoleOrder, cityTargetRoleOptions,
   type CityActionFeedback, type CityActionIntent, type CityUiCard,
 } from "./city-role-ui.js";
+import { cityLandmarkText } from "./city-landmarks.js";
 import { CityGameHelp } from "./CityGameHelp.js";
 import { useCitySound } from "./city-role-sound.js";
 import { CityBuildingArt, CityCategoryBadge, CityCategoryGuide, CityIcon, CityRoleEmblem, CitySkyline } from "./CityVisuals.js";
@@ -35,11 +36,13 @@ export type CityRolePlayingScreenProps = Readonly<{
   onGoHome: () => void;
 }>;
 
-export function CityBuildingFace({ card }: Readonly<{ card: CityUiCard }>) {
+export function CityBuildingFace({ card, rulesVersion = "city-rules-v1" }: Readonly<{ card: CityUiCard; rulesVersion?: string }>) {
+  const effect = cityLandmarkText(rulesVersion, card.templateId);
   return <>
     <CityBuildingArt category={card.category} /><CityCategoryBadge category={card.category} />
     <strong className="city-building-name">{card.name}</strong>
     <span className="city-building-value"><CityIcon name="coin" />금화 <b>{card.cost}</b><span>· {card.victoryPoints}점</span></span>
+    {effect ? <span className="city-landmark-effect" title={effect.detail}><strong>★ 특수 능력</strong>{effect.short}</span> : null}
   </>;
 }
 
@@ -97,7 +100,7 @@ function CityRoleAbility({ game, selfId, nickname, locked, onAction }: Readonly<
       <p>교체할 내 카드를 1장 이상 고르세요. 선택한 카드를 버린 뒤 같은 수만큼 뽑습니다.</p>
       <div className="city-card-grid">{game.privateState.hand.map(card => <button type="button" className={`city-building city-selectable${replacementIds.includes(card.cardId) ? " is-selected" : ""}`} key={card.cardId}
         aria-label={`${cityCardLabel(card)}, 교체 선택`} aria-pressed={replacementIds.includes(card.cardId)} disabled={disabled} onClick={() => setReplacementIds(ids => ids.includes(card.cardId) ? ids.filter(id => id !== card.cardId) : [...ids, card.cardId])}>
-        <CityBuildingFace card={card} /><span>{replacementIds.includes(card.cardId) ? "✓ 교체할 카드" : "교체하려면 선택"}</span>
+        <CityBuildingFace card={card} rulesVersion={game.rulesVersion} /><span>{replacementIds.includes(card.cardId) ? "✓ 교체할 카드" : "교체하려면 선택"}</span>
       </button>)}</div>
       <button type="button" className="secondary-button" disabled={disabled || replacementIds.length === 0} onClick={() => {
         if (disabled || replacementIds.length === 0) return;
@@ -117,7 +120,7 @@ function CityRoleAbility({ game, selfId, nickname, locked, onAction }: Readonly<
           const selected = destruction?.playerId === player.playerId && destruction.cardId === building.cardId;
           return <button type="button" className={`city-building city-selectable${selected ? " is-selected" : ""}`} key={building.cardId} disabled={disabled || !available.allowed}
             aria-label={`${nickname(player.playerId)}의 ${cityCardLabel(building)}, ${available.message}`} aria-pressed={selected} onClick={() => setDestruction({ playerId: player.playerId, cardId: building.cardId })}>
-            <CityBuildingFace card={building} /><span className="city-card-hint">{available.message}</span>
+            <CityBuildingFace card={building} rulesVersion={game.rulesVersion} /><span className="city-card-hint">{available.message}</span>
           </button>;
         })}</div>}
       </section>)}
@@ -158,7 +161,7 @@ export function CityRolePlayingScreen(props: CityRolePlayingScreenProps) {
 
   return <main className="app-shell city-shell city-playing-shell">
     <header className="city-header"><CitySkyline /><div className="city-header-title"><CityIcon name="civic" /><div><p className="eyebrow">비밀 도시 게임 · ROOM {room.roomCode}</p><h1>내 역할로, 함께 만드는 도시.</h1></div></div>
-      <div className="city-header-actions"><span className={`connection-chip ${props.connectionTone}`}>{props.connectionLabel}</span><CityGameHelp placement="PLAYING" />
+      <div className="city-header-actions"><span className={`connection-chip ${props.connectionTone}`}>{props.connectionLabel}</span><CityGameHelp placement="PLAYING" rulesVersion={game.rulesVersion} />
         <button type="button" className="text-button" aria-pressed={sound.enabled} onClick={sound.toggle}>사운드 {sound.enabled ? "켜짐" : "꺼짐"}</button>
         {!props.sessionReplaced ? <button type="button" className="text-button" disabled={props.roomLeavePending || props.actionPending || props.retryPending} onClick={props.onLeaveRoom}>{props.roomLeavePending ? "나가는 중…" : "방 나가기"}</button> : null}
       </div>
@@ -190,13 +193,13 @@ export function CityRolePlayingScreen(props: CityRolePlayingScreenProps) {
 
     {game.phase === "ROLE_ACTION" && myTurn && action !== undefined ? <section className="city-panel city-action-panel" aria-labelledby="city-action-heading"><div className="city-panel-heading"><div><h2 id="city-action-heading">{CITY_ROLE_HELP[game.window.activeRoleId].name}의 행동</h2><p>기본 획득 → 원하는 건설·능력 → 차례 마치기</p></div><span className="city-budget">건설 {action.buildingsBuilt}/{cityBuildLimit(game.window.activeRoleId)}</span></div>
       <div className="city-acquisition"><h3>1. 기본 획득</h3>{action.acquisition === "NOT_TAKEN" ? <><div className="city-acquisition-choices"><button type="button" className="primary-button" disabled={locked} onClick={() => props.onAction({ kind: "city:takeIncome", payload: {} })}><CityIcon name="coin" /><span>금화 2 받기</span></button><button type="button" className="secondary-button" disabled={locked} onClick={() => props.onAction({ kind: "city:drawBuildingCards", payload: {} })}><CityIcon name="cards" /><span>건물 카드 보기</span></button></div><p className="city-helper">카드는 최대 2장을 보고 1장을 가져옵니다.</p></> : <p className="city-acquisition-status">{action.acquisition === "PENDING" ? "카드 선택을 기다리는 중" : "✓ 기본 획득 완료"}</p>}</div>
-      {pendingCards !== undefined ? <section className="city-pending-choice" aria-labelledby="city-pending-heading"><h3 id="city-pending-heading">카드 1장을 선택하세요</h3><p>나에게만 보입니다. 선택하지 않은 카드는 덱 아래로 돌아갑니다. 선택 중에도 행동 시간은 계속 흐릅니다.</p><div className="city-card-grid">{pendingCards.map(card => <button type="button" className="city-building city-selectable" key={card.cardId} disabled={locked} aria-label={`${cityCardLabel(card)}, 손패에 넣기`} onClick={() => props.onAction({ kind: "city:chooseBuildingCard", payload: { cardId: card.cardId } })}><CityBuildingFace card={card} /><span className="city-card-cta">이 카드 가져오기</span></button>)}</div></section> : null}
+      {pendingCards !== undefined ? <section className="city-pending-choice" aria-labelledby="city-pending-heading"><h3 id="city-pending-heading">카드 1장을 선택하세요</h3><p>나에게만 보입니다. 선택하지 않은 카드는 덱 아래로 돌아갑니다. 선택 중에도 행동 시간은 계속 흐릅니다.</p><div className="city-card-grid">{pendingCards.map(card => <button type="button" className="city-building city-selectable" key={card.cardId} disabled={locked} aria-label={`${cityCardLabel(card)}, 손패에 넣기`} onClick={() => props.onAction({ kind: "city:chooseBuildingCard", payload: { cardId: card.cardId } })}><CityBuildingFace card={card} rulesVersion={game.rulesVersion} /><span className="city-card-cta">이 카드 가져오기</span></button>)}</div></section> : null}
       <div className="city-ability-step"><h3>2. 역할 능력</h3><CityRoleAbility key={uiIdentity} game={game} selfId={self.playerId} nickname={nickname} locked={locked} onAction={props.onAction} /></div>
       <div className="city-construction-step"><CityIcon name="hammer" /><div><h3>3. 건설</h3><p className="city-helper">내 손패에서 카드를 고른 뒤 아래에서 건설하세요. 능력과 건설은 선택 사항입니다.</p></div></div>
     </section> : null}
 
-    </div><CityCategoryGuide /></div>
-    <section className="city-panel city-cities" aria-labelledby="city-cities-heading"><div className="city-panel-heading"><div><h2 id="city-cities-heading">함께 만드는 도시</h2><p>건물 8개가 목표 · 건물 점수와 완성·다양성 보너스로 최종 순위를 정합니다.</p></div><span>선도자 {nickname(game.leaderPlayerId)}</span></div>
+    </div><CityCategoryGuide rulesVersion={game.rulesVersion} /></div>
+    <section className="city-panel city-cities" aria-labelledby="city-cities-heading"><div className="city-panel-heading"><div><h2 id="city-cities-heading">함께 만드는 도시</h2><p>{game.rulesVersion === "city-rules-v2" ? "건물 8개가 목표 · 건물 점수와 완성·다양성·명소 보너스로 순위를 정합니다." : "건물 8개가 목표 · 건물 점수와 완성·다양성 보너스로 최종 순위를 정합니다."}</p></div><span>선도자 {nickname(game.leaderPlayerId)}</span></div>
       <div className="city-city-grid">{[...game.playerStates].sort((left, right) => Number(right.playerId === self.playerId) - Number(left.playerId === self.playerId)).map(state => {
         const participant = room.players.find(entry => entry.playerId === state.playerId);
         const mine = state.playerId === self.playerId;
@@ -204,7 +207,7 @@ export function CityRolePlayingScreen(props: CityRolePlayingScreenProps) {
         return <article className={`city-public-city${mine ? " is-mine" : ""}${state.playerId === game.window.activePlayerId ? " is-active" : ""}`} key={state.playerId} aria-label={`${nickname(state.playerId)}의 공개 도시`}><header><div><h3>{nickname(state.playerId)}{mine ? " · 나" : ""}{state.playerId === game.window.activePlayerId ? <span className="city-active-label">현재 차례</span> : null}</h3><p>{state.forfeited ? "기권" : participant?.connectionStatus === "CONNECTED" ? "접속 중" : "연결 끊김"}{game.protectedPlayerIds.includes(state.playerId) ? " · 보호 중" : ""}</p></div><strong>{state.builtBuildings.length}<small>/8 건물</small></strong></header>
           <p className="city-public-stats">금화 {state.gold} · 손패 {state.handCount}장 · 건물 점수 {state.scorePreview}점</p>
           {publicRoles.length > 0 ? <p className="city-revealed-roles">공개된 역할: {publicRoles.map(role => `${cityRoleLabel(role.roleId)}${role.kind === "DISABLED" ? " (봉쇄)" : ""}`).join(" · ")}</p> : null}
-          {state.builtBuildings.length === 0 ? <div className="city-empty-city"><CitySkyline /><p>아직 건물이 없어요.<br />첫 건물을 기다리는 도시입니다.</p></div> : <div className={`city-card-grid city-built-grid${state.builtBuildings.length >= 5 ? " is-dense" : ""}`}>{state.builtBuildings.map(card => <div className="city-building is-built" key={card.cardId} aria-label={`${cityCardLabel(card)}, 건설됨`}><CityBuildingFace card={card} /><span className="city-built-label">건설됨</span></div>)}</div>}
+          {state.builtBuildings.length === 0 ? <div className="city-empty-city"><CitySkyline /><p>아직 건물이 없어요.<br />첫 건물을 기다리는 도시입니다.</p></div> : <div className={`city-card-grid city-built-grid${state.builtBuildings.length >= 5 ? " is-dense" : ""}`}>{state.builtBuildings.map(card => <div className="city-building is-built" key={card.cardId} aria-label={`${cityCardLabel(card)}, 건설됨`}><CityBuildingFace card={card} rulesVersion={game.rulesVersion} /><span className="city-built-label">건설됨</span>{game.rulesVersion === "city-rules-v2" && (card.templateId === "CB-LAN-01" || card.templateId === "CB-LAN-02") ? <span className="city-landmark-status">최초 건설 보상 사용 완료</span> : null}{game.rulesVersion === "city-rules-v2" && card.category === "LANDMARK" && state.forfeited ? <span className="city-landmark-status">기권 · 효과 비활성</span> : null}{game.rulesVersion === "city-rules-v2" && card.templateId === "CB-LAN-04" ? <span className="city-landmark-status">남은 할인 {game.landmarkHistory?.find(row => row.playerId === state.playerId)?.staircaseRemaining ?? 0}/3{game.landmarkHistory?.find(row => row.playerId === state.playerId)?.lastDiscountRound === game.roundNumber ? " · 이번 라운드 사용" : ""}</span> : null}</div>)}</div>}
         </article>;
       })}</div>
     </section>
@@ -213,7 +216,7 @@ export function CityRolePlayingScreen(props: CityRolePlayingScreenProps) {
       {game.privateState.hand.length === 0 ? <p className="city-empty-city">손패가 없습니다. 내 차례의 기본 획득에서 건물 카드를 볼 수 있습니다.</p> : <div className="city-card-grid city-hand-grid">{game.privateState.hand.map(card => {
         const preview = cityBuildPreview(game, self.playerId, card);
         return <button type="button" className={`city-building city-selectable${selectedCardId === card.cardId ? " is-selected" : ""}`} key={card.cardId} disabled={locked}
-          aria-label={`${cityCardLabel(card)}, 내 손패, ${preview.message}`} aria-pressed={selectedCardId === card.cardId} onClick={() => setSelectedCardId(id => id === card.cardId ? null : card.cardId)}><CityBuildingFace card={card} /><span className="city-card-hint">{preview.message}</span></button>;
+          aria-label={`${cityCardLabel(card)}, 내 손패, ${preview.message}`} aria-pressed={selectedCardId === card.cardId} onClick={() => setSelectedCardId(id => id === card.cardId ? null : card.cardId)}><CityBuildingFace card={card} rulesVersion={game.rulesVersion} /><span className="city-card-hint">{preview.message}</span></button>;
       })}</div>}
 
     </section>
@@ -224,7 +227,7 @@ export function CityRolePlayingScreen(props: CityRolePlayingScreenProps) {
       <div className="city-dock-buttons"><button type="button" className="secondary-button" disabled={locked || buildPreview?.allowed !== true} onClick={() => {
         if (locked || selectedCard === null || buildPreview?.allowed !== true) return;
         props.onAction({ kind: "city:build", payload: { cardId: selectedCard.cardId } });
-      }}><CityIcon name="hammer" />{selectedCard === null ? "건물 건설" : `금화 ${selectedCard.cost} 내고 건설`}</button>
+      }}><CityIcon name="hammer" />{selectedCard === null ? "건물 건설" : `금화 ${cityBuildPreview(game, self.playerId, selectedCard).paidCost} 내고 건설`}</button>
       {myTurn && game.phase === "ROLE_ACTION" ? <button type="button" className="primary-button city-end-turn" disabled={locked || action?.acquisition !== "COMPLETE"} onClick={() => {
         if (locked || game.phase !== "ROLE_ACTION" || action?.acquisition !== "COMPLETE") return;
         props.onAction({ kind: "city:endTurn", payload: {} });

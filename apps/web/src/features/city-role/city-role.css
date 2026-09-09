@@ -237,3 +237,7 @@
   .city-target-roles { gap: 5px; }
   .city-choice { padding: 9px; font-size: .82rem; }
 }
+.city-shell .city-landmark-effect { display: grid; gap: .25rem; padding: .45rem; margin-top: .35rem; border: 1px solid #78967b; border-radius: .5rem; background: #edf4df; color: #25432c; font-size: .78rem; line-height: 1.45; white-space: normal; overflow-wrap: anywhere; }
+.city-shell .city-landmark-effect strong { font-size: .73rem; color: #47622c; }
+.city-shell .city-landmark-status { display: block; padding: .25rem; color: #25432c; font-size: .75rem; }
+.city-landmark-guide { padding: 1rem; border-radius: .75rem; background: #edf4df; color: #25432c; }

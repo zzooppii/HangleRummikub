@@ -89,7 +89,7 @@ export function CityBuildingArt({ category }: Readonly<{ category: Category }>) 
 export function CitySkyline() {
   return <svg className="city-skyline" viewBox="0 0 600 100" aria-hidden="true" focusable="false"><path d="M0 98V78h32V56l18-24 18 24v42h22V67h32V42l24-22 24 22v56h25V70l18-13 18 13v28h25V43h14V22l16-22 16 22v21h14v55h28V58l23-24 23 24v40h23V72h28V53l19-24 19 24v45h32V73l25-21 25 21v25h35V52l16-22 16 22v46h26" fill="currentColor"/></svg>;
 }
-export function CityCategoryGuide() {
+export function CityCategoryGuide({ rulesVersion = "city-rules-v1" }: Readonly<{ rulesVersion?: string }>) {
   const [expanded, setExpanded] = useState(false);
   useEffect(() => {
     const viewport = window.matchMedia("(min-width: 1024px)");
@@ -98,7 +98,7 @@ export function CityCategoryGuide() {
     viewport.addEventListener("change", update);
     return () => viewport.removeEventListener("change", update);
   }, []);
-  return <aside className="city-category-guide" aria-label="건물 카테고리"><details open={expanded} onToggle={event => setExpanded(event.currentTarget.open)}><summary>건물 카테고리 <span>5분류 알아보기</span></summary><div className="city-category-rows">{(Object.keys(CITY_CATEGORY_LABELS) as Category[]).map(category => <div className={`city-category-row city-category-${category.toLowerCase()}`} key={category}><div><CityCategoryBadge category={category}/><p>{CITY_CATEGORY_HINTS[category]}</p></div><CityBuildingArt category={category}/></div>)}</div><p className="city-helper">최종 도시에 5분류를 모두 지으면 다양성 +3점. 건물 자체에는 특수 능력이 없습니다.</p></details></aside>;
+  return <aside className="city-category-guide" aria-label="건물 카테고리"><details open={expanded} onToggle={event => setExpanded(event.currentTarget.open)}><summary>건물 카테고리 <span>5분류 알아보기</span></summary><div className="city-category-rows">{(Object.keys(CITY_CATEGORY_LABELS) as Category[]).map(category => <div className={`city-category-row city-category-${category.toLowerCase()}`} key={category}><div><CityCategoryBadge category={category}/><p>{CITY_CATEGORY_HINTS[category]}</p></div><CityBuildingArt category={category}/></div>)}</div><p className="city-helper">{rulesVersion === "city-rules-v2" ? "명소는 각각 고유한 특수 능력을 가진 건물입니다. 다른 분류에는 특수 능력이 없으며, 명소도 5분류 다양성에 포함됩니다." : "최종 도시에 5분류를 모두 지으면 다양성 +3점. 건물 자체에는 특수 능력이 없습니다."}</p></details></aside>;
 }
 export function CityRoleLegend() {
   return <div className="city-guide-role-grid">{(Object.keys(CITY_ROLE_HELP) as CityRoleId[]).map(roleId => <div key={roleId}><CityRoleEmblem roleId={roleId}/><div><strong>{CITY_ROLE_HELP[roleId].name}</strong><p>{CITY_ROLE_HELP[roleId].summary}</p></div></div>)}</div>;

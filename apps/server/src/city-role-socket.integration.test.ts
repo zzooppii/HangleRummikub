@@ -161,9 +161,16 @@ test("raw CITY two-player create/join/start/draft/acquire/build/round/resume pre
     const affordable = view.game.privateState.hand.find((card) => card.cost <= player.gold && !player.builtBuildings.some((built) => built.templateId === card.templateId));
     if (affordable !== undefined) {
       const beforeGold = player.gold;
+      const history = view.game.landmarkHistory?.find(row => row.playerId === actor.playerId);
+      const discount = view.game.rulesVersion === "city-rules-v2" && history !== undefined &&
+        history.staircaseRemaining > 0 && history.lastDiscountRound !== view.game.roundNumber &&
+        player.builtBuildings.some(card => card.templateId === "CB-LAN-04") &&
+        affordable.category !== "LANDMARK" && affordable.cost >= 2 ? 1 : 0;
+      const refund = view.game.rulesVersion === "city-rules-v2" && history !== undefined &&
+        !history.gardenUsed && affordable.templateId === "CB-LAN-01" ? 1 : 0;
       view = h.playing(await h.action(actor.client, "city:build", { cardId: affordable.cardId }, h.identity(view)));
       assert.ok(view.game.playerStates.find((entry) => entry.playerId === actor.playerId)!.builtBuildings.some((card) => card.cardId === affordable.cardId));
-      assert.equal(view.game.playerStates.find((entry) => entry.playerId === actor.playerId)!.gold, beforeGold - affordable.cost);
+      assert.equal(view.game.playerStates.find((entry) => entry.playerId === actor.playerId)!.gold, beforeGold - affordable.cost + discount + refund);
       builds += 1;
     }
     view = h.playing(await h.action(actor.client, "city:endTurn", {}, h.identity(view)));

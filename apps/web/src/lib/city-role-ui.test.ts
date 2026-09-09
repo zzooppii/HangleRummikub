@@ -17,6 +17,9 @@ import {
 } from "../features/city-role/city-role-ui.js";
 import { citySelectionFixture, cityActionFixture, cityFinishedFixture } from "./city-role-test-fixtures.js";
 import { CityBuildingArt, CityCategoryGuide, CityRoleEmblem, CITY_CATEGORY_HINTS } from "../features/city-role/CityVisuals.js";
+import { CityBuildingFace } from "../features/city-role/CityRolePlayingScreen.js";
+import { CITY_LANDMARK_TEXT, cityLandmarkText } from "../features/city-role/city-landmarks.js";
+import { CityHelpDialog } from "../features/city-role/CityGameHelp.js";
 
 function playingProps(snapshot = citySelectionFixture()): CityRolePlayingScreenProps {
   return { snapshot, connectionLabel: "연결됨", connectionTone: "connected", errorMessage: null,
@@ -49,6 +52,52 @@ function ownCard(snapshot = cityActionFixture()) {
   assert.ok(card);
   return card;
 }
+
+function landmarkFixture() {
+  const snapshot = cityActionFixture();
+  const staircase = { cardId: "public-staircase", templateId: "CB-LAN-04", name: "바람계단", category: "LANDMARK", cost: 4, victoryPoints: 4 };
+  const card = { cardId: "own-general", templateId: "CB-CIV-02", name: "공론마당", category: "CIVIC", cost: 2, victoryPoints: 2 };
+  return parse(CityRolePlayingPlatformSnapshotV2Schema, { ...snapshot, game: { ...snapshot.game,
+    rulesVersion: "city-rules-v2", cardSetVersion: "city-cardset-v2",
+    landmarkHistory: snapshot.game.playerStates.map(p => ({ playerId: p.playerId, gardenUsed: false, sundialUsed: false,
+      staircaseInitialized: p.playerId === snapshot.self.playerId, staircaseRemaining: p.playerId === snapshot.self.playerId ? 3 : 0,
+      staircaseSpent: 0, lastDiscountRound: null })),
+    playerStates: snapshot.game.playerStates.map(p => p.playerId === snapshot.self.playerId ? { ...p, gold: 1, builtBuildings: [staircase], scorePreview: 4 } : p),
+    privateState: { ...snapshot.game.privateState, hand: [card] },
+  } });
+}
+test("CITY Landmark v2 cards have six explicit effects while v1 and ordinary cards remain plain", () => {
+  assert.equal(Object.keys(CITY_LANDMARK_TEXT).length, 6);
+  const card = parse(CityPublicBuildingSchema, { cardId: "garden", templateId: "CB-LAN-01", name: "빗물정원", category: "LANDMARK", cost: 1, victoryPoints: 1 });
+  assert.match(renderToStaticMarkup(createElement(CityBuildingFace, { card, rulesVersion: "city-rules-v2" })), /★ 특수 능력/u);
+  assert.doesNotMatch(renderToStaticMarkup(createElement(CityBuildingFace, { card, rulesVersion: "city-rules-v1" })), /특수 능력/u);
+  assert.equal(cityLandmarkText("city-rules-v2", "CB-CIV-01"), undefined);
+});
+test("CITY Landmark v2 staircase preview uses public budget and actual paid cost without changing printed VP", () => {
+  const view = landmarkFixture(), card = ownCard(view), preview = cityBuildPreview(view.game, view.self.playerId, card);
+  assert.equal(preview.allowed, true); assert.equal(preview.paidCost, 1); assert.equal(card.victoryPoints, 2);
+  assert.match(preview.message, /바람계단 할인/u);
+  const spent = { ...view.game, landmarkHistory: view.game.landmarkHistory!.map(row => ({ ...row, lastDiscountRound: view.game.roundNumber })) };
+  assert.equal(cityBuildPreview(spent, view.self.playerId, card).allowed, false);
+  const empty = { ...view.game, landmarkHistory: view.game.landmarkHistory!.map(row => ({ ...row, staircaseRemaining: 0 })) };
+  assert.equal(cityBuildPreview(empty, view.self.playerId, card).paidCost, 2);
+  assert.equal(cityBuildPreview(view.game, view.self.playerId, { ...card, category: "LANDMARK" }).paidCost, 2);
+});
+test("CITY Landmark v2 public card budget renders and reconnect preserves the same display", () => {
+  const view = landmarkFixture(), html = renderPlaying(view);
+  assert.match(html, /남은 할인 3\/3/u); assert.match(html, /명소는 각각 고유한 특수 능력/u);
+  assert.doesNotMatch(html, /건물 자체에는 특수 능력이 없습니다/u);
+  const restored = parse(CityRolePlayingPlatformSnapshotV2Schema, JSON.parse(JSON.stringify(view)));
+  assert.match(renderPlaying(restored), /남은 할인 3\/3/u);
+  assert.equal(restored.game.privateState.hand.length, 1);
+});
+test("CITY Landmark v2 Guide explains one-time, destruction and real-category exclusions with v1 guide preserved", () => {
+  const props = { tutorial: false, onTutorial() {}, onDismiss() {}, onFinish() {} };
+  const v2 = renderToStaticMarkup(createElement(CityHelpDialog, { ...props, rulesVersion: "city-rules-v2" }));
+  assert.match(v2, /게임 전체 최대 3회/u); assert.match(v2, /가상 분류는 제외/u); assert.match(v2, /재건설/u);
+  const v1 = renderToStaticMarkup(createElement(CityHelpDialog, { ...props, rulesVersion: "city-rules-v1" }));
+  assert.doesNotMatch(v1, /여섯 가지 특수/u); assert.match(v1, /건물 자체에는 특수 능력이 없습니다/u);
+});
 
 test("CITY visual dock owns the only end-turn and build buttons after the hand and city board", () => {
   const html = renderPlaying(cityActionFixture());

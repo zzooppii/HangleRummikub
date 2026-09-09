@@ -1,5 +1,6 @@
 import { CITY_CATEGORIES, getCityTemplate, validateCityCards } from "./cardset-v1.js";
 import type { CityFinishReason, CityGameResult, CityGameState, CityRanking } from "./game-state.js";
+import { cityLandmarkScoring } from "./landmarks-v2.js";
 
 /** CITY scoring only: no clock, platform revision, tie-break or shared Result model. */
 export function calculateCityResult(state: CityGameState, reason: CityFinishReason): CityGameResult {
@@ -34,10 +35,12 @@ export function calculateCityResult(state: CityGameState, reason: CityFinishReas
       throw new Error("CITY result city repeats a building template.");
     const buildingVP = templates.reduce((sum, template) => sum + template.victoryPoints, 0);
     const completionBonus = player.forfeited ? 0 : state.firstCompletion?.playerId === player.playerId ? 4 : player.city.length >= 8 ? 2 : 0;
-    const diversityBonus = !player.forfeited && CITY_CATEGORIES.every(category => templates.some(template => template.category === category)) ? 3 : 0;
+    const special = state.rulesVersion === "city-rules-v2" ? cityLandmarkScoring(templates, player.forfeited) : null;
+    const diversityBonus = special?.diversityBonus ?? (!player.forfeited && CITY_CATEGORIES.every(category => templates.some(template => template.category === category)) ? 3 : 0);
     return {
       playerId: player.playerId, buildingVP, completionBonus, diversityBonus,
-      score: buildingVP + completionBonus + diversityBonus,
+      ...(special === null ? {} : { landmarkBonus: special.landmarkBonus }),
+      score: buildingVP + completionBonus + diversityBonus + (special?.landmarkBonus ?? 0),
       buildingCount: player.city.length, forfeited: player.forfeited,
     };
   }).sort((left, right) => Number(left.forfeited) - Number(right.forfeited) ||

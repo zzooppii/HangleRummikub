@@ -1,6 +1,7 @@
 import type { CityBuildingCard } from "./cardset-v1.js";
 import type { BuildingCardId, CityActionId, CityGameId, CityPlayerId } from "./identity.js";
 import type { CityRoleId } from "./role.js";
+import type { CityLandmarkHistory } from "./landmarks-v2.js";
 
 export type CityPlayerState = Readonly<{
   playerId: CityPlayerId;
@@ -85,6 +86,7 @@ export type CityRanking = Readonly<{
   buildingVP: number;
   completionBonus: number;
   diversityBonus: number;
+  landmarkBonus?: number;
   buildingCount: number;
   forfeited: boolean;
   winner: boolean;
@@ -96,8 +98,10 @@ export type CityGameResult = Readonly<{
 
 type CityStateBase = Readonly<{
   gameId: CityGameId;
-  rulesVersion: "city-rules-v1";
-  cardSetVersion: "city-cardset-v1";
+  rulesVersion: "city-rules-v1" | "city-rules-v2";
+  cardSetVersion: "city-cardset-v1" | "city-cardset-v2";
+  // Required exclusively for v2 by the strict state validator. Never synthesized on restore.
+  landmarkHistory?: readonly CityLandmarkHistory[];
   roleSetVersion: "city-roles-v1";
   cards: readonly CityBuildingCard[];
   players: readonly CityPlayerState[];
@@ -118,6 +122,7 @@ export type CityGameState = PlayingCityGameState | FinishedCityGameState;
 export function cloneCityGameState(state: CityGameState): CityGameState {
   const base = {
     ...state,
+    ...(state.landmarkHistory === undefined ? {} : { landmarkHistory: Object.freeze(state.landmarkHistory.map(row => Object.freeze({ ...row }))) }),
     cards: Object.freeze(state.cards.map(card => Object.freeze({ ...card }))),
     players: Object.freeze(state.players.map(player => Object.freeze({ ...player,
       hand: Object.freeze([...player.hand]), city: Object.freeze([...player.city]),

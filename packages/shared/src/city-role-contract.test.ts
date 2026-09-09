@@ -54,6 +54,31 @@ function finished() {
   } };
 }
 
+test("CITY Landmark v2 versions require public history and reject silent v1/mixed interpretation", () => {
+  const base = selection();
+  const landmarkHistory = base.game.playerStates.map(p => ({ playerId: p.playerId, gardenUsed: false, sundialUsed: false,
+    staircaseInitialized: false, staircaseRemaining: 0, staircaseSpent: 0, lastDiscountRound: null }));
+  const game = { ...base.game, rulesVersion: "city-rules-v2", cardSetVersion: "city-cardset-v2", landmarkHistory };
+  assert.equal(v.safeParse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game }).success, true);
+  for (const invalid of [ { ...base.game, rulesVersion: "city-rules-v2" }, { ...base.game, landmarkHistory },
+    { ...game, cardSetVersion: "city-cardset-v1" }, { ...game, landmarkHistory: [] },
+    { ...game, landmarkHistory: landmarkHistory.map(row => ({ ...row, staircaseRemaining: 3 })) },
+    { ...game, landmarkHistory: landmarkHistory.map(row => ({ ...row, hiddenRole: "CR-01" })) } ])
+    assert.equal(v.safeParse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: invalid }).success, false);
+});
+test("CITY Landmark v2 result requires a bounded explicit bonus; v1 refuses the new bonus field", () => {
+  const base = finished();
+  const landmarkHistory = base.game.playerStates.map(p => ({ playerId: p.playerId, gardenUsed: false, sundialUsed: false,
+    staircaseInitialized: false, staircaseRemaining: 0, staircaseSpent: 0, lastDiscountRound: null }));
+  const game = { ...base.game, rulesVersion: "city-rules-v2", cardSetVersion: "city-cardset-v2", landmarkHistory,
+    result: { ...base.game.result, rankings: base.game.result.rankings.map(row => ({ ...row, landmarkBonus: 0 })) } };
+  assert.equal(v.safeParse(CityRoleFinishedPlatformSnapshotV2Schema, { ...base, game }).success, true);
+  assert.equal(v.safeParse(CityRoleFinishedPlatformSnapshotV2Schema, { ...base, game: { ...game, result: base.game.result } }).success, false);
+  assert.equal(v.safeParse(CityRoleFinishedPlatformSnapshotV2Schema, { ...base, game: { ...base.game, result: game.result } }).success, false);
+  assert.equal(v.safeParse(CityRoleFinishedPlatformSnapshotV2Schema, { ...base, game: { ...game, result: { ...game.result,
+    rankings: game.result.rankings.map(row => ({ ...row, landmarkBonus: 5, score: 5 })) } } }).success, false);
+});
+
 test("CITY is the fourth explicit capability while absent capability remains Hangul-only", () => {
   assert.equal(v.safeParse(GameTypeSchema, "CITY_ROLE").success, true);
   assert.deepEqual(resolveSupportedGameTypesCapability({}), { ok: true, mode: "LEGACY_DEFAULT", supportedGameTypes: ["HANGUL_TILE"] });

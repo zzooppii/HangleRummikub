@@ -60,7 +60,7 @@ export class CityRoleStartService {
     const shuffledCards = shuffleFrozen(cards.map(card => card.cardId), random);
     const gameId = this.#deps.idGenerator.generateGameId();
     const actionId = parseCityActionId(this.#deps.idGenerator.generateTurnId());
-    const state = createInitialCityGameState({ gameId: parseCityGameId(gameId), playerIds, seatOrder, cards,
+    const state = createInitialCityGameState({ rulesVersion: "city-rules-v2", gameId: parseCityGameId(gameId), playerIds, seatOrder, cards,
       initialHands: playerIds.map((playerId, index) => ({ playerId, cardIds: shuffledCards.slice(index * 4, index * 4 + 4) })),
       deck: shuffledCards.slice(playerIds.length * 4), actionId, roleOrder: shuffleFrozen(CITY_ROLE_IDS, random) });
     const game: CityRoleStoredGame = Object.freeze({ gameId, state, gameRevision: parse(GameRevisionSchema, 0),

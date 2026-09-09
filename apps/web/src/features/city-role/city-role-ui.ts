@@ -48,23 +48,28 @@ export function cityBuildLimit(roleId: CityRoleId): number {
   return roleId === "CR-07" ? 3 : 1;
 }
 
-export function cityBuildPreview(game: CityRolePlayingProjectionV2, playerId: PlayerId, card: CityUiCard): Readonly<{ allowed: boolean; message: string; missingGold: number }> {
+export function cityBuildPreview(game: CityRolePlayingProjectionV2, playerId: PlayerId, card: CityUiCard): Readonly<{ allowed: boolean; message: string; missingGold: number; paidCost: number }> {
   const player = game.playerStates.find(candidate => candidate.playerId === playerId);
-  const missingGold = Math.max(0, card.cost - (player?.gold ?? 0));
-  const reject = (message: string) => ({ allowed: false, message, missingGold });
+  const history = game.landmarkHistory?.find(row => row.playerId === playerId);
+  const discount = game.rulesVersion === "city-rules-v2" && history !== undefined && history.staircaseRemaining > 0 &&
+    history.lastDiscountRound !== game.roundNumber && player?.builtBuildings.some(building => building.templateId === "CB-LAN-04") &&
+    card.category !== "LANDMARK" && card.cost >= 2 ? 1 : 0;
+  const paidCost = card.cost - discount;
+  const missingGold = Math.max(0, paidCost - (player?.gold ?? 0));
+  const reject = (message: string) => ({ allowed: false, message, missingGold, paidCost });
   if (player === undefined || player.forfeited) return reject("기권한 참가자는 건설할 수 없습니다.");
   if (!game.privateState.hand.some(candidate => candidate.cardId === card.cardId)) return reject("내 손패에서 건물을 선택하세요.");
   if (player.builtBuildings.some(candidate => candidate.templateId === card.templateId)) return reject("같은 건물은 내 도시에 두 번 지을 수 없습니다.");
-  if (missingGold > 0) return reject(`금화 ${missingGold} 부족 · 비용 ${card.cost} / 보유 ${player.gold}`);
+  if (missingGold > 0) return reject(`금화 ${missingGold} 부족 · 비용 ${paidCost} / 보유 ${player.gold}`);
   if (game.phase !== "ROLE_ACTION" || game.window.activePlayerId !== playerId || game.privateState.action === undefined) return reject("내 역할 차례에 건설할 수 있습니다.");
   if (game.privateState.action.acquisition !== "COMPLETE") return reject("먼저 금화 또는 건물 카드 획득을 마치세요.");
   if (game.privateState.action.buildingsBuilt >= cityBuildLimit(game.window.activeRoleId)) return reject("이번 역할의 건설 한도를 모두 사용했습니다.");
-  return { allowed: true, missingGold: 0, message: `건설 가능 · 금화 ${card.cost} 지불` };
+  return { allowed: true, missingGold: 0, paidCost, message: `건설 가능 · 금화 ${paidCost} 지불${discount ? " · 바람계단 할인" : ""}` };
 }
 
 /** Public target preview only; destruction legality and payment remain server-owned. */
 export function cityDestroyPreview(game: CityRolePlayingProjectionV2, actorId: PlayerId, target: CityUiPlayer, card: CityUiCard): Readonly<{ allowed: boolean; cost: number; message: string }> {
-  const cost = Math.max(0, card.cost - 1);
+  const cost = Math.max(0, card.cost - 1) + (game.rulesVersion === "city-rules-v2" && card.templateId === "CB-LAN-03" ? 1 : 0);
   const reject = (message: string) => ({ allowed: false, cost, message });
   if (target.playerId === actorId) return reject("내 도시는 파괴할 수 없습니다.");
   if (target.forfeited) return reject("기권한 참가자의 도시는 유지됩니다.");

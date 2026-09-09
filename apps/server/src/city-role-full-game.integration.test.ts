@@ -160,6 +160,9 @@ for (const count of [2, 4, 6] as const) test(`CITY ${count}-player complete appl
   const completedDraftRounds = new Set<number>();
   let lastAccepted: Readonly<{ command: CityActionInput; move: BotMove; result: CityMutationResult }> | null = null;
   const beginning = await h.read();
+  assert.equal(beginning.game.state.rulesVersion, "city-rules-v2");
+  assert.equal(beginning.game.state.cardSetVersion, "city-cardset-v2");
+  assert.equal(beginning.game.state.roleSetVersion, "city-roles-v1");
   const expectedCards = beginning.game.state.cards.map(card => card.cardId);
   const seatOrder = beginning.game.state.seatOrder;
 
@@ -296,8 +299,12 @@ for (const count of [2, 4, 6] as const) test(`CITY ${count}-player complete appl
     });
     const buildingVP: number = templates.reduce((sum, template) => sum + template.victoryPoints, 0);
     const completionBonus: number = state.firstCompletion.playerId === player.playerId ? 4 : player.city.length >= 8 ? 2 : 0;
-    const diversityBonus: number = new Set(templates.map(template => template.category)).size === 5 ? 3 : 0;
-    assert.equal(entry.score, buildingVP + completionBonus + diversityBonus);
+    const categories = new Set(templates.map(template => template.category));
+    const ordinaryCount = [...categories].filter(category => category !== "LANDMARK").length;
+    const diversityBonus: number = categories.size === 5 || ordinaryCount === 3 && templates.some(template => template.templateId === "CB-LAN-05") ? 3 : 0;
+    const landmarkBonus = templates.some(template => template.templateId === "CB-LAN-06") ? ordinaryCount : 0;
+    assert.equal(entry.landmarkBonus, landmarkBonus);
+    assert.equal(entry.score, buildingVP + completionBonus + diversityBonus + landmarkBonus);
     assert.equal(entry.buildingVP, buildingVP);
     assert.equal(entry.completionBonus, completionBonus);
     assert.equal(entry.diversityBonus, diversityBonus);
