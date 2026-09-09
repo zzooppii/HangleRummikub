@@ -1,0 +1,21 @@
+# SNEAKY_LUNCH privacy and protocol
+
+P21A confirmed contract direction. V2-only; no V1 projection or fake rack/turn owner.
+
+| Information | Self | Other participants | Server |
+|---|---|---|---|
+| Settings, nickname, presence, progress, caught/forfeited, result | yes | yes | yes |
+| Current teacher state/revision | yes | yes | yes |
+| Initial countdown end | yes | yes | yes |
+| Future teacher deadline/outcome/pattern/randomness | no | no | yes |
+| Session verification/idempotency/storage/scheduler metadata | no | no | yes |
+
+Credentials remain opaque, only in existing credential requests; never URL/log/broadcast. Projection explicitly whitelists public fields, not spreads from canonical state. FINISHED does not reveal hidden teacher history/plans.
+
+Concrete commands: `sneaky:configure` (Host, Lobby, expected room revision, bounded box count/difficulty); `sneaky:eat` (current primary participant, game identity, seen teacher revision, requestId); `sneaky:rematch` (Host, Finished, exact room/game identity/revision). Existing `game:start` starts the game. Payload schemas strict and bounded. Wrong-game/no binding/secondary/stale request fail closed. No client timestamps or requested bite amount.
+
+Public snapshot branches: LOBBY; PLAYING/COUNTDOWN; PLAYING/CLASSROOM; FINISHED. Countdown may expose its start signal deadline; CLASSROOM cannot expose any teacher deadline. Public gameRevision orders snapshots; teacherStateRevision fences fairness. A client that saw BOARD but reaches a later WATCHING revision receives no bite and no catch. A current danger revision catches before rate-limit consideration. Server authoritative order is the Room lane.
+
+Local action success feedback waits for canonical acceptance; no replay on refresh/reconnect. Caught/public messages reveal only existing public status/progress. Result has unique nullable winner, reason and final participant progress/status, no score authority.
+
+Required audits: recursive forbidden future-plan keys; all phase snapshots; malformed payloads; old-game/replay conflicts; cross-game rejection; transition-vs-tap/forfeit-vs-resume/Host-vs-resume races. UI hides numeric bite labels by product choice, not by a privacy guarantee: canonical progress remains public.
