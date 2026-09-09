@@ -12,6 +12,12 @@
 
 ## 저장 / 공개 / 호환
 
+### 3인 규칙 재확인 — 2026-09-09 사용자 첨부 기준
+
+3인은 기존 구현과 첨부 흐름이 동일하다. 8장 중 처음 1장을 비공개 제외하고, 선도자부터 A→B→C→A→B→C 순서로 각각 7/6/5/4/3/2장 중 한 장을 고른다. 마지막 남은 한 장은 서버 내부 `unselected`에 비공개로 보관하며 role owner를 배정하지 않는다. 공개 제외 0장, 배정 6장, 비공개 제외 총 2장이다. 2인과 달리 매 선택마다 추가 discard를 요구하지 않는다.
+
+45초 timeout은 기존대로 available 중 server random으로 1장 선택하며, 마지막 선택이면 나머지 한 장을 자동 비공개 제외한다. Gameplay/server/protocol 변경은 필요 없으며 exact sequence·마지막 timeout·복원/replay 테스트와 Game Guide를 보강한다. 첨부 화면은 사용자 요구 기준으로 사용하며 공식 원문을 새로 검증했다고 주장하지 않는다.
+
 기존 저장판을 조용히 재해석하지 않는다. 새 production game은 `roleDraftVersion: city-draft-v2`를 저장한다. 이 필드가 없는 v1/v2 저장판은 이전 draft 그대로 진행한다. `city-rules-v2`, `city-cardset-v2`, `city-roles-v1`의 명소/카드/능력은 그대로이며 이번 draft 규칙은 독립된 명시적 버전 축이다.
 
 라운드 시작 시 eligible 2명일 때만 적용한다. 그 외 인원은 이전 제거 산술 유지. 공개 projection의 `secretPairDraft`가 현재 라운드 방식을 명시한다. 선택 중 상대가 떠났다고 클라이언트가 현재 participant 수로 규칙을 추측하지 않는다. 선택 후보는 현 actor에게만, 선택 결과는 각 owner에게만 공개한다. 비공개 버린 역할 목록은 wire에 추가하지 않는다. 합법적인 후보 목록 비교로 가능한 추론까지 없앤다고 주장하지 않는다.
