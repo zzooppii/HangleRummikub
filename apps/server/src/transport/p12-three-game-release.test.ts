@@ -157,7 +157,7 @@ async function harness(t: TestContext) {
 }
 
 function turnOf(snapshot: PlayingPlatformSnapshotV2) {
-  assert.ok(snapshot.game.gameType !== "CITY_ROLE" && snapshot.game.gameType !== "DRAW_RELAY", "P12 fixture remains the three released games.");
+  assert.ok(snapshot.game.gameType === "HANGUL_TILE" || snapshot.game.gameType === "NUMBER_TILE" || snapshot.game.gameType === "GEM_CARD", "P12 fixture remains the three released games.");
   return snapshot.game.gameType === "HANGUL_TILE" ? snapshot.game.publicState.turn : snapshot.game.turn;
 }
 function identity(snapshot: PlayingPlatformSnapshotV2) {
@@ -208,7 +208,7 @@ for (const gameType of GAME_TYPES) {
       assert.equal(turn.deadlineAt - turn.startedAt, TURN_MS[gameType]);
       const stored = await h.server.runtime.persistence.findById(started.room.roomId);
       assert.ok(stored?.game);
-      assert.ok(stored.gameType !== "CITY_ROLE" && stored.gameType !== "DRAW_RELAY");
+      assert.ok(stored.gameType === "HANGUL_TILE" || stored.gameType === "NUMBER_TILE" || stored.gameType === "GEM_CARD");
       assert.deepEqual(new Set(stored.game.turnOrder), new Set(p.members.map(member => member.playerId)));
       assert.equal(h.server.runtime.turnScheduler.scheduledCount, 1);
       assert.equal(h.server.runtime.gameDeadlineScheduler.scheduledCount, gameType === "HANGUL_TILE" ? 1 : 0);

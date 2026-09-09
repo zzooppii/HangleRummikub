@@ -1,3 +1,4 @@
+import type { createSneakyLifecycle } from "../games/sneaky-lunch/application/lifecycle.js";
 import type { DrawRelayStoredGame } from "../games/draw-relay/compatibility/adapter.js";
 import type { createDrawRelayLifecycle } from "../games/draw-relay/application/lifecycle.js";
 import type { PlayingGemGameState } from "../games/gem-card/domain/game-state.js";
@@ -57,6 +58,7 @@ export type PresenceRestoredPlan =
     }>;
 
 export type PlayerLifecycleRouterDependencies = Readonly<{
+  sneaky?: ReturnType<typeof createSneakyLifecycle>;
   drawRelay?: ReturnType<typeof createDrawRelayLifecycle>;
   hangul: LegacyHangulPlayerLifecycleActionRouting;
   numberTile: NumberTilePlayerLifecycleActionRouting;
@@ -78,6 +80,7 @@ export interface PlayerLifecycleActionRouting {
 
 /** Dispatches platform lifecycle orchestration by immutable Room gameType. */
 export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
+  readonly #sneaky: ReturnType<typeof createSneakyLifecycle> | undefined;
   readonly #drawRelay: ReturnType<typeof createDrawRelayLifecycle> | undefined;
   readonly #hangul: LegacyHangulPlayerLifecycleActionRouting;
   readonly #numberTile: NumberTilePlayerLifecycleActionRouting;
@@ -91,6 +94,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
     if (dependencies.numberTile.gameType !== "NUMBER_TILE") {
       throw new Error("Missing NUMBER_TILE player lifecycle capability.");
     }
+    this.#sneaky = dependencies.sneaky;
     this.#drawRelay = dependencies.drawRelay;
     this.#hangul = dependencies.hangul;
     this.#numberTile = dependencies.numberTile;
@@ -107,6 +111,9 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
     occurredAt: ServerTime;
   }): PlayingLeaveActionResult {
     switch (input.room.gameType) {
+      case "SNEAKY_LUNCH":
+        if (!this.#sneaky) throw new Error("SNEAKY lifecycle missing.");
+        return this.#sneaky.applyPlayingLeave(input);
       case "DRAW_RELAY":
         if (!this.#drawRelay) throw new Error("DRAW lifecycle missing.");
         return this.#drawRelay.applyPlayingLeave(input);
@@ -126,6 +133,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
     playerId: PlayerId,
   ): PresenceRestoredPlan {
     switch (room.gameType) {
+      case "SNEAKY_LUNCH": return {status:"NO_CHANGE"};
       case "DRAW_RELAY":
         if (!this.#drawRelay) throw new Error("DRAW lifecycle missing.");
         return this.#drawRelay.planPresenceRestored(room, playerId);

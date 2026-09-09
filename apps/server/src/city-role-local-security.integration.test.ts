@@ -127,7 +127,7 @@ function cityIdentity(view: CityRolePlayingPlatformSnapshotV2) {
   return { gameId: view.game.gameId, expectedGameRevision: view.game.gameRevision, actionId: view.game.window.actionId };
 }
 function legacyTurn(view: PlayingPlatformSnapshotV2) {
-  assert.ok(view.game.gameType !== "CITY_ROLE" && view.game.gameType !== "DRAW_RELAY");
+  assert.ok(view.game.gameType === "HANGUL_TILE" || view.game.gameType === "NUMBER_TILE" || view.game.gameType === "GEM_CARD");
   return view.game.gameType === "HANGUL_TILE" ? view.game.publicState.turn : view.game.turn;
 }
 

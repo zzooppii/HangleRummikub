@@ -538,6 +538,9 @@ export interface SnapshotWireClientToServerEvents {
   "draw:revealNext": (command: Extract<DrawClientCommand,{kind:"draw:revealNext"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "draw:rematch": (command: Extract<DrawClientCommand,{kind:"draw:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "draw:configure": (command: Extract<DrawClientCommand,{kind:"draw:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "sneaky:configure": (command: Extract<SneakyClientCommand,{kind:"sneaky:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "sneaky:eat": (command: Extract<SneakyClientCommand,{kind:"sneaky:eat"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "sneaky:rematch": (command: Extract<SneakyClientCommand,{kind:"sneaky:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "city:selectRole": (command: CitySelectRoleCommand, acknowledge: SocketAcknowledgement<CitySelectRoleWireAck>) => void;
   "city:takeIncome": (command: CityTakeIncomeCommand, acknowledge: SocketAcknowledgement<CityTakeIncomeWireAck>) => void;
   "city:drawBuildingCards": (command: CityDrawBuildingCardsCommand, acknowledge: SocketAcknowledgement<CityDrawBuildingCardsWireAck>) => void;
@@ -611,3 +614,4 @@ export type SnapshotWireServerToClientEvents = Omit<
   "state:snapshot": (event: StateSnapshotWireEvent) => void;
 };
 import type { DrawClientCommand } from "./protocol.js";
+import type { SneakyClientCommand } from "./protocol.js";

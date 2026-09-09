@@ -6,7 +6,7 @@ import type {
   StartGameInput,
 } from "./game-start-service.js";
 
-type StartCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY"> =
+type StartCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH"> =
   Readonly<{
     gameType: TGameType;
     start(input: StartGameInput): Promise<GameStartResult>;
@@ -23,6 +23,7 @@ export type GameStartRouterDependencies = Readonly<{
   numberTile: NumberTileGameStartCapability;
   gemCard: GemCardGameStartCapability;
   cityRole: CityRoleGameStartCapability;
+  sneaky?: StartCapability<"SNEAKY_LUNCH">;
   drawRelay?: StartCapability<"DRAW_RELAY">;
 }>;
 
@@ -47,7 +48,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function isStartCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH",
 >(
   value: unknown,
   gameType: TGameType,
@@ -59,7 +60,7 @@ function isStartCapability<
   );
 }
 
-function requireCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY">(
+function requireCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH">(
   value: unknown,
   gameType: TGameType,
 ): StartCapability<TGameType> {
@@ -80,10 +81,12 @@ export class GameStartRouter implements GameStartRouting {
   readonly #numberTile: NumberTileGameStartCapability;
   readonly #gemCard: GemCardGameStartCapability;
   readonly #cityRole: CityRoleGameStartCapability;
+  readonly #sneaky: StartCapability<"SNEAKY_LUNCH"> | undefined;
   readonly #drawRelay: StartCapability<"DRAW_RELAY"> | undefined;
 
   constructor(dependencies: GameStartRouterDependencies) {
     this.#roomRepository = dependencies.roomRepository;
+    this.#sneaky = dependencies.sneaky;
     this.#drawRelay = dependencies.drawRelay;
     this.#hangul = requireCapability(dependencies.hangul, "HANGUL_TILE");
     this.#numberTile = requireCapability(
@@ -107,6 +110,7 @@ export class GameStartRouter implements GameStartRouting {
           return await this.#hangul.start(input);
         case "GEM_CARD":
           return await this.#gemCard.start(input);
+        case "SNEAKY_LUNCH": return this.#sneaky ? await this.#sneaky.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "DRAW_RELAY": return this.#drawRelay ? await this.#drawRelay.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "CITY_ROLE":
           return await this.#cityRole.start(input);

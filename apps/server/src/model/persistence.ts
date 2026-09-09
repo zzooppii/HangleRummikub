@@ -1,3 +1,5 @@
+import type { SneakyLunchStoredGame } from "../games/sneaky-lunch/compatibility/adapter.js";
+import type { LunchSettings } from "../games/sneaky-lunch/domain/game.js";
 import type { GemGameState } from "../games/gem-card/domain/game-state.js";
 import type { CityRoleStoredGame } from "../games/city-role/compatibility/city-role-game-state-adapter.js";
 import {
@@ -78,7 +80,8 @@ export type NumberTileRoomRecord = RoomRecordBase &
 export type GemCardRoomRecord = RoomRecordBase & Readonly<{ gameType: "GEM_CARD"; game: GemGameState | null }>;
 export type CityRoleRoomRecord = RoomRecordBase & Readonly<{ gameType: "CITY_ROLE"; game: CityRoleStoredGame | null }>;
 export type DrawRelayRoomRecord = RoomRecordBase & Readonly<{ gameType:"DRAW_RELAY";game:DrawRelayStoredGame|null; departedPlayerIds?:readonly PlayerId[]; promptMode?:"EASY"|"NORMAL"|"MIXED"; drawSeconds?:15|30|45|60|90 }>;
-export type RoomRecord = HangulRoomRecord | NumberTileRoomRecord | GemCardRoomRecord | CityRoleRoomRecord | DrawRelayRoomRecord;
+export type SneakyLunchRoomRecord = RoomRecordBase & Readonly<{ gameType: "SNEAKY_LUNCH"; game: SneakyLunchStoredGame | null; departedPlayerIds?: readonly PlayerId[]; settings?: LunchSettings }>;
+export type RoomRecord = HangulRoomRecord | NumberTileRoomRecord | GemCardRoomRecord | CityRoleRoomRecord | DrawRelayRoomRecord | SneakyLunchRoomRecord;
 
 type WithoutStorageRevision<TRoom> = TRoom extends RoomRecord
   ? Omit<TRoom, "storageRevision">

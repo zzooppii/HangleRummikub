@@ -267,7 +267,25 @@ export const DrawRelayPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown,D
 export type DrawRelayFinishedPlatformSnapshotV2 = v.InferOutput<typeof DrawRelayFinishedPlatformSnapshotV2Raw>;
 export const DrawRelayFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown,DrawRelayFinishedPlatformSnapshotV2> = DrawRelayFinishedPlatformSnapshotV2Raw;
 
+const SneakyOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const SneakyRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("SNEAKY_LUNCH") };
+const SneakyPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(8));
+const SneakyLobbyRaw = v.pipe(v.strictObject({ ...SneakyOuter, room: v.strictObject({ ...SneakyRoom, phase: v.literal("LOBBY"),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(8)), settings: SneakySettingsSchema }), game: v.null() }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
+const SneakyPlayingRaw = v.pipe(v.strictObject({ ...SneakyOuter, room: v.strictObject({ ...SneakyRoom, phase: v.literal("PLAYING"), players: SneakyPlayers }), game: SneakyPlayingProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)));
+const SneakyFinishedRaw = v.pipe(v.strictObject({ ...SneakyOuter, room: v.strictObject({ ...SneakyRoom, phase: v.literal("FINISHED"), players: SneakyPlayers }), game: SneakyFinishedProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)));
+export type SneakyLobbyPlatformSnapshotV2 = v.InferOutput<typeof SneakyLobbyRaw>;
+export type SneakyPlayingPlatformSnapshotV2 = v.InferOutput<typeof SneakyPlayingRaw>;
+export type SneakyFinishedPlatformSnapshotV2 = v.InferOutput<typeof SneakyFinishedRaw>;
+export const SneakyLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, SneakyLobbyPlatformSnapshotV2> = SneakyLobbyRaw;
+export const SneakyPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, SneakyPlayingPlatformSnapshotV2> = SneakyPlayingRaw;
+export const SneakyFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, SneakyFinishedPlatformSnapshotV2> = SneakyFinishedRaw;
+
 export const LobbyPlatformSnapshotV2Schema = v.union([
+  SneakyLobbyPlatformSnapshotV2Schema,
   DrawRelayLobbyPlatformSnapshotV2Schema,
   HangulTileLobbyPlatformSnapshotV2Schema,
   NumberTileLobbyPlatformSnapshotV2Schema,
@@ -408,6 +426,7 @@ export type GemCardPlayingPlatformSnapshotV2 = v.InferOutput<
 
 export const PlayingPlatformSnapshotV2Schema = v.union([
   DrawRelayPlayingPlatformSnapshotV2Schema,
+  SneakyPlayingPlatformSnapshotV2Schema,
   HangulTilePlayingPlatformSnapshotV2Schema,
   NumberTilePlayingPlatformSnapshotV2Schema,
   GemCardPlayingPlatformSnapshotV2Schema,
@@ -547,6 +566,7 @@ export type GemCardFinishedPlatformSnapshotV2 = v.InferOutput<
 
 export const FinishedPlatformSnapshotV2Schema = v.union([
   DrawRelayFinishedPlatformSnapshotV2Schema,
+  SneakyFinishedPlatformSnapshotV2Schema,
   HangulTileFinishedPlatformSnapshotV2Schema,
   NumberTileFinishedPlatformSnapshotV2Schema,
   GemCardFinishedPlatformSnapshotV2Schema,
@@ -566,3 +586,5 @@ export type PlatformSnapshotV2 = v.InferOutput<
 >;
 import { DrawRelayPlayingProjectionSchema, DrawRelayFinishedProjectionSchema } from "../games/draw-relay/v2-projection-contracts.js";
 import { DrawRelayDrawSecondsSchema } from "../games/draw-relay/settings.js";
+import { SneakySettingsSchema } from "../games/sneaky-lunch/contracts.js";
+import { SneakyPlayingProjectionSchema, SneakyFinishedProjectionSchema } from "../games/sneaky-lunch/v2-projection-contracts.js";

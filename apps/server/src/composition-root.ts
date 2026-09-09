@@ -1,3 +1,6 @@
+import { SneakyLunchService } from "./games/sneaky-lunch/application/service.js";
+import { SneakyLunchPresence } from "./games/sneaky-lunch/application/presence.js";
+import { createSneakyLifecycle } from "./games/sneaky-lunch/application/lifecycle.js";
 import { DrawRelayService } from "./games/draw-relay/application/service.js";
 import { DrawRelayHostSuccession } from "./games/draw-relay/application/host-succession.js";
 import { createDrawRelayLifecycle } from "./games/draw-relay/application/lifecycle.js";
@@ -107,6 +110,8 @@ import {
 } from "./infrastructure/system.js";
 
 export type ApplicationRuntime = Readonly<{
+  sneakyLunchService?: SneakyLunchService;
+  sneakyLunchPresence?: SneakyLunchPresence;
   drawRelayService?: DrawRelayService;
   drawRelayHostSuccession?: DrawRelayHostSuccession;
   clock: SystemClock;
@@ -205,6 +210,7 @@ export function createApplicationRuntime(
       createGemCardRegistration(),
       createCityRoleRegistration(),
       { gameType: "DRAW_RELAY" },
+      { gameType: "SNEAKY_LUNCH" },
     ],
   );
   gameRegistry.getRequired(LEGACY_V1_DEFAULT_GAME_TYPE);
@@ -233,6 +239,7 @@ export function createApplicationRuntime(
     gemCard: createGemCardPlayerLifecycleActions(idGenerator),
     cityRole: createCityRolePlayerLifecycleActions(idGenerator),
     drawRelay: createDrawRelayLifecycle(idGenerator),
+    sneaky: createSneakyLifecycle(),
   });
   const roomCodeGenerator = new RandomRoomCodeGenerator(randomSource);
   const sessionTokenIssuer = new NodeCryptoSessionTokenIssuer();
@@ -493,6 +500,14 @@ export function createApplicationRuntime(
     turnScheduler,
     onTurnSchedulingFailure: reportTurnSchedulingFailure,
   });
+  const sneakyLunchService = new SneakyLunchService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
+    roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource, turnScheduler });
+  const sneakyLunchPresence = new SneakyLunchPresence(sneakyLunchService);
+  sneakyLunchService.subscribe(async roomId => {
+    const room = await persistence.findById(roomId);
+    if (room?.gameType === "SNEAKY_LUNCH" && room.phase === "FINISHED" && room.game)
+      await onGameFinished({ roomId, gameId: room.game.gameId });
+  });
   const drawRelayService = new DrawRelayService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
     roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource, turnScheduler });
   const drawRelayHostSuccession = new DrawRelayHostSuccession(drawRelayService.deps, roomId => drawRelayService.notify(roomId));
@@ -553,6 +568,7 @@ export function createApplicationRuntime(
   });
   const gameStartRouter = new GameStartRouter({
     drawRelay: { gameType: "DRAW_RELAY", start: input => drawRelayService.start(input) },
+    sneaky: { gameType: "SNEAKY_LUNCH", start: input => sneakyLunchService.start(input) },
     cityRole: { gameType: "CITY_ROLE", start: input => cityRoleStartService.start(input) },
     gemCard: { gameType: "GEM_CARD", start: input => gemCardStartService.start(input) },
     roomRepository: persistence,
@@ -667,6 +683,7 @@ export function createApplicationRuntime(
   });
   scheduledTurnRouter = new ScheduledTurnRouter({
     drawRelay: { gameType: "DRAW_RELAY", handleTurnTimeout: input => drawRelayService.timeout(input) },
+    sneaky: { gameType: "SNEAKY_LUNCH", handleTurnTimeout: input => sneakyLunchService.timeout(input) },
     cityRole: { gameType: "CITY_ROLE", handleTurnTimeout: input => cityRoleTimeoutService.timeout(input) },
     gemCard: { gameType: "GEM_CARD", handleTurnTimeout: input => gemCardTimeoutService.timeout(input) },
     roomRepository: persistence,
@@ -732,6 +749,8 @@ export function createApplicationRuntime(
     cityRoleCommandRouter,
     drawRelayService,
     drawRelayHostSuccession,
+    sneakyLunchService,
+    sneakyLunchPresence,
     subscribeCityRoleTimeoutApplied(listener) { return cityRoleTimeoutService.subscribeApplied(listener); },
     subscribeGemCardTimeoutApplied(listener) { return gemCardTimeoutService.subscribeApplied(listener); },
     overdueGameDeadlineSweeper,
@@ -778,6 +797,7 @@ export function createApplicationRuntime(
       acceptsGameDeadlineWork = true;
       acceptsRoomPolicyWork = true;
       drawRelayHostSuccession.start();
+      sneakyLunchPresence.start();
       roomPolicyScheduler.start();
       turnScheduler.start();
       gameDeadlineScheduler.start();
@@ -794,6 +814,7 @@ export function createApplicationRuntime(
       acceptsGameDeadlineWork = false;
       acceptsRoomPolicyWork = false;
       drawRelayHostSuccession.stop();
+      sneakyLunchPresence.stop();
       roomPolicyScheduler.stop();
       overdueTurnSweeper.stop();
       overdueGameDeadlineSweeper.stop();

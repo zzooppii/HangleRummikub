@@ -103,6 +103,7 @@ type GameStateStorageAdapters = Readonly<{
 }>;
 
 type RoomGameLifecycleInspection =
+  | Readonly<{gameType:"SNEAKY_LUNCH";inspection:SneakyLunchLifecycle}>
   | Readonly<{gameType:"DRAW_RELAY";inspection:DrawRelayLifecycle}>
   | Readonly<{ gameType: "CITY_ROLE"; inspection: CityRoleGameLifecycleInspection }>
   | Readonly<{ gameType: "GEM_CARD"; inspection: GemCardGameLifecycleInspection }>
@@ -216,6 +217,15 @@ function cloneRoomWriteCandidate(
   } as const;
 
   switch (candidate.gameType) {
+    case "SNEAKY_LUNCH": {
+      const adapter = new SneakyLunchGameStateAdapter(), game = candidate.game === null ? null : adapter.cloneAndValidate(candidate.game);
+      validateRoomGameCoherence(shell.phase, shell.players, game, () => game === null ? null : adapter.inspectLifecycle(game));
+      const departedPlayerIds = Object.freeze([...(candidate.departedPlayerIds ?? [])]);
+      if (new Set(departedPlayerIds).size !== departedPlayerIds.length || departedPlayerIds.some(id => !shell.players.some(p => p.playerId === id)) || shell.phase === "LOBBY" && departedPlayerIds.length > 0) throw new Error("Invalid departed SNEAKY roster.");
+      const settings = parseLunchSettings(candidate.settings ?? { lunchboxCount: 3, difficulty: "NORMAL" });
+      if (game && JSON.stringify(settings) !== JSON.stringify(game.state.settings)) throw new Error("SNEAKY settings changed during game.");
+      return Object.freeze({...shell, gameType:"SNEAKY_LUNCH", game, departedPlayerIds, settings});
+    }
     case "DRAW_RELAY": {
       const adapter=new DrawRelayGameStateAdapter(),game=candidate.game===null?null:adapter.cloneAndValidate(candidate.game);
       validateRoomGameCoherence(shell.phase,shell.players,game,()=>game===null?null:adapter.inspectLifecycle(game));
@@ -289,6 +299,7 @@ function validateRoomGameCoherence(
     | GemCardGameLifecycleInspection
     | CityRoleGameLifecycleInspection
     | DrawRelayLifecycle
+    | SneakyLunchLifecycle
     | NumberTileGameLifecycleInspection
     | null,
 ): void {
@@ -312,7 +323,7 @@ function validateRoomGameCoherence(
   }
 
   const playerIds = players.map((player) => player.playerId);
-  const participantIds: readonly string[] = "state" in game ? game.state.seatOrder : game.turnOrder;
+  const participantIds: readonly string[] = "state" in game ? ("seatOrder" in game.state ? game.state.seatOrder : game.state.players.map(p => p.playerId)) : game.turnOrder;
   if (
     playerIds.length !== participantIds.length ||
     new Set(playerIds).size !== playerIds.length ||
@@ -336,6 +347,7 @@ function persistRoom(
     case "GEM_CARD":
     case "CITY_ROLE":
     case "DRAW_RELAY":
+    case "SNEAKY_LUNCH":
       return Object.freeze({ ...detached, storageRevision: revision });
   }
 }
@@ -355,6 +367,7 @@ function inspectRoomGame(
     return null;
   }
   switch (room.gameType) {
+    case "SNEAKY_LUNCH": return {gameType:"SNEAKY_LUNCH",inspection:new SneakyLunchGameStateAdapter().inspectLifecycle(room.game)};
     case "DRAW_RELAY": return {gameType:"DRAW_RELAY",inspection:new DrawRelayGameStateAdapter().inspectLifecycle(room.game)};
     case "HANGUL_TILE":
       return Object.freeze({
@@ -1253,4 +1266,7 @@ export class InMemoryPersistence
     return { status: "COMMITTED" };
   }
 }
+import { SneakyLunchGameStateAdapter, type SneakyLunchLifecycle } from "../games/sneaky-lunch/compatibility/adapter.js";
+import { SettingsSchema as LunchSettingsSchema } from "../games/sneaky-lunch/domain/game.js";
+const parseLunchSettings = (value: unknown) => v.parse(LunchSettingsSchema, value);
 import { DrawRelayGameStateAdapter,type DrawRelayLifecycle } from "../games/draw-relay/compatibility/adapter.js";

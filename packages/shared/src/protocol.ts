@@ -323,6 +323,15 @@ export const DrawConfigureCommandSchema = v.strictObject({ kind: v.literal("draw
 export const DrawClientCommandSchema = v.variant("kind",[DrawDraftSaveCommandSchema,DrawSubmitDrawingCommandSchema,DrawSubmitGuessCommandSchema,DrawRevealNextCommandSchema,DrawRematchCommandSchema,DrawConfigureCommandSchema]);
 export type DrawClientCommand = v.InferOutput<typeof DrawClientCommandSchema>;
 
+const SneakyIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema };
+export const SneakyConfigureCommandSchema = v.strictObject({ ...SneakyIdentity, kind: v.literal("sneaky:configure"), expectedRoomRevision: RoomRevisionSchema, payload: SneakySettingsSchema });
+export const SneakyEatCommandSchema = v.strictObject({ ...SneakyIdentity, kind: v.literal("sneaky:eat"), gameId: GameIdSchema,
+  teacherStateRevision: v.pipe(v.number(), v.safeInteger(), v.minValue(0)), payload: v.strictObject({}) });
+export const SneakyRematchCommandSchema = v.strictObject({ ...SneakyIdentity, kind: v.literal("sneaky:rematch"), gameId: GameIdSchema,
+  expectedRoomRevision: RoomRevisionSchema, expectedGameRevision: GameRevisionSchema, payload: v.strictObject({}) });
+export const SneakyClientCommandSchema = v.variant("kind", [SneakyConfigureCommandSchema, SneakyEatCommandSchema, SneakyRematchCommandSchema]);
+export type SneakyClientCommand = v.InferOutput<typeof SneakyClientCommandSchema>;
+
 export const TurnSubmitCommandSchema = v.strictObject({
   kind: v.literal("turn:submit"),
   protocolVersion: ProtocolVersionSchema,
@@ -457,6 +466,7 @@ export type Phase2ClientCommand = v.InferOutput<
 >;
 
 export const ClientCommandSchema = v.variant("kind", [
+  SneakyConfigureCommandSchema, SneakyEatCommandSchema, SneakyRematchCommandSchema,
   DrawDraftSaveCommandSchema, DrawSubmitDrawingCommandSchema, DrawSubmitGuessCommandSchema, DrawRevealNextCommandSchema, DrawRematchCommandSchema, DrawConfigureCommandSchema,
   SessionBootstrapCommandSchema,
   RoomCreateCommandSchema,
@@ -594,3 +604,4 @@ export type SessionReplacedNotification = v.InferOutput<
   typeof SessionReplacedNotificationSchema
 >;
 import { DrawingSchema, GuessSchema } from "./games/draw-relay/drawing-contracts.js";
+import { SneakySettingsSchema } from "./games/sneaky-lunch/contracts.js";

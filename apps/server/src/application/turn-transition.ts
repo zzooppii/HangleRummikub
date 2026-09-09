@@ -1,3 +1,4 @@
+import type { SneakyLunchStoredGame } from "../games/sneaky-lunch/compatibility/adapter.js";
 import type { DrawRelayStoredGame } from "../games/draw-relay/compatibility/adapter.js";
 import type { PlayingGemGameState } from "../games/gem-card/domain/game-state.js";
 import type { CityRoleStoredGame } from "../games/city-role/compatibility/city-role-game-state-adapter.js";
@@ -69,9 +70,10 @@ export function createNextTurn(
 
 export function toScheduledTurnDeadline(
   roomId: RoomId,
-  game: PlayingGameState | PlayingNumberTileGameState | PlayingGemGameState | CityRoleStoredGame | DrawRelayStoredGame,
+  game: PlayingGameState | PlayingNumberTileGameState | PlayingGemGameState | CityRoleStoredGame | DrawRelayStoredGame | SneakyLunchStoredGame,
 ): ScheduledTurnDeadline {
   if ("state" in game && !("windowStartedAt" in game)) {
+    if ("nextTransitionAt" in game.state) return {roomId,gameId:game.gameId,expectedGameRevision:game.gameRevision,turnId:parse(TurnIdSchema,game.state.transitionId),deadlineAt:parse(ServerTimeSchema,game.state.nextTransitionAt)};
     if(game.state.deadlineAt===null)throw new Error("DRAW has no deadline.");
     return {roomId,gameId:game.gameId,expectedGameRevision:game.gameRevision,turnId:parse(TurnIdSchema,game.state.stageToken),deadlineAt:parse(ServerTimeSchema,game.state.deadlineAt)};
   }
@@ -148,7 +150,9 @@ export async function scheduleCurrentTurnBestEffort(
     }
 
     if ("state" in game && !("windowStartedAt" in game)) {
-      if(game.state.deadlineAt===null||game.state.stageToken!==identity.turnId)return false;
+      if ("nextTransitionAt" in game.state) {
+        if (game.state.nextTransitionAt === null || game.state.transitionId !== identity.turnId) return false;
+      } else if(game.state.deadlineAt===null||game.state.stageToken!==identity.turnId)return false;
     } else if ("windowStartedAt" in game) {
       if (game.state.window === null || String(game.state.window.actionId) !== identity.turnId) return false;
     } else if (game.turn === null || game.result !== null || game.turn.turnId !== identity.turnId) return false;

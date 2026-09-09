@@ -104,7 +104,7 @@ export class PlatformSnapshotV2Projector {
       }
       return v.parse(PlatformSnapshotV2Schema, {
         ...base,
-        room: { ...base.room, phase: "LOBBY", ...(input.room.gameType === "DRAW_RELAY" ? {promptMode:input.room.promptMode ?? "MIXED",drawSeconds:input.room.drawSeconds ?? 90} : {}) },
+        room: { ...base.room, phase: "LOBBY", ...(input.room.gameType === "SNEAKY_LUNCH" ? { settings: input.room.settings ?? { lunchboxCount: 3, difficulty: "NORMAL" } } : {}), ...(input.room.gameType === "DRAW_RELAY" ? {promptMode:input.room.promptMode ?? "MIXED",drawSeconds:input.room.drawSeconds ?? 90} : {}) },
         game: null,
       });
     }
@@ -113,6 +113,7 @@ export class PlatformSnapshotV2Projector {
       throw new Error("A non-LOBBY Room must contain a GameState.");
     }
     const playerIds = input.room.players.map((player) => player.playerId);
+    if(input.room.gameType === "SNEAKY_LUNCH") return v.parse(PlatformSnapshotV2Schema, {...base, room:{...base.room,phase:input.room.phase},game:projectSneakyLunch(input.room.game)});
     if(input.room.gameType === "DRAW_RELAY") return v.parse(PlatformSnapshotV2Schema,{...base,room:{...base.room,phase:input.room.phase},game:projectDrawRelay(input.room.game,input.selfPlayerId)});
     if (input.room.gameType === "CITY_ROLE") {
       const game = this.#cityRoleGameProjector({ phase: input.room.phase, playerIds, selfPlayerId: input.selfPlayerId, game: input.room.game });
@@ -160,4 +161,5 @@ export class PlatformSnapshotV2Projector {
     });
   }
 }
+import { projectSneakyLunch } from "../games/sneaky-lunch/compatibility/projector.js";
 import { projectDrawRelay } from "../games/draw-relay/compatibility/projector.js";

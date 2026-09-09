@@ -1331,6 +1331,7 @@ function registerResumeHandler(
           return;
         }
         runtime.drawRelayHostSuccession?.resumed(result.data.roomId, result.data.playerId);
+        runtime.sneakyLunchPresence?.resumed(result.data.roomId, result.data.playerId);
         const resumePolicyFollowUp =
           runtime.roomPresencePolicyService.onResume(
             result.data.roomId,
@@ -2665,6 +2666,27 @@ function registerNumberPassHandler(
 }
 
 
+import { SneakyClientCommandSchema } from "@hangul-rummikub/shared";
+function registerSneakyHandlers(socket: RealtimeSocket, runtime: ApplicationRuntime): void {
+  for (const event of ["sneaky:configure", "sneaky:eat", "sneaky:rematch"] as const) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
+    const receivedAt = runtime.clock.now(), command = parseNumberRematch(SneakyClientCommandSchema, raw);
+    if (!command.success || command.output.kind !== event) { acknowledgeIfPresent(acknowledge, failureAck(raw, INVALID_PAYLOAD_ERROR, receivedAt)); return; }
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(createSocketId(socket.id));
+      if (!binding) { acknowledgeIfPresent(acknowledge, failureAck(raw, UNAUTHENTICATED_ERROR, receivedAt)); return; }
+      if (!isRoomAdmissionCompatible("SNEAKY_LUNCH", socketAdmissionCapabilities(socket))) {
+        acknowledgeIfPresent(acknowledge, failureAck(raw, {code:"INCOMPATIBLE_GAME_CAPABILITY",message:"SNEAKY requires V2 capability.",recoverable:false}, receivedAt)); return;
+      }
+      if (!runtime.sneakyLunchService) { acknowledgeIfPresent(acknowledge, failureAck(raw, INTERNAL_ERROR, receivedAt)); return; }
+      const result = await runtime.sneakyLunchService.command({roomId:binding.roomId,actorPlayerId:binding.playerId,command:command.output,receivedAt,
+        authorization:{isCurrent:()=>socket.connected && isCurrentBinding(runtime,binding)}});
+      if (!result.ok) { acknowledgeIfPresent(acknowledge, failureAck(raw,result.error,receivedAt)); return; }
+      const loaded = await loadSnapshotForSocket(runtime,socket,binding.roomId,binding.playerId);
+      if (loaded && socket.connected && isCurrentBinding(runtime,binding)) acknowledgeIfPresent(acknowledge,snapshotSuccessAck(command.output.requestId,loaded.metadata,loaded.wireSnapshot));
+    })().catch(()=>acknowledgeIfPresent(acknowledge,failureAck(raw,INTERNAL_ERROR,receivedAt)));
+  });
+}
+
 function registerDrawRelayHandlers(socket: RealtimeSocket, runtime: ApplicationRuntime): void {
   const events = ["draw:draftSave", "draw:submitDrawing", "draw:submitGuess", "draw:revealNext", "draw:rematch", "draw:configure"] as const;
   for (const event of events) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
@@ -2910,6 +2932,7 @@ function registerDisconnectHandler(
     }
 
     runtime.drawRelayHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
+    runtime.sneakyLunchPresence?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     void runtime.roomPresencePolicyService
       .onCurrentDisconnect({
         roomId: binding.roomId,
@@ -2986,6 +3009,7 @@ export function registerSocketIoHandlers(
         reportSnapshotFanOutFailure();
       }
     });
+  const unsubscribeSneaky = runtime.sneakyLunchService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeDrawRelay = runtime.drawRelayService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeCityRoleTimeoutApplied = runtime.subscribeCityRoleTimeoutApplied(async data => {
     try { await fanOutRoomSnapshots(io, runtime, data.roomId); }
@@ -3034,6 +3058,7 @@ export function registerSocketIoHandlers(
     registerGemYieldHandler(io, socket, runtime);
     registerCityHandlers(io, socket, runtime);
     registerDrawRelayHandlers(socket, runtime);
+    registerSneakyHandlers(socket, runtime);
     registerNumberSubmitHandler(io, socket, runtime);
     registerNumberDrawHandler(io, socket, runtime);
     registerNumberPassHandler(io, socket, runtime);
@@ -3050,6 +3075,7 @@ export function registerSocketIoHandlers(
     unsubscribeGemCardTimeoutApplied();
     unsubscribeCityRoleTimeoutApplied();
     unsubscribeDrawRelay?.();
+    unsubscribeSneaky?.();
     unsubscribeGameDeadlineApplied();
   };
 }

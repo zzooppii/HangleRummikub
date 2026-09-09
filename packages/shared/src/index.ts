@@ -20,3 +20,5 @@ export * from "./games/city-role/v2-projection-contracts.js";
 export * from "./games/draw-relay/drawing-contracts.js";
 export * from "./games/draw-relay/v2-projection-contracts.js";
 export * from "./games/draw-relay/settings.js";
+export * from "./games/sneaky-lunch/contracts.js";
+export * from "./games/sneaky-lunch/v2-projection-contracts.js";

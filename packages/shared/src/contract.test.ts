@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import "./sneaky-lunch.test.js";
 import test from "node:test";
 import * as v from "valibot";
 import "./city-role-contract.test.js";
@@ -1220,7 +1221,7 @@ test("Room phase와 session replacement notification은 exhaustive shape를 가�
 });
 
 test("GameType runtime contract는 정확히 다섯 개의 구현된 게임을 지원한다", () => {
-  assert.deepEqual(SUPPORTED_GAME_TYPES, ["HANGUL_TILE", "NUMBER_TILE", "GEM_CARD", "CITY_ROLE", "DRAW_RELAY"]);
+  assert.deepEqual(SUPPORTED_GAME_TYPES, ["HANGUL_TILE", "NUMBER_TILE", "GEM_CARD", "CITY_ROLE", "DRAW_RELAY", "SNEAKY_LUNCH"]);
   assert.equal(Object.isFrozen(SUPPORTED_GAME_TYPES), true);
 
   const hangul = v.safeParse(GameTypeSchema, "HANGUL_TILE");
@@ -4634,6 +4635,7 @@ test("runtime Socket.IO map은 Number events를 additive하게 제공하고 lega
     | "city:build"
     | "city:endTurn"
     | "draw:draftSave" | "draw:submitDrawing" | "draw:submitGuess" | "draw:revealNext" | "draw:rematch" | "draw:configure"
+    | "sneaky:configure" | "sneaky:eat" | "sneaky:rematch"
   > = true;
   const legacyEventNamesRemainExact: SameUnion<
     keyof ClientToServerEvents,

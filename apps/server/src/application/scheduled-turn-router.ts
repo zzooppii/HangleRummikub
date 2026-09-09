@@ -7,7 +7,7 @@ export type ScheduledTurnDispatchResult =
   | Readonly<{ status: "FAILED" }>;
 
 type ScheduledTurnCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH",
 > = Readonly<{
   gameType: TGameType;
   handleTurnTimeout(
@@ -28,6 +28,7 @@ export type ScheduledTurnRouterDependencies = Readonly<{
   numberTile: NumberTileScheduledTurnCapability;
   gemCard: GemCardScheduledTurnCapability;
   cityRole: CityRoleScheduledTurnCapability;
+  sneaky?: ScheduledTurnCapability<"SNEAKY_LUNCH">;
   drawRelay?: ScheduledTurnCapability<"DRAW_RELAY">;
 }>;
 
@@ -36,7 +37,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function isCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH",
 >(
   value: unknown,
   gameType: TGameType,
@@ -49,7 +50,7 @@ function isCapability<
 }
 
 function requireCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH",
 >(
   value: unknown,
   gameType: TGameType,
@@ -70,10 +71,12 @@ export class ScheduledTurnRouter {
   readonly #numberTile: NumberTileScheduledTurnCapability;
   readonly #gemCard: GemCardScheduledTurnCapability;
   readonly #cityRole: CityRoleScheduledTurnCapability;
+  readonly #sneaky: ScheduledTurnCapability<"SNEAKY_LUNCH"> | undefined;
   readonly #drawRelay: ScheduledTurnCapability<"DRAW_RELAY"> | undefined;
 
   constructor(dependencies: ScheduledTurnRouterDependencies) {
     this.#roomRepository = dependencies.roomRepository;
+    this.#sneaky = dependencies.sneaky;
     this.#drawRelay = dependencies.drawRelay;
     this.#hangul = requireCapability(dependencies.hangul, "HANGUL_TILE");
     this.#numberTile = requireCapability(
@@ -98,6 +101,7 @@ export class ScheduledTurnRouter {
           return await this.#hangul.handleTurnTimeout(input);
         case "GEM_CARD":
           return await this.#gemCard.handleTurnTimeout(input);
+        case "SNEAKY_LUNCH": return this.#sneaky ? await this.#sneaky.handleTurnTimeout(input) : {status:"FAILED"};
         case "DRAW_RELAY": return this.#drawRelay ? await this.#drawRelay.handleTurnTimeout(input) : {status:"FAILED"};
         case "CITY_ROLE":
           return await this.#cityRole.handleTurnTimeout(input);
