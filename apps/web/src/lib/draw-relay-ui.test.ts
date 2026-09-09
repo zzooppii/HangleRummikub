@@ -56,6 +56,18 @@ test("DRAW canvas tools, save status, own source and submitted waiting", () => {
   const output = html(playing()); for (const text of ["그림 그리기 영역", "하늘을 나는 고양이", "지우개", "되돌리기", "모두 지우기", "저장됨", "그림 제출"]) assert.ok(output.includes(text));
   const waiting = html(playing("DRAW", true)); assert.match(waiting, /제출 완료!|다른 참가자/); assert.doesNotMatch(waiting, /그림 그리기 영역|그림 제출/);
 });
+test("DRAW focus-mode entry is available only to the unsubmitted drawing editor", () => {
+  const drawing = html(playing());
+  assert.match(drawing, /그림 크게 그리기/);
+  assert.equal((drawing.match(/aria-label="그림 그리기 영역"/g) ?? []).length, 1);
+  assert.doesNotMatch(html(playing("DRAW", true)), /그림 크게 그리기/);
+  assert.doesNotMatch(html(playing("GUESS")), /그림 크게 그리기/);
+  const css = readFileSync(new URL("../../src/features/draw-relay/draw-relay.css", import.meta.url), "utf8");
+  assert.match(css, /relay-studio-focused\{position:fixed/);
+  assert.match(css, /height:100dvh/); assert.match(css, /container-type:size/);
+  assert.match(css, /100cqh \* 10 \/ 7/); assert.match(css, /overscroll-behavior:none/);
+  assert.match(css, /relay-tools\{[^}]*overflow-x:auto/);
+});
 test("GUESS only displays previous drawing, never prompt/history; Reveal prefix rejects future page", () => {
   const guess = html(playing("GUESS")); assert.match(guess, /이 그림은 무엇일까요|추측 제출/); assert.doesNotMatch(guess, /하늘을 나는 고양이/);
   const reveal = playing("REVEAL"); assert.match(html(reveal), /다음 페이지 공개/);
