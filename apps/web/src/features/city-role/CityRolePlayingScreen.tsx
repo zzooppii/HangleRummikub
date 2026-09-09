@@ -14,9 +14,10 @@ import {
   type CityActionFeedback, type CityActionIntent, type CityUiCard,
 } from "./city-role-ui.js";
 import { cityLandmarkText } from "./city-landmarks.js";
+import { CityTemplateArt } from "./CityTemplateArt.js";
 import { CityGameHelp } from "./CityGameHelp.js";
 import { useCitySound } from "./city-role-sound.js";
-import { CityBuildingArt, CityCategoryBadge, CityCategoryGuide, CityIcon, CityRoleEmblem, CitySkyline } from "./CityVisuals.js";
+import { CityCategoryBadge, CityCategoryGuide, CityIcon, CityRoleEmblem, CitySkyline } from "./CityVisuals.js";
 
 export type CityRolePlayingScreenProps = Readonly<{
   snapshot: CityRolePlayingPlatformSnapshotV2;
@@ -39,7 +40,7 @@ export type CityRolePlayingScreenProps = Readonly<{
 export function CityBuildingFace({ card, rulesVersion = "city-rules-v1" }: Readonly<{ card: CityUiCard; rulesVersion?: string }>) {
   const effect = cityLandmarkText(rulesVersion, card.templateId);
   return <>
-    <CityBuildingArt category={card.category} /><CityCategoryBadge category={card.category} />
+    <CityCategoryBadge category={card.category} /><CityTemplateArt category={card.category} templateId={card.templateId} />
     <strong className="city-building-name">{card.name}</strong>
     <span className="city-building-value"><CityIcon name="coin" />금화 <b>{card.cost}</b><span>· {card.victoryPoints}점</span></span>
     {effect ? <span className="city-landmark-effect" title={effect.detail}><strong>★ 특수 능력</strong>{effect.short}</span> : null}

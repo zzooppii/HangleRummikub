@@ -20,6 +20,35 @@ import { CityBuildingArt, CityCategoryGuide, CityRoleEmblem, CITY_CATEGORY_HINTS
 import { CityBuildingFace } from "../features/city-role/CityRolePlayingScreen.js";
 import { CITY_LANDMARK_TEXT, cityLandmarkText } from "../features/city-role/city-landmarks.js";
 import { CityHelpDialog } from "../features/city-role/CityGameHelp.js";
+import { CITY_TEMPLATE_ART, CityTemplateArt } from "../features/city-role/CityTemplateArt.js";
+
+test("CITY template artwork covers all thirty templates with unique large silhouettes and motifs", () => {
+  const groups = { CIV: "CIVIC", CUL: "CULTURE", TRA: "TRADE", GUA: "GUARD", LAN: "LANDMARK" } as const;
+  const expected = Object.keys(groups).flatMap(prefix => Array.from({ length: 6 }, (_, i) => `CB-${prefix}-0${i + 1}`));
+  assert.deepEqual(Object.keys(CITY_TEMPLATE_ART).sort(), expected.sort());
+  assert.equal(new Set(Object.values(CITY_TEMPLATE_ART).map(art => art.motif)).size, 30);
+  assert.equal(new Set(Object.values(CITY_TEMPLATE_ART).map(art => art.mass)).size, 30);
+  for (const [prefix, category] of Object.entries(groups)) for (let i = 1; i <= 6; i++) {
+    const id = `CB-${prefix}-0${i}`, html = renderToStaticMarkup(createElement(CityTemplateArt, { templateId: id, category }));
+    assert.ok(html.includes(`data-template-art="${id}"`));
+    assert.ok(html.includes(`data-category-art="${category}"`));
+    assert.match(html, /aria-hidden="true"/u); assert.match(html, /focusable="false"/u);
+    assert.doesNotMatch(html, /<image|https:|<animate|<script/u);
+  }
+});
+
+test("CITY artwork follows named motifs and the card hierarchy keeps category before art and cost", () => {
+  assert.match(CITY_TEMPLATE_ART["CB-CIV-03"].motif, /갈림길.*표지판/u);
+  assert.match(CITY_TEMPLATE_ART["CB-GUA-03"].motif, /봉화/u);
+  assert.match(CITY_TEMPLATE_ART["CB-CUL-03"].motif, /무대/u);
+  assert.match(CITY_TEMPLATE_ART["CB-TRA-02"].motif, /석재/u);
+  assert.match(CITY_TEMPLATE_ART["CB-CIV-06"].motif, /기둥/u);
+  const card = parse(CityPublicBuildingSchema, { cardId: "art-garden", templateId: "CB-LAN-01", name: "빗물정원", category: "LANDMARK", cost: 1, victoryPoints: 1 });
+  const html = renderToStaticMarkup(createElement(CityBuildingFace, { card, rulesVersion: "city-rules-v2" }));
+  assert.ok(html.indexOf('class="city-category ') < html.indexOf('data-template-art='));
+  assert.ok(html.indexOf('data-template-art=') < html.indexOf('class="city-building-value"'));
+  assert.match(html, /★ 특수 능력/u);
+});
 
 function playingProps(snapshot = citySelectionFixture()): CityRolePlayingScreenProps {
   return { snapshot, connectionLabel: "연결됨", connectionTone: "connected", errorMessage: null,

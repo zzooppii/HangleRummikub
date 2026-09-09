@@ -155,7 +155,7 @@
 .city-role-card { align-items: center; text-align: center; background: linear-gradient(145deg,#fffaf0,#eee3cf); border: 1px solid #cbbb9d; box-shadow: 0 3px 5px #57462b12; }
 .city-building { position: relative; overflow: hidden; padding: 9px; border: 1px solid #c8bca5; border-radius: 12px; background: #fffdf6; box-shadow: 0 3px 6px #54442715; transition: transform .15s ease, box-shadow .15s ease; }
 .city-building-art { display: block; width: 100%; height: auto; border-radius: 7px; flex-shrink: 0; }
-.city-building > .city-category { margin-top: -29px; position: relative; border: 1px solid #ffffffc0; box-shadow: 0 1px 4px #384c3822; }
+.city-building > .city-category { position: relative; border: 1px solid #ffffffc0; box-shadow: 0 1px 4px #384c3822; }
 .city-building-value { align-items: center; }.city-building-value .city-icon { width: 19px; height: 19px; color: #92651e; }
 .city-hand-grid { grid-template-columns: repeat(auto-fill,minmax(156px,1fr)); gap: 13px; }.city-hand-grid .city-building { min-height: 248px; }
 .city-selectable.is-selected { transform: translateY(-4px); box-shadow: 0 0 0 2px #397454, 0 9px 13px #23433028; }
@@ -241,3 +241,12 @@
 .city-shell .city-landmark-effect strong { font-size: .73rem; color: #47622c; }
 .city-shell .city-landmark-status { display: block; padding: .25rem; color: #25432c; font-size: .75rem; }
 .city-landmark-guide { padding: 1rem; border-radius: .75rem; background: #edf4df; color: #25432c; }
+.city-shell .city-template-art { border: 1px solid #54442730; border-radius: 8px 8px 3px 3px; }
+.city-shell .city-building:has(.city-art-trade) { border-top: 4px solid #ab6d22; background: #fff9eb; }
+.city-shell .city-building:has(.city-art-civic) { border-top: 4px solid #50738f; background: #f5f9fc; }
+.city-shell .city-building:has(.city-art-culture) { border-top: 4px solid #885184; background: #fcf5fb; }
+.city-shell .city-building:has(.city-art-guard) { border-top: 4px solid #935348; background: #fcf6f2; }
+.city-shell .city-building:has(.city-art-landmark) { border-top: 4px solid #53795d; background: #f8faed; }
+.city-shell .city-building-value { width: 100%; border-top: 1px solid #54442725; padding-top: 5px; }
+.city-shell .city-landmark-effect { width: 100%; box-sizing: border-box; border: 1px solid #a78a43; border-left: 4px solid #9b782a; background: linear-gradient(115deg, #fff4ce, #eaf1db); color: #31492e; }
+.city-shell .city-landmark-effect strong { color: #735517; letter-spacing: .05em; }
