@@ -77,7 +77,8 @@ export type NumberTileRoomRecord = RoomRecordBase &
  */
 export type GemCardRoomRecord = RoomRecordBase & Readonly<{ gameType: "GEM_CARD"; game: GemGameState | null }>;
 export type CityRoleRoomRecord = RoomRecordBase & Readonly<{ gameType: "CITY_ROLE"; game: CityRoleStoredGame | null }>;
-export type RoomRecord = HangulRoomRecord | NumberTileRoomRecord | GemCardRoomRecord | CityRoleRoomRecord;
+export type DrawRelayRoomRecord = RoomRecordBase & Readonly<{ gameType:"DRAW_RELAY";game:DrawRelayStoredGame|null; departedPlayerIds?:readonly PlayerId[]; promptMode?:"EASY"|"NORMAL"|"MIXED" }>;
+export type RoomRecord = HangulRoomRecord | NumberTileRoomRecord | GemCardRoomRecord | CityRoleRoomRecord | DrawRelayRoomRecord;
 
 type WithoutStorageRevision<TRoom> = TRoom extends RoomRecord
   ? Omit<TRoom, "storageRevision">
@@ -137,3 +138,4 @@ export type IdempotencyRecord = Readonly<{
   terminalResult: JsonValue;
   createdAt: ServerTime;
 }>;
+import type { DrawRelayStoredGame } from "../games/draw-relay/compatibility/adapter.js";

@@ -336,7 +336,7 @@ export class RoomLeaveService {
           } else if (
             room.phase === "FINISHED" &&
             room.game !== null &&
-            (room.gameType === "CITY_ROLE" ? room.game.state.result !== null : room.game.result !== null)
+            ((room.gameType === "CITY_ROLE" || room.gameType === "DRAW_RELAY") ? room.game.finishedAt !== null : room.game.result !== null)
           ) {
             candidate = { ...room, updatedAt: now };
             finishedGameId = room.game.gameId;
@@ -353,7 +353,7 @@ export class RoomLeaveService {
             return failure(ERRORS.INTERNAL_ERROR);
           }
 
-          if (candidate.gameType === "NUMBER_TILE") {
+          if ((candidate.gameType === "NUMBER_TILE" || candidate.gameType === "DRAW_RELAY")) {
             const departedPlayerIds = Object.freeze([...new Set([...(candidate.departedPlayerIds ?? []), input.actorPlayerId])]);
             const remaining = candidate.players.filter(p => !departedPlayerIds.includes(p.playerId));
             const hostPlayerId = candidate.hostPlayerId === input.actorPlayerId

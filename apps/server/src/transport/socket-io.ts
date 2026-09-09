@@ -1,3 +1,4 @@
+import { DrawClientCommandSchema } from "@hangul-rummikub/shared";
 import { validateGemCollectCommand, validateGemPurchaseCommand, validateGemReserveCommand, validateGemYieldCommand, type GemCollectWireAck, type GemCardPlayingPlatformSnapshotV2, type GemCardFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import { validateCityClientCommand, type CityClientCommand, type CityActionWireAck } from "@hangul-rummikub/shared";
 import { safeParse as parseNumberRematch } from "valibot";
@@ -1329,6 +1330,7 @@ function registerResumeHandler(
           );
           return;
         }
+        runtime.drawRelayHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         const resumePolicyFollowUp =
           runtime.roomPresencePolicyService.onResume(
             result.data.roomId,
@@ -2662,6 +2664,32 @@ function registerNumberPassHandler(
   });
 }
 
+
+function registerDrawRelayHandlers(socket: RealtimeSocket, runtime: ApplicationRuntime): void {
+  const events = ["draw:draftSave", "draw:submitDrawing", "draw:submitGuess", "draw:revealNext", "draw:rematch", "draw:configure"] as const;
+  for (const event of events) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
+    const receivedAt = runtime.clock.now();
+    const command = parseNumberRematch(DrawClientCommandSchema, raw);
+    if (!command.success || command.output.kind !== event || Buffer.byteLength(JSON.stringify(raw)) > 512_000) {
+      acknowledgeIfPresent(acknowledge, failureAck(raw, INVALID_PAYLOAD_ERROR, receivedAt)); return;
+    }
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(createSocketId(socket.id));
+      if (!binding) { acknowledgeIfPresent(acknowledge, failureAck(raw, UNAUTHENTICATED_ERROR, receivedAt)); return; }
+      if (!isRoomAdmissionCompatible("DRAW_RELAY", socketAdmissionCapabilities(socket))) {
+        acknowledgeIfPresent(acknowledge, failureAck(raw, { code: "INCOMPATIBLE_GAME_CAPABILITY", message: "DRAW requires V2 capability.", recoverable: false }, receivedAt)); return;
+      }
+      if (!runtime.drawRelayService) { acknowledgeIfPresent(acknowledge, failureAck(raw, INTERNAL_ERROR, receivedAt)); return; }
+      const result = await runtime.drawRelayService.command({ roomId: binding.roomId, actorPlayerId: binding.playerId,
+        command: command.output, receivedAt, authorization: { isCurrent: () => socket.connected && isCurrentBinding(runtime, binding) } });
+      if (!result.ok) { acknowledgeIfPresent(acknowledge, failureAck(raw, result.error, receivedAt)); return; }
+      const loaded = await loadSnapshotForSocket(runtime, socket, binding.roomId, binding.playerId);
+      if (loaded && socket.connected && isCurrentBinding(runtime, binding))
+        acknowledgeIfPresent(acknowledge, snapshotSuccessAck(command.output.requestId, loaded.metadata, loaded.wireSnapshot));
+    })().catch(() => acknowledgeIfPresent(acknowledge, failureAck(raw, INTERNAL_ERROR, receivedAt)));
+  });
+}
+
 function registerNumberRematchHandler(io: RealtimeServer, socket: RealtimeSocket, runtime: ApplicationRuntime): void {
   socket.on("number:rematch", (raw, acknowledge) => {
     const now = runtime.clock.now(), parsed = parseNumberRematch(NumberRematchCommandSchema, raw);
@@ -2881,6 +2909,7 @@ function registerDisconnectHandler(
       return;
     }
 
+    runtime.drawRelayHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     void runtime.roomPresencePolicyService
       .onCurrentDisconnect({
         roomId: binding.roomId,
@@ -2957,6 +2986,7 @@ export function registerSocketIoHandlers(
         reportSnapshotFanOutFailure();
       }
     });
+  const unsubscribeDrawRelay = runtime.drawRelayService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeCityRoleTimeoutApplied = runtime.subscribeCityRoleTimeoutApplied(async data => {
     try { await fanOutRoomSnapshots(io, runtime, data.roomId); }
     catch { reportSnapshotFanOutFailure(); }
@@ -3003,6 +3033,7 @@ export function registerSocketIoHandlers(
     registerGemReserveHandler(io, socket, runtime);
     registerGemYieldHandler(io, socket, runtime);
     registerCityHandlers(io, socket, runtime);
+    registerDrawRelayHandlers(socket, runtime);
     registerNumberSubmitHandler(io, socket, runtime);
     registerNumberDrawHandler(io, socket, runtime);
     registerNumberPassHandler(io, socket, runtime);
@@ -3018,6 +3049,7 @@ export function registerSocketIoHandlers(
     unsubscribeNumberTileTimeoutApplied();
     unsubscribeGemCardTimeoutApplied();
     unsubscribeCityRoleTimeoutApplied();
+    unsubscribeDrawRelay?.();
     unsubscribeGameDeadlineApplied();
   };
 }

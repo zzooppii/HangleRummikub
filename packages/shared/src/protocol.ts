@@ -310,6 +310,18 @@ export const GameStartCommandSchema = v.strictObject({
 });
 export type GameStartCommand = v.InferOutput<typeof GameStartCommandSchema>;
 
+const DrawIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, stageToken: TurnIdSchema };
+export const DrawDraftSaveCommandSchema = v.strictObject({ ...DrawIdentity, kind: v.literal("draw:draftSave"),
+  payload: v.strictObject({ drawing: DrawingSchema, expectedDraftRevision: v.pipe(v.number(),v.safeInteger(),v.minValue(0)) }) });
+export const DrawSubmitDrawingCommandSchema = v.strictObject({ ...DrawIdentity, kind: v.literal("draw:submitDrawing"), payload: v.strictObject({ drawing: DrawingSchema }) });
+export const DrawSubmitGuessCommandSchema = v.strictObject({ ...DrawIdentity, kind: v.literal("draw:submitGuess"), payload: v.strictObject({ text: GuessSchema }) });
+export const DrawRevealNextCommandSchema = v.strictObject({ ...DrawIdentity, kind: v.literal("draw:revealNext"), expectedGameRevision: GameRevisionSchema, payload: v.strictObject({}) });
+export const DrawRematchCommandSchema = v.strictObject({ ...DrawIdentity, kind: v.literal("draw:rematch"), expectedGameRevision: GameRevisionSchema, expectedRoomRevision: RoomRevisionSchema, payload: v.strictObject({}) });
+export const DrawConfigureCommandSchema = v.strictObject({ kind: v.literal("draw:configure"), protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema,
+  expectedRoomRevision: RoomRevisionSchema, payload: v.strictObject({ promptMode: v.picklist(["EASY","NORMAL","MIXED"]) }) });
+export const DrawClientCommandSchema = v.variant("kind",[DrawDraftSaveCommandSchema,DrawSubmitDrawingCommandSchema,DrawSubmitGuessCommandSchema,DrawRevealNextCommandSchema,DrawRematchCommandSchema,DrawConfigureCommandSchema]);
+export type DrawClientCommand = v.InferOutput<typeof DrawClientCommandSchema>;
+
 export const TurnSubmitCommandSchema = v.strictObject({
   kind: v.literal("turn:submit"),
   protocolVersion: ProtocolVersionSchema,
@@ -444,6 +456,7 @@ export type Phase2ClientCommand = v.InferOutput<
 >;
 
 export const ClientCommandSchema = v.variant("kind", [
+  DrawDraftSaveCommandSchema, DrawSubmitDrawingCommandSchema, DrawSubmitGuessCommandSchema, DrawRevealNextCommandSchema, DrawRematchCommandSchema, DrawConfigureCommandSchema,
   SessionBootstrapCommandSchema,
   RoomCreateCommandSchema,
   RoomJoinCommandSchema,
@@ -579,3 +592,4 @@ export const SessionReplacedNotificationSchema = v.strictObject({
 export type SessionReplacedNotification = v.InferOutput<
   typeof SessionReplacedNotificationSchema
 >;
+import { DrawingSchema, GuessSchema } from "./games/draw-relay/drawing-contracts.js";

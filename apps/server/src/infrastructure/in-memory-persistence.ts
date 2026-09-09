@@ -103,6 +103,7 @@ type GameStateStorageAdapters = Readonly<{
 }>;
 
 type RoomGameLifecycleInspection =
+  | Readonly<{gameType:"DRAW_RELAY";inspection:DrawRelayLifecycle}>
   | Readonly<{ gameType: "CITY_ROLE"; inspection: CityRoleGameLifecycleInspection }>
   | Readonly<{ gameType: "GEM_CARD"; inspection: GemCardGameLifecycleInspection }>
   | Readonly<{
@@ -215,6 +216,15 @@ function cloneRoomWriteCandidate(
   } as const;
 
   switch (candidate.gameType) {
+    case "DRAW_RELAY": {
+      const adapter=new DrawRelayGameStateAdapter(),game=candidate.game===null?null:adapter.cloneAndValidate(candidate.game);
+      validateRoomGameCoherence(shell.phase,shell.players,game,()=>game===null?null:adapter.inspectLifecycle(game));
+      const departedPlayerIds=Object.freeze([...(candidate.departedPlayerIds??[])]);
+      if(new Set(departedPlayerIds).size!==departedPlayerIds.length||departedPlayerIds.some(id=>!shell.players.some(p=>p.playerId===id)))throw new Error("Invalid departed DRAW participant.");
+      const promptMode=candidate.promptMode??"MIXED";
+      if(!["EASY","NORMAL","MIXED"].includes(promptMode))throw new Error("Invalid prompt mode.");
+      return Object.freeze({...shell,gameType:"DRAW_RELAY",game,departedPlayerIds,promptMode});
+    }
     case "HANGUL_TILE": {
       const game =
         candidate.game === null
@@ -276,6 +286,7 @@ function validateRoomGameCoherence(
     | LegacyHangulGameLifecycleInspection
     | GemCardGameLifecycleInspection
     | CityRoleGameLifecycleInspection
+    | DrawRelayLifecycle
     | NumberTileGameLifecycleInspection
     | null,
 ): void {
@@ -322,6 +333,7 @@ function persistRoom(
     case "NUMBER_TILE":
     case "GEM_CARD":
     case "CITY_ROLE":
+    case "DRAW_RELAY":
       return Object.freeze({ ...detached, storageRevision: revision });
   }
 }
@@ -341,6 +353,7 @@ function inspectRoomGame(
     return null;
   }
   switch (room.gameType) {
+    case "DRAW_RELAY": return {gameType:"DRAW_RELAY",inspection:new DrawRelayGameStateAdapter().inspectLifecycle(room.game)};
     case "HANGUL_TILE":
       return Object.freeze({
         gameType: room.gameType,
@@ -901,6 +914,7 @@ export class InMemoryPersistence
         continue;
       }
       const lifecycle = inspection.inspection;
+      if(lifecycle.activeTurn===null)continue;
       deadlines.push(
         Object.freeze({
           roomId: room.roomId,
@@ -1237,3 +1251,4 @@ export class InMemoryPersistence
     return { status: "COMMITTED" };
   }
 }
+import { DrawRelayGameStateAdapter,type DrawRelayLifecycle } from "../games/draw-relay/compatibility/adapter.js";

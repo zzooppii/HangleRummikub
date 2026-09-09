@@ -532,6 +532,12 @@ export interface ServerToClientEvents {
  * remain available to compile old V1-only clients without changing their API.
  */
 export interface SnapshotWireClientToServerEvents {
+  "draw:draftSave": (command: Extract<DrawClientCommand,{kind:"draw:draftSave"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "draw:submitDrawing": (command: Extract<DrawClientCommand,{kind:"draw:submitDrawing"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "draw:submitGuess": (command: Extract<DrawClientCommand,{kind:"draw:submitGuess"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "draw:revealNext": (command: Extract<DrawClientCommand,{kind:"draw:revealNext"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "draw:rematch": (command: Extract<DrawClientCommand,{kind:"draw:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "draw:configure": (command: Extract<DrawClientCommand,{kind:"draw:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "city:selectRole": (command: CitySelectRoleCommand, acknowledge: SocketAcknowledgement<CitySelectRoleWireAck>) => void;
   "city:takeIncome": (command: CityTakeIncomeCommand, acknowledge: SocketAcknowledgement<CityTakeIncomeWireAck>) => void;
   "city:drawBuildingCards": (command: CityDrawBuildingCardsCommand, acknowledge: SocketAcknowledgement<CityDrawBuildingCardsWireAck>) => void;
@@ -604,3 +610,4 @@ export type SnapshotWireServerToClientEvents = Omit<
 > & {
   "state:snapshot": (event: StateSnapshotWireEvent) => void;
 };
+import type { DrawClientCommand } from "./protocol.js";

@@ -652,7 +652,7 @@ export class RoomSessionApplicationService {
         ROOM_NOT_JOINABLE_ERROR,
       );
     }
-    if (room.players.length >= (room.gameType === "CITY_ROLE" ? 6 : MAX_ROOM_PLAYERS)) {
+    if (room.players.length >= (room.gameType === "DRAW_RELAY" ? 8 : room.gameType === "CITY_ROLE" ? 6 : MAX_ROOM_PLAYERS)) {
       return await this.#rejectAfterIdempotencyRecheck(
         prepared,
         fingerprint,

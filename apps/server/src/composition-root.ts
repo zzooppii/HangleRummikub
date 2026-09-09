@@ -1,3 +1,6 @@
+import { DrawRelayService } from "./games/draw-relay/application/service.js";
+import { DrawRelayHostSuccession } from "./games/draw-relay/application/host-succession.js";
+import { createDrawRelayLifecycle } from "./games/draw-relay/application/lifecycle.js";
 import { NumberTileRematchService } from "./games/number-tile/application/number-tile-rematch-service.js";
 import { createGemCardRegistration } from "./games/gem-card/gem-card-registration.js";
 import { createCityRoleRegistration } from "./games/city-role/city-role-registration.js";
@@ -104,6 +107,8 @@ import {
 } from "./infrastructure/system.js";
 
 export type ApplicationRuntime = Readonly<{
+  drawRelayService?: DrawRelayService;
+  drawRelayHostSuccession?: DrawRelayHostSuccession;
   clock: SystemClock;
   connectionRegistry: ConnectionRegistry;
   gameRegistry: GameRegistrationReader;
@@ -199,6 +204,7 @@ export function createApplicationRuntime(
       createNumberTileRegistration(),
       createGemCardRegistration(),
       createCityRoleRegistration(),
+      { gameType: "DRAW_RELAY" },
     ],
   );
   gameRegistry.getRequired(LEGACY_V1_DEFAULT_GAME_TYPE);
@@ -226,6 +232,7 @@ export function createApplicationRuntime(
     numberTile: numberTilePlayerLifecycleActions,
     gemCard: createGemCardPlayerLifecycleActions(idGenerator),
     cityRole: createCityRolePlayerLifecycleActions(idGenerator),
+    drawRelay: createDrawRelayLifecycle(idGenerator),
   });
   const roomCodeGenerator = new RandomRoomCodeGenerator(randomSource);
   const sessionTokenIssuer = new NodeCryptoSessionTokenIssuer();
@@ -486,6 +493,14 @@ export function createApplicationRuntime(
     turnScheduler,
     onTurnSchedulingFailure: reportTurnSchedulingFailure,
   });
+  const drawRelayService = new DrawRelayService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
+    roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource, turnScheduler });
+  const drawRelayHostSuccession = new DrawRelayHostSuccession(drawRelayService.deps, roomId => drawRelayService.notify(roomId));
+  drawRelayService.subscribe(async roomId => {
+    const room = await persistence.findById(roomId);
+    if (room?.gameType === "DRAW_RELAY" && room.phase === "FINISHED" && room.game)
+      await onGameFinished({ roomId, gameId: room.game.gameId });
+  });
   const cityRoleStartService = new CityRoleStartService({
     roomRepository: persistence, idempotencyRepository: persistence, roomUnitOfWork: persistence,
     roomMutationExecutor, presenceLeaseReader: presenceReader, clock, idGenerator, randomSource,
@@ -537,6 +552,7 @@ export function createApplicationRuntime(
     capability: legacyHangulV1CommandCapability,
   });
   const gameStartRouter = new GameStartRouter({
+    drawRelay: { gameType: "DRAW_RELAY", start: input => drawRelayService.start(input) },
     cityRole: { gameType: "CITY_ROLE", start: input => cityRoleStartService.start(input) },
     gemCard: { gameType: "GEM_CARD", start: input => gemCardStartService.start(input) },
     roomRepository: persistence,
@@ -650,6 +666,7 @@ export function createApplicationRuntime(
     onGameFinished, presenceLeaseReader: presenceReader,
   });
   scheduledTurnRouter = new ScheduledTurnRouter({
+    drawRelay: { gameType: "DRAW_RELAY", handleTurnTimeout: input => drawRelayService.timeout(input) },
     cityRole: { gameType: "CITY_ROLE", handleTurnTimeout: input => cityRoleTimeoutService.timeout(input) },
     gemCard: { gameType: "GEM_CARD", handleTurnTimeout: input => gemCardTimeoutService.timeout(input) },
     roomRepository: persistence,
@@ -713,6 +730,8 @@ export function createApplicationRuntime(
     numberTileRematchService: new NumberTileRematchService({ roomRepository: persistence, idempotencyRepository: persistence, roomUnitOfWork: persistence, roomMutationExecutor, clock, idGenerator, turnScheduler }),
     gemCardCommandRouter,
     cityRoleCommandRouter,
+    drawRelayService,
+    drawRelayHostSuccession,
     subscribeCityRoleTimeoutApplied(listener) { return cityRoleTimeoutService.subscribeApplied(listener); },
     subscribeGemCardTimeoutApplied(listener) { return gemCardTimeoutService.subscribeApplied(listener); },
     overdueGameDeadlineSweeper,
@@ -758,6 +777,7 @@ export function createApplicationRuntime(
       acceptsTimeoutWork = true;
       acceptsGameDeadlineWork = true;
       acceptsRoomPolicyWork = true;
+      drawRelayHostSuccession.start();
       roomPolicyScheduler.start();
       turnScheduler.start();
       gameDeadlineScheduler.start();
@@ -773,6 +793,7 @@ export function createApplicationRuntime(
       acceptsTimeoutWork = false;
       acceptsGameDeadlineWork = false;
       acceptsRoomPolicyWork = false;
+      drawRelayHostSuccession.stop();
       roomPolicyScheduler.stop();
       overdueTurnSweeper.stop();
       overdueGameDeadlineSweeper.stop();

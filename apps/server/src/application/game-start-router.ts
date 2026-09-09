@@ -6,7 +6,7 @@ import type {
   StartGameInput,
 } from "./game-start-service.js";
 
-type StartCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE"> =
+type StartCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY"> =
   Readonly<{
     gameType: TGameType;
     start(input: StartGameInput): Promise<GameStartResult>;
@@ -23,6 +23,7 @@ export type GameStartRouterDependencies = Readonly<{
   numberTile: NumberTileGameStartCapability;
   gemCard: GemCardGameStartCapability;
   cityRole: CityRoleGameStartCapability;
+  drawRelay?: StartCapability<"DRAW_RELAY">;
 }>;
 
 export interface GameStartRouting {
@@ -46,7 +47,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function isStartCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY",
 >(
   value: unknown,
   gameType: TGameType,
@@ -58,7 +59,7 @@ function isStartCapability<
   );
 }
 
-function requireCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE">(
+function requireCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY">(
   value: unknown,
   gameType: TGameType,
 ): StartCapability<TGameType> {
@@ -79,9 +80,11 @@ export class GameStartRouter implements GameStartRouting {
   readonly #numberTile: NumberTileGameStartCapability;
   readonly #gemCard: GemCardGameStartCapability;
   readonly #cityRole: CityRoleGameStartCapability;
+  readonly #drawRelay: StartCapability<"DRAW_RELAY"> | undefined;
 
   constructor(dependencies: GameStartRouterDependencies) {
     this.#roomRepository = dependencies.roomRepository;
+    this.#drawRelay = dependencies.drawRelay;
     this.#hangul = requireCapability(dependencies.hangul, "HANGUL_TILE");
     this.#numberTile = requireCapability(
       dependencies.numberTile,
@@ -104,6 +107,7 @@ export class GameStartRouter implements GameStartRouting {
           return await this.#hangul.start(input);
         case "GEM_CARD":
           return await this.#gemCard.start(input);
+        case "DRAW_RELAY": return this.#drawRelay ? await this.#drawRelay.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "CITY_ROLE":
           return await this.#cityRole.start(input);
         case "NUMBER_TILE":

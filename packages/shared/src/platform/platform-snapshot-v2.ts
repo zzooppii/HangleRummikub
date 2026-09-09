@@ -247,7 +247,28 @@ v.check(snapshot => hasAtMostOneHost(snapshot), "CITY has at most one host."), v
 v.check(snapshot => cityPrivateStateMatchesViewer(snapshot.game, snapshot.self.playerId), "CITY private state must match viewer."));
 export type CityRoleFinishedPlatformSnapshotV2 = v.InferOutput<typeof CityRoleFinishedPlatformSnapshotV2Schema>;
 
+const DrawOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const DrawRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("DRAW_RELAY") };
+const DrawPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema),v.minLength(3),v.maxLength(8));
+const DrawRelayLobbyPlatformSnapshotV2Raw = v.pipe(v.strictObject({ ...DrawOuter,
+  room: v.strictObject({ ...DrawRoom, phase:v.literal("LOBBY"), players:v.pipe(v.array(PlatformPlayerViewV2Schema),v.maxLength(8)), promptMode:v.picklist(["EASY","NORMAL","MIXED"]) }), game:v.null() }),
+  v.check(s => hasUniqueRoomPlayers(s)),v.check(s => containsSelfPlayer(s)),v.check(s => hasAtMostOneHost(s)));
+const DrawRelayPlayingPlatformSnapshotV2Raw = v.pipe(v.strictObject({ ...DrawOuter,
+  room:v.strictObject({ ...DrawRoom,phase:v.literal("PLAYING"),players:DrawPlayers }),game:DrawRelayPlayingProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)),v.check(s => containsSelfPlayer(s)),v.check(s => hasAtMostOneHost(s)),v.check(s => hasMatchingGamePlayers(s)),
+  v.check(s => !("privateState" in s.game) || s.game.privateState.submitted === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.submitted));
+const DrawRelayFinishedPlatformSnapshotV2Raw = v.pipe(v.strictObject({ ...DrawOuter,
+  room:v.strictObject({ ...DrawRoom,phase:v.literal("FINISHED"),players:DrawPlayers }),game:DrawRelayFinishedProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)),v.check(s => containsSelfPlayer(s)),v.check(s => hasAtMostOneHost(s)),v.check(s => hasMatchingGamePlayers(s)));
+export type DrawRelayLobbyPlatformSnapshotV2 = v.InferOutput<typeof DrawRelayLobbyPlatformSnapshotV2Raw>;
+export const DrawRelayLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown,DrawRelayLobbyPlatformSnapshotV2> = DrawRelayLobbyPlatformSnapshotV2Raw;
+export type DrawRelayPlayingPlatformSnapshotV2 = v.InferOutput<typeof DrawRelayPlayingPlatformSnapshotV2Raw>;
+export const DrawRelayPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown,DrawRelayPlayingPlatformSnapshotV2> = DrawRelayPlayingPlatformSnapshotV2Raw;
+export type DrawRelayFinishedPlatformSnapshotV2 = v.InferOutput<typeof DrawRelayFinishedPlatformSnapshotV2Raw>;
+export const DrawRelayFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown,DrawRelayFinishedPlatformSnapshotV2> = DrawRelayFinishedPlatformSnapshotV2Raw;
+
 export const LobbyPlatformSnapshotV2Schema = v.union([
+  DrawRelayLobbyPlatformSnapshotV2Schema,
   HangulTileLobbyPlatformSnapshotV2Schema,
   NumberTileLobbyPlatformSnapshotV2Schema,
   GemCardLobbyPlatformSnapshotV2Schema,
@@ -386,6 +407,7 @@ export type GemCardPlayingPlatformSnapshotV2 = v.InferOutput<
 >;
 
 export const PlayingPlatformSnapshotV2Schema = v.union([
+  DrawRelayPlayingPlatformSnapshotV2Schema,
   HangulTilePlayingPlatformSnapshotV2Schema,
   NumberTilePlayingPlatformSnapshotV2Schema,
   GemCardPlayingPlatformSnapshotV2Schema,
@@ -524,6 +546,7 @@ export type GemCardFinishedPlatformSnapshotV2 = v.InferOutput<
 >;
 
 export const FinishedPlatformSnapshotV2Schema = v.union([
+  DrawRelayFinishedPlatformSnapshotV2Schema,
   HangulTileFinishedPlatformSnapshotV2Schema,
   NumberTileFinishedPlatformSnapshotV2Schema,
   GemCardFinishedPlatformSnapshotV2Schema,
@@ -541,3 +564,4 @@ export const PlatformSnapshotV2Schema = v.union([
 export type PlatformSnapshotV2 = v.InferOutput<
   typeof PlatformSnapshotV2Schema
 >;
+import { DrawRelayPlayingProjectionSchema, DrawRelayFinishedProjectionSchema } from "../games/draw-relay/v2-projection-contracts.js";
