@@ -12,7 +12,8 @@ import { CityRoleCommandService } from "./games/city-role/application/city-role-
 import { createCityRolePlayerLifecycleActions } from "./games/city-role/application/city-role-player-lifecycle-actions.js";
 import { CityRoleTimeoutService } from "./games/city-role/application/city-role-timeout-service.js";
 import { projectCityRoleV2Game } from "./games/city-role/compatibility/city-role-v2-game-projector.js";
-import type { CityRoleStoredGame } from "./games/city-role/compatibility/city-role-game-state-adapter.js";
+import { CityRoleGameStateAdapter, type CityRoleStoredGame } from "./games/city-role/compatibility/city-role-game-state-adapter.js";
+import { initialCityLandmarkHistory } from "./games/city-role/domain/landmarks-v2.js";
 import { CITY_BUILDING_TEMPLATES } from "./games/city-role/domain/cardset-v1.js";
 import type { CityGameState } from "./games/city-role/domain/game-state.js";
 import { CITY_ROLE_IDS, type CityRoleId } from "./games/city-role/domain/role.js";
@@ -30,10 +31,98 @@ import {
 
 const authorization = { isCurrent: () => true };
 
+for (const targetRole of ["CR-05", "CR-07"] as const) test(`CR02 investigation v2 no-op ${targetRole === "CR-05" ? "same owner" : "unselected"} preserves gold at resolution`, async t => {
+  let state = atCityRole("CR-02");
+  state = { ...state, rulesVersion: "city-rules-v2", cardSetVersion: "city-cardset-v2", landmarkHistory: state.players.map(p => initialCityLandmarkHistory(p.playerId)) };
+  const source = state.window!.activePlayerId;
+  if (targetRole === "CR-05") assert.equal(state.round.assignments.find(a => a.roleId === targetRole)?.playerId, source);
+  else assert.equal(state.round.assignments.some(a => a.roleId === targetRole), false);
+  const h = await localLifecycle(t, state);
+  await h.service.takeIncome(await h.input());
+  assert.equal((await h.service.useRoleAbility({ ...await h.input(), ability: { ability: "MARK_ROLE_GOLD_TRANSFER", targetRoleId: targetRole } })).ok, true);
+  const previousRole = targetRole === "CR-05" ? "CR-04" : "CR-06";
+  while ((await h.read()).game.state.window?.kind === "ROLE_ACTION") {
+    const w = (await h.read()).game.state.window;
+    assert.ok(w?.kind === "ROLE_ACTION");
+    if (w.activeRoleId !== previousRole) { await h.endRole(); continue; }
+    await h.service.takeIncome(await h.input());
+    const before = await h.read();
+    assert.equal((await h.service.endTurn(await h.input())).ok, true);
+    const after = await h.read();
+    assert.deepEqual(after.game.state.players.map(p => p.gold), before.game.state.players.map(p => p.gold));
+    assert.equal(after.game.gameRevision, before.game.gameRevision + 1, "normal end turn still commits once");
+    if (targetRole === "CR-05") assert.equal(after.game.state.marks[0]?.status, "RESOLVED");
+    else assert.equal(after.game.state.round.roundNumber, 2, "absent mark is consumed then cleared at round end");
+    return;
+  }
+  assert.fail("no-op boundary not reached");
+});
+
+for (const [role, template] of [["CR-04", "CB-CIV-01"], ["CR-05", "CB-CUL-01"], ["CR-06", "CB-TRA-01"], ["CR-08", "CB-GUA-01"]] as const) {
+  for (const oldGold of [0, 5]) test(`CR02 investigation v2 ${role} gold=${oldGold}: persisted mark, exact transfer before income, replay inert`, async t => {
+    const picks: CityRoleId[] = ["CR-01", "CR-02", "CR-03", role];
+    picks.push(...CITY_ROLE_IDS.filter(id => !picks.includes(id) && id !== "CR-07").slice(0, 2));
+    let state = advanceToRole(completeCityDraft(createCityFixture(3, ["CR-07", ...CITY_ROLE_IDS.filter(id => id !== "CR-07")]), picks), "CR-02");
+    state = { ...state, rulesVersion: "city-rules-v2", cardSetVersion: "city-cardset-v2", landmarkHistory: state.players.map(p => initialCityLandmarkHistory(p.playerId)) };
+    const source = state.window!.activePlayerId, target = state.round.assignments.find(a => a.roleId === role)!.playerId;
+    assert.notEqual(source, target);
+    state = withCityZones(state, { cities: [{ playerId: target, cardIds: [cityCard(state, template)] }] });
+    const h = await localLifecycle(t, state);
+    await h.service.takeIncome(await h.input());
+    assert.equal((await h.service.useRoleAbility({ ...await h.input(), ability: { ability: "MARK_ROLE_GOLD_TRANSFER", targetRoleId: role } })).ok, true);
+    while ((await h.read()).game.state.window?.kind === "ROLE_ACTION") {
+      const before = await h.read();
+      const window = before.game.state.window;
+      assert.ok(window?.kind === "ROLE_ACTION");
+      if (window.activeRoleId === role) break;
+      // The last lower role is the only boundary under examination; other
+      // legitimate turns may change the target's shared gold beforehand.
+      const later = before.game.state.round.assignments.filter(a => a.status === "SELECTED").sort((a,b) => a.roleId.localeCompare(b.roleId));
+      if (later[0]?.roleId !== role) { await h.endRole(); continue; }
+      if (window.acquisition === "NOT_TAKEN") await h.service.takeIncome(await h.input());
+      const boundary = await h.read();
+      const seeded = withCityGold(boundary.game.state, target, oldGold);
+      const adapter = new CityRoleGameStateAdapter();
+      const restored = adapter.cloneAndValidate(JSON.parse(JSON.stringify({ ...boundary.game, state: seeded })));
+      assert.equal(restored.state.marks[0]?.status, "UNRESOLVED");
+      // A new isolated persisted room models restart from the unresolved mark.
+      const resumed = await localLifecycle(t, restored.state, 100);
+      const sourceGold = cityPlayer(restored.state, source).gold;
+      assert.deepEqual((await resumed.snapshot(target)).game.privateState.marks, []);
+      const request = await resumed.input(), revision = request.expectedGameRevision;
+      const ended = await resumed.service.endTurn(request);
+      assert.equal(ended.ok, true, JSON.stringify(ended));
+      const after = await resumed.read();
+      assert.equal(after.game.gameRevision, revision + 1);
+      assert.equal(cityPlayer(after.game.state, source).gold, sourceGold + oldGold);
+      assert.equal(cityPlayer(after.game.state, target).gold, 1, "zero after theft, then one category income");
+      assert.equal(after.game.state.marks[0]?.status, "RESOLVED");
+      assert.equal((await resumed.service.endTurn(request)).ok, true);
+      assert.deepEqual((await resumed.read()).game, after.game, "duplicate request cannot steal twice");
+      const copy = adapter.cloneAndValidate(JSON.parse(JSON.stringify(after.game)));
+      assert.deepEqual(copy, after.game);
+      for (const viewer of [source, target]) {
+        const view = await resumed.snapshot(viewer);
+        assert.equal(view.game.playerStates.find(p => p.playerId === String(source))?.gold, sourceGold + oldGold);
+        assert.equal(view.game.playerStates.find(p => p.playerId === String(target))?.gold, 1);
+      }
+      if (role === "CR-06") {
+        await resumed.service.takeIncome(await resumed.input());
+        assert.equal(cityPlayer((await resumed.read()).game.state, target).gold, 4, "category1 + basic2 + subsequent extra1");
+        assert.equal(cityPlayer((await resumed.read()).game.state, source).gold, sourceGold + oldGold);
+      }
+      return;
+    }
+    assert.fail("target boundary was not exercised");
+  });
+}
+
 // Fixtures seed a valid private state only in isolated test persistence. Every
 // operation under test uses real application/UoW/projector/scheduler code.
-async function localLifecycle(t: TestContext, initial: CityGameState) {
+async function localLifecycle(t: TestContext, initial: CityGameState, idOffset = 0) {
   const persistence = new InMemoryPersistence(), clock = new FakeClock(1_000), ids = new FakeIdGenerator();
+  // A restarted fixture must not reuse the old FakeIdGenerator sequence.
+  for (let i = 0; i < idOffset; i++) ids.generateTurnId();
   const roomId = parse(RoomIdSchema, "city-local-lifecycle");
   const players = initial.players.map((player, index) => ({
     playerId: parse(PlayerIdSchema, player.playerId), nickname: parse(NicknameSchema, `City${index}`), joinOrder: index,

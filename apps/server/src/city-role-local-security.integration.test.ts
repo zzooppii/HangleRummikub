@@ -161,6 +161,73 @@ test("P16 raw all ten Hangul/Number/Gem commands -> CITY fail closed with state/
   }
 });
 
+test("CR02 investigation: two real socket clients resume unresolved v2 mark and observe exact gold transfer once", async t => {
+  const actualNextInt = CryptoRandomSource.prototype.nextInt;
+  t.mock.method(CryptoRandomSource.prototype, "nextInt", (max: number) => max === 0x1_0000_0000 ? 2 : actualNextInt(max));
+  const h = await harness(t), group = await h.group("CITY_ROLE", 2);
+  let view = h.city(await h.start(group));
+  const owners = new Map<string, typeof group.members[number]>();
+  for (const requested of ["CR-02", "CR-06", null, null] as const) {
+    const actor = group.members.find(m => m.playerId === view.game.window.activePlayerId)!;
+    view = h.city(await h.sync(actor.client));
+    assert.ok(view.game.phase === "ROLE_SELECTION");
+    const roleId = requested ?? view.game.privateState.availableRoleIds!.filter(id => id !== "CR-01")[0]!;
+    owners.set(roleId, actor);
+    assert.ok(view.game.phase === "ROLE_SELECTION" && view.game.privateState.availableRoleIds?.includes(roleId), JSON.stringify({ roleId, available: view.game.privateState }));
+    view = await h.action(actor.client, "city:selectRole", { roleId }, view);
+  }
+  const source = owners.get("CR-02")!, target = owners.get("CR-06")!;
+  assert.notEqual(source.playerId, target.playerId);
+  view = h.city(await h.sync(source.client));
+  assert.ok(view.game.phase === "ROLE_ACTION" && view.game.window.activeRoleId === "CR-02");
+  view = await h.action(source.client, "city:takeIncome", {}, view);
+  view = await h.action(source.client, "city:useRoleAbility", { ability: "MARK_ROLE_GOLD_TRANSFER", targetRoleId: "CR-06" }, view);
+  assert.equal(view.game.privateState.marks[0]?.status, "UNRESOLVED");
+  assert.deepEqual(h.city(await h.sync(target.client)).game.privateState.marks, []);
+  source.client.disconnect();
+  source.client = await h.connect();
+  const resumed = h.city(h.success(await h.call(source.client, "session:resume", { credential: { ...source.credential, roomCode: view.room.roomCode }, lastSeenVersions: null })));
+  assert.equal(resumed.self.playerId, source.playerId);
+  assert.equal(resumed.room.players.length, 2);
+  assert.equal(resumed.game.privateState.marks[0]?.status, "UNRESOLVED");
+  view = resumed;
+  while (view.game.phase === "ROLE_ACTION" && view.game.window.activeRoleId !== "CR-06") {
+    const actor = group.members.find(m => m.playerId === view.game.window.activePlayerId)!;
+    view = h.city(await h.sync(actor.client));
+    assert.ok(view.game.phase === "ROLE_ACTION");
+    if (view.game.privateState.action?.acquisition === "NOT_TAKEN") view = await h.action(actor.client, "city:takeIncome", {}, view);
+    const before = view;
+    const request = h.command("city:endTurn", {}, cityIdentity(before));
+    const ack = parse(CityActionWireAckSchema, await h.send(actor.client, request));
+    assert.ok(ack.ok);
+    view = h.city(await h.sync(actor.client));
+    if (view.game.phase !== "ROLE_ACTION" || view.game.window.activeRoleId !== "CR-06") continue;
+    const gold = (v: CityRolePlayingPlatformSnapshotV2, id: string) => v.game.playerStates.find(p => p.playerId === id)!.gold;
+    const stolen = gold(before, target.playerId);
+    assert.ok(stolen > 0);
+    assert.equal(gold(view, target.playerId), 0, "no city income: all existing gold stolen");
+    assert.equal(gold(view, source.playerId), gold(before, source.playerId) + stolen);
+    assert.equal(view.game.gameRevision, before.game.gameRevision + 1);
+    t.diagnostic(`CR02 raw: source ${gold(before, source.playerId)} -> ${gold(view, source.playerId)}; target ${stolen} -> 0; revision ${before.game.gameRevision} -> ${view.game.gameRevision}`);
+    const replay = parse(CityActionWireAckSchema, await h.send(actor.client, request));
+    assert.ok(replay.ok);
+    assert.deepEqual(replay.data, ack.data);
+    assert.deepEqual(replay.versions, ack.versions);
+    for (const member of group.members) {
+      const synced = h.city(await h.sync(member.client));
+      assert.equal(gold(synced, source.playerId), gold(view, source.playerId));
+      assert.equal(gold(synced, target.playerId), 0);
+      assert.equal(synced.game.gameRevision, view.game.gameRevision);
+    }
+    view = h.city(await h.sync(target.client));
+    view = await h.action(target.client, "city:takeIncome", {}, view);
+    assert.equal(gold(view, target.playerId), 3, "basic2 then CR06 extra1, not part of theft");
+    assert.equal(gold(view, source.playerId), gold(before, source.playerId) + stolen);
+    return;
+  }
+  assert.fail("CR06 transfer boundary not exercised");
+});
+
 test("P16 raw six-viewer network privacy spans secret draft, pending draw and both actor-private interference marks", async t => {
   // Only the injected random port is deterministic; no canonical state or server endpoint is edited.
   const actualNextInt = CryptoRandomSource.prototype.nextInt;
