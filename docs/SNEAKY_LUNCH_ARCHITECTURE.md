@@ -2,6 +2,8 @@
 
 P21A COMPLETE / DOMAIN READY. Starting clean HEAD `057fce8`.
 
+P21B: concrete `games/sneaky-lunch/domain/game.ts` implements detached validation and deterministic transitions. 21 additive domain tests cover 2–8 players, all box counts, timing bounds, fake cap, safe/danger/stale/rate semantics, terminal order and recovered plans. No GameType, Room, protocol or Web registration in P21B. Already-caught/forfeited progress remains frozen when presence changes; explicit departure is separate Room metadata.
+
 Concrete pure domain owns settings, participants, progress/status, teacher state and hidden plan, countdown, eat/forfeit/result and state validation. Application supplies server time, IDs and bounded random samples. No React, transport, scheduler, persistence or ambient random/time inside transitions.
 
 P21C adds exactly one identity-only GameType/Registry entry, concrete SneakyLunchRoomRecord, game-specific 2–8 admission and concrete storage/projector/lifecycle/start/scheduled branches. No generic module, state blob, realtime engine, or command framework. Other five games and dependencies remain unchanged.
