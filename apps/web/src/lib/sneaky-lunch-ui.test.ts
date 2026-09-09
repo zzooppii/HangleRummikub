@@ -9,6 +9,8 @@ import { SneakyLunchScreen, canEat, remainingFood } from "../features/sneaky-lun
 import { LunchAudio, LUNCH_CUES } from "../features/sneaky-lunch/sound.js";
 import { LunchFeedbackTracker, deriveLunchFeedback } from "../features/sneaky-lunch/feedback.js";
 import { StudentArt } from "../features/sneaky-lunch/art.js";
+import { ClassroomPlaying, lunchFoodStage } from "../features/sneaky-lunch/ClassroomPlaying.js";
+import { TeacherArt } from "../features/sneaky-lunch/classroom-art.js";
 import { decodeWebSnapshot, type SneakyWebSnapshot } from "./snapshot-wire-decoder.js";
 import { resolveRoomSnapshotView } from "./room-snapshot-view.js";
 import { projectRoomSnapshotShell } from "./room-snapshot-shell.js";
@@ -91,7 +93,67 @@ test("SNEAKY original short sound families and OFF require no audio engine", () 
   audio.play("CAUGHT"); audio.play("BITE"); audio.close(); assert.equal(Object.keys(LUNCH_CUES).length, 10);
 });
 test("SNEAKY mobile teacher visibility, safe-area dock, reduced motion and original five-step help", () => {
-  const css = readFileSync(new URL("../../src/features/sneaky-lunch/sneaky-lunch.css", import.meta.url), "utf8"), source = readFileSync(new URL("../../src/features/sneaky-lunch/SneakyLunchScreen.tsx", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../../src/features/sneaky-lunch/sneaky-lunch.css", import.meta.url), "utf8") + readFileSync(new URL("../../src/features/sneaky-lunch/classroom.css", import.meta.url), "utf8"), source = readFileSync(new URL("../../src/features/sneaky-lunch/SneakyLunchScreen.tsx", import.meta.url), "utf8");
   for (const text of ["max-width:768px", "max-width:430px", "max-width:340px", "safe-area-inset-bottom", "prefers-reduced-motion", "position:sticky", "touch-action:manipulation", "focus-visible"]) assert.ok(css.includes(text));
   assert.match(source, /showModal\(\)/); assert.match(source, /step === 4/); assert.match(source, /2000/); assert.doesNotMatch(source, /onMouseDown=|setInterval\(.*eat/);
+});
+
+function classroom(count=4) {
+  const p=playing();
+  return parse(SneakyPlayingPlatformSnapshotV2Schema,{...p,room:{...p.room,players:players.slice(0,count)},game:{...p.game,playerStates:players.slice(0,count).map(p=>({playerId:p.playerId,status:"ACTIVE",completedBites:0}))}});
+}
+for(const count of [2,3,4,5,6,7,8]) test(`SNEAKY immersive ${count}-seat board: one own foreground desk, remaining compact seats, no dashboard cards`,()=>{
+  const p=classroom(count),output=html(p);
+  assert.equal((output.match(/class="lunch-classroom-seat /g)??[]).length,count-1);
+  assert.equal((output.match(/class="lunch-own-seat/g)??[]).length,1);
+  for(const player of p.room.players)assert.equal((output.match(new RegExp(`data-player-id="${player.playerId}"`,"g"))??[]).length,1);
+  assert.match(output,/lunch-room-background/);assert.match(output,/lunch-teacher-stage/);assert.match(output,/lunch-front-pupil/);
+  assert.doesNotMatch(output,/lunch-desks-section|class="lunch-desk |lunch-front-caption/);
+  assert.equal((output.match(/class="lunch-eat-button/g)??[]).length,1);
+});
+test("SNEAKY own food stages preserve 30-bite box boundaries and final empty tray",()=>{
+  assert.deepEqual([0,8,15,23,30,38,45,53,60].map(b=>lunchFoodStage(b,60)),[4,3,2,1,4,3,2,1,0]);
+  assert.match(html(playing("BOARD",23)),/data-food-stage="1"/);
+});
+test("SNEAKY all public bites drive only the matching seat and retain exact accepted delta",()=>{
+  const a=classroom(),b={...a,game:{...a.game,gameRevision:parse(SneakyPlayingPlatformSnapshotV2Schema,playing("BOARD",0,2)).game.gameRevision,playerStates:a.game.playerStates.map((p,i)=>i===1?{...p,completedBites:3}:p)}};
+  const events=deriveLunchFeedback(a,b);assert.equal(events.length,1);assert.equal(events[0]!.playerId,a.room.players[1]!.playerId);assert.equal(events[0]!.biteDelta,3);assert.equal(events[0]!.cue,"BITE");
+  assert.deepEqual(deriveLunchFeedback(b,b),[]);assert.deepEqual(deriveLunchFeedback(b,a),[]);
+});
+test("SNEAKY remote lunchbox completion is a seat animation, not a local award",()=>{
+  const a=playing(),b=playing("BOARD",0,2);a.game.playerStates[1]!.completedBites=29;b.game.playerStates[1]!.completedBites=30;
+  const events=deriveLunchFeedback(a,b);assert.equal(events.length,1);assert.equal(events[0]!.cue,"BOX");assert.equal(events[0]!.playerId,a.room.players[1]!.playerId);assert.equal(events[0]!.biteDelta,1);
+});
+test("SNEAKY remote eat/catch pulses do not replay on refresh or either reconnect baseline",()=>{
+  const a=classroom(),b=parse(SneakyPlayingPlatformSnapshotV2Schema,{...a,game:{...a.game,gameRevision:2,playerStates:a.game.playerStates.map((p,i)=>i===1?{...p,completedBites:5}:p)}});
+  const t=new LunchFeedbackTracker();assert.deepEqual(t.update(a,true),[]);assert.equal(t.update(b,true).length,1);assert.deepEqual(t.update(b,true),[]);
+  assert.deepEqual(t.update(a,false),[]);assert.deepEqual(t.update(b,true),[]);assert.deepEqual(new LunchFeedbackTracker().update(b,true),[]);
+});
+test("SNEAKY caught participant stays in the same desk with a closed tray and slumped identity",()=>{
+  const a=classroom(),b=parse(SneakyPlayingPlatformSnapshotV2Schema,{...a,game:{...a.game,gameRevision:2,playerStates:a.game.playerStates.map((p,i)=>i===1?{...p,status:"CAUGHT"}:p)}});
+  const before=html(a),after=html(b);assert.equal((after.match(/data-player-id=/g)??[]).length,4);
+  assert.match(after,/lunch-classroom-seat status-caught/);assert.match(after,/lunch-caught-stamp/);assert.match(after,/lunch-slumped-arms/);
+  assert.equal((before.match(/class="lunch-classroom-seat /g)??[]).length,(after.match(/class="lunch-classroom-seat /g)??[]).length);
+  const caught=deriveLunchFeedback(a,b);assert.equal(caught[0]!.playerId,b.room.players[1]!.playerId);assert.match(caught[0]!.text,/친구2님이 들켰/);
+});
+test("SNEAKY four teacher poses expose only their current public state",()=>{
+  const states=["BOARD","SUSPICIOUS","WATCHING","RETURNING"] as const;
+  const output=states.map(state=>renderToStaticMarkup(createElement(TeacherArt,{state})));
+  assert.equal(new Set(output).size,4);for(const scene of output)assert.doesNotMatch(scene,/nextTransition|plannedOutcome|deadline|countdown|FAKE|REAL/);
+  assert.match(output[1]!,/lunch-teacher-question/);assert.doesNotMatch(output[0]!,/lunch-teacher-question/);
+});
+test("SNEAKY accepted +1 is transient only: no speculative motion on initial/synchronized rendering",()=>{
+  const p=classroom();const props={snapshot:p,title:"칠판 볼 때",seconds:0,allowed:true,danger:false,caughtSpeech:null,onEat(){},resultControls:null};
+  const rest=renderToStaticMarkup(createElement(ClassroomPlaying,{...props,pulses:{}}));assert.doesNotMatch(rest,/lunch-bite-pop|is-eating/);
+  const accepted=renderToStaticMarkup(createElement(ClassroomPlaying,{...props,pulses:{[p.self.playerId]:{id:"accepted",cue:"BITE",biteDelta:1}}}));assert.match(accepted,/lunch-bite-pop[^>]*>\+1/);assert.match(accepted,/냠! 한입 성공/);
+});
+test("SNEAKY finished result is a dismissible dialog over the preserved classroom and own seat",()=>{
+  const p=classroom(),{teacherState,...base}=p.game.phase==="CLASSROOM"?p.game:{...p.game,teacherState:"BOARD"};void teacherState;
+  const win=parse(SneakyFinishedPlatformSnapshotV2Schema,{...p,room:{...p.room,phase:"FINISHED"},game:{...base,gameRevision:2,phase:"FINISHED",result:{reason:"PLAYER_FINISHED",winnerPlayerId:p.self.playerId},playerStates:p.game.playerStates.map((v,i)=>({...v,completedBites:i===0?90:0}))}});
+  const output=html(win);assert.match(output,/<dialog[^>]*class="lunch-classroom-result/);assert.match(output,/결과 닫고 교실 보기/);assert.match(output,/게임 결과 보기/);assert.match(output,/lunch-room-background/);assert.match(output,/lunch-own-seat winner/);assert.doesNotMatch(output,/class="lunch-eat-button/);
+});
+test("SNEAKY classroom styling scopes teacher focus, caught posture and reduced-motion fallbacks",()=>{
+  const css=readFileSync(new URL("../../src/features/sneaky-lunch/classroom.css",import.meta.url),"utf8");
+  for(const rule of ["max-width:768px","max-width:430px","max-width:340px","safe-area-inset-bottom","prefers-reduced-motion","lunch-empty-exit{display:none}",".lunch-classroom-result::backdrop",".lunch-student.caught .lunch-student-head","touch-action:manipulation"])assert.ok(css.includes(rule),rule);
+  assert.doesNotMatch(css,/animation-duration:.*deadline|\.gem-|\.city-|\.number-/);
 });

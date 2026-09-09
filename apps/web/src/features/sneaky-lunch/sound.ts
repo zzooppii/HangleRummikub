@@ -16,6 +16,17 @@ export class LunchAudio {
     if (!this.enabled || ctx?.state !== "running") return;
     if (cue === "BITE" && ctx.currentTime - this.lastBite < .16) return;
     if (cue === "BITE") this.lastBite = ctx.currentTime;
+    // Original short foley: a tiny chopstick/crunch, stopped chalk, or desk tap.
+    // No teacher timing/outcome is consulted; this runs only for an already public cue.
+    if(cue==="BITE"||cue==="SUSPICIOUS"||cue==="WATCHING"||cue==="CAUGHT") {
+      const duration=cue==="BITE"?.055:cue==="SUSPICIOUS"?.095:.13;
+      const buffer=ctx.createBuffer(1,Math.ceil(ctx.sampleRate*duration),ctx.sampleRate),data=buffer.getChannelData(0);
+      let noise=9173;for(let i=0;i<data.length;i++){noise=(noise*16807)%2147483647;data[i]=(noise/1073741823.5-1)*(1-i/data.length);}
+      const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain();source.buffer=buffer;
+      filter.type="bandpass";filter.frequency.value=cue==="BITE"?1900:cue==="SUSPICIOUS"?3300:430;filter.Q.value=.8;
+      gain.gain.setValueAtTime(cue==="BITE"?.018:.035,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+duration);
+      source.connect(filter);filter.connect(gain);gain.connect(ctx.destination);source.start();source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};
+    }
     for (const [i, hz] of LUNCH_CUES[cue].entries()) {
       const osc = ctx.createOscillator(), gain = ctx.createGain(), time = ctx.currentTime + i * (cue === "BITE" ? .025 : .085);
       osc.type = cue === "CAUGHT" || cue === "WATCHING" ? "sine" : "triangle";

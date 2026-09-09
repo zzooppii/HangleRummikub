@@ -37,7 +37,7 @@ Host rematch: FINISHED → same Room LOBBY; explicitly departed participants exc
 
 ## Presentation interpretation
 
-Exact progress is public canonical data, but the explicit user instruction against showing numeric click counts takes precedence over example `17/30` and `+1` labels. Display diminishing food and completed boxes rather than bite counts/percentage numerals. This is presentation, not secrecy or anti-cheat. Teacher next-transition countdowns are forbidden. Danger retains the tap button for active connected participants. Original classroom SVG/CSS and Web Audio, Sound toggle, five-step visual guide, reduced motion, 1280/768/390/320 layouts.
+Exact progress is public canonical data. Display diminishing food and completed boxes rather than running bite counts/percentage numerals. The subsequent classroom redesign request explicitly approves a brief `+1` after an accepted bite (or the exact accepted delta if several updates arrive together); it supersedes the original ban on that transient label, not the rules or privacy contract. This is presentation, not secrecy or anti-cheat. Teacher next-transition countdowns remain forbidden. Danger retains the tap button for active connected participants. Original classroom SVG/CSS and Web Audio, Sound toggle, five-step visual guide, reduced motion, 1280/768/390/320 layouts. Classroom seats remain in place when caught and behind a dismissible Finished overlay.
 
 ## Scope/status
 

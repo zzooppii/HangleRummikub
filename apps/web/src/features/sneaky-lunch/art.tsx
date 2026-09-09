@@ -12,26 +12,36 @@ export function LunchboxArt({ remaining = 1, closed = false, small = false }: { 
       <g style={{ transformOrigin: "86px 76px", transform: `scale(${Math.sqrt(food)})` }} className="lunch-food"><path d="M39 57Q42 33 78 39Q117 31 132 53L130 94Q92 103 41 93Z" fill="#fff5d9"/>{[0, 1, 2, 3, 4, 5].map(i => <path key={i} d={`M${49 + i * 14} 56l3-4m-3 25l4 1`} stroke="#dfcfa8" strokeWidth="2"/>)}<ellipse cx="85" cy="69" rx="15" ry="12" fill="#d76655"/><path d="M77 65q6-7 13-2" fill="none" stroke="#f7997a" strokeWidth="3"/></g>
       <g style={{ opacity: food, transformOrigin: "185px 69px", transform: `scale(${.3 + .7 * food})` }} className="lunch-food"><path d="M161 42q12-10 18 6q8-13 18-1l11 10h-49Z" fill="#56805d"/>{[0, 1, 2].map(i => <g key={i} transform={`translate(${160 + i * 17} 78)`}><rect width="16" height="19" rx="5" fill="#f4da64" stroke="#a97c30" strokeWidth="1.5"/><path d="M4 7l8 2" stroke="#fff1a4" strokeWidth="3"/></g>)}</g>
     </>}
-    {!small && <g className="lunch-chopsticks" stroke="#664b36" strokeWidth="5" strokeLinecap="round"><path d="M197 7L96 92"/><path d="M214 10L106 96"/></g>}
+    {!closed && food>0 && <g className="lunch-food" opacity={food}>
+      <g fill="#528454" stroke="#416545" strokeWidth="1"><circle cx="165" cy="48" r="8"/><circle cx="176" cy="44" r="8"/><circle cx="182" cy="51" r="7"/></g>
+      <g transform="rotate(-17 204 47)"><rect x="193" y="37" width="17" height="24" rx="8" fill="#c36a47" stroke="#975438" strokeWidth="1.5"/><path d="M197 43l9 3m-9 3 9 3" stroke="#ed9c69" strokeWidth="2"/></g>
+    </g>}
+    {!small && !closed && <g className="lunch-chopsticks" stroke="#664b36" strokeWidth="5" strokeLinecap="round"><path d="M197 7L96 92"/><path d="M214 10L106 96"/></g>}
   </svg>;
 }
 
 export const StudentArt = memo(function StudentArt({ seat = 0, caught = false, winner = false, chewKey = 0 }: { seat?: number; caught?: boolean; winner?: boolean; chewKey?: number }) {
   const colors = ["#de9774", "#73a2b8", "#a59bc2", "#e5bc58", "#6fae94", "#d4889c", "#9aad6c", "#8fa5a8"];
   const hair = ["#403b36", "#725240", "#3f363a", "#695449"];
-  return <svg viewBox="0 0 120 108" className={`lunch-student${caught ? " caught" : ""}`} aria-hidden="true">
+  const styles = ["M34 34q8-29 35-18l18 20q-20-2-26-15-8 12-27 13", "M32 35q0-35 31-29t27 31L71 24l-3 15-12-18-9 16Z", "M30 33q2-29 31-29t29 31L79 26l-3 11-9-12-8 12-6-11-12 9Z", "M32 39q-8-32 21-36 42-7 36 36L73 23Q55 34 32 39Z", "M31 35Q33 4 63 6t27 29L77 25l-9 10-7-14-10 16-4-13Z", "M31 38Q22 9 60 4q40 0 30 35L74 20Q63 39 31 38Z", "M31 33Q32 8 60 6t30 27L78 17l-8 7-9-10-10 12-9-8Z", "M31 36Q25 3 62 4q31 0 27 32L70 26l-6 13-10-18-9 16Z"];
+  return <svg viewBox="0 0 120 108" className={`lunch-student${caught ? " caught" : ""}`} data-avatar-style={seat % 8} aria-hidden="true">
     <path d="M23 107V84q0-24 37-24t37 24v23" fill={colors[seat % 8]} stroke="#263e3b" strokeWidth="3"/>
     <path d="M46 65l14 15 14-15" fill="#fff3d6"/>
-    <g className="lunch-student-head" transform={caught ? "translate(0 17) rotate(12 60 50)" : undefined}>
+    <path d={seat % 2 ? "M33 85h18m18 0h18M33 96h18m18 0h18" : "M37 82v21m46-21v21"} stroke="#fff1cc" opacity=".3" strokeWidth="3"/>
+    <g className="lunch-student-head">
       <ellipse cx="60" cy="38" rx="28" ry="32" fill={hair[seat % 4]}/>
       {seat % 3 === 1 && <><circle cx="29" cy="40" r="11" fill={hair[seat % 4]}/><circle cx="91" cy="40" r="11" fill={hair[seat % 4]}/></>}
       <path d="M37 32q23-20 46 0v22q-2 21-23 22Q39 75 37 54Z" fill={seat % 2 ? "#dca380" : "#efbc94"} stroke="#263e3b" strokeWidth="2"/>
-      <path d={seat % 2 ? "M34 35q4-30 32-23l21 23-19-7-6 10-4-13-13 13Z" : "M34 34q8-29 35-18l18 20q-20-2-26-15-8 12-27 13"} fill={hair[seat % 4]}/>
+      <path d={styles[seat % 8]} fill={hair[seat % 4]}/>
+      {seat === 1 && <path d="M80 24l12-7v17Z" fill="#edc16d"/>}
+      {seat === 5 && <path d="M37 21q23-17 46 0" fill="none" stroke="#afc6a0" strokeWidth="5"/>}
+      <ellipse cx="41" cy="57" rx="5" ry="3" fill="#d88575" opacity=".55"/><ellipse cx="79" cy="57" rx="5" ry="3" fill="#d88575" opacity=".55"/>
       {caught ? <g stroke="#4a3533" strokeWidth="2.5"><path d="M45 44l7 7m0-7-7 7m22-7 7 7m0-7-7 7"/><ellipse cx="60" cy="60" rx="4" ry="6" fill="#8f5f51"/></g> : <g stroke="#3c3331" strokeWidth="2.5" strokeLinecap="round"><path d="M48 46v3m24-3v3"/><path key={chewKey} className={chewKey ? "lunch-chew" : undefined} d="M54 59q6 6 12 0" fill="none"/></g>}
       {seat % 4 === 2 && <g fill="none" stroke="#293d39" strokeWidth="2"><circle cx="48" cy="47" r="8"/><circle cx="72" cy="47" r="8"/><path d="M56 47h8"/></g>}
     </g>
     {winner && <path d="M60 1l4 8 9 1-7 6 2 9-8-4-8 4 2-9-7-6 9-1Z" fill="#f4c95f" stroke="#715b35" strokeWidth="2"/>}
     <path d="M8 91h104l5 13H3Z" fill="#d29e6b" stroke="#263e3b" strokeWidth="3"/>
+    {caught && <path className="lunch-slumped-arms" d="M30 91q14-6 29 7m32-7q-15-6-29 7" fill="none" stroke={colors[seat%8]} strokeWidth="12" strokeLinecap="round"/>}
   </svg>;
 });
 

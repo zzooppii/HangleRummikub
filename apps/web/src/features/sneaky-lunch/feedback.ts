@@ -1,18 +1,19 @@
 import type { SneakyWebSnapshot } from "../../lib/snapshot-wire-decoder.js";
 import type { LunchCue } from "./sound.js";
-export type LunchFeedback = Readonly<{ id: string; cue: LunchCue; text: string; prominent: boolean }>;
+export type LunchFeedback = Readonly<{ id: string; cue: LunchCue; text: string; prominent: boolean; playerId?: string; biteDelta?: number }>;
 export function deriveLunchFeedback(previous: SneakyWebSnapshot, next: SneakyWebSnapshot): LunchFeedback[] {
   const a = previous.game, b = next.game;
   if (!a || !b || a.gameId !== b.gameId || b.gameRevision <= a.gameRevision || previous.self.playerId !== next.self.playerId) return [];
   const events: LunchFeedback[] = [], self = next.self.playerId;
   const push = (cue: LunchCue, text: string, prominent = false) => events.push({ id: `${b.gameId}:${b.gameRevision}:${cue}:${events.length}`, cue, text, prominent });
-  const own = b.playerStates.find(p => p.playerId === self), before = a.playerStates.find(p => p.playerId === self);
-  if (own && before && own.completedBites > before.completedBites) {
-    if (Math.floor(own.completedBites / 30) > Math.floor(before.completedBites / 30)) push("BOX", "도시락 하나 클리어!");
-    else push("BITE", "냠! 한입 성공");
+  for (const player of b.playerStates) {
+    const before = a.playerStates.find(p => p.playerId === player.playerId);
+    if (!before || player.completedBites <= before.completedBites) continue;
+    const box = Math.floor(player.completedBites / 30) > Math.floor(before.completedBites / 30);
+    events.push({id:`${b.gameId}:${b.gameRevision}:eat:${player.playerId}`, cue:box ? "BOX" : "BITE", text:box ? "도시락 하나 클리어!" : "냠! 한입 성공", prominent:false, playerId:player.playerId, biteDelta:player.completedBites-before.completedBites});
   }
   for (const player of b.playerStates) if (player.status === "CAUGHT" && a.playerStates.find(p => p.playerId === player.playerId)?.status === "ACTIVE") {
-    push(player.playerId === self ? "CAUGHT" : "WATCHING", player.playerId === self ? "들켰다! 선생님에게 도시락을 들켰어요." : `${next.room.players.find(p => p.playerId === player.playerId)?.nickname ?? "친구"}님이 들켰어요!`, player.playerId === self);
+    events.push({id:`${b.gameId}:${b.gameRevision}:caught:${player.playerId}`, cue:player.playerId === self ? "CAUGHT" : "WATCHING", text:player.playerId === self ? "들켰다! 선생님에게 도시락을 들켰어요." : `${next.room.players.find(p => p.playerId === player.playerId)?.nickname ?? "친구"}님이 들켰어요!`, prominent:player.playerId===self, playerId:player.playerId});
   }
   if (b.phase === "FINISHED" && a.phase !== "FINISHED") {
     push(b.result.reason === "TEACHER_WIN" ? "TEACHER_WIN" : b.result.winnerPlayerId === self ? "VICTORY" : "FINISH",
