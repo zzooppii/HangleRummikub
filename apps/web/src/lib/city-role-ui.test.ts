@@ -263,7 +263,8 @@ test("CITY observer selection never renders available roles or exact opponent ha
   const html = renderPlaying(visible);
   assert.doesNotMatch(html, /이 역할 선택|비표보관소|city-own-card/u);
   assert.match(html, /내 선택 차례가 되면/u);
-  assert.match(html, /금화 2 · 손패 1장/u);
+  assert.match(html, /금화<\/dt><dd>2<\/dd>/u);
+  assert.match(html, /손패<\/dt><dd>1<small>장<\/small><\/dd>/u);
 });
 
 test("P16 six-player completed secret choice explains waiting, not a second selection", () => {

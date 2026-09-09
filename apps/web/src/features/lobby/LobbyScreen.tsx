@@ -24,7 +24,7 @@ export function LobbyScreen(props: LobbyScreenProps) {
   const maxPlayers = room.gameType === "CITY_ROLE" ? 6 : 4;
 
   return (
-    <main className="app-shell lobby-shell">
+    <main className={`app-shell lobby-shell${room.gameType === "CITY_ROLE" ? " city-lobby-shell" : ""}`}>
       <header className="lobby-header">
         <div>
           <p className="eyebrow">

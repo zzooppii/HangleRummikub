@@ -1,0 +1,99 @@
+/* CITY-only tabletop presentation. No global game or action-state selectors. */
+.city-shell, .city-lobby-shell {
+  --city-line: #bca77b;
+  --city-ink: #302f27;
+  --city-muted: #665c49;
+  background: radial-gradient(ellipse at 15% 0%, #456052, transparent 65%), repeating-linear-gradient(110deg, #ffffff02 0 1px, transparent 1px 7px), #162e2c;
+  border: 1px solid #75694b;
+  border-radius: 24px;
+  padding: 22px;
+  box-shadow: 0 22px 70px #10211f40, inset 0 0 0 5px #ffffff05;
+}
+.city-playing-shell { padding-bottom: 180px; }
+.city-lobby-shell > .notice, .city-shell > .notice { background: #fbefd4; color: #423928; padding: 12px; border-radius: 10px; border: 1px solid #b9a171; }
+.city-shell > .city-helper { color: #fff0ce; }
+.city-shell .city-header, .city-lobby-shell .lobby-header {
+  color: #f7ecd4; border-bottom: 1px solid #bda77470; padding: 10px 4px 22px; margin-bottom: 22px;
+}
+.city-shell .city-header .eyebrow, .city-lobby-shell .eyebrow { color: #dcc38d; }
+.city-shell .city-header h1, .city-lobby-shell h1 { color: #fff3d9; text-shadow: 0 2px 10px #0005; }
+.city-shell .city-header-actions button { background: #f4ecd9; color: #29453d; border: 1px solid #bdaa7e; border-radius: 10px; padding: 9px 12px; font: inherit; font-size: .8rem; }
+.city-shell .city-panel, .city-shell .city-private-summary, .city-shell .city-category-guide,
+.city-shell .city-turn-hud, .city-shell .city-result-row, .city-lobby-shell .room-card, .city-lobby-shell .players-card {
+  background: radial-gradient(ellipse at top left, #fffdf1, transparent 70%), #efe5cd;
+  border: 1px solid #b7a174; box-shadow: 0 7px 15px #091b2430, inset 0 0 0 4px #fff9e760;
+}
+.city-shell .city-panel-heading { border-bottom: 1px solid #ad95664d; padding-bottom: 14px; margin-bottom: 16px; }
+.city-shell h2, .city-shell h3, .city-lobby-shell h2 { font-family: Georgia, "Noto Serif KR", serif; }
+.city-shell .city-turn-hud { border-left: 5px solid #997137; }
+.city-shell .city-turn-hud.is-mine { border-left-color: #41816a; background: linear-gradient(105deg,#f9f2db,#e4eedc); }
+.city-shell .city-turn-hud.is-urgent { border-left-color: #aa442e; }
+.city-shell .city-turn-hourglass { padding: 10px; border-radius: 50%; background: #cda85b30; color: #876129; width: 64px; height: 64px; }
+.city-shell .city-countdown { border-left: 1px solid #bba47980; padding-left: 15px; }
+.city-shell .city-my-gold { background: radial-gradient(circle at 50% 20%,#fff1b9,#dcb567); border: 3px double #927039; border-radius: 14px; color: #543b19; padding: 14px; }
+.city-shell .city-selection { background: radial-gradient(ellipse at top,#354942,#172e30); border-color: #b79b63; }
+.city-shell .city-acquisition-choices button { min-height: 116px; border: 3px double #aa8d51; border-radius: 14px; box-shadow: 0 4px 0 #86724d55; font-size: 1.1rem; }
+.city-shell .city-acquisition-choices .primary-button { background: radial-gradient(circle at 20% 20%,#4b7561,#234a3c); color: #fff6db; }
+.city-shell .city-acquisition-choices .secondary-button { background: linear-gradient(125deg,#f6ecd6,#e1d3b5); color: #263e45; }
+.city-shell .city-acquisition-choices .city-icon { width: 50px; height: 50px; flex-shrink: 0; padding: 7px; border-radius: 50%; background: #d1aa4d30; }
+.city-shell .city-ability-choices .city-choice { background: #fff9e9; border: 2px solid #bcaa82; padding: 15px; }
+.city-shell .city-choice[aria-pressed="true"] { border-color: #356b56; box-shadow: inset 0 0 0 2px #356b56; }
+.city-shell .city-construction-step { background: #decba34d; border: 1px dashed #a38b60; padding: 14px; border-radius: 12px; }
+.city-shell .city-cities { background: #bfad8550; color: #fff3d9; }
+.city-shell .city-cities > .city-panel-heading p { color: #e6d8bb; }
+.city-shell .city-public-city { position: relative; background: linear-gradient(130deg,#f5eddc,#e2d6bb); border: 3px double #9d8861; color: #303a32; box-shadow: 0 5px 15px #0a191d30; padding: 16px; }
+.city-shell .city-public-city.is-mine { background: linear-gradient(130deg,#f2f2dc,#dce5cb); border-color: #67917b; }
+.city-shell .city-public-city.is-active { outline: 2px solid #efc76d; outline-offset: 2px; }
+.city-shell .city-empty-city { min-height: 140px; background: linear-gradient(0deg,#a5916230,transparent); border: 1px dashed #a28b635c; border-radius: 12px; }
+.city-shell .city-hand { background: linear-gradient(130deg,#e8dfc8,#cbbc98); border-top: 5px solid #a18a5e; }
+.city-shell .city-action-dock { background: linear-gradient(100deg,#172f2b,#2c493e); border: 2px solid #b29a60; box-shadow: 0 -8px 30px #142b2a40, inset 0 0 0 4px #ffffff08; }
+.city-shell .city-end-turn { background: linear-gradient(#497e59,#245238); border: 2px solid #b9d291; box-shadow: inset 0 0 0 2px #ffffff15; }
+.city-role-track { display: flex; gap: 14px; align-items: center; color: #f1dfba; padding: 14px 0; margin: 0 0 20px; }
+.city-track-title { min-width: 80px; font-weight: 800; }
+.city-track-title small { display: block; font-size: .7rem; margin-top: 6px; font-weight: 400; }
+.city-role-track ol { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(8,minmax(0,1fr)); gap: 6px; list-style: none; padding: 0; margin: 0; }
+.city-role-track li { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 5px; border: 1px solid #ae956040; border-radius: 9px; padding: 8px 2px; background: #071b1930; font-size: .7rem; }
+.city-role-track .city-role-emblem { width: 34px; height: 34px; margin: 0; }
+.city-role-track small { font-size: .65rem; }
+.city-role-track li.is-current { background: #eed59a; color: #253c30; border-color: #fff3cd; box-shadow: 0 0 14px #e3be6540; }
+.city-role-track li.is-revealed { border-color: #a99d75; background: #ffffff10; }
+.city-build-track { display: grid; grid-template-columns: repeat(8,minmax(0,1fr)); gap: 5px; margin: 12px 0; }
+.city-build-track span { display: flex; justify-content: center; padding: 4px; color: #70664f; background: #86795615; border: 1px dashed #9b8b6350; border-radius: 5px; }
+.city-build-track span.is-built { background: #365e4c; border-style: solid; color: #e8d49c; }
+.city-build-track .city-icon { width: 20px; height: 20px; }
+.city-resource-tokens { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 7px; margin: 12px 0; }
+.city-resource-tokens > div { border: 1px solid #af9865; border-radius: 10px; background: #fff9e680; padding: 8px; }
+.city-resource-tokens dt { display: flex; align-items: center; gap: 4px; font-size: .7rem; }
+.city-resource-tokens .city-icon { width: 20px; height: 20px; color: #8a6b29; }
+.city-resource-tokens dd { margin: 4px 0 0; font-size: 1.5rem; font-weight: 800; }
+.city-resource-tokens dd small { font-size: .7rem; margin-left: 3px; font-weight: 400; }
+.city-shell .city-finish-hero { background: linear-gradient(110deg,#f6e7b8,#dbbd75); border: 4px double #947341; border-radius: 16px; padding: 26px; text-align: center; }
+.city-shell .city-result-row.is-winner { border: 4px double #a07826; background: linear-gradient(120deg,#fff6d9,#ead9a5); }
+.city-shell .city-result-rank { border-radius: 8px; background: #375541; color: #fff0c7; padding: 8px 12px; display: inline-block; }
+.city-shell .city-score-details > div { background: #fffaf080; padding: 10px; border: 1px solid #c5b384; border-radius: 8px; }
+.city-lobby-shell .room-card { background: linear-gradient(#162e2a55,#142a26e8), url('/city-art/illustrated-v1/cb-civ-06.webp') center/cover; color: #fff0d2; }
+.city-lobby-shell .room-card .step-label, .city-lobby-shell .room-invite-copy { color: #ffefcb; }
+.city-lobby-shell .player-row { border: 1px solid #c1ad82; border-radius: 12px; margin-bottom: 10px; background: #fff8e9; }
+.city-lobby-shell .player-avatar { background: #355744; color: #fce5ac; border: 3px double #b89a55; }
+.city-help-dialog { border: 4px double #a58a51; background: linear-gradient(115deg,#fff8e5,#e7dcc1); }
+.city-help-header { background: #234236; color: #fff0cc; }
+.city-help-header button { background: #f4ead3; color: #294135; }
+.city-guide-sections section { border: 1px solid #c3ad7c; border-radius: 10px; padding: 14px; background: #fffaf080; }
+@media (max-width: 768px) {
+  .city-shell, .city-lobby-shell { padding: 14px; border-radius: 16px; }
+  .city-playing-shell { padding-bottom: 220px; }
+  .city-role-track { display: block; }
+  .city-track-title { display: block; margin-bottom: 10px; }
+  .city-track-title small { display: inline; margin-left: 10px; }
+  .city-role-track ol { grid-template-columns: repeat(4,minmax(0,1fr)); }
+}
+@media (max-width: 420px) {
+  .city-shell, .city-lobby-shell { width: calc(100% - 12px); padding: 10px; }
+  .city-playing-shell { padding-bottom: 260px; }
+  .city-shell .city-public-city { padding: 10px; }
+  .city-shell .city-acquisition-choices button { min-height: 88px; }
+  .city-shell .city-turn-hourglass { width: 42px; height: 42px; padding: 5px; }
+  .city-shell .city-countdown { padding-left: 8px; }
+  .city-resource-tokens > div { padding: 6px; }
+  .city-role-track li { font-size: .66rem; }
+}

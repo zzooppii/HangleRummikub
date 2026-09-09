@@ -12,6 +12,7 @@ import { CityRoleFinishedScreen } from "./features/city-role/CityRoleFinishedScr
 import { CityImpactLayer } from "./features/city-role/CityImpactLayer.js";
 import "./features/city-role/city-role.css";
 import "./features/city-role/city-role-help.css";
+import "./features/city-role/city-tabletop.css";
 import { NumberTileFinishedScreen } from "./features/number-tile/NumberTileFinishedScreen.js";
 import { NumberTilePlayingScreen } from "./features/number-tile/NumberTilePlayingScreen.js";
 import { useNumberTileTurnDraft } from "./features/number-tile/use-number-tile-turn-draft.js";

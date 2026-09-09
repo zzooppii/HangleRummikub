@@ -18,6 +18,7 @@ export { CityBuildingFace } from "./CityBuildingFace.js";
 import { CityGameHelp } from "./CityGameHelp.js";
 import { useCitySound } from "./city-role-sound.js";
 import { CitySecretDraft } from "./CitySecretDraft.js";
+import { CityBuildTrack, CityResourceTokens, CityRoleTrack } from "./CityTabletop.js";
 import { useCityAmbience } from "./city-ambience.js";
 import { CityCategoryGuide, CityIcon, CityRoleEmblem, CitySkyline } from "./CityVisuals.js";
 
@@ -164,6 +165,7 @@ export function CityRolePlayingScreen(props: CityRolePlayingScreenProps) {
     {props.sessionReplaced ? <section className="notice replaced-notice" role="alert"><p>다른 창에서 연결되었습니다. 이 창에서는 행동을 보낼 수 없습니다.</p><button type="button" className="text-button" onClick={props.onGoHome}>홈으로 돌아가기</button></section> : null}
     {props.errorMessage !== null ? <p className="notice error-notice" role="alert">{props.errorMessage}</p> : null}
     {props.retryPending ? <section className="notice" role="status"><p>이전 행동의 결과를 확인하고 있습니다. 다시 누르면 같은 요청을 확인합니다.</p><button type="button" className="secondary-button" disabled={props.connectionTone !== "connected" || props.actionPending || props.sessionReplaced || props.roomLeavePending} onClick={props.onRetry}>행동 결과 다시 확인</button></section> : null}
+    <CityRoleTrack game={game} />
     <div className="city-overview">
     <section className={`city-turn-hud${myTurn ? " is-mine" : ""}${countdown.remainingSeconds <= 10 ? " is-urgent" : ""}`} aria-label="현재 라운드와 차례"><CityIcon name="hourglass" className="city-turn-hourglass" />
       <div><p className="city-turn-phase">라운드 {game.roundNumber} · {game.phase === "ROLE_SELECTION" ? "비밀 역할 선택" : cityRoleLabel(game.window.activeRoleId)}</p>
@@ -200,7 +202,8 @@ export function CityRolePlayingScreen(props: CityRolePlayingScreenProps) {
         const mine = state.playerId === self.playerId;
         const publicRoles = game.revealedRoles.filter(role => role.roundNumber === game.roundNumber && role.playerId === state.playerId);
         return <article className={`city-public-city${mine ? " is-mine" : ""}${state.playerId === game.window.activePlayerId ? " is-active" : ""}`} key={state.playerId} aria-label={`${nickname(state.playerId)}의 공개 도시`}><header><div><h3>{nickname(state.playerId)}{mine ? " · 나" : ""}{state.playerId === game.window.activePlayerId ? <span className="city-active-label">현재 차례</span> : null}</h3><p>{state.forfeited ? "기권" : participant?.connectionStatus === "CONNECTED" ? "접속 중" : "연결 끊김"}{game.protectedPlayerIds.includes(state.playerId) ? " · 보호 중" : ""}</p></div><strong>{state.builtBuildings.length}<small>/8 건물</small></strong></header>
-          <p className="city-public-stats">금화 {state.gold} · 손패 {state.handCount}장 · 건물 점수 {state.scorePreview}점</p>
+          <CityBuildTrack count={state.builtBuildings.length} />
+          <CityResourceTokens gold={state.gold} handCount={state.handCount} score={state.scorePreview} />
           {publicRoles.length > 0 ? <p className="city-revealed-roles">공개된 역할: {publicRoles.map(role => `${cityRoleLabel(role.roleId)}${role.kind === "DISABLED" ? " (봉쇄)" : ""}`).join(" · ")}</p> : null}
           {state.builtBuildings.length === 0 ? <div className="city-empty-city"><CitySkyline /><p>아직 건물이 없어요.<br />첫 건물을 기다리는 도시입니다.</p></div> : <div className={`city-card-grid city-built-grid${state.builtBuildings.length >= 5 ? " is-dense" : ""}`}>{state.builtBuildings.map(card => <div className="city-building is-built" key={card.cardId} aria-label={`${cityCardLabel(card)}, 건설됨`}><CityBuildingFace card={card} rulesVersion={game.rulesVersion} /><span className="city-built-label">건설됨</span>{game.rulesVersion === "city-rules-v2" && (card.templateId === "CB-LAN-01" || card.templateId === "CB-LAN-02") ? <span className="city-landmark-status">최초 건설 보상 사용 완료</span> : null}{game.rulesVersion === "city-rules-v2" && card.category === "LANDMARK" && state.forfeited ? <span className="city-landmark-status">기권 · 효과 비활성</span> : null}{game.rulesVersion === "city-rules-v2" && card.templateId === "CB-LAN-04" ? <span className="city-landmark-status">남은 할인 {game.landmarkHistory?.find(row => row.playerId === state.playerId)?.staircaseRemaining ?? 0}/3{game.landmarkHistory?.find(row => row.playerId === state.playerId)?.lastDiscountRound === game.roundNumber ? " · 이번 라운드 사용" : ""}</span> : null}</div>)}</div>}
         </article>;
