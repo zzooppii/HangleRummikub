@@ -19,3 +19,7 @@ Guess는 공백 normalize/trim, 1–40 Unicode characters, plain escaped text.
 ## Reveal / 종료 / 재게임
 REVEAL은 Room PLAYING 내부 subphase이며 deadline 없음. seatOrder의 Book 순서, owner 소개부터 prompt와 각 page를 Host가 한 장씩 공개. 아직 안 열린 future pages는 wire에 없음. 마지막 guess까지 본 후 원문/최종 비교. 마지막 Book 확인 후 FINISHED, 전체 공개 recap. 뒤로가기는 v1 필수 아님.
 draw:rematch Host만 FINISHED→LOBBY, RoomCode/participant/session 유지. 명시leave만 다음 roster에서 제외; 단순offline 유지. 새판은 books/prompts/drafts/streak/cursor/timer 모두 새로 생성. 기존4게임 변경 금지.
+## Drawing duration setting — user-approved extension
+
+Lobby Host may choose **15 / 30 / 45 / 60 / 90 seconds** alongside prompt mode; default 90. This setting is copied into canonical game state on start and applies to every DRAW stage. GUESS / FINAL_GUESS remain 45 seconds. Configuration during PLAYING/REVEAL/FINISHED is rejected. Existing saved games/rooms without the field retain 90-second behavior. Same-room rematch preserves the Lobby setting; game timers remain server-authoritative. Earlier fixed-90 descriptions above are the original default, superseded by this explicit setting. Guide text displays the selected/current game duration.
+2026-09-10 사용자 정정: 새 Room 생성 시 그리기 기본값을 **60초**로 명시해 저장한다. 기존 Room/게임의 설정은 유지한다. 설정 필드가 없는 과거 저장판의 90초 호환 fallback은 그대로이며, 아래 이전 기본값 90초 설명은 신규 Room에는 적용하지 않는다. 선택지 15/30/45/60/90 및 추측 45초는 유지한다.

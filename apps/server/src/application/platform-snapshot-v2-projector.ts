@@ -104,7 +104,7 @@ export class PlatformSnapshotV2Projector {
       }
       return v.parse(PlatformSnapshotV2Schema, {
         ...base,
-        room: { ...base.room, phase: "LOBBY", ...(input.room.gameType === "DRAW_RELAY" ? {promptMode:input.room.promptMode ?? "MIXED"} : {}) },
+        room: { ...base.room, phase: "LOBBY", ...(input.room.gameType === "DRAW_RELAY" ? {promptMode:input.room.promptMode ?? "MIXED",drawSeconds:input.room.drawSeconds ?? 90} : {}) },
         game: null,
       });
     }

@@ -2,13 +2,29 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createDrawRelay, applyRelayAction, timeoutRelay, leaveRelay, resumeRelay, revealNext, parseDrawRelayState, relayPrivateAssignment, relayRevealedBooks, stageCount } from "../games/draw-relay/domain/game.js";
 import { parseDrawing } from "../games/draw-relay/domain/drawing.js";
+import { DRAW_RELAY_DRAW_SECONDS } from "@hangul-rummikub/shared";
 const empty = { strokes: [] };
 const drawing = { strokes: [{ strokeId: "one", tool: "PEN", color: "#202838", width: 4, points: [{ x: 10, y: 20 }] }] };
-function initial(n = 4) {
+function initial(n = 4, drawSeconds?: (typeof DRAW_RELAY_DRAW_SECONDS)[number]) {
   return createDrawRelay({ gameId: "relay", seatOrder: Array.from({ length: n }, (_, i) => "p" + i),
     bookIds: Array.from({ length: n }, (_, i) => "book" + i), prompts: Array.from({ length: n }, (_, i) => ({ id: "prompt" + i, text: "제시어" + i })),
-    stageToken: "first", now: 0, promptMode: "MIXED" });
+    stageToken: "first", now: 0, promptMode: "MIXED", ...(drawSeconds === undefined ? {} : { drawSeconds }) });
 }
+test("DRAW configurable drawing windows preserve 45s guesses, next drawing duration and recovered settings", () => {
+  for (const seconds of DRAW_RELAY_DRAW_SECONDS) {
+    let state = initial(4, seconds);
+    assert.equal(state.deadlineAt, seconds * 1000);
+    state = parseDrawRelayState(JSON.parse(JSON.stringify(state)));
+    assert.equal(state.drawSeconds, seconds);
+    state = timeoutRelay(state, state.stageToken, state.deadlineAt!, new Set(), "next-guess");
+    assert.equal(state.deadlineAt! - state.startedAt, 45000);
+    state = timeoutRelay(state, state.stageToken, state.deadlineAt!, new Set(), "next-draw");
+    assert.equal(state.phase, "DRAW"); assert.equal(state.deadlineAt! - state.startedAt, seconds * 1000);
+  }
+  const { drawSeconds: _legacyMissing, ...legacy } = initial();
+  assert.equal(parseDrawRelayState(legacy).drawSeconds, 90);
+  for (const invalid of [0, 16, 120, 30.5, "30"]) assert.throws(() => parseDrawRelayState({ ...legacy, drawSeconds: invalid }));
+});
 for (const n of [3, 4, 5, 6, 7, 8]) test(`DRAW_RELAY ${n} seats conserve books, hide owners, end in guess and reveal incrementally`, () => {
   let state = initial(n);
   for (let stage = 1; stage <= stageCount(n); stage++) {

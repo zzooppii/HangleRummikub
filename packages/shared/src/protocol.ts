@@ -1,4 +1,5 @@
 import { GemCollectSelectionSchema, GemPurchaseSourceSchema, GemMarketSourceSchema } from "./games/gem-card/contracts.js";
+import { DrawRelayDrawSecondsSchema } from "./games/draw-relay/settings.js";
 import * as v from "valibot";
 
 import {
@@ -318,7 +319,7 @@ export const DrawSubmitGuessCommandSchema = v.strictObject({ ...DrawIdentity, ki
 export const DrawRevealNextCommandSchema = v.strictObject({ ...DrawIdentity, kind: v.literal("draw:revealNext"), expectedGameRevision: GameRevisionSchema, payload: v.strictObject({}) });
 export const DrawRematchCommandSchema = v.strictObject({ ...DrawIdentity, kind: v.literal("draw:rematch"), expectedGameRevision: GameRevisionSchema, expectedRoomRevision: RoomRevisionSchema, payload: v.strictObject({}) });
 export const DrawConfigureCommandSchema = v.strictObject({ kind: v.literal("draw:configure"), protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema,
-  expectedRoomRevision: RoomRevisionSchema, payload: v.strictObject({ promptMode: v.picklist(["EASY","NORMAL","MIXED"]) }) });
+  expectedRoomRevision: RoomRevisionSchema, payload: v.strictObject({ promptMode: v.picklist(["EASY","NORMAL","MIXED"]), drawSeconds: v.optional(DrawRelayDrawSecondsSchema) }) });
 export const DrawClientCommandSchema = v.variant("kind",[DrawDraftSaveCommandSchema,DrawSubmitDrawingCommandSchema,DrawSubmitGuessCommandSchema,DrawRevealNextCommandSchema,DrawRematchCommandSchema,DrawConfigureCommandSchema]);
 export type DrawClientCommand = v.InferOutput<typeof DrawClientCommandSchema>;
 

@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { DrawRelayDrawSecondsSchema, type DrawRelayDrawSeconds } from "@hangul-rummikub/shared";
 import { DrawingSchema, GuessSchema, type Drawing } from "./drawing.js";
 
 const Id = v.pipe(v.string(), v.minLength(1), v.maxLength(128));
@@ -12,6 +13,7 @@ export type RelayPage = v.InferOutput<typeof RelayPageSchema>;
 const Shape = v.strictObject({
   rulesVersion: v.literal("draw-relay-rules-v1"), promptsVersion: v.literal("draw-relay-prompts-v1"),
   gameId: Id, revision: Nat, promptMode: v.picklist(["EASY", "NORMAL", "MIXED"]),
+  drawSeconds: v.optional(DrawRelayDrawSecondsSchema, 90),
   seatOrder: v.pipe(v.array(Id), v.minLength(3), v.maxLength(8)),
   players: v.pipe(v.array(v.strictObject({ playerId: Id, forfeited: v.boolean(), offlineMissStreak: Nat })), v.minLength(3), v.maxLength(8)),
   books: v.pipe(v.array(v.strictObject({ bookId: Id, ownerPlayerId: Id, promptId: Id,
@@ -46,7 +48,7 @@ export function parseDrawRelayState(value: unknown): DrawRelayState {
   invariant(relay ? state.phase === stageKind(n, state.stageIndex) && state.deadlineAt !== null && state.finishedAt === null
     : state.deadlineAt === null && state.stageIndex === total && state.submissions.length === n);
   invariant(state.phase === "FINISHED" ? state.finishedAt !== null : state.finishedAt === null);
-  invariant(state.deadlineAt === null || state.deadlineAt === state.startedAt + (state.phase === "DRAW" ? 90000 : 45000));
+  invariant(state.deadlineAt === null || state.deadlineAt === state.startedAt + (state.phase === "DRAW" ? state.drawSeconds * 1000 : 45000));
   state.books.forEach((book, i) => {
     invariant(book.ownerPlayerId === state.seatOrder[i]);
     const expected = relay ? state.stageIndex - 1 + Number(state.submissions.includes(actorAt(state, i, state.stageIndex))) : total;
@@ -66,14 +68,15 @@ export function parseDrawRelayState(value: unknown): DrawRelayState {
 export function createDrawRelay(input: Readonly<{
   gameId: string; seatOrder: readonly string[]; prompts: readonly Readonly<{ id: string; text: string }>[];
   bookIds: readonly string[]; stageToken: string; now: number; promptMode: DrawRelayState["promptMode"];
+  drawSeconds?: DrawRelayDrawSeconds;
 }>): DrawRelayState {
   const n = input.seatOrder.length;
   invariant(input.prompts.length === n && input.bookIds.length === n);
   return parseDrawRelayState({
-    rulesVersion: "draw-relay-rules-v1", promptsVersion: "draw-relay-prompts-v1", gameId: input.gameId, revision: 0, promptMode: input.promptMode,
+    rulesVersion: "draw-relay-rules-v1", promptsVersion: "draw-relay-prompts-v1", gameId: input.gameId, revision: 0, promptMode: input.promptMode, drawSeconds: input.drawSeconds ?? 90,
     seatOrder: [...input.seatOrder], players: input.seatOrder.map(playerId => ({ playerId, forfeited: false, offlineMissStreak: 0 })),
     books: input.seatOrder.map((ownerPlayerId, i) => ({ bookId: input.bookIds[i], ownerPlayerId, promptId: input.prompts[i]!.id, initialPrompt: input.prompts[i]!.text, pages: [] })),
-    stageIndex: 1, phase: "DRAW", stageToken: input.stageToken, startedAt: input.now, deadlineAt: input.now + 90000,
+    stageIndex: 1, phase: "DRAW", stageToken: input.stageToken, startedAt: input.now, deadlineAt: input.now + (input.drawSeconds ?? 90) * 1000,
     finishedAt: null, submissions: [], drafts: [], reveal: { bookIndex: 0, pageIndex: -1 },
   });
 }
@@ -103,7 +106,7 @@ function advanceBarrier(state: DrawRelayState, now: number, nextToken: string) {
     }
     state.stageIndex++; state.phase = stageKind(state.seatOrder.length, state.stageIndex);
     state.stageToken = nextToken + ":" + state.stageIndex; state.startedAt = now;
-    state.deadlineAt = now + (state.phase === "DRAW" ? 90000 : 45000); state.submissions = [];
+    state.deadlineAt = now + (state.phase === "DRAW" ? state.drawSeconds * 1000 : 45000); state.submissions = [];
     for (const player of state.players) if (player.forfeited) appendDefault(state, player.playerId);
   }
 }

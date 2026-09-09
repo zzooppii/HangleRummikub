@@ -8,7 +8,7 @@ import { createHttpServer } from "./server.js";
 import { DRAW_PROMPTS } from "./games/draw-relay/domain/prompts-v1.js";
 
 type Client = Socket<Record<string, (value: unknown) => void>, Record<string, (value: unknown, ack: (value: unknown) => void) => void>>;
-async function harness(t: TestContext, count = 3) {
+async function harness(t: TestContext, count = 3, drawSeconds?: 15|30|45|60|90) {
   const server = createHttpServer({ serveWeb: false }), clients: Client[] = [];
   t.after(async () => { clients.forEach(c => c.disconnect()); await server.shutdown(); });
   await new Promise<void>(r => server.httpServer.listen(0, "127.0.0.1", r));
@@ -31,10 +31,20 @@ async function harness(t: TestContext, count = 3) {
   const host = await connect(), credential = await bootstrap(host);
   let lobby = parse(LobbyPlatformSnapshotV2Schema, success(await call(host, "room:create", { bootstrapCredential: credential, nickname: "그림1", gameType: "DRAW_RELAY" })));
   const members = [{ client: host, playerId: lobby.self.playerId, credential }];
+  assert.ok(lobby.room.gameType === "DRAW_RELAY");
+  assert.equal(lobby.room.drawSeconds, 60);
   for (let i = 1; i < count; i++) {
     const client = await connect(), credential = await bootstrap(client);
     lobby = parse(LobbyPlatformSnapshotV2Schema, success(await call(client, "room:join", { bootstrapCredential: credential, nickname: `그림${i + 1}`, roomCode: lobby.room.roomCode })));
     members.push({ client, playerId: lobby.self.playerId, credential });
+  }
+  if (drawSeconds !== undefined) {
+    const denied = parse(StateSyncWireAckSchema, await call(members[1]!.client, "draw:configure", { promptMode: "MIXED", drawSeconds }, { expectedRoomRevision: lobby.versions.roomRevision }));
+    assert.equal(denied.ok, false);
+    lobby = parse(LobbyPlatformSnapshotV2Schema, success(await call(host, "draw:configure", { promptMode: "MIXED", drawSeconds }, { expectedRoomRevision: lobby.versions.roomRevision })));
+    assert.ok(lobby.room.gameType === "DRAW_RELAY"); assert.equal(lobby.room.drawSeconds, drawSeconds);
+    lobby = parse(LobbyPlatformSnapshotV2Schema, success(await call(host, "draw:configure", { promptMode: "EASY" }, { expectedRoomRevision: lobby.versions.roomRevision })));
+    assert.ok(lobby.room.gameType === "DRAW_RELAY"); assert.equal(lobby.room.drawSeconds, drawSeconds);
   }
   const first = parse(DrawRelayPlayingPlatformSnapshotV2Schema, success(await call(host, "game:start", {}, { expectedRoomRevision: lobby.versions.roomRevision })));
   const sync = async (c: Client) => success(await call(c, "state:sync"));
@@ -58,6 +68,17 @@ test("DRAW prompt pack: 600 original unique words, exact 200/250/150 buckets", (
   assert.equal(DRAW_PROMPTS.length, 600); assert.equal(new Set(DRAW_PROMPTS.map(p => p.text)).size, 600);
   assert.equal(new Set(DRAW_PROMPTS.map(p => p.id)).size, 600);
   assert.deepEqual(["EASY", "NORMAL", "HARD"].map(d => DRAW_PROMPTS.filter(p => p.difficulty === d).length), [200, 250, 150]);
+});
+
+test("DRAW Host config reaches canonical timer and all viewers; PLAYING configuration rejects", async t => {
+  const h = await harness(t, 3, 30);
+  const stored = await h.server.runtime.persistence.findById(h.first.room.roomId);
+  assert.ok(stored?.gameType === "DRAW_RELAY" && stored.game);
+  assert.equal(stored.drawSeconds, 30); assert.equal(stored.game.state.deadlineAt! - stored.game.state.startedAt, 30000);
+  for (const member of h.members) assert.equal(parse(DrawRelayPlayingPlatformSnapshotV2Schema, await h.sync(member.client)).game.drawSeconds, 30);
+  const denied = parse(StateSyncWireAckSchema, await h.call(h.members[0]!.client, "draw:configure", { promptMode: "MIXED", drawSeconds: 15 }, { expectedRoomRevision: h.first.versions.roomRevision }));
+  assert.equal(denied.ok, false);
+  assert.deepEqual(await h.server.runtime.persistence.findById(h.first.room.roomId), stored);
 });
 
 for (const count of [3, 4, 5, 8]) test(`DRAW raw ${count} players: private assignments, barrier, Reveal prefix, Finished and same-room rematch`, async t => {

@@ -564,6 +564,7 @@ export class RoomSessionApplicationService {
               roomId,
               roomCode,
               gameType,
+              ...(gameType === "DRAW_RELAY" ? { drawSeconds: 60 as const } : {}),
               phase: "LOBBY",
               hostPlayerId: playerId,
               players: [{ playerId, nickname, joinOrder: 0 }],

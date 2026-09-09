@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { DrawRelayDrawSecondsSchema } from "./settings.js";
 import { PlayerIdSchema, GameIdSchema, TurnIdSchema } from "../../identifiers.js";
 import { GameRevisionSchema, ServerTimeSchema } from "../../protocol.js";
 import { DrawingSchema, GuessSchema } from "./drawing-contracts.js";
@@ -10,6 +11,7 @@ const Page = v.variant("kind", [
 ]);
 const Book = v.strictObject({ ownerPlayerId: PlayerIdSchema, initialPrompt: v.nullable(GuessSchema), pages: v.pipe(v.array(Page), v.maxLength(8)) });
 const Base = { gameType: v.literal("DRAW_RELAY"), gameId: GameIdSchema, gameRevision: GameRevisionSchema,
+  drawSeconds: v.optional(DrawRelayDrawSecondsSchema, 90),
   rulesVersion: v.literal("draw-relay-rules-v1"), promptsVersion: v.literal("draw-relay-prompts-v1"),
   stageIndex: v.pipe(Count,v.minValue(1)), totalStages: v.pipe(Count,v.minValue(2)),
   playerStates: v.pipe(v.array(Player),v.minLength(3),v.maxLength(8)) };

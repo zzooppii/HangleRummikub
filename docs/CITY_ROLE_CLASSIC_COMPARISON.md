@@ -23,7 +23,7 @@
 | **001C:** 2–6인 | 기본4–7인, 2/3인 별도 규칙(p4,12–13) | CITY는7인 및 그 마지막 pick 예외를 지원하지 않음 | 없음 — 승인 유지 |
 | **008A:** server seat shuffle, 첫 seat가 최초 leader | 최연장자가 최초 crown을 갖고 현재 좌석에서 왼쪽으로 draft(p4,6) | 연령·실제 좌석 대신 server가 최초 순서/leader 결정 | 없음 — 승인 유지 |
 | **006/007A, 2인:** hidden1/public2, A B A B 각1pick, 마지막1hidden. 선택 중 추가 discard 없음 | hidden1 후 A가1개선택. 이후 B/A/B는 남은 후보에서 keep1개와 hidden discard1개를 선택(p12) | 같은4개 role 소유지만 공개 정보·선택 후보·상대에게 넘길 role을 버리는 권한이 다름. CITY 공개2 vs Classic 공개0 | 없음 — 승인 유지. 소인원 절차를 동일하다고 표시하지 않음 |
-| **007A:** CR-04도 public removal 가능 | King은 public removal 금지; 나오면 다른 role로 교체하고 King을 다시 섞음(p6) | CITY에는 leader role 공개제거 예외 없음. 양쪽 hidden removal 가능성과는 별개 | 없음 — 승인 유지 |
+| **007A (2026-09-09 사용자 정정):** CR-04 public removal 금지, hidden removal 가능 | King은 public removal 금지; 나오면 다른 role로 교체하고 King을 다시 섞음(p6) | 공개 제거 금지는 일치. CITY는 서버 shuffle에서 CR-04를 건너뛰어 공개 제거 수를 채움 | 없음 — 최신 승인 반영, 현재 저장된 round는 보존 |
 | **009/043A:** CR-04 정상 reveal의 entry에서 즉시 leader 획득 | King은 정상 자기 turn 중 어느 시점에 반드시 crown을 가져옴(p15) | 반드시 얻는다는 점은 같지만 획득 시점을 entry로 고정 | 없음 — 승인 유지 |
 | **009/043A:** CR-04 disabled이면 incumbent leader 유지 | King이 killed여도 round end에 역할을 reveal하고 crown을 가져옴(p15) | CITY는 disabled leader의 round-end 상속을 하지 않음 | 없음 — 승인 유지 |
 | **010A:** disabled owner는 정상 round end에 공개 | killed role은 호출 때 reveal하지 않고 turn skip(p14). King만 round-end reveal/crown 예외 명시(p15) | 일반 disabled owner 일괄 round-end 공개는 PDF에 명시되지 않음. King 공개만으로 전체 역할 공개 규칙을 추론하지 않음 | 없음 — 승인 유지; 원문 미명시를 동작 반대라고 단정하지 않음 |

@@ -251,7 +251,7 @@ const DrawOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: Pl
 const DrawRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("DRAW_RELAY") };
 const DrawPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema),v.minLength(3),v.maxLength(8));
 const DrawRelayLobbyPlatformSnapshotV2Raw = v.pipe(v.strictObject({ ...DrawOuter,
-  room: v.strictObject({ ...DrawRoom, phase:v.literal("LOBBY"), players:v.pipe(v.array(PlatformPlayerViewV2Schema),v.maxLength(8)), promptMode:v.picklist(["EASY","NORMAL","MIXED"]) }), game:v.null() }),
+  room: v.strictObject({ ...DrawRoom, phase:v.literal("LOBBY"), players:v.pipe(v.array(PlatformPlayerViewV2Schema),v.maxLength(8)), promptMode:v.picklist(["EASY","NORMAL","MIXED"]), drawSeconds:v.optional(DrawRelayDrawSecondsSchema,90) }), game:v.null() }),
   v.check(s => hasUniqueRoomPlayers(s)),v.check(s => containsSelfPlayer(s)),v.check(s => hasAtMostOneHost(s)));
 const DrawRelayPlayingPlatformSnapshotV2Raw = v.pipe(v.strictObject({ ...DrawOuter,
   room:v.strictObject({ ...DrawRoom,phase:v.literal("PLAYING"),players:DrawPlayers }),game:DrawRelayPlayingProjectionSchema }),
@@ -565,3 +565,4 @@ export type PlatformSnapshotV2 = v.InferOutput<
   typeof PlatformSnapshotV2Schema
 >;
 import { DrawRelayPlayingProjectionSchema, DrawRelayFinishedProjectionSchema } from "../games/draw-relay/v2-projection-contracts.js";
+import { DrawRelayDrawSecondsSchema } from "../games/draw-relay/settings.js";

@@ -5,12 +5,26 @@ import { cloneCityGameState } from "./games/city-role/domain/game-state.js";
 import { assertCityGameState } from "./games/city-role/domain/state-validator.js";
 import { actCity, createCityFixture, cityContext, cityEntropy, CITY_TEST_ROLE_ORDER } from "./testing/city-role-fixtures.test.js";
 
-function draft(count = 2) {
+function draft(count = 2, roleOrder = CITY_TEST_ROLE_ORDER) {
   const old = createCityFixture(count);
   return createInitialCityGameState({ gameId: old.gameId, playerIds: old.seatOrder, seatOrder: old.seatOrder,
     cards: old.cards, deck: old.deck, initialHands: old.players.map(p => ({ playerId: p.playerId, cardIds: p.hand })),
-    actionId: cityContext(old).actionId, roleOrder: CITY_TEST_ROLE_ORDER, rulesVersion: "city-rules-v2", roleDraftVersion: "city-draft-v2" });
+    actionId: cityContext(old).actionId, roleOrder, rulesVersion: "city-rules-v2", roleDraftVersion: "city-draft-v2" });
 }
+test("CITY CR-04 never publicly discarded: every shuffled position, 2–6 players, exact partition", () => {
+  for (const count of [2, 3, 4, 5, 6]) for (let position = 0; position < 8; position++) {
+    const order: (typeof CITY_TEST_ROLE_ORDER)[number][] = CITY_TEST_ROLE_ORDER.filter(id => id !== "CR-04");
+    order.splice(position, 0, "CR-04");
+    const before = [...order], s = draft(count, order);
+    assert.equal(s.round.publicRemoved.includes("CR-04"), false);
+    assert.equal(s.round.publicRemoved.length, count === 4 ? 2 : count === 5 ? 1 : 0);
+    assert.deepEqual(s.round.hiddenRemoved, order.slice(0, 1));
+    assert.equal(position === 0 ? s.round.hiddenRemoved.includes("CR-04") : s.round.available.includes("CR-04"), true);
+    const partition = [...s.round.hiddenRemoved, ...s.round.publicRemoved, ...s.round.available];
+    assert.deepEqual([...partition].sort(), [...CITY_TEST_ROLE_ORDER].sort());
+    assert.deepEqual(order, before); assertCityGameState(s);
+  }
+});
 test("CITY secret draft: 7→5→3→automatic last; four hidden removals and two roles each", () => {
   let s = draft(); const original = JSON.stringify(s);
   assert.equal(s.round.available.length, 7); assert.deepEqual(s.round.publicRemoved, []);

@@ -20,7 +20,7 @@ const lobby = () => parse(DrawRelayLobbyPlatformSnapshotV2Schema, { snapshotVers
 function playing(phase: "DRAW" | "GUESS" | "FINAL_GUESS" | "REVEAL" = "DRAW", submitted = false) {
   const l = lobby(), base = { gameType: "DRAW_RELAY", gameId: "relay-game", gameRevision: 1, rulesVersion: "draw-relay-rules-v1", promptsVersion: "draw-relay-prompts-v1",
     stageIndex: phase === "DRAW" ? 1 : 2, totalStages: 2, stageToken: "relay-stage", playerStates: players.map(p => ({ playerId: p.playerId, forfeited: false, submitted })) };
-  const { promptMode: _mode, ...room } = l.room;
+  const { promptMode: _mode, drawSeconds: _drawSeconds, ...room } = l.room;
   return parse(DrawRelayPlayingPlatformSnapshotV2Schema, { ...l, room: { ...room, phase: "PLAYING" }, game: { ...base, phase,
     ...(phase === "REVEAL" ? { reveal: { bookIndex: 0, pageIndex: -1 }, books: [{ ownerPlayerId: "relay-0", initialPrompt: null, pages: [] }] }
       : { deadlineAt: 91000, privateState: { draft: BLANK_DRAWING, draftRevision: 0, submitted, source: phase === "DRAW" ? { kind: "TEXT", text: "하늘을 나는 고양이" } : { kind: "DRAWING", drawing: BLANK_DRAWING } } }) } });
@@ -34,6 +34,17 @@ test("DRAW Lobby 3–8 and prompt mode, host-only start", () => {
   assert.equal(getGameStartControl({ ...s, room: { ...s.room, players: s.room.players.slice(0, 2) } }, false).canStart, false);
   assert.match(html(s), /제시어 난이도|쉬움|혼합|그림책 만들기 시작/);
   assert.doesNotMatch(html({ ...s, self: { playerId: s.room.players[1]!.playerId } }), /그림책 만들기 시작/);
+});
+test("DRAW duration selector offers five choices and guide uses current setting", () => {
+  const s = lobby(), selected = { ...s, room: { ...s.room, drawSeconds: 30 as const } };
+  const output = html(selected);
+  assert.match(output, /aria-label="그리기 시간"/);
+  assert.match(output, /60초 · 기본/); assert.doesNotMatch(output, /90초 · 기본/);
+  for (const seconds of [15, 30, 45, 60, 90]) assert.ok(output.includes(`value="${seconds}"`));
+  assert.match(output, /30초 동안/); assert.doesNotMatch(output, /90초 동안/);
+  const other = html({ ...selected, self: { playerId: s.room.players[1]!.playerId } });
+  assert.match(other, /aria-label="그리기 시간" disabled=""/);
+  const active = playing(); assert.match(html({ ...active, game: { ...active.game, drawSeconds: 15 } }), /15초 동안/);
 });
 test("DRAW decoder routes exact concrete game and keeps rematch game identity", () => {
   const decoded = decodeWebSnapshot(lobby()); assert.equal(decoded.kind, "COMPATIBLE"); if (decoded.kind !== "COMPATIBLE") return;

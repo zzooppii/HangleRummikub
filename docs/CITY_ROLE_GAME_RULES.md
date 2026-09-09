@@ -37,7 +37,7 @@
 | 5 | 1 | 5 | 1 | 1 | 1 | A B C D E |
 | 6 | 1 | 6 | 1 | 0 | 1 | A B C D E F |
 
-모든 행에서 `selected + hiddenRemoved + publicRemoved + unselected = 8`이다. 현재 선택 actor만 available role의 exact list를 받아 1개를 선택한다. Host나 다른 player는 대신 선택할 수 없다. 선택 사이에 추가 discard는 없다. CR-04도 제거될 수 있다.
+모든 행에서 `selected + hiddenRemoved + publicRemoved + unselected = 8`이다. 현재 선택 actor만 available role의 exact list를 받아 1개를 선택한다. Host나 다른 player는 대신 선택할 수 없다. 선택 사이에 추가 discard는 없다(새 2인 draft 예외는 별도 승인 명세 참조). **2026-09-09 사용자 정정: CR-04 길잡이는 공개 제거에 포함하지 않는다. 비공개 제거는 가능하다.** 최초 비공개 1장을 확정한 뒤, 나머지 shuffle 순서에서 CR-04를 건너뛰고 필요한 수만큼 공개 제거한다. 역할 누락·중복이나 제거 장수 변화는 없다. 다음 round setup부터 적용하며 이미 저장된 현재 round의 제거/배정은 소급 변경하지 않는다.
 
 도중에 leave하면 해당 player의 미선택 pick을 건너뛰고, 이미 선택한 role은 hidden tombstone으로 남겨 재공급하지 않는다. 처음 정한 quota와 제거 수를 재계산하지 않으므로 최종 unselected는 표보다 늘어날 수 있다. 다음 round는 새 eligible 인원으로 quota를 정한다. 예를 들어 4명 중 1명이 떠나면 현재 round의 계획은 유지하고, 다음 round부터 남은 3명은 각 2개 role을 선택한다.
 

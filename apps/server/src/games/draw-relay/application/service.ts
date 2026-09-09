@@ -54,7 +54,7 @@ export class DrawRelayService {
         const seats=shuffleFrozen(room.players.map(p=>p.playerId),this.deps.random);
         const pool=DRAW_PROMPTS.filter(p=>mode==="MIXED"||p.difficulty==="EASY"||mode==="NORMAL"&&p.difficulty==="NORMAL");
         const prompts=shuffleFrozen(pool,this.deps.random).slice(0,seats.length);
-        const state=createDrawRelay({gameId,seatOrder:seats,prompts,bookIds:seats.map(()=>this.deps.ids.generateTileId()),stageToken:token,now,promptMode:mode});
+        const state=createDrawRelay({gameId,seatOrder:seats,prompts,bookIds:seats.map(()=>this.deps.ids.generateTileId()),stageToken:token,now,promptMode:mode,drawSeconds:room.drawSeconds??90});
         const roomRevision=parse(RoomRevisionSchema,room.roomRevision+1),gameRevision=parse(GameRevisionSchema,0);
         const data=parse(GameStartSuccessDataSchema,{roomId:room.roomId,roomRevision,gameId,gameRevision,turnId:token});
         const committed=await this.deps.roomUnitOfWork.commit({roomMutation:{kind:"REPLACE",candidate:{...room,phase:"PLAYING",game:{gameId,gameRevision,startedAt:now,finishedAt:null,state},roomRevision,updatedAt:now},
@@ -83,7 +83,7 @@ export class DrawRelayService {
           if(room.phase!=="LOBBY")return failure("INVALID_PHASE");
           if(room.hostPlayerId!==input.actorPlayerId)return failure("HOST_ONLY");
           if(room.roomRevision!==c.expectedRoomRevision)return failure("STALE_ROOM_REVISION");
-          candidate={...room,promptMode:c.payload.promptMode,roomRevision:parse(RoomRevisionSchema,room.roomRevision+1),updatedAt:now};
+          candidate={...room,promptMode:c.payload.promptMode,drawSeconds:c.payload.drawSeconds??room.drawSeconds??90,roomRevision:parse(RoomRevisionSchema,room.roomRevision+1),updatedAt:now};
         }else{
           if(!room.game||room.game.gameId!==c.gameId)return failure("STALE_GAME_REVISION");
           if(c.kind==="draw:rematch"){

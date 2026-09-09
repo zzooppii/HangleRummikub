@@ -86,11 +86,15 @@ function makeRound(s: CityWorkingState, roleOrder: readonly CityRoleId[] | undef
   const rolesPerPlayer = seats.length <= 3 ? 2 : 1;
   const pickQueue = rolesPerPlayer === 2 ? [...ordered, ...ordered] : ordered;
   const publicCount = s.roleDraftVersion === "city-draft-v2" && seats.length === 2 ? 0 : Math.max(0, 8 - pickQueue.length - 2);
+  // CR-04 may be hidden, but must never be removed face-up. Keep the
+  // injected shuffle order and exact removal count without drawing new entropy.
+  const remaining = roleOrder.slice(1);
+  const publicRemoved: readonly CityRoleId[] = remaining.filter(id => id !== "CR-04").slice(0, publicCount);
   return {
     roundNumber, draftLeaderPlayerId: s.leaderPlayerId, eligibleAtSetup: ordered,
     rolesPerPlayer, pickQueue, selectionCursor: 0,
-    hiddenRemoved: roleOrder.slice(0, 1), publicRemoved: roleOrder.slice(1, 1 + publicCount),
-    available: roleOrder.slice(1 + publicCount), unselected: [], assignments: [],
+    hiddenRemoved: roleOrder.slice(0, 1), publicRemoved,
+    available: remaining.filter(id => !publicRemoved.includes(id)), unselected: [], assignments: [],
     resolutionCursor: 0, protectedPlayerIds: [], ended: false,
   };
 }

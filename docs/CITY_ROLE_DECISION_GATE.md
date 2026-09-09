@@ -5,6 +5,8 @@
 
 ## 1. 읽는 방법 / 승인 경계
 
+2026-09-09 후속 사용자 승인: CITY-007의 공개 제거 예외를 정정하여 **CR-04 길잡이를 공개 버림 후보에서 제외**한다. 비공개 제거는 가능하며, 다음 round setup부터 적용한다. 아래 P14A 선택 이력은 보존하되 이 사항의 현재 규칙은 [승인 규칙 §3](./CITY_ROLE_GAME_RULES.md)을 따른다.
+
 P14A checkpoint는 `d5923c9`, runtime 기준은 `8f8da13`이다. 기존 세 게임과 release tag `three-game-platform-v1 → db0e6c6`는 변경하지 않는다. 아래 Option/추천/이유는 P14A 선택지 history이고 **마지막 열은 이번 사용자 확정값**이다. Classic 원문과 같은 규칙이라는 주장이 아니라 승인된 우리 규칙이다. 공식 자료의 확인 범위와 판본 차이는 [IP/product gate](./CITY_ROLE_IP_PRODUCT_GATE.md)를 따른다.
 
 - 사용자 확정: **001=C, 004=B, 018=B, 019=B, 070=B, 나머지 A**. 70개 모두 누락 없이 선택했다.

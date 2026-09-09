@@ -223,7 +223,9 @@ function cloneRoomWriteCandidate(
       if(new Set(departedPlayerIds).size!==departedPlayerIds.length||departedPlayerIds.some(id=>!shell.players.some(p=>p.playerId===id)))throw new Error("Invalid departed DRAW participant.");
       const promptMode=candidate.promptMode??"MIXED";
       if(!["EASY","NORMAL","MIXED"].includes(promptMode))throw new Error("Invalid prompt mode.");
-      return Object.freeze({...shell,gameType:"DRAW_RELAY",game,departedPlayerIds,promptMode});
+      const drawSeconds=candidate.drawSeconds??90;
+      if(![15,30,45,60,90].includes(drawSeconds))throw new Error("Invalid drawing duration.");
+      return Object.freeze({...shell,gameType:"DRAW_RELAY",game,departedPlayerIds,promptMode,drawSeconds});
     }
     case "HANGUL_TILE": {
       const game =
