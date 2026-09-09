@@ -321,3 +321,39 @@
 @keyframes city-impact-crumble { 20% { transform: rotate(-4deg); } 40% { transform: rotate(4deg); } to { opacity: 0; transform: translateY(8px); } }
 @media (max-width: 480px) { .city-impact { font-size: .82rem; gap: 8px; padding: 9px; }.city-impact > svg { width: 25px; height: 25px; } }
 @media (prefers-reduced-motion: reduce) { .city-impact-root *, .city-impact { animation: none !important; }.city-impact { transition: none; } }
+
+/* Private council: existing original city paintings as role environments, not character portraits. */
+.city-selection { background: radial-gradient(ellipse at top,#354942,#172e30); color:#fff4d9; border:1px solid #b89a5c; box-shadow:inset 0 0 0 5px #ffffff06,0 8px 24px #18262224; }
+.city-selection .city-helper, .city-selection .city-panel-heading p, .city-selection .city-public-removals { color:#e4d6b7; }
+.city-selection .city-role-grid { grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); align-items:stretch; gap:16px; }
+.city-role-card[data-role] { --role-scene:url('/city-art/illustrated-v1/cb-civ-02.webp'); position:relative; overflow:hidden; isolation:isolate; padding:18px 13px; border:1px solid #bb9b5c; border-radius:16px 16px 8px 8px; background:linear-gradient(#fdf4dc,#eaddbf); color:#26392f; box-shadow:inset 0 0 0 4px #d9c396,0 5px 12px #0003; }
+.city-role-card[data-role]::before { content:''; display:block; width:calc(100% + 26px); height:115px; margin:-18px -13px 0; background-image:linear-gradient(0deg,#172c3150,transparent),var(--role-scene); background-size:cover; background-position:center; border-bottom:3px solid #b99b58; }
+.city-role-card[data-role='CR-01'] { --role-scene:url('/city-art/illustrated-v1/cb-lan-05.webp'); }
+.city-role-card[data-role='CR-02'] { --role-scene:url('/city-art/illustrated-v1/cb-tra-01.webp'); }
+.city-role-card[data-role='CR-03'] { --role-scene:url('/city-art/illustrated-v1/cb-tra-02.webp'); }
+.city-role-card[data-role='CR-04'] { --role-scene:url('/city-art/illustrated-v1/cb-civ-06.webp'); }
+.city-role-card[data-role='CR-05'] { --role-scene:url('/city-art/illustrated-v1/cb-gua-05.webp'); }
+.city-role-card[data-role='CR-06'] { --role-scene:url('/city-art/illustrated-v1/cb-tra-03.webp'); }
+.city-role-card[data-role='CR-07'] { --role-scene:url('/city-art/illustrated-v1/cb-civ-03.webp'); }
+.city-role-card[data-role='CR-08'] { --role-scene:url('/city-art/illustrated-v1/cb-gua-06.webp'); }
+.city-role-card[data-role] > .city-role-emblem { margin-top:-36px; position:relative; box-shadow:0 3px 8px #0005; }
+.city-role-card[data-role] > p { margin:0; font-size:.85rem; line-height:1.5; }
+.city-role-card.is-kept { outline:3px solid #83d9b1; outline-offset:2px; }
+.city-role-card.is-discarded { outline:3px dashed #dbab85; outline-offset:2px; }
+.city-draft-progress { display:flex; flex-wrap:wrap; gap:10px; margin:16px 0; }
+.city-draft-progress span { padding:10px 14px; border:1px solid #bfa571; border-radius:9px; background:#ffffff0c; }
+.city-draft-card-actions { display:grid; gap:6px; width:100%; margin-top:auto; }
+.city-draft-card-actions button { min-height:44px; border:1px solid #9c875d; border-radius:7px; color:#263c34; background:#fff8e8; }
+.city-draft-card-actions button[aria-pressed='true'] { color:#fff; background:#285948; border-color:#285948; }
+.city-draft-confirm { margin:20px 0 4px; min-height:48px; width:100%; background:#ead5a0; color:#203c31; }
+.city-draft-card-actions button:focus-visible,.city-draft-confirm:focus-visible { outline:3px solid #459cd0; outline-offset:3px; }
+.city-playing-shell .city-panel:not(.city-selection) { box-shadow:0 4px 15px #55402610; border-color:#c8b48a; }
+.city-impact-banner { max-height:45vh; overflow-y:auto; }
+@media(max-width:620px) {
+  .city-selection .city-role-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+  .city-role-card[data-role] { padding:12px 8px; }
+  .city-role-card[data-role]::before { width:calc(100% + 16px); height:90px; margin:-12px -8px 0; }
+  .city-role-card[data-role] > strong { font-size:1.05rem; }
+  .city-role-card[data-role] > p { font-size:.76rem; }
+  .city-draft-progress { font-size:.8rem; }
+}

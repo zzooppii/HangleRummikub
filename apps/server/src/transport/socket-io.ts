@@ -1940,7 +1940,7 @@ function registerCityHandlers(io: RealtimeServer, socket: RealtimeSocket, runtim
       const router = runtime.cityRoleCommandRouter;
       const result = await (async () => {
         switch (value.kind) {
-          case "city:selectRole": return router.selectRole({ ...input, roleId: value.payload.roleId });
+          case "city:selectRole": return router.selectRole({ ...input, roleId: value.payload.roleId, ...(value.payload.discardRoleId === undefined ? {} : { discardRoleId: value.payload.discardRoleId }) });
           case "city:takeIncome": return router.takeIncome(input);
           case "city:drawBuildingCards": return router.drawBuildingCards(input);
           case "city:chooseBuildingCard": return router.chooseBuildingCard({ ...input, cardId: value.payload.cardId });

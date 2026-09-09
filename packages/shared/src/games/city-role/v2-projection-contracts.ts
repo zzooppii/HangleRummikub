@@ -17,6 +17,8 @@ const PendingCards = v.pipe(Cards, v.minLength(1), v.maxLength(2));
 const ActionBudget = v.strictObject({ acquisition: v.picklist(["NOT_TAKEN", "PENDING", "COMPLETE"]), abilityUsed: v.boolean(), buildingsBuilt: v.pipe(Natural, v.maxValue(3)) });
 const Common = {
   gameType: v.literal("CITY_ROLE"), gameId: GameIdSchema, gameRevision: GameRevisionSchema,
+  roleDraftVersion: v.optional(v.literal("city-draft-v2")),
+  secretPairDraft: v.optional(v.boolean()),
   rulesVersion: v.picklist(["city-rules-v1", "city-rules-v2"]), cardSetVersion: v.picklist(["city-cardset-v1", "city-cardset-v2"]), roleSetVersion: v.literal("city-roles-v1"),
   landmarkHistory: v.optional(v.pipe(v.array(v.strictObject({ playerId: PlayerIdSchema,
     gardenUsed: v.boolean(), sundialUsed: v.boolean(), staircaseInitialized: v.boolean(),
@@ -50,6 +52,8 @@ const FinishedObject = v.strictObject({ ...Common, phase: v.literal("FINISHED"),
 
 type VisibleCity = v.InferOutput<typeof SelectionObject> | v.InferOutput<typeof ActionObject> | v.InferOutput<typeof FinishedObject>;
 function coherent(game: VisibleCity): boolean {
+  if ((game.roleDraftVersion !== undefined) !== (game.secretPairDraft !== undefined)) return false;
+  if (game.secretPairDraft && (game.rolesPerPlayer !== 2 || game.publicRemovedRoleIds.length !== 0)) return false;
   const v2 = game.rulesVersion === "city-rules-v2";
   if (game.cardSetVersion !== (v2 ? "city-cardset-v2" : "city-cardset-v1") || (game.landmarkHistory !== undefined) !== v2) return false;
   if (game.landmarkHistory !== undefined) {

@@ -28,6 +28,7 @@ const Result = v.strictObject({ reason: v.picklist(["CITY_COMPLETION_ROUND_END",
     forfeited: v.boolean(), winner: v.boolean() })) });
 const Base = {
   gameId: CityGameIdSchema, rulesVersion: v.picklist(["city-rules-v1", "city-rules-v2"]), cardSetVersion: v.picklist(["city-cardset-v1", "city-cardset-v2"]), roleSetVersion: v.literal("city-roles-v1"),
+  roleDraftVersion: v.exactOptional(v.literal("city-draft-v2")),
   landmarkHistory: v.exactOptional(v.array(v.strictObject({ playerId: CityPlayerIdSchema,
     gardenUsed: v.boolean(), sundialUsed: v.boolean(), staircaseInitialized: v.boolean(),
     staircaseRemaining: v.pipe(Natural, v.maxValue(3)), staircaseSpent: v.pipe(Natural, v.maxValue(3)),
@@ -111,7 +112,10 @@ export function assertCityGameState(state: unknown): asserts state is CityGameSt
   requireCity(sameSequence(round.pickQueue, expectedQueue) && round.selectionCursor <= expectedQueue.length, "draft queue and cursor");
   const roles = [...round.available, ...round.publicRemoved, ...round.hiddenRemoved, ...round.unselected, ...round.assignments.map(item => item.roleId)];
   requireCity(roles.length === 8 && new Set(roles).size === 8 && CITY_ROLE_IDS.every(role => roles.includes(role)), "eight-role partition");
-  requireCity(round.hiddenRemoved.length === 1 && round.publicRemoved.length === Math.max(0, 8 - expectedQueue.length - 2), "approved role removal counts");
+  const secretPairDraft = game.roleDraftVersion === "city-draft-v2" && round.eligibleAtSetup.length === 2;
+  requireCity(secretPairDraft
+    ? round.publicRemoved.length === 0 && round.hiddenRemoved.length === 1 + Math.min(3, round.assignments.length)
+    : round.hiddenRemoved.length === 1 && round.publicRemoved.length === Math.max(0, 8 - expectedQueue.length - 2), "approved role removal counts");
   for (const id of round.eligibleAtSetup) {
     const assigned = round.assignments.filter(item => item.playerId === id).length;
     const passedPicks = round.pickQueue.slice(0, round.selectionCursor).filter(candidate => candidate === id).length;
@@ -168,7 +172,7 @@ export function assertCityGameState(state: unknown): asserts state is CityGameSt
     } else {
       const window = game.window;
       const active = round.assignments.filter(item => item.status === "ACTIVE");
-      requireCity(round.selectionCursor === round.pickQueue.length && round.available.length === 0 && round.unselected.length >= 1 &&
+      requireCity(round.selectionCursor === round.pickQueue.length && round.available.length === 0 && (secretPairDraft ? round.unselected.length === 0 : round.unselected.length >= 1) &&
         active.length === 1 && active[0]?.roleId === window.activeRoleId && active[0]?.playerId === window.activePlayerId &&
         round.resolutionCursor === cityRoleOrder(window.activeRoleId), "active role/player/cursor coherence");
       requireCity(window.buildingsBuilt <= (window.activeRoleId === "CR-07" ? 3 : 1), "role-local building budget");

@@ -99,6 +99,7 @@ export type CityGameResult = Readonly<{
 type CityStateBase = Readonly<{
   gameId: CityGameId;
   rulesVersion: "city-rules-v1" | "city-rules-v2";
+  roleDraftVersion?: "city-draft-v2";
   cardSetVersion: "city-cardset-v1" | "city-cardset-v2";
   // Required exclusively for v2 by the strict state validator. Never synthesized on restore.
   landmarkHistory?: readonly CityLandmarkHistory[];

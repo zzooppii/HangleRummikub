@@ -42,7 +42,7 @@ class FullGameTimers implements OneShotTimerDriver {
 }
 
 type BotMove =
-  | Readonly<{ kind: "SELECT"; roleId: CityRoleId }>
+  | Readonly<{ kind: "SELECT"; roleId: CityRoleId; discardRoleId?: CityRoleId }>
   | Readonly<{ kind: "INCOME" | "DRAW" | "END" }>
   | Readonly<{ kind: "CHOOSE" | "BUILD"; card: CityPublicBuilding }>;
 
@@ -109,7 +109,7 @@ async function fullGameHarness(count: 2 | 4 | 6) {
   }
   function invoke(command: CityActionInput, move: BotMove): Promise<CityMutationResult> {
     switch (move.kind) {
-      case "SELECT": return service.selectRole({ ...command, roleId: move.roleId });
+      case "SELECT": return service.selectRole({ ...command, roleId: move.roleId, ...(move.discardRoleId === undefined ? {} : { discardRoleId: move.discardRoleId }) });
       case "INCOME": return service.takeIncome(command);
       case "DRAW": return service.drawBuildingCards(command);
       case "CHOOSE": return service.chooseBuildingCard({ ...command, cardId: move.card.cardId });
@@ -117,9 +117,29 @@ async function fullGameHarness(count: 2 | 4 | 6) {
       case "END": return service.endTurn(command);
     }
   }
-  return { count, persistence, clock, players, projector, timers, scheduler, service, read, viewer, input, invoke,
+  return { count, persistence, clock, players, projector, timers, scheduler, service, timeout, read, viewer, input, invoke,
     commits: () => commits, callbackFailures: () => callbackFailures, finishNotifications: () => finishNotifications };
 }
+
+test("CITY new two-player timeout service atomically picks/discards at 45s and ignores replay", async t => {
+  const h = await fullGameHarness(2); t.after(() => h.scheduler.stop());
+  for (let step = 0; step < 3; step++) {
+    const before = await h.read(); const deadline = (await h.persistence.listActiveTurnDeadlines())[0]!;
+    assert.equal(before.game.state.round.available.length, 7 - step * 2);
+    h.clock.set(deadline.deadlineAt);
+    assert.equal((await h.timeout.timeout(deadline)).status, "APPLIED");
+    const after = await h.read();
+    assert.equal(after.game.gameRevision, before.game.gameRevision + 1);
+    assert.equal(after.game.state.round.hiddenRemoved.length, step + 2);
+    assert.equal(new Set([...after.game.state.round.hiddenRemoved, ...after.game.state.round.assignments.map(a => a.roleId)]).size, step === 2 ? 8 : (step + 1) * 2 + 1);
+    assert.equal((await h.timeout.timeout(deadline)).status, "NO_OP");
+    assert.deepEqual(await h.read(), after);
+    assert.deepEqual(new CityRoleGameStateAdapter().cloneAndValidate(JSON.parse(JSON.stringify(after.game))), after.game);
+  }
+  const final = await h.read(); assert.equal(final.game.state.round.assignments.length, 4);
+  assert.equal(final.game.state.window?.kind, "ROLE_ACTION");
+  assert.equal(final.game.deadlineAt! - final.game.windowStartedAt!, 90_000);
+});
 
 /** Simple legal strategy based only on the actor's public/private viewer data. */
 function chooseMove(snapshot: CityRolePlayingPlatformSnapshotV2, hasDrawn: boolean): BotMove {
@@ -132,7 +152,7 @@ function chooseMove(snapshot: CityRolePlayingPlatformSnapshotV2, hasDrawn: boole
     const preference: readonly CityRoleId[] = ["CR-07", "CR-06", "CR-04", "CR-05", "CR-08", "CR-03", "CR-02", "CR-01"];
     const roleId = preference.find(role => available.includes(role));
     assert.ok(roleId);
-    return { kind: "SELECT", roleId };
+    return { kind: "SELECT", roleId, ...(game.secretPairDraft ? { discardRoleId: available.find(role => role !== roleId)! } : {}) };
   }
   const action = game.privateState.action;
   assert.ok(action);

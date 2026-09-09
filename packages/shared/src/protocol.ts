@@ -415,7 +415,7 @@ const CityCommandEnvelope = {
   protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema,
   gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema, actionId: CityActionIdSchema,
 };
-export const CitySelectRoleCommandSchema = v.strictObject({ ...CityCommandEnvelope, kind: v.literal("city:selectRole"), payload: v.strictObject({ roleId: CityRoleIdSchema }) });
+export const CitySelectRoleCommandSchema = v.strictObject({ ...CityCommandEnvelope, kind: v.literal("city:selectRole"), payload: v.strictObject({ roleId: CityRoleIdSchema, discardRoleId: v.optional(CityRoleIdSchema) }) });
 export type CitySelectRoleCommand = v.InferOutput<typeof CitySelectRoleCommandSchema>;
 export const CityTakeIncomeCommandSchema = v.strictObject({ ...CityCommandEnvelope, kind: v.literal("city:takeIncome"), payload: v.strictObject({}) });
 export type CityTakeIncomeCommand = v.InferOutput<typeof CityTakeIncomeCommandSchema>;

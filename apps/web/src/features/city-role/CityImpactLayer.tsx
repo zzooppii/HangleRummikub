@@ -27,6 +27,7 @@ export function CityImpactLayer({ snapshot, connected, feedback, children }: Rea
   const lastScope = useRef(scope);
   const round = useRef(snapshot.game.roundNumber);
   const root = useRef<HTMLDivElement>(null);
+  const played = useRef<string | null>(null);
   useEffect(() => {
     if (!connected || lastScope.current !== scope) {
       tracker.current.reset(); setBatch([]); setLog([]); lastScope.current = scope;
@@ -35,26 +36,22 @@ export function CityImpactLayer({ snapshot, connected, feedback, children }: Rea
     if (round.current !== snapshot.game.roundNumber) { setLog([]); round.current = snapshot.game.roundNumber; }
     const events = tracker.current.accept(snapshot, feedback);
     if (events.length === 0) return;
-    setBatch(events); setLog(prior => [...prior, ...events].slice(-8));
-    // Simultaneous canonical effects share one short cue; no noisy queued replay.
-    const priority = { small: 0, medium: 1, large: 2 };
-    const loudest = events.reduce((best, event) => priority[event.intensity] >= priority[best.intensity] ? event : best);
-    playCityImpactSound(loudest.cue);
+    setBatch(prior => [...prior, ...events]); setLog(prior => [...prior, ...events].slice(-8));
   }, [snapshot, connected, feedback, scope]);
   useEffect(() => {
-    if (!batch.length) return;
+    const event = batch[0];
+    if (!event) return;
+    if (played.current !== event.id) { played.current = event.id; playCityImpactSound(event.cue); }
     const marked: Element[] = [];
-    for (const event of batch) {
       for (const card of root.current?.querySelectorAll<HTMLElement>("[data-impact-card]") ?? []) {
         if (card.dataset.impactCard === event.cardId) { card.setAttribute("data-impact-cue", event.cue); marked.push(card); }
       }
-    }
-    const timer = setTimeout(() => setBatch([]), 2000);
+    const timer = setTimeout(() => setBatch(prior => prior.slice(1)), 2000);
     return () => { clearTimeout(timer); for (const node of marked) node.removeAttribute("data-impact-cue"); };
-  }, [batch]);
+  }, [batch[0]]);
   return <div className="city-impact-root" ref={root} data-city-impact={batch[0]?.cue ?? ""}>
     {children}
-    <CityImpactBanner events={connected && lastScope.current === scope ? batch : []} />
+    <CityImpactBanner events={connected && lastScope.current === scope ? batch.slice(0, 1) : []} />
     {connected && lastScope.current === scope && log.length ? <details className="city-impact-log"><summary>이번 라운드 기록 · 내 화면 전용</summary><ol>{log.map(event => <li key={event.id}>{event.message}</li>)}</ol></details> : null}
   </div>;
 }

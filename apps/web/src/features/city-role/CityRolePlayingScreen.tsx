@@ -17,6 +17,8 @@ import { CityBuildingFace } from "./CityBuildingFace.js";
 export { CityBuildingFace } from "./CityBuildingFace.js";
 import { CityGameHelp } from "./CityGameHelp.js";
 import { useCitySound } from "./city-role-sound.js";
+import { CitySecretDraft } from "./CitySecretDraft.js";
+import { useCityAmbience } from "./city-ambience.js";
 import { CityCategoryGuide, CityIcon, CityRoleEmblem, CitySkyline } from "./CityVisuals.js";
 
 export type CityRolePlayingScreenProps = Readonly<{
@@ -138,6 +140,7 @@ export function CityRolePlayingScreen(props: CityRolePlayingScreenProps) {
   useEffect(() => { const interval = window.setInterval(() => setNow(Date.now()), 1_000); return () => window.clearInterval(interval); }, []);
   useEffect(() => { setSelectedCardId(null); }, [game.gameId, game.gameRevision, game.window.actionId, props.selectionResetGeneration, props.sessionReplaced]);
   const sound = useCitySound(props.snapshot, props.actionFeedback, props.sessionReplaced, true);
+  const music = useCityAmbience(props.sessionReplaced || props.connectionTone !== "connected");
   const countdown = calculateTurnCountdown(game.window.deadlineAt, clockAnchor.offset, Math.max(now, clockAnchor.receivedAt));
   const nickname = (id: PlayerId) => room.players.find(player => player.playerId === id)?.nickname ?? "참가자";
   const player = game.playerStates.find(candidate => candidate.playerId === self.playerId);
@@ -154,6 +157,7 @@ export function CityRolePlayingScreen(props: CityRolePlayingScreenProps) {
     <header className="city-header"><CitySkyline /><div className="city-header-title"><CityIcon name="civic" /><div><p className="eyebrow">비밀 도시 게임 · ROOM {room.roomCode}</p><h1>내 역할로, 함께 만드는 도시.</h1></div></div>
       <div className="city-header-actions"><span className={`connection-chip ${props.connectionTone}`}>{props.connectionLabel}</span><CityGameHelp placement="PLAYING" rulesVersion={game.rulesVersion} />
         <button type="button" className="text-button" aria-pressed={sound.enabled} onClick={sound.toggle}>사운드 {sound.enabled ? "켜짐" : "꺼짐"}</button>
+        <button type="button" className="text-button" aria-pressed={music.enabled} onClick={music.toggle}>배경음 {music.enabled ? "켜짐" : "꺼짐"}</button>
         {!props.sessionReplaced ? <button type="button" className="text-button" disabled={props.roomLeavePending || props.actionPending || props.retryPending} onClick={props.onLeaveRoom}>{props.roomLeavePending ? "나가는 중…" : "방 나가기"}</button> : null}
       </div>
     </header>
@@ -178,7 +182,7 @@ export function CityRolePlayingScreen(props: CityRolePlayingScreenProps) {
     {props.actionFeedback !== null ? <p className="city-action-feedback" role="status">{props.actionFeedback.message}</p> : null}
     <div className="city-action-layout"><div>
     {game.phase === "ROLE_SELECTION" ? <section className="city-panel city-selection" aria-labelledby="city-selection-heading"><div className="city-panel-heading"><div><h2 id="city-selection-heading">이번 라운드의 비밀 역할</h2><p>{game.rolesPerPlayer === 2 ? "2~3인 게임에서는 한 라운드에 역할 2개를 고릅니다." : "이번 라운드에는 역할 1개를 고릅니다."} 내 선택 {remainingRoles}개 남음</p></div></div>
-      {game.privateState.availableRoleIds !== undefined ? <><p className="city-helper">아래 카드 하나를 누르면 역할이 선택됩니다. 다른 참가자에게는 보이지 않습니다.</p><div className="city-role-grid">{game.privateState.availableRoleIds.map(roleId => <button type="button" className="city-role-card" key={roleId} disabled={locked} aria-label={`${cityRoleLabel(roleId)}, ${CITY_ROLE_HELP[roleId].summary} 역할 선택`} onClick={() => { if (!locked) props.onAction({ kind: "city:selectRole", payload: { roleId } }); }}><CityRoleFace roleId={roleId} /><span className="city-card-cta">이 역할 선택</span></button>)}</div></> : <p className="city-waiting">{remainingRoles === 0 ? "이번 라운드의 역할 선택을 마쳤습니다. 다른 참가자의 선택을 기다려주세요." : "내 선택 차례가 되면 선택 가능한 비밀 역할이 여기에 표시됩니다."}</p>}
+      {game.privateState.availableRoleIds !== undefined ? game.secretPairDraft === true ? <CitySecretDraft key={game.window.actionId} roles={game.privateState.availableRoleIds} locked={locked} onAction={props.onAction} /> : <><p className="city-helper">아래 카드 하나를 누르면 역할이 선택됩니다. 다른 참가자에게는 보이지 않습니다.</p><div className="city-role-grid">{game.privateState.availableRoleIds.map(roleId => <button type="button" className="city-role-card" data-role={roleId} key={roleId} disabled={locked} aria-label={`${cityRoleLabel(roleId)}, ${CITY_ROLE_HELP[roleId].summary} 역할 선택`} onClick={() => { if (!locked) props.onAction({ kind: "city:selectRole", payload: { roleId } }); }}><CityRoleFace roleId={roleId} /><span className="city-card-cta">이 역할 선택</span></button>)}</div></> : <p className="city-waiting">{remainingRoles === 0 ? "이번 라운드의 역할 선택을 마쳤습니다. 다른 참가자의 선택을 기다려주세요." : "내 선택 차례가 되면 선택 가능한 비밀 역할이 여기에 표시됩니다."}</p>}
       <p className="city-public-removals">공개 제외 역할: {game.publicRemovedRoleIds.length === 0 ? "없음" : game.publicRemovedRoleIds.map(cityRoleLabel).join(" · ")}</p>
     </section> : null}
 

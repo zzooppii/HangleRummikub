@@ -36,6 +36,7 @@ export function projectCityRoleV2Game(input: {
     })) }),
     roundNumber: state.round.roundNumber, seatOrder: [...state.seatOrder], leaderPlayerId: state.leaderPlayerId,
     rolesPerPlayer: state.round.rolesPerPlayer, publicRemovedRoleIds: [...state.round.publicRemoved],
+    ...(state.roleDraftVersion === undefined ? {} : { roleDraftVersion: state.roleDraftVersion, secretPairDraft: state.round.eligibleAtSetup.length === 2 }),
     revealedRoles: state.revealedRoles.map(role => ({ roundNumber: role.roundNumber, roleId: role.roleId, playerId: role.playerId, kind: role.kind })),
     protectedPlayerIds: [...state.round.protectedPlayerIds],
     firstCompletion: state.firstCompletion === null ? null : { playerId: state.firstCompletion.playerId, roundNumber: state.firstCompletion.roundNumber },

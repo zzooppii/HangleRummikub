@@ -2,6 +2,8 @@
 
 `city-rules-v2` / `city-cardset-v2` / `city-roles-v1` · 사용자 최종 승인
 
+2026-09-09 추가 승인: 새 게임의 `city-draft-v2` 2인 비공개 선택·버리기 규칙은 [별도 승인 명세](./CITY_ROLE_SECRET_DRAFT_AND_FEEDBACK.md)를 따른다. 이 변경은 아래 명소 능력을 바꾸지 않으며 draft 버전이 없는 기존 저장판에는 적용하지 않는다.
+
 ## 적용 범위와 버전
 
 [v1 규칙](./CITY_ROLE_GAME_RULES.md)은 역사적 버전으로 유지한다. 이 문서의 명소 변경을 제외한 CITY-001–070/E01–03, 2–6인 역할 배정, 45/90초, 8건물 round-end latch, 완성 4/2점, 공동순위, forfeited 처리, privacy, reconnect는 그대로다. 교역/시정/문화/수비에는 특수 능력이 없다. LANDMARK category income role도 없다.

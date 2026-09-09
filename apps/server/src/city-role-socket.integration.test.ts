@@ -97,6 +97,9 @@ test("raw CITY two-player create/join/start/draft/acquire/build/round/resume pre
   assert.equal(view.game.window.deadlineAt - view.game.window.startedAt, 45_000);
   assert.equal(view.game.privateState.hand.length, 4);
   assert.equal(view.game.playerStates.length, 2);
+  assert.equal(view.game.roleDraftVersion, "city-draft-v2");
+  assert.equal(view.game.secretPairDraft, true);
+  assert.deepEqual(view.game.publicRemovedRoleIds, []);
   let builds = 0, completedRounds = 0, pendingResumed = false;
   for (let step = 0; step < 48 && (builds === 0 || completedRounds === 0 || !pendingResumed); step += 1) {
     const actor = room.members.find((member) => member.playerId === view.game.window.activePlayerId)!;
@@ -107,7 +110,7 @@ test("raw CITY two-player create/join/start/draft/acquire/build/round/resume pre
       const observer = room.members.find((member) => member.playerId !== actor.playerId)!;
       const other = h.playing(await h.sync(observer.client));
       assert.equal("availableRoleIds" in other.game.privateState, false);
-      const request = h.command("city:selectRole", { roleId: roles[0] }, h.identity(view));
+      const request = h.command("city:selectRole", { roleId: roles[0], ...(view.game.secretPairDraft ? { discardRoleId: roles[1] } : {}) }, h.identity(view));
       const firstReceipt = h.receipt(await h.send(actor.client, request));
       view = h.playing(await h.sync(actor.client));
       const stored = await h.server.runtime.persistence.findById(view.room.roomId);

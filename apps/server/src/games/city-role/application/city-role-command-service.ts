@@ -21,7 +21,7 @@ export type CityActionInput = Readonly<{
   roomId: RoomId; actorPlayerId: PlayerId; requestId: RequestId; gameId: GameId;
   expectedGameRevision: GameRevision; actionId: CityActionId; receivedAt: ServerTime; authorization: CurrentActorAuthorization;
 }>;
-export type CitySelectRoleInput = CityActionInput & Readonly<{ roleId: CityRoleId }>;
+export type CitySelectRoleInput = CityActionInput & Readonly<{ roleId: CityRoleId; discardRoleId?: CityRoleId }>;
 export type CityCardInput = CityActionInput & Readonly<{ cardId: CityBuildingCardId }>;
 export type CityAbilityInput = CityActionInput & Readonly<{ ability: CityRoleAbilityPayload }>;
 const Identity = { roomId: RoomIdSchema, gameId: GameIdSchema, roomRevision: RoomRevisionSchema, gameRevision: GameRevisionSchema,
@@ -87,7 +87,7 @@ function domainAbility(ability: CityRoleAbilityPayload): CityAbility {
 export class CityRoleCommandService {
   readonly #deps: CityCommandDependencies;
   constructor(deps: CityCommandDependencies) { this.#deps = deps; }
-  selectRole(input: CitySelectRoleInput) { return this.#execute(input, "city:selectRole", { kind: "SELECT_ROLE", roleId: input.roleId }); }
+  selectRole(input: CitySelectRoleInput) { return this.#execute(input, "city:selectRole", { kind: "SELECT_ROLE", roleId: input.roleId, ...(input.discardRoleId === undefined ? {} : { discardRoleId: input.discardRoleId }) }); }
   takeIncome(input: CityActionInput) { return this.#execute(input, "city:takeIncome", { kind: "TAKE_INCOME" }); }
   drawBuildingCards(input: CityActionInput) { return this.#execute(input, "city:drawBuildingCards", { kind: "DRAW_BUILDING_CARDS" }); }
   chooseBuildingCard(input: CityCardInput) { return this.#execute(input, "city:chooseBuildingCard", { kind: "CHOOSE_BUILDING_CARD", cardId: parseBuildingCardId(input.cardId) }); }

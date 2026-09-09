@@ -28,7 +28,7 @@ export type CityAbility =
   | Readonly<{ kind: "REPLACE_OWN_CARDS"; cardIds: readonly BuildingCardId[] }>
   | Readonly<{ kind: "DESTROY_BUILDING"; targetPlayerId: CityPlayerId; cardId: BuildingCardId }>;
 export type CityAction =
-  | Readonly<{ kind: "SELECT_ROLE"; roleId: CityRoleId }>
+  | Readonly<{ kind: "SELECT_ROLE"; roleId: CityRoleId; discardRoleId?: CityRoleId }>
   | Readonly<{ kind: "TAKE_INCOME" | "DRAW_BUILDING_CARDS" | "END_TURN" }>
   | Readonly<{ kind: "CHOOSE_BUILDING_CARD" | "BUILD"; cardId: BuildingCardId }>
   | Readonly<{ kind: "USE_ROLE_ABILITY"; ability: CityAbility }>;
@@ -85,7 +85,7 @@ function makeRound(s: CityWorkingState, roleOrder: readonly CityRoleId[] | undef
   const ordered = [...seats.slice(start), ...seats.slice(0, start)];
   const rolesPerPlayer = seats.length <= 3 ? 2 : 1;
   const pickQueue = rolesPerPlayer === 2 ? [...ordered, ...ordered] : ordered;
-  const publicCount = Math.max(0, 8 - pickQueue.length - 2);
+  const publicCount = s.roleDraftVersion === "city-draft-v2" && seats.length === 2 ? 0 : Math.max(0, 8 - pickQueue.length - 2);
   return {
     roundNumber, draftLeaderPlayerId: s.leaderPlayerId, eligibleAtSetup: ordered,
     rolesPerPlayer, pickQueue, selectionCursor: 0,
@@ -325,14 +325,25 @@ function skipAbsentPicks(s: CityWorkingState): void {
   s.round = { ...s.round, selectionCursor: cursor };
   if (cursor === s.round.pickQueue.length && s.round.available.length > 0) closeSelection(s);
 }
-function selectRole(s: CityWorkingState, roleId: CityRoleId): void {
+function selectRole(s: CityWorkingState, roleId: CityRoleId, discardRoleId?: CityRoleId): void {
   requireRule(s.window?.kind === "ROLE_SELECTION", "INVALID_PHASE");
   requireRule(s.round.available.includes(roleId), "INVALID_ROLE");
   const id = s.window.activePlayerId;
+  const secretPairDraft = s.roleDraftVersion === "city-draft-v2" && s.round.eligibleAtSetup.length === 2;
+  requireRule(secretPairDraft
+    ? discardRoleId !== undefined && discardRoleId !== roleId && s.round.available.includes(discardRoleId)
+    : discardRoleId === undefined, "INVALID_ROLE");
   requireRule(s.round.assignments.filter(a => a.playerId === id).length < s.round.rolesPerPlayer, "INVALID_ROLE");
-  s.round = { ...s.round, available: s.round.available.filter(role => role !== roleId),
+  s.round = { ...s.round, available: s.round.available.filter(role => role !== roleId && role !== discardRoleId),
+    hiddenRemoved: discardRoleId === undefined ? s.round.hiddenRemoved : [...s.round.hiddenRemoved, discardRoleId],
     assignments: [...s.round.assignments, { roleId, playerId: id, status: "SELECTED", revealed: false }],
     selectionCursor: s.round.selectionCursor + 1 };
+  if (secretPairDraft && s.round.selectionCursor === 3) {
+    const lastRole = s.round.available[0], lastPlayer = s.round.pickQueue[3];
+    requireRule(lastRole !== undefined && s.round.available.length === 1 && lastPlayer !== undefined, "INVALID_STATE");
+    s.round = { ...s.round, available: [], selectionCursor: 4,
+      assignments: [...s.round.assignments, { roleId: lastRole, playerId: lastPlayer, status: "SELECTED", revealed: false }] };
+  }
   s.window = null;
   skipAbsentPicks(s);
 }
@@ -371,6 +382,7 @@ export function createInitialCityGameState(input: Readonly<{
   initialHands: readonly Readonly<{ playerId: CityPlayerId; cardIds: readonly BuildingCardId[] }>[];
   actionId: CityActionId; roleOrder: readonly CityRoleId[];
   rulesVersion?: "city-rules-v1" | "city-rules-v2";
+  roleDraftVersion?: "city-draft-v2";
 }>): CityGameState {
   try {
     requireRule(input.rulesVersion === undefined || input.rulesVersion === "city-rules-v1" || input.rulesVersion === CITY_RULES_V2, "INVALID_SETUP");
@@ -383,6 +395,7 @@ export function createInitialCityGameState(input: Readonly<{
     });
     const s: CityWorkingState = {
       gameId: parseCityGameId(input.gameId), rulesVersion: CITY_RULES_VERSION, cardSetVersion: CITY_CARDSET_VERSION, roleSetVersion: CITY_ROLESET_VERSION,
+      ...(input.roleDraftVersion === undefined ? {} : { roleDraftVersion: input.roleDraftVersion }),
       ...(input.rulesVersion === CITY_RULES_V2 ? { rulesVersion: CITY_RULES_V2, cardSetVersion: CITY_CARDSET_V2,
         landmarkHistory: players.map(p => initialCityLandmarkHistory(p.playerId)) } : {}),
       cards: validateCityCards(input.cards), players, seatOrder: [...input.seatOrder], leaderPlayerId: input.seatOrder[0]!,
@@ -402,7 +415,7 @@ export function applyCityAction(state: CityGameState, context: CityActionContext
   const s = candidate(state);
   const previous = checkedWindow(s, context).actionId;
   switch (action.kind) {
-    case "SELECT_ROLE": selectRole(s, action.roleId); advance(s, entropy, previous); break;
+    case "SELECT_ROLE": selectRole(s, action.roleId, action.discardRoleId); advance(s, entropy, previous); break;
     case "TAKE_INCOME": takeIncome(s); break;
     case "DRAW_BUILDING_CARDS": drawBuildingCards(s, entropy); break;
     case "CHOOSE_BUILDING_CARD": chooseBuildingCard(s, action.cardId); break;
@@ -441,12 +454,12 @@ export function forfeitCityPlayers(state: CityGameState, playerIds: readonly Cit
   advance(s, entropy, previous);
   return commit(s);
 }
-export function timeoutCityWindow(state: CityGameState, context: CityActionContext, input: Readonly<{ offline: boolean; selectedRoleId?: CityRoleId }>, entropy: CityEntropy = {}): CityGameState {
+export function timeoutCityWindow(state: CityGameState, context: CityActionContext, input: Readonly<{ offline: boolean; selectedRoleId?: CityRoleId; discardRoleId?: CityRoleId }>, entropy: CityEntropy = {}): CityGameState {
   const s = candidate(state), w = checkedWindow(s, context), p = player(s, context.playerId);
   if (input.offline) putPlayer(s, { ...p, offlineTimeoutStreak: p.offlineTimeoutStreak + 1 });
   if (w.kind === "ROLE_SELECTION") {
     requireRule(input.selectedRoleId !== undefined, "INVALID_ROLE");
-    selectRole(s, input.selectedRoleId);
+    selectRole(s, input.selectedRoleId, input.discardRoleId);
   } else {
     if (w.acquisition === "NOT_TAKEN") takeIncome(s);
     else if (s.pendingChoice !== null) chooseBuildingCard(s, s.pendingChoice.cards[0]!);

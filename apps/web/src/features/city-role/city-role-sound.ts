@@ -8,10 +8,10 @@ export type CitySoundFeedback = Readonly<{ requestId: RequestId; kind: CityClien
 export const CITY_SOUND_PREFERENCE = "hangul-rummikub:preferences:city-sound-enabled";
 export const CITY_SOUND_CUES: Readonly<Record<CitySoundCue, Readonly<{ frequencies: readonly number[]; duration: number; gain: number; wave?: OscillatorType }>>> = Object.freeze({
   STRIKE: { frequencies: [280, 90], duration: .24, gain: .065, wave: "sawtooth" },
-  COIN_GAIN: { frequencies: [880, 1320], duration: .19, gain: .03, wave: "triangle" },
+  COIN_GAIN: { frequencies: [1320, 1760, 2093], duration: .32, gain: .055, wave: "triangle" },
   COIN_LOSS: { frequencies: [1100, 640, 220], duration: .3, gain: .055, wave: "triangle" },
   SHUFFLE: { frequencies: [180, 270, 150, 230], duration: .3, gain: .035, wave: "triangle" },
-  DRAW: { frequencies: [390, 580], duration: .18, gain: .025 },
+  DRAW: { frequencies: [390, 580], duration: .26, gain: .045 },
   BUILD: { frequencies: [130, 220, 520], duration: .3, gain: .045, wave: "triangle" },
   BREAK: { frequencies: [190, 110, 60], duration: .34, gain: .065, wave: "sawtooth" },
   SHIELD: { frequencies: [350, 700, 1050], duration: .3, gain: .045, wave: "triangle" },
@@ -85,6 +85,19 @@ export function playCitySound(cue: CitySoundCue): void {
       oscillator.start(at); oscillator.stop(at + noteLength);
     }
     latestEnd = start + config.duration;
+    if (cue === "DRAW" || cue === "SHUFFLE" || cue === "BUILD" || cue === "BREAK") {
+      // Original filtered noise: paper flutter / wooden or stone contact, not a recording.
+      const length = Math.ceil(audio.sampleRate * .16), buffer = audio.createBuffer(1, length, audio.sampleRate);
+      const samples = buffer.getChannelData(0);
+      let seed = 17;
+      for (let i = 0; i < length; i++) { seed = (seed * 16807) % 2147483647; samples[i] = (seed / 2147483647 * 2 - 1); }
+      const source = audio.createBufferSource(), filter = audio.createBiquadFilter(), envelope = audio.createGain();
+      source.buffer = buffer; filter.type = "bandpass"; filter.frequency.value = cue === "DRAW" || cue === "SHUFFLE" ? 2200 : 450;
+      envelope.gain.setValueAtTime(.12, start); envelope.gain.exponentialRampToValueAtTime(.0001, start + .16);
+      source.connect(filter); filter.connect(envelope); envelope.connect(audio.destination);
+      source.onended = () => { source.disconnect(); filter.disconnect(); envelope.disconnect(); };
+      source.start(start); source.stop(start + .16);
+    }
   } catch { /* Device/audio failures must not interrupt the UI. */ }
 }
 export function playCityImpactSound(cue: CityImpactCue): void {

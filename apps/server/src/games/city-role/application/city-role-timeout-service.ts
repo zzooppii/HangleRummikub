@@ -64,8 +64,11 @@ export class CityRoleTimeoutService {
     const discard = offline && actor.offlineTimeoutStreak >= 2
       ? [...game.state.discard, ...actor.hand, ...pendingKept] : game.state.discard;
     const role = window.kind === "ROLE_SELECTION" ? game.state.round.available[random.nextInt(game.state.round.available.length)] : undefined;
+    const remaining = game.state.round.available.filter(candidate => candidate !== role);
+    const discardRoleId = role !== undefined && game.state.roleDraftVersion === "city-draft-v2" && game.state.round.eligibleAtSetup.length === 2
+      ? remaining[random.nextInt(remaining.length)] : undefined;
     const state = timeoutCityWindow(game.state, { gameId: game.state.gameId, actionId: window.actionId, playerId: window.activePlayerId },
-      { offline, ...(role === undefined ? {} : { selectedRoleId: role }) }, cityDomainEntropy(this.#deps.idGenerator, random, discard));
+      { offline, ...(role === undefined ? {} : { selectedRoleId: role }), ...(discardRoleId === undefined ? {} : { discardRoleId }) }, cityDomainEntropy(this.#deps.idGenerator, random, discard));
     const candidate = transitionCityRoom(room, state, at, random.counter);
     const terminalResult = cityMutationData({ ...candidate, storageRevision: room.storageRevision }, window.actionId);
     const actorForfeited = state.players.some(player => player.playerId === actor.playerId && player.forfeited);

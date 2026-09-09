@@ -102,7 +102,7 @@ test("production same-origin four-game client serves SPA and plays CITY through 
       assert.equal(view.game.window.deadlineAt - view.game.window.startedAt, 45000);
       const roles = view.game.privateState.availableRoleIds;
       assert.ok(roles && roles.length > 0);
-      view = await action(actor.client, view, "city:selectRole", { roleId: roles[0] });
+      view = await action(actor.client, view, "city:selectRole", { roleId: roles[0], ...(view.game.secretPairDraft ? { discardRoleId: roles[1] } : {}) });
       continue;
     }
     const deadline = view.game.window.deadlineAt, actionId = view.game.window.actionId;
