@@ -234,6 +234,19 @@ test("ISLAND buying a victory card wins on own turn, hidden points and deck IDs 
   assert.ok(!JSON.stringify(p1).includes(JSON.stringify(privateState.players[0]!.cards[0]!.id))); assert.ok(privateState.deck.every(c => !JSON.stringify(p0).includes(JSON.stringify(c.id))));
   assert.throws(() => projectIsland(stored, parse(PlayerIdSchema, "outsider")));
 });
+test("ISLAND every viewer gets exact public resources while opponents' development cards remain private", () => {
+  const s = ready(); fund(s, 0, { WOOD: 3, BRICK: 2, WOOL: 0, GRAIN: 1, ORE: 4 }); card(s, 0, "VICTORY"); card(s, 1, "KNIGHT");
+  for (const viewer of s.players) {
+    const projected = projectIsland({ gameId: s.gameId, gameRevision: s.revision, startedAt: s.startedAt, finishedAt: s.finishedAt, state: s }, viewer.playerId);
+    for (const p of s.players) {
+      const publicPlayer = projected.playerStates.find(other => other.playerId === p.playerId)!;
+      assert.deepEqual(publicPlayer.resources, p.resources); assert.equal(publicPlayer.resourceCount, islandResourceCount(p.resources));
+      assert.equal("cards" in publicPlayer, false);
+      if (p.playerId !== viewer.playerId) for (const c of p.cards) assert.ok(!JSON.stringify(projected).includes(JSON.stringify(c.id)));
+    }
+    projected.playerStates[0]!.resources.WOOD = 0; assert.equal(s.players[0]!.resources.WOOD, 3);
+  }
+});
 test("ISLAND timeout resolves seven and a pre-roll knight before advancing once", () => {
   const s = started(); fund(s, 0, { WOOD: 8 }); fund(s, 1, { BRICK: 8 });
   const next = timeoutIsland(s, { ...context(s, seedFor(7)), now: s.deadlineAt }); assert.ok(next);

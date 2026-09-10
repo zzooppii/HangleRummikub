@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import { ISLAND_BOARD, type IslandPlayingPlatformSnapshotV2 } from "@hangul-rummikub/shared";
-import { BuildingArt, ISLAND_COLORS, ISLAND_LABELS, TERRAIN_COLORS } from "./art.js";
+import { BuildingArt, ResourceGlyph, ISLAND_COLORS, ISLAND_LABELS, TERRAIN_COLORS } from "./art.js";
 type Game = IslandPlayingPlatformSnapshotV2["game"];
 export type IslandTarget = Readonly<{ kind: "edge" | "vertex" | "hex"; id: number }>;
 type Props = Readonly<{ game: Pick<Game, "hexes" | "ports" | "buildings" | "roads" | "robber" | "dice" | "playerStates">; targets?: readonly IslandTarget[]; selected?: IslandTarget | null; onSelect?(target: IslandTarget): void; enabled?: boolean }>;
@@ -36,17 +36,16 @@ export function IslandBoard({ game, targets = [], selected = null, onSelect, ena
             const produced = rolled === h.number && game.robber !== h.id;
             return <g key={h.id}>
               <polygon points={polygons[h.id]} fill={TERRAIN_COLORS[resource ?? "DESERT"]} stroke="#d8cd96" strokeWidth="3" strokeLinejoin="round"/>
-              <g clipPath={"url(#" + uid + "-h" + h.id + ")"} opacity=".48">
-                {resource === "WOOD" ? Array.from({ length: 7 }, (_, i) => <g key={i} transform={"translate(" + (x - 43 + i % 4 * 29) + " " + (y - 38 + Math.floor(i / 4) * 68) + ")"}><path d="m0 0-11 19h7l-10 14h28L4 19h7z" fill="#164f3e"/><path d="M0 33v9" stroke="#c3bb72" strokeWidth="3"/></g>) :
-                  resource === "ORE" ? <><path d={"M" + (x - 75) + " " + (y + 52) + "l42-84 45 84 24-60 37 71z"} fill="#3e6470"/><path d={"m" + (x - 33) + " " + (y - 32) + "-12 24 12-5 11 5z"} fill="#eef0d6"/></> :
-                  resource === "GRAIN" ? Array.from({ length: 7 }, (_, i) => <path key={i} d={"M" + (x - 87 + i * 26) + " " + (y + 72) + "l70-143"} stroke={i % 2 ? "#8a6d2a" : "#f3d97a"} strokeWidth="9"/>) :
-                  resource === "BRICK" ? <><path d={"M" + (x - 65) + " " + (y + 42) + "q22-64 49-10t76-33v80h-125z"} fill="#964c38"/><path d={"M" + (x - 65) + " " + (y + 27) + "q35-15 51 0t69-19"} fill="none" stroke="#e9a875" strokeWidth="5"/></> :
-                  resource === "WOOL" ? <><path d={"M" + (x - 65) + " " + (y + 35) + "q39-29 78-9t68-8v70h-156z"} fill="#5e934e"/>{[-36, 35].map((dx, i) => <g key={dx} transform={"translate(" + (x + dx) + " " + (y - 36 + i * 75) + ")"}><ellipse rx="9" ry="6" fill="#fff6d6"/><circle cx="8" cy="2" r="4" fill="#355b42"/></g>)}</> :
-                  <><path d={"M" + (x - 74) + " " + (y + 20) + "q55-65 140 10M" + (x - 65) + " " + (y + 48) + "q55-47 130-2"} stroke="#a78558" strokeWidth="14" fill="none"/></>}
+              <g clipPath={"url(#" + uid + "-h" + h.id + ")"}>
+                <path d={"M" + (x - 62) + " " + (y + 18) + "q62 26 124 0v60h-124z"} fill="#173f3512"/>
+                {resource ? <g transform={"translate(" + (x - 30) + " " + (y - 25) + ") scale(1.25)"} className="island-terrain-object" data-resource={resource}>
+                  <ellipse cx="24" cy="42" rx="20" ry="4" fill="#263c3526"/><ResourceGlyph resource={resource}/>
+                </g> : <g transform={"translate(" + x + " " + y + ")"}><path d="M-43 13q24-39 48-10t40 11M-44 30q35-30 80-3" fill="none" stroke="#a58251" strokeWidth="8" strokeLinecap="round"/><text textAnchor="middle" y="-29" fill="#6d5535" fontSize="11">생산 없음</text></g>}
+                <g className="island-terrain-label"><rect x={x - 29} y={y + 31} width="58" height="20" rx="7" fill="#fff5da" stroke="#b6a579" strokeWidth=".7"/><text x={x} y={y + 46} textAnchor="middle" fill="#304338" fontSize="14" fontWeight="800">{resource ? ISLAND_LABELS[resource] : "사막"}</text></g>
               </g>
               {produced && <polygon points={polygons[h.id]} fill="none" stroke="#ffed9c" strokeWidth="5" className="island-produced"/>}
-              {h.number !== null ? <g transform={"translate(" + x + " " + (y + 2) + ")"}><circle cy="3" r="24" fill="#533f2b" opacity=".25"/><circle r="24" fill="#fff0c8" stroke="#cbb687" strokeWidth="2"/><text textAnchor="middle" y="4" className={h.number === 6 || h.number === 8 ? "island-number red" : "island-number"}>{h.number}</text><text textAnchor="middle" y="16" fill="#8b7250" fontSize="12" letterSpacing="1">{Array.from({ length: 6 - Math.abs(7 - h.number) }, () => "•").join("")}</text></g> : null}
-              {game.robber === h.id && <g transform={"translate(" + (x + (h.number ? 30 : 0)) + " " + (y - 5) + ")"}><ellipse cy="23" rx="16" ry="5" fill="#203b34" opacity=".35"/><path d="M-13 22-8 5h16l5 17z" fill="#21343b" stroke="#d2c4a0" strokeWidth="1.5"/><circle cy="-4" r="10" fill="#2c4148" stroke="#d2c4a0" strokeWidth="1.5"/><path d="M-7-5h14" stroke="#d2c4a0" strokeWidth="2"/></g>}
+              {h.number !== null ? <g transform={"translate(" + x + " " + (y - 38) + ")"}><circle cy="2" r="19" fill="#533f2b" opacity=".25"/><circle r="19" fill="#fff0c8" stroke="#cbb687" strokeWidth="1.5"/><text textAnchor="middle" y="1" className={h.number === 6 || h.number === 8 ? "island-number red" : "island-number"} style={{ fontSize: 22 }}>{h.number}</text><text textAnchor="middle" y="12" fill="#8b7250" fontSize="10" letterSpacing=".6">{Array.from({ length: 6 - Math.abs(7 - h.number) }, () => "•").join("")}</text></g> : null}
+              {game.robber === h.id && <g transform={"translate(" + (x + 35) + " " + (y - 5) + ") scale(.8)"}><ellipse cy="23" rx="16" ry="5" fill="#203b34" opacity=".35"/><path d="M-13 22-8 5h16l5 17z" fill="#21343b" stroke="#fff0c8" strokeWidth="2"/><circle cy="-4" r="10" fill="#2c4148" stroke="#fff0c8" strokeWidth="2"/><path d="M-7-5h14" stroke="#d2c4a0" strokeWidth="2"/><title>도둑 · 이 지형은 생산하지 않습니다</title></g>}
               <title>{(resource ? ISLAND_LABELS[resource] : "사막") + (h.number ? " · " + h.number : "") + (game.robber === h.id ? " · 도둑" : "")}</title>
             </g>;
           })}

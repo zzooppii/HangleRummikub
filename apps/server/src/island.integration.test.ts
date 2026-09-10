@@ -73,6 +73,11 @@ for (const count of [3, 4]) test("ISLAND Socket.IO " + count + " players: start,
     assert.ok(!JSON.stringify(wire).includes(member.credential.sessionToken));
   }
   await h.completeSetup(); const { snapshot } = await h.toAction();
+  const canonical = (await h.stored()).game!.state;
+  for (const member of h.members) {
+    const wire = parse(IslandPlayingPlatformSnapshotV2Schema, await h.sync(member.client));
+    for (const p of canonical.players) assert.deepEqual(wire.game.playerStates.find(publicPlayer => publicPlayer.playerId === p.playerId)!.resources, p.resources);
+  }
   assert.equal(snapshot.game.buildings.length, count * 2); assert.equal(snapshot.game.roads.length, count * 2);
   assert.equal(snapshot.game.turnNumber, 1); assert.equal(h.server.runtime.turnScheduler.scheduledCount, 1);
   await h.advance(); assert.equal((await h.stored()).game!.state.turnNumber, 2);

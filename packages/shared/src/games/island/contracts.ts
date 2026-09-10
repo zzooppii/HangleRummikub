@@ -1,7 +1,7 @@
 import * as v from "valibot";
 import { GameIdSchema, PlayerIdSchema, TurnIdSchema } from "../../identifiers.js";
 import { GameRevisionSchema, ServerTimeSchema } from "../../protocol.js";
-import { IslandCountSchema, IslandResourcesSchema, IslandOpaqueIdSchema, IslandCardKindSchema, IslandHexFaceSchema, IslandBuildingSchema, IslandRoadSchema, IslandPortSchema, IslandHexIdSchema, IslandStageSchema, IslandTradeSchema, IslandEdgeIdSchema, IslandVertexIdSchema } from "./actions.js";
+import { IslandCountSchema, IslandResourcesSchema, IslandOpaqueIdSchema, IslandCardKindSchema, IslandHexFaceSchema, IslandBuildingSchema, IslandRoadSchema, IslandPortSchema, IslandHexIdSchema, IslandStageSchema, IslandTradeSchema, IslandEdgeIdSchema, IslandVertexIdSchema, islandResourceCount } from "./actions.js";
 export const IslandLogSchema = v.strictObject({ revision: GameRevisionSchema, playerId: v.nullable(PlayerIdSchema), text: v.pipe(v.string(), v.maxLength(160)), automatic: v.boolean() });
 export const IslandPrivateSchema = v.strictObject({
   playerId: PlayerIdSchema, resources: IslandResourcesSchema,
@@ -13,11 +13,11 @@ const Base = {
   hexes: v.pipe(v.array(IslandHexFaceSchema), v.length(19)), ports: v.pipe(v.array(IslandPortSchema), v.length(9)),
   buildings: v.pipe(v.array(IslandBuildingSchema), v.maxLength(36)), roads: v.pipe(v.array(IslandRoadSchema), v.maxLength(60)),
   robber: IslandHexIdSchema, bank: IslandResourcesSchema, developmentCount: v.pipe(IslandCountSchema, v.maxValue(25)),
-  playerStates: v.pipe(v.array(v.strictObject({
-    playerId: PlayerIdSchema, resourceCount: IslandCountSchema, developmentCount: v.pipe(IslandCountSchema, v.maxValue(25)),
+  playerStates: v.pipe(v.array(v.pipe(v.strictObject({
+    playerId: PlayerIdSchema, resources: IslandResourcesSchema, resourceCount: IslandCountSchema, developmentCount: v.pipe(IslandCountSchema, v.maxValue(25)),
     knights: v.pipe(IslandCountSchema, v.maxValue(14)), roadLength: v.pipe(IslandCountSchema, v.maxValue(15)), publicPoints: IslandCountSchema,
     remainingRoads: v.pipe(IslandCountSchema, v.maxValue(15)), remainingSettlements: v.pipe(IslandCountSchema, v.maxValue(5)), remainingCities: v.pipe(IslandCountSchema, v.maxValue(4)),
-  })), v.minLength(3), v.maxLength(4)),
+  }), v.check(p => islandResourceCount(p.resources) === p.resourceCount, "Public resource counts must match."))), v.minLength(3), v.maxLength(4)),
   longestRoadPlayerId: v.nullable(PlayerIdSchema), largestArmyPlayerId: v.nullable(PlayerIdSchema),
   dice: v.nullable(v.tuple([v.picklist([1, 2, 3, 4, 5, 6]), v.picklist([1, 2, 3, 4, 5, 6])])),
   log: v.pipe(v.array(IslandLogSchema), v.maxLength(24)), privateState: IslandPrivateSchema,

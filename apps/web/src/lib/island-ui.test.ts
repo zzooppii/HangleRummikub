@@ -10,6 +10,7 @@ import {
   type IslandStage,
 } from "@hangul-rummikub/shared";
 import { IslandScreen, islandStageLabel, islandTargets } from "../features/island/IslandScreen.js";
+import { IslandBoard } from "../features/island/IslandBoard.js";
 import { decodeWebSnapshot, type IslandWebSnapshot } from "./snapshot-wire-decoder.js";
 import { resolveRoomSnapshotView } from "./room-snapshot-view.js";
 import { getGameStartControl } from "./game-start.js";
@@ -27,7 +28,7 @@ function playing(stage: IslandStage = { kind: "ROLL" }) {
     hexes: ISLAND_BOARD.hexes.map(h => ({ id: h.id, resource: h.id === 18 ? null : ISLAND_RESOURCES[h.id % 5], number: h.id === 18 ? null : 4 })),
     ports: ISLAND_BOARD.portEdges.map((edge, i) => ({ edge, resource: i < 4 ? null : ISLAND_RESOURCES[i - 4] })), buildings: [], roads: [], robber: 18,
     bank: { WOOD: 17, BRICK: 18, WOOL: 19, GRAIN: 17, ORE: 18 }, developmentCount: 24,
-    playerStates: l.room.players.map((p, i) => ({ playerId: p.playerId, resourceCount: i === 0 ? 6 : 0, developmentCount: i === 0 ? 1 : 0,
+    playerStates: l.room.players.map((p, i) => ({ playerId: p.playerId, resources: i === 0 ? { WOOD: 2, BRICK: 1, WOOL: 0, GRAIN: 2, ORE: 1 } : emptyIslandResources(), resourceCount: i === 0 ? 6 : 0, developmentCount: i === 0 ? 1 : 0,
       knights: 0, roadLength: 0, publicPoints: 0, remainingRoads: 15, remainingSettlements: 5, remainingCities: 4 })),
     longestRoadPlayerId: null, largestArmyPlayerId: null, dice: null, log: [],
     privateState: { playerId: "islander-0", resources: { WOOD: 2, BRICK: 1, WOOL: 0, GRAIN: 2, ORE: 1 }, totalPoints: 1,
@@ -85,7 +86,28 @@ test("ISLAND ingress rejects forged ownership, hidden state, stale-shaped and ou
     { ...s.game, privateState: { ...s.game.privateState, playerId: "islander-1" } },
     { ...s.game, privateState: { ...s.game.privateState, cards: [] } },
     { ...s.game, privateState: { ...s.game.privateState, resources: emptyIslandResources() } },
+    { ...s.game, privateState: { ...s.game.privateState, resources: { ...s.game.privateState.resources, WOOD: 1, WOOL: 1 } } },
+    { ...s.game, playerStates: s.game.playerStates.map(p => ({ ...p, cards: [{ id: "foreign-card", kind: "VICTORY" }] })) },
   ]) assert.equal(decodeWebSnapshot({ ...s, game }).kind, "INCOMPATIBLE");
+});
+test("ISLAND terrain has a recognizable resource object and a visible name on every hex", () => {
+  const s = playing(), html = renderToStaticMarkup(createElement(IslandBoard, { game: s.game }));
+  assert.equal((html.match(/class="island-terrain-label"/g) ?? []).length, 19);
+  assert.equal((html.match(/class="island-terrain-object"/g) ?? []).length, 18);
+  for (const name of ["목재", "벽돌", "양모", "곡물", "광석", "사막"]) assert.match(html, new RegExp('font-weight="800">' + name + '</text>'));
+  for (const resource of ISLAND_RESOURCES) assert.ok(html.includes('data-resource="' + resource + '"'));
+});
+test("ISLAND player panels expose each opponent's exact resource breakdown, including zero", () => {
+  const s = playing();
+  s.game.playerStates[1]!.resources = { WOOD: 3, BRICK: 2, WOOL: 0, GRAIN: 1, ORE: 4 };
+  s.game.playerStates[1]!.resourceCount = 10;
+  const html = render(parse(IslandPlayingPlatformSnapshotV2Schema, s));
+  assert.equal((html.match(/class="island-player-resources"/g) ?? []).length, 3);
+  const other = html.match(/aria-label="친구1 자원 보유량">(.*?)<div class="island-player-meta">/s)?.[1];
+  assert.ok(other);
+  for (const label of ["목재 3장", "벽돌 2장", "양모 0장", "곡물 1장", "광석 4장"]) assert.ok(other.includes('aria-label="' + label + '"'));
+  assert.match(html, /모든 참가자에게 공개됩니다/);
+  assert.doesNotMatch(html, /종류는 나에게만/);
 });
 test("ISLAND board targets come only from server choices, stage and viewer", () => {
   const s = playing({ kind: "ACTION" }), me = s.self.playerId;

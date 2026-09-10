@@ -18,7 +18,7 @@ export function projectIsland(game: IslandStoredGame, viewer: PlayerId) {
     robber: s.robber, bank: { ...s.bank }, developmentCount: s.deck.length,
     playerStates: s.players.map(p => {
       const pieces = islandPieces(s, p.playerId);
-      return { playerId: p.playerId, resourceCount: islandResourceCount(p.resources), developmentCount: p.cards.length,
+      return { playerId: p.playerId, resources: { ...p.resources }, resourceCount: islandResourceCount(p.resources), developmentCount: p.cards.length,
         knights: islandKnights(s, p.playerId), roadLength: islandRoadLength(s, p.playerId), publicPoints: islandPoints(s, p.playerId),
         remainingRoads: pieces.roads, remainingSettlements: pieces.settlements, remainingCities: pieces.cities };
     }),

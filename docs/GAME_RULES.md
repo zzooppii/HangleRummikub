@@ -1018,3 +1018,5 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 ## ISLAND_SETTLERS 별도 확정 규칙 (2026-09-10)
 
 섬 개척의 3–4인 기본판과 차례당 2분·시간 초과 자동 처리는 사용자의 개발 승인 및 시간 정책 선택에 따라 확정했다. 세부 내용은 [ISLAND_GAME_RULES.md](./ISLAND_GAME_RULES.md)의 `CONFIRMED`와 `DIGITAL_MVP_POLICY`를 따른다. 이 결정은 한글 타일 게임의 미확정 항목을 확정하거나 변경하지 않는다.
+
+섬 개척 자원 공개 정책은 사용자 확인에 따라 **CONFIRMED: 모든 참가자의 자원 종류별 정확한 수량 공개**로 변경했다. 발전 카드 앞면·ID와 숨은 승점은 비공개를 유지한다. 세부 내용은 [ISLAND_GAME_RULES.md](./ISLAND_GAME_RULES.md)를 따른다.
