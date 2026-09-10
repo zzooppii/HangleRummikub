@@ -73,6 +73,7 @@ export function projectCityRoleV2Game(input: {
   const window = { actionId: state.window.actionId, activePlayerId: state.window.activePlayerId, startedAt: input.game.windowStartedAt, deadlineAt: input.game.deadlineAt };
   if (state.window.kind === "ROLE_SELECTION") {
     return parse(CityRolePlayingProjectionV2Schema, { ...common, phase: "ROLE_SELECTION", window,
+      selectionOrder: { playerIds: [...state.round.pickQueue], currentIndex: state.round.selectionCursor },
       privateState: { ...privateState, ...(state.window.activePlayerId === self.playerId ? { availableRoleIds: [...state.round.available] } : {}) } });
   }
   return parse(CityRolePlayingProjectionV2Schema, { ...common, phase: "ROLE_ACTION",

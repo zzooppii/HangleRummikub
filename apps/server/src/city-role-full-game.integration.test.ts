@@ -129,6 +129,8 @@ test("CITY corrected two-player timeout service handles all four selection windo
     assert.equal(before.game.deadlineAt! - before.game.windowStartedAt!, 20_000);
     const projected = await h.viewer(before, parse(PlayerIdSchema, before.game.state.window!.activePlayerId));
     assert.equal(projected.game.draftDiscardRequired, step > 0);
+    assert.ok(projected.game.phase === "ROLE_SELECTION");
+    assert.deepEqual(projected.game.selectionOrder, { playerIds: before.game.state.round.pickQueue, currentIndex: step });
     h.clock.set(deadline.deadlineAt);
     assert.equal((await h.timeout.timeout(deadline)).status, "APPLIED");
     const after = await h.read();
@@ -241,6 +243,7 @@ for (const count of [2, 4, 6] as const) test(`CITY ${count}-player complete appl
         ...(state.pendingChoice !== null && state.pendingChoice.ownerPlayerId !== own.playerId ? state.pendingChoice.cards : [])];
       for (const id of hiddenCards) assert.equal(serialized.includes(JSON.stringify(id)), false, "A non-public physical card was projected.");
       if (visible.phase === "ROLE_SELECTION") {
+        assert.deepEqual(visible.selectionOrder, { playerIds: state.round.pickQueue, currentIndex: state.round.selectionCursor });
         assert.equal(visible.privateState.availableRoleIds !== undefined, state.window?.activePlayerId === own.playerId);
         if (visible.privateState.availableRoleIds !== undefined) assert.deepEqual(visible.privateState.availableRoleIds, state.round.available);
       } else if (visible.phase === "ROLE_ACTION") {

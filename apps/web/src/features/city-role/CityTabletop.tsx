@@ -5,7 +5,14 @@ import { CITY_ROLE_HELP } from "./city-role-ui.js";
 /** Public role identities only: never infer an owner from private draft choices. */
 export function CityRoleTrack({ game, players }: Readonly<{ game: CityRolePlayingPlatformSnapshotV2["game"]; players: CityRolePlayingPlatformSnapshotV2["room"]["players"] }>) {
   const roles = game.expansion ? CITY_ALL_ROLE_IDS.slice(0, game.expansion.settings.roles.length) : CITY_ROLE_IDS;
-  return <nav className="city-role-track" data-role-count={roles.length} aria-label="공개 역할 진행 순서"><span className="city-track-title">라운드 {game.roundNumber}<small>역할 진행 순서</small></span><ol>{roles.map((role, index) => {
+  const selection = game.phase === "ROLE_SELECTION" ? game.selectionOrder : undefined;
+  return <>{selection && <nav className="city-selection-order" aria-label="직업 선택 순서"><strong>직업 선택 순서</strong><ol>{selection.playerIds.map((id, index) => {
+    const current = index === selection.currentIndex;
+    const forfeited = game.playerStates.find(p => p.playerId === id)?.forfeited;
+    const automatic = game.roleDraftVersion === "city-draft-v2" && game.secretPairDraft && index === 3;
+    const status = forfeited ? "기권" : current ? "선택 중" : index < selection.currentIndex ? "선택 완료" : automatic ? "자동 배정" : "대기";
+    return <li key={`${index}-${id}`} aria-current={current ? "step" : undefined} className={current ? "is-current" : index < selection.currentIndex ? "is-complete" : ""}><b>{index + 1}</b><span className="city-selection-name">{players.find(p => p.playerId === id)?.nickname ?? "참가자"}님</span><small>{status}</small></li>;
+  })}</ol></nav>}<nav className="city-role-track" data-role-count={roles.length} aria-label="공개 역할 진행 순서"><span className="city-track-title">라운드 {game.roundNumber}<small>역할 진행 순서</small></span><ol>{roles.map((role, index) => {
     const current = game.phase === "ROLE_ACTION" && game.window.activeRoleId === role;
     const reveals = game.revealedRoles.filter(entry => entry.roundNumber === game.roundNumber && entry.roleId === role);
     const revealed = reveals.length > 0;
@@ -16,7 +23,7 @@ export function CityRoleTrack({ game, players }: Readonly<{ game: CityRolePlayin
     return <li key={role} className={current ? "is-current" : revealed ? "is-revealed" : ""} aria-current={current ? "step" : undefined}>
       <CityRoleEmblem roleId={role} /><span><b>{index + 1}</b> {name}</span><small className="city-track-owner" title={label}>{label}</small>
     </li>;
-  })}</ol></nav>;
+  })}</ol></nav></>;
 }
 
 export function CityBuildTrack({ count }: Readonly<{ count: number }>) {

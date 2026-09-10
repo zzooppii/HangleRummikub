@@ -45,6 +45,7 @@ const Common = {
 };
 const Window = { actionId: CityActionIdSchema, activePlayerId: PlayerIdSchema, startedAt: ServerTimeSchema, deadlineAt: ServerTimeSchema };
 const SelectionObject = v.strictObject({ ...Common, phase: v.literal("ROLE_SELECTION"),
+  selectionOrder: v.optional(v.strictObject({ playerIds: v.pipe(v.array(PlayerIdSchema), v.minLength(2), v.maxLength(6)), currentIndex: v.pipe(Natural, v.maxValue(5)) })),
   window: v.strictObject({ ...Window }),
   privateState: v.strictObject({ ...PrivateBase, availableRoleIds: v.optional(Roles) }),
 });
@@ -67,6 +68,11 @@ const FinishedObject = v.strictObject({ ...Common, phase: v.literal("FINISHED"),
 
 type VisibleCity = v.InferOutput<typeof SelectionObject> | v.InferOutput<typeof ActionObject> | v.InferOutput<typeof FinishedObject>;
 function coherent(game: VisibleCity): boolean {
+  if (game.phase === "ROLE_SELECTION" && game.selectionOrder) {
+    const { playerIds, currentIndex } = game.selectionOrder;
+    if (playerIds[currentIndex] !== game.window.activePlayerId || !playerIds.every(id => game.seatOrder.includes(id))) return false;
+    if (playerIds.some(id => playerIds.filter(candidate => candidate === id).length !== game.rolesPerPlayer)) return false;
+  }
   if ((game.roleDraftVersion !== undefined) !== (game.secretPairDraft !== undefined)) return false;
   if (game.secretPairDraft && (game.rolesPerPlayer !== 2 || game.publicRemovedRoleIds.length !== 0)) return false;
   if ((game.roleDraftVersion === "city-draft-v3") !== (game.draftDiscardRequired !== undefined)) return false;

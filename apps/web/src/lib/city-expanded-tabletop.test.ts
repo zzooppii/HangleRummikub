@@ -311,3 +311,22 @@ test('abbot income includes culture and magic school, bounds allocation and rend
   assert.match(whole,/aria-label="수도원장 금화 받기"/);
   assert.doesNotMatch(whole,/수입 중 금화 개수|카드를 사용하는 능력은|수도원장 능력 사용|플레이어 선택/);
 });
+
+
+test('nickname draft order shows both passes, highlights the exact current pick and does not reveal role choices', () => {
+  const base=expanded(citySelectionFixture(3));
+  const view=parse(CityRolePlayingPlatformSnapshotV2Schema,{...base,game:{...base.game,selectionOrder:{playerIds:['P2','P0','P1','P2','P0','P1'],currentIndex:4}}});
+  const render=(snapshot: typeof view)=>renderToStaticMarkup(createElement(CityRoleTrack,{game:snapshot.game,players:snapshot.room.players}));
+  const html=render(view), order=html.split('<nav class="city-role-track"')[0]!;
+  assert.deepEqual([...order.matchAll(/class="city-selection-name">([^<]+)/g)].map(m=>m[1]),['도시2님','도시0님','도시1님','도시2님','도시0님','도시1님']);
+  assert.equal((order.match(/aria-current="step"/g)??[]).length,1);
+  assert.match(order,/aria-current="step" class="is-current"><b>5<\/b>/);
+  assert.equal((order.match(/선택 완료/g)??[]).length,4);
+  const otherChoices={...view,game:{...view.game,privateState:{...view.game.privateState,selectedRoleIds:['CR-08' as const]}}};
+  assert.equal(render(otherChoices).split('<nav class="city-role-track"')[0],order);
+  assert.doesNotMatch(order,/암살자|협박|마술사/);
+  assert.doesNotMatch(render(base),/aria-label="직업 선택 순서"/);
+  assert.doesNotMatch(screen(expanded(cityActionFixture())),/aria-label="직업 선택 순서"/);
+  assert.throws(()=>parse(CityRolePlayingPlatformSnapshotV2Schema,{...base,game:{...base.game,selectionOrder:{playerIds:['P0','P1','P2','P0','P1','P2'],currentIndex:1}}}));
+  assert.throws(()=>parse(CityRolePlayingPlatformSnapshotV2Schema,{...base,game:{...base.game,selectionOrder:{playerIds:['P0','unknown'],currentIndex:0}}}));
+});

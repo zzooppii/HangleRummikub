@@ -32,6 +32,7 @@ test("CITY actual projector: every 2–6-player selection viewer gets only own h
       const value = project(state, viewer.playerId);
       assert.equal(value.phase, "ROLE_SELECTION");
       if (value.phase !== "ROLE_SELECTION") throw new Error("expected selection");
+      assert.deepEqual(value.selectionOrder, { playerIds: state.round.pickQueue, currentIndex: state.round.selectionCursor });
       assert.deepEqual(value.privateState.hand.map(card => String(card.cardId)), viewer.hand.map(String));
       assert.deepEqual(value.privateState.selectedRoleIds, state.round.assignments.filter(role => role.playerId === viewer.playerId).map(role => role.roleId));
       assert.equal(value.privateState.availableRoleIds !== undefined, cityPlaying(state).window.activePlayerId === viewer.playerId);
@@ -144,4 +145,18 @@ test("CITY actual shell decoder rejects same projection delivered to another vie
   const state = createCityFixture(3), value = snapshot(state);
   assert.equal(safeParse(CityRolePlayingPlatformSnapshotV2Schema, { ...value, self: { playerId: state.players[1]!.playerId } }).success, false);
   assert.equal(safeParse(CityRolePlayingPlatformSnapshotV2Schema, { ...value, game: { ...value.game, playerStates: value.game.playerStates.map(player => ({ ...player, handCount: player.handCount + 1 })) } }).success, false);
+});
+
+
+test("CITY selection order survives restore and identifies the second pick without publishing chosen roles", () => {
+  let state=createCityFixture(3);
+  for(let step=0;step<4;step++) state=actCity(state,{kind:"SELECT_ROLE",roleId:state.round.available[0]!});
+  const restored=new CityRoleGameStateAdapter().cloneAndValidate(JSON.parse(JSON.stringify(stored(state))));
+  for(const player of state.players){
+    const view=project(restored.state,player.playerId);assert.ok(view.phase==='ROLE_SELECTION');
+    assert.deepEqual(view.selectionOrder,{playerIds:[...state.seatOrder,...state.seatOrder],currentIndex:4});
+    assert.deepEqual(Object.keys(view.selectionOrder!).sort(),['currentIndex','playerIds']);
+  }
+  const ended=project(completeCityDraft(createCityFixture(3)));
+  assert.equal('selectionOrder' in ended,false);
 });
