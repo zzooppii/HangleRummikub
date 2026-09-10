@@ -55,6 +55,7 @@
 .city-role-track li { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 5px; border: 1px solid #ae956040; border-radius: 9px; padding: 8px 2px; background: #071b1930; font-size: .7rem; }
 .city-role-track .city-role-emblem { width: 34px; height: 34px; margin: 0; }
 .city-role-track small { font-size: .65rem; }
+.city-role-track .city-track-owner { max-width: 100%; overflow-wrap: anywhere; }
 .city-role-track li.is-current { background: #eed59a; color: #253c30; border-color: #fff3cd; box-shadow: 0 0 14px #e3be6540; }
 .city-role-track li.is-revealed { border-color: #a99d75; background: #ffffff10; }
 .city-build-track { display: grid; grid-template-columns: repeat(8,minmax(0,1fr)); gap: 5px; margin: 12px 0; }

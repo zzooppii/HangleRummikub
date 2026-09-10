@@ -7,14 +7,35 @@ import { citySelectionFixture, cityActionFixture } from "./city-role-test-fixtur
 
 test("CITY public role track never changes when private selections change", () => {
   const fixture = citySelectionFixture();
-  const before = renderToStaticMarkup(createElement(CityRoleTrack, { game: fixture.game }));
-  const after = renderToStaticMarkup(createElement(CityRoleTrack, { game: { ...fixture.game, privateState: { ...fixture.game.privateState, selectedRoleIds: ["CR-02"] } } }));
+  const before = renderToStaticMarkup(createElement(CityRoleTrack, { players: fixture.room.players, game: fixture.game }));
+  const after = renderToStaticMarkup(createElement(CityRoleTrack, { players: fixture.room.players, game: { ...fixture.game, privateState: { ...fixture.game.privateState, selectedRoleIds: ["CR-02"] } } }));
   assert.equal(before, after);
   assert.equal((before.match(/<li/g) ?? []).length, 8);
   assert.equal(before.includes('aria-current="step"'), false);
+  for (const player of fixture.room.players) assert.equal(before.includes(`${player.nickname}님`), false);
 });
 test("CITY public action track marks exactly the current role", () => {
-  const html = renderToStaticMarkup(createElement(CityRoleTrack, { game: cityActionFixture().game }));
+  const fixture = cityActionFixture();
+  const html = renderToStaticMarkup(createElement(CityRoleTrack, { players: fixture.room.players, game: fixture.game }));
+  assert.equal((html.match(/aria-current="step"/g) ?? []).length, 1);
+  assert.match(html, />도시0님<\/small>/);
+  assert.doesNotMatch(html, /공개됨/);
+});
+test("CITY role owners come only from this round's public reveals, including disabled identities", () => {
+  const fixture = cityActionFixture();
+  const [first, second] = fixture.room.players;
+  assert.ok(first && second);
+  const html = renderToStaticMarkup(createElement(CityRoleTrack, { players: fixture.room.players, game: {
+    ...fixture.game, roundNumber: 2,
+    revealedRoles: [
+      { roundNumber: 1, roleId: 'CR-01', playerId: first.playerId, kind: 'NORMAL' },
+      { roundNumber: 2, roleId: 'CR-03', playerId: second.playerId, kind: 'NORMAL' },
+      { roundNumber: 2, roleId: 'CR-02', playerId: second.playerId, kind: 'DISABLED' },
+    ],
+  } }));
+  assert.doesNotMatch(html, /도시0님/);
+  assert.match(html, />도시1님<\/small>/);
+  assert.match(html, />도시1님 · 암살됨<\/small>/);
   assert.equal((html.match(/aria-current="step"/g) ?? []).length, 1);
 });
 test("CITY city progress is a goal not a building cap", () => {

@@ -128,7 +128,7 @@ test('every configured job retains its illustrated rank card and its own rules t
     const html = renderToStaticMarkup(createElement(CityExpandedCatalog, { snapshot }));
     assert.ok(html.includes(`<strong>${job.name}</strong><p>${job.text}</p>`), job.id);
     assert.ok(html.includes(`data-role="CR-0${job.rank}"`), job.id);
-    const track = renderToStaticMarkup(createElement(CityRoleTrack, { game: snapshot.game }));
+    const track = renderToStaticMarkup(createElement(CityRoleTrack, { players: snapshot.room.players, game: snapshot.game }));
     assert.equal((track.match(/<li /g) ?? []).length, roles.length);
     assert.ok(track.includes(job.name));
   }
@@ -145,8 +145,8 @@ test('v3 two-player draft restores explicit keep and discard controls using conf
 
 test('expanded role track never reveals private selections or marks an uncalled role current', () => {
   const snapshot = expanded(citySelectionFixture(), [...CITY_DEFAULT_SETTINGS.roles, 'ARTIST']);
-  const before = renderToStaticMarkup(createElement(CityRoleTrack, { game: snapshot.game }));
-  const after = renderToStaticMarkup(createElement(CityRoleTrack, { game: { ...snapshot.game, privateState: { ...snapshot.game.privateState, selectedRoleIds: ['CR-09'] } } }));
+  const before = renderToStaticMarkup(createElement(CityRoleTrack, { players: snapshot.room.players, game: snapshot.game }));
+  const after = renderToStaticMarkup(createElement(CityRoleTrack, { players: snapshot.room.players, game: { ...snapshot.game, privateState: { ...snapshot.game.privateState, selectedRoleIds: ['CR-09'] } } }));
   assert.equal(before, after);
   assert.doesNotMatch(before, /aria-current="step"/);
 });

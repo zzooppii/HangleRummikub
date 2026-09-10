@@ -165,7 +165,7 @@ export function CityRolePlayingScreen(props: CityRolePlayingScreenProps) {
     {props.sessionReplaced ? <section className="notice replaced-notice" role="alert"><p>다른 창에서 연결되었습니다. 이 창에서는 행동을 보낼 수 없습니다.</p><button type="button" className="text-button" onClick={props.onGoHome}>홈으로 돌아가기</button></section> : null}
     {props.errorMessage !== null ? <p className="notice error-notice" role="alert">{props.errorMessage}</p> : null}
     {props.retryPending ? <section className="notice" role="status"><p>이전 행동의 결과를 확인하고 있습니다. 다시 누르면 같은 요청을 확인합니다.</p><button type="button" className="secondary-button" disabled={props.connectionTone !== "connected" || props.actionPending || props.sessionReplaced || props.roomLeavePending} onClick={props.onRetry}>행동 결과 다시 확인</button></section> : null}
-    <CityRoleTrack game={game} />
+    <CityRoleTrack game={game} players={room.players} />
     <div className="city-overview">
     <section className={`city-turn-hud${myTurn ? " is-mine" : ""}${countdown.remainingSeconds <= 10 ? " is-urgent" : ""}`} aria-label="현재 라운드와 차례"><CityIcon name="hourglass" className="city-turn-hourglass" />
       <div><p className="city-turn-phase">라운드 {game.roundNumber} · {game.phase === "ROLE_SELECTION" ? "비밀 역할 선택" : cityRoleLabel(game.window.activeRoleId)}</p>
