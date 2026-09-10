@@ -1,3 +1,4 @@
+import type { CityExpansionState } from "./expansion-state.js";
 import type { CityBuildingCard } from "./cardset-v1.js";
 import type { BuildingCardId, CityActionId, CityGameId, CityPlayerId } from "./identity.js";
 import type { CityRoleId } from "./role.js";
@@ -98,12 +99,13 @@ export type CityGameResult = Readonly<{
 
 type CityStateBase = Readonly<{
   gameId: CityGameId;
-  rulesVersion: "city-rules-v1" | "city-rules-v2";
+  rulesVersion: "city-rules-v1" | "city-rules-v2" | "city-rules-v3";
   roleDraftVersion?: "city-draft-v2";
-  cardSetVersion: "city-cardset-v1" | "city-cardset-v2";
+  cardSetVersion: "city-cardset-v1" | "city-cardset-v2" | "city-cardset-v3";
   // Required exclusively for v2 by the strict state validator. Never synthesized on restore.
   landmarkHistory?: readonly CityLandmarkHistory[];
-  roleSetVersion: "city-roles-v1";
+  roleSetVersion: "city-roles-v1" | "city-roles-v2";
+  expansion?: CityExpansionState;
   cards: readonly CityBuildingCard[];
   players: readonly CityPlayerState[];
   seatOrder: readonly CityPlayerId[];
@@ -123,6 +125,7 @@ export type CityGameState = PlayingCityGameState | FinishedCityGameState;
 export function cloneCityGameState(state: CityGameState): CityGameState {
   const base = {
     ...state,
+    ...(state.expansion === undefined ? {} : { expansion: freezeTree(structuredClone(state.expansion)) }),
     ...(state.landmarkHistory === undefined ? {} : { landmarkHistory: Object.freeze(state.landmarkHistory.map(row => Object.freeze({ ...row }))) }),
     cards: Object.freeze(state.cards.map(card => Object.freeze({ ...card }))),
     players: Object.freeze(state.players.map(player => Object.freeze({ ...player,
@@ -152,4 +155,9 @@ export function cloneCityGameState(state: CityGameState): CityGameState {
   });
   const window = Object.freeze({ ...state.window });
   return Object.freeze({ ...base, window, result: null });
+}
+
+function freezeTree<T>(value: T): T {
+  if (value !== null && typeof value === "object") { for (const child of Object.values(value)) freezeTree(child); Object.freeze(value); }
+  return value;
 }

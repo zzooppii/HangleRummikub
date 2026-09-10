@@ -21,7 +21,7 @@ const paths: Record<IconName, string> = {
   hourglass: "M7 3h18M7 29h18M9 4c0 8 4 10 7 12-3 2-7 4-7 12m14-24c0 8-4 10-7 12 3 2 7 4 7 12M11 24l5-5 5 5z",
   check: "M5 17l7 7L27 7",
 };
-const roleIcons: Record<CityRoleId, IconName> = { "CR-01": "mask", "CR-02": "coin", "CR-03": "exchange", "CR-04": "compass", "CR-05": "shield", "CR-06": "market", "CR-07": "plan", "CR-08": "hammer" };
+const roleIcons: Record<CityRoleId, IconName> = { "CR-01": "mask", "CR-02": "coin", "CR-03": "exchange", "CR-04": "compass", "CR-05": "shield", "CR-06": "market", "CR-07": "plan", "CR-08": "hammer", "CR-09": "landmark" };
 const categoryIcons: Record<Category, IconName> = { CIVIC: "civic", CULTURE: "culture", TRADE: "market", GUARD: "shield", LANDMARK: "landmark" };
 const categoryExample: Record<Category, string> = { CIVIC: "CB-CIV-06", CULTURE: "CB-CUL-03", TRADE: "CB-TRA-03", GUARD: "CB-GUA-04", LANDMARK: "CB-LAN-05" };
 export const CITY_CATEGORY_HINTS: Readonly<Record<Category, string>> = {

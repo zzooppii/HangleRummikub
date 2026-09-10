@@ -1,7 +1,7 @@
 import { CityRolePlayingProjectionV2Schema, CityRoleFinishedProjectionV2Schema, type PlayerId } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 import { getCityTemplate } from "../domain/cardset-v1.js";
-import type { BuildingCardId } from "../domain/identity.js";
+import { parseBuildingCardId, type BuildingCardId } from "../domain/identity.js";
 import type { CityRoleStoredGame } from "./city-role-game-state-adapter.js";
 
 /** Explicit viewer whitelist. Never spread a player, role assignment or stored game. */
@@ -19,14 +19,28 @@ export function projectCityRoleV2Game(input: {
     const instance = state.cards.find(value => value.cardId === cardId);
     if (!instance) throw new Error("CITY visible card missing.");
     const template = getCityTemplate(instance.templateId);
-    return { cardId, templateId: instance.templateId, name: template.name, category: template.category, cost: template.cost, victoryPoints: template.victoryPoints };
+    return { cardId, templateId: instance.templateId, name: template.name, category: template.category, cost: template.cost + Number(state.expansion?.decorated.includes(cardId) ?? false), victoryPoints: template.victoryPoints + Number(state.expansion?.decorated.includes(cardId) ?? false) };
   };
+  const e = state.expansion;
+  const acting = state.window?.activePlayerId === self.playerId;
+  const pending = e?.pending;
+  const expansionPrivate = e === undefined ? {} : { expansion: {
+    incomeUsed: acting && e.incomeUsed, usedSpecials: acting ? [...e.usedSpecials] : [],
+    inspectedCards: acting && e.inspectedOwner === self.playerId ? e.inspectedHand.map(id => card(parseBuildingCardId(id))) : [],
+    choiceCards: acting && pending?.kind === 'CONFISCATE' && pending.cardId ? [card(parseBuildingCardId(pending.cardId))] : acting && pending?.kind === 'SCHOLAR' ? pending.cards.map(id => card(parseBuildingCardId(id))) : acting && pending?.kind === 'WIZARD' ? (state.players.find(p => p.playerId === pending.targetPlayerId)?.hand ?? []).map(card) : [],
+    recipients: acting && pending?.kind === 'SEER' ? [...pending.recipients] : [],
+    ...(e.warrants?.sourcePlayerId === self.playerId ? { realWarrant: e.warrants.real } : {}),
+    ...(e.threats?.sourcePlayerId === self.playerId ? { realThreat: e.threats.real } : {}),
+  } };
   const privateState = {
+    ...expansionPrivate,
     hand: self.hand.map(card),
     selectedRoleIds: state.round.assignments.filter(role => role.playerId === self.playerId).map(role => role.roleId),
     marks: state.marks.filter(mark => mark.sourcePlayerId === self.playerId).map(mark => ({ kind: mark.kind, targetRoleId: mark.targetRoleId, status: mark.status })),
   };
   const common = {
+    ...(e === undefined ? {} : { expansion: { settings: { enabled: e.settings.enabled, roles: [...e.settings.roles] }, specialIds: [...e.specialIds], tax: e.tax, decorated: [...e.decorated], museum: e.museum.map(row => ({ buildingId: row.buildingId, count: row.cards.length })), disabledRole: state.marks.find(m => m.kind === "DISABLE" && m.status !== "CANCELLED")?.targetRoleId ?? null, robbedRole: state.marks.find(m => m.kind === "GOLD_TRANSFER" && m.status !== "CANCELLED")?.targetRoleId ?? null, warrants: [...(e.warrants?.roles ?? [])], threats: [...(e.threats?.roles ?? [])], witchTarget: e.witch?.targetRoleId ?? null, pending: e.pending?.kind ?? null,
+      vaultOwners: state.result ? state.players.filter(p => !p.forfeited && p.hand.some(id => state.cards.find(c => c.cardId === id)?.templateId === 'CB-SP-24')).map(p => p.playerId) : [] } }),
     gameType: "CITY_ROLE", gameId: input.game.gameId, gameRevision: input.game.gameRevision,
     rulesVersion: state.rulesVersion, cardSetVersion: state.cardSetVersion, roleSetVersion: state.roleSetVersion,
     ...(state.landmarkHistory === undefined ? {} : { landmarkHistory: state.landmarkHistory.map(row => ({

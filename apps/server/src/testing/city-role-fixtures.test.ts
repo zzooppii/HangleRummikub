@@ -54,7 +54,7 @@ export function completeCityDraft(state: CityGameState, picks?: readonly CityRol
 export function atCityRole(roleId: CityRoleId): CityGameState {
   const hidden = CITY_ROLE_IDS.find((role) => role !== roleId && role === "CR-08") ?? "CR-01";
   const roleOrder = [hidden, ...CITY_ROLE_IDS.filter((role) => role !== hidden)];
-  const selected = CITY_ROLE_IDS.filter((role) => role !== hidden && role !== roleId).slice(0, 5);
+  const selected: CityRoleId[] = CITY_ROLE_IDS.filter((role) => role !== hidden && role !== roleId).slice(0, 5);
   selected.push(roleId);
   selected.sort();
   let state = completeCityDraft(createCityFixture(3, roleOrder), selected);
@@ -101,7 +101,7 @@ export function withCityGold(state: CityGameState, playerId: CityPlayerId, gold:
 export function assertCityCardConservation(state: CityGameState): void {
   const pending = state.pendingChoice?.cards ?? [];
   const zones = [...state.deck, ...state.discard, ...pending, ...state.players.flatMap((player) => [...player.hand, ...player.city])];
-  assert.equal(zones.length, 60);
-  assert.equal(new Set(zones).size, 60);
+  assert.equal(zones.length, state.cards.length);
+  assert.equal(new Set(zones).size, state.cards.length);
   assert.deepEqual([...zones].sort(), state.cards.map((card) => card.cardId).sort());
 }

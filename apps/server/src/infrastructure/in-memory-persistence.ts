@@ -1,3 +1,4 @@
+import { CityExpansionSettingsSchema } from "@hangul-rummikub/shared";
 import { WolfGameStateAdapter, type WolfLifecycle } from "../games/wolf-night/compatibility/adapter.js";
 import { WolfSettingsSchema } from "@hangul-rummikub/shared";
 import { GemCardGameStateAdapter, type GemCardGameStateStorage, type GemCardGameLifecycleInspection } from "../games/gem-card/compatibility/gem-card-game-state-adapter.js";
@@ -297,7 +298,9 @@ function cloneRoomWriteCandidate(
     case "CITY_ROLE": {
       const game = candidate.game === null ? null : adapters.cityRole.cloneAndValidate(candidate.game);
       validateRoomGameCoherence(shell.phase, shell.players, game, () => game === null ? null : adapters.cityRole.inspectLifecycle(game));
-      return Object.freeze({ ...shell, gameType: "CITY_ROLE", game });
+      const settings = candidate.settings === undefined ? undefined : v.parse(CityExpansionSettingsSchema, candidate.settings);
+      if (game?.state.expansion && settings && JSON.stringify(settings) !== JSON.stringify(game.state.expansion.settings)) throw new Error("CITY settings changed during game.");
+      return Object.freeze({ ...shell, gameType: "CITY_ROLE", game, ...(settings === undefined ? {} : { settings }) });
     }
   }
 }

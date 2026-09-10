@@ -1,3 +1,4 @@
+import { CityExpansionSettingsSchema } from "../games/city-role/expansion-contracts.js";
 import { GemCardPlayingProjectionV2Schema, GemCardFinishedProjectionV2Schema } from "../games/gem-card/v2-projection-contracts.js";
 import { CityRolePlayingProjectionV2Schema, CityRoleFinishedProjectionV2Schema, cityPrivateStateMatchesViewer } from "../games/city-role/v2-projection-contracts.js";
 import * as v from "valibot";
@@ -231,7 +232,7 @@ const CityOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: Pl
   serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
 const CityRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("CITY_ROLE") };
 export const CityRoleLobbyPlatformSnapshotV2Schema = v.pipe(v.strictObject({ ...CityOuter,
-  room: v.strictObject({ ...CityRoom, phase: v.literal("LOBBY"), players: CityLobbyPlayers }), game: v.null(),
+  room: v.strictObject({ ...CityRoom, settings: v.optional(CityExpansionSettingsSchema), phase: v.literal("LOBBY"), players: CityLobbyPlayers }), game: v.null(),
 }), v.check(snapshot => hasUniqueRoomPlayers(snapshot), "Duplicate CITY participants."), v.check(snapshot => containsSelfPlayer(snapshot), "CITY self must belong to Room."), v.check(snapshot => hasAtMostOneHost(snapshot), "CITY has at most one host."));
 export type CityRoleLobbyPlatformSnapshotV2 = v.InferOutput<typeof CityRoleLobbyPlatformSnapshotV2Schema>;
 export const CityRolePlayingPlatformSnapshotV2Schema = v.pipe(v.strictObject({ ...CityOuter,

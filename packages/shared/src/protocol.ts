@@ -1,3 +1,4 @@
+import { CityExpansionSettingsSchema, CityExpansionActionSchema } from "./games/city-role/expansion-contracts.js";
 import { GemCollectSelectionSchema, GemPurchaseSourceSchema, GemMarketSourceSchema } from "./games/gem-card/contracts.js";
 import { DrawRelayDrawSecondsSchema } from "./games/draw-relay/settings.js";
 import * as v from "valibot";
@@ -447,6 +448,10 @@ const CityCommandEnvelope = {
   protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema,
   gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema, actionId: CityActionIdSchema,
 };
+export const CityConfigureCommandSchema = v.strictObject({ protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, kind: v.literal("city:configure"), expectedRoomRevision: RoomRevisionSchema, payload: CityExpansionSettingsSchema });
+export const CityExpansionCommandSchema = v.strictObject({ ...CityCommandEnvelope, kind: v.literal("city:expansionAction"), payload: CityExpansionActionSchema });
+export const CityExpansionClientCommandSchema = v.variant("kind", [CityConfigureCommandSchema, CityExpansionCommandSchema]);
+export type CityExpansionClientCommand = v.InferOutput<typeof CityExpansionClientCommandSchema>;
 export const CitySelectRoleCommandSchema = v.strictObject({ ...CityCommandEnvelope, kind: v.literal("city:selectRole"), payload: v.strictObject({ roleId: CityRoleIdSchema, discardRoleId: v.optional(CityRoleIdSchema) }) });
 export type CitySelectRoleCommand = v.InferOutput<typeof CitySelectRoleCommandSchema>;
 export const CityTakeIncomeCommandSchema = v.strictObject({ ...CityCommandEnvelope, kind: v.literal("city:takeIncome"), payload: v.strictObject({}) });

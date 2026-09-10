@@ -130,6 +130,7 @@ export type ApplicationRuntime = Readonly<{
   numberTileRematchService: NumberTileRematchService;
   gemCardCommandRouter: GemCardCommandRouter;
   cityRoleCommandRouter: CityRoleCommandRouter;
+  cityRoleCommandService?: CityRoleCommandService;
   subscribeCityRoleTimeoutApplied(listener: Parameters<CityRoleTimeoutService["subscribeApplied"]>[0]): () => void;
   subscribeGemCardTimeoutApplied(listener: Parameters<GemCardTimeoutService["subscribeApplied"]>[0]): () => void;
   overdueGameDeadlineSweeper: OverdueGameDeadlineSweeper;
@@ -763,6 +764,7 @@ export function createApplicationRuntime(
     numberTileRematchService: new NumberTileRematchService({ roomRepository: persistence, idempotencyRepository: persistence, roomUnitOfWork: persistence, roomMutationExecutor, clock, idGenerator, turnScheduler }),
     gemCardCommandRouter,
     cityRoleCommandRouter,
+    cityRoleCommandService,
     drawRelayService,
     drawRelayHostSuccession,
     wolfService,

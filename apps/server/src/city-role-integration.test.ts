@@ -1,3 +1,7 @@
+import { createCityCardsV2 } from "./games/city-role/domain/cardset-v2.js";
+import { createCityCards } from "./games/city-role/domain/cardset-v1.js";
+import { parseBuildingCardId } from "./games/city-role/domain/identity.js";
+import { getCityTemplate } from "./games/city-role/domain/cardset-v1.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { CityActionIdSchema, GameRevisionSchema, NicknameSchema, PlayerIdSchema, PresenceVersionSchema, RequestIdSchema, RoomCodeSchema, RoomRevisionSchema, ServerTimeSchema, TurnIdSchema, type RoomId } from "@hangul-rummikub/shared";
@@ -24,6 +28,32 @@ import { actCity, assertCityCardConservation, cityCard, cityPlayer, completeCity
 
 const current = { isCurrent: () => true };
 const rid = (value: string) => parse(RequestIdSchema, value);
+
+test('CITY host configuration is authenticated, revision checked, replayable and pinned at start', async () => {
+  const h = await harness(4, false);
+  const settings = { enabled: true, roles: ['MAGISTRATE','SPY','SEER','EMPEROR','CARDINAL','ALCHEMIST','SCHOLAR','DIPLOMAT','ARTIST'] as const };
+  const input = { roomId: h.roomId, actorPlayerId: h.players[0]!.playerId, requestId: rid('configure-city'), expectedRoomRevision: parse(RoomRevisionSchema,0), authorization: current, settings };
+  const rejected = await h.service.configure({ ...input, actorPlayerId: h.players[1]!.playerId });
+  assert.ok(!rejected.ok); assert.equal(rejected.error.code, 'HOST_ONLY');
+  const unauthenticated = await h.service.configure({ ...input, authorization: { isCurrent: () => false } });
+  assert.ok(!unauthenticated.ok); assert.equal(unauthenticated.error.code,'UNAUTHENTICATED');
+  assert.deepEqual(await h.service.configure(input), {ok:true});
+  const configured = await h.read(); assert.equal(configured.roomRevision,1); assert.deepEqual(configured.settings,settings);
+  assert.deepEqual(await h.service.configure(input), {ok:true}); assert.deepEqual(await h.read(),configured);
+  const stale = await h.service.configure({...input,requestId:rid('stale-settings')}); assert.ok(!stale.ok); assert.equal(stale.error.code,'STALE_ROOM_REVISION');
+  assert.equal((await h.start.start({...h.startInput,requestId:rid('start-expanded'),expectedRoomRevision:parse(RoomRevisionSchema,1)})).ok,true);
+  const started=await h.playing(); assert.deepEqual(started.game.state.expansion?.settings,settings);assert.equal(started.game.state.expansion?.specialIds.length,14);assert.equal(new Set(started.game.state.expansion?.specialIds).size,14);assert.equal(started.game.state.cards.length,68);
+  const locked=await h.service.configure({...input,requestId:rid('locked-settings'),expectedRoomRevision:started.roomRevision});assert.ok(!locked.ok);assert.equal(locked.error.code,'INVALID_PHASE');
+});
+
+test('CITY disallows an Emperor in two players and Queen below five at authoritative start', async () => {
+  for (const count of [2,4]) {
+    const h=await harness(count,false);
+    const roles = count===2 ? ['ASSASSIN','THIEF','MAGICIAN','EMPEROR','BISHOP','MERCHANT','ARCHITECT','WARLORD'] as const : ['ASSASSIN','THIEF','MAGICIAN','KING','BISHOP','MERCHANT','ARCHITECT','WARLORD','QUEEN'] as const;
+    assert.deepEqual(await h.service.configure({roomId:h.roomId,actorPlayerId:h.players[0]!.playerId,requestId:rid('invalid-count-cast'),expectedRoomRevision:parse(RoomRevisionSchema,0),authorization:current,settings:{enabled:true,roles}}),{ok:true});
+    const result=await h.start.start({...h.startInput,requestId:rid('invalid-start'),expectedRoomRevision:parse(RoomRevisionSchema,1)});assert.ok(!result.ok);assert.equal(result.error.code,'RULE_VIOLATION');assert.equal((await h.read()).phase,'LOBBY');
+  }
+});
 
 async function harness(count = 3, autoStart = true) {
   const persistence = new InMemoryPersistence(), ids = new FakeIdGenerator(), clock = new FakeClock(1_000);
@@ -92,11 +122,12 @@ async function harness(count = 3, autoStart = true) {
     const duration = state.window?.kind === "ROLE_SELECTION" ? 45_000 : 90_000;
     await seed({ ...room.game, state, windowStartedAt: state.window === null ? null : clock.now(), deadlineAt: state.window === null ? null : parse(ServerTimeSchema, clock.now() + duration), finishedAt: state.window === null ? clock.now() : null });
   }
-  async function roleFixture(roleId: CityRoleId, picks: readonly CityRoleId[] = ["CR-01", "CR-02", "CR-03", "CR-04", "CR-05", "CR-06"], rulesVersion: "city-rules-v1" | "city-rules-v2" = "city-rules-v1") {
+  async function roleFixture(roleId: CityRoleId, picks: readonly CityRoleId[] = ["CR-01", "CR-02", "CR-03", "CR-04", "CR-05", "CR-06"], rulesVersion: "city-rules-v1" | "city-rules-v2" = "city-rules-v2") {
     const room = await playing(), state = room.game.state;
     const hidden = (["CR-08", "CR-07", "CR-06", "CR-05", "CR-04", "CR-03", "CR-02", "CR-01"] as const).find((role) => !picks.includes(role))!;
     const roleOrder: readonly CityRoleId[] = [hidden, ...(["CR-01", "CR-02", "CR-03", "CR-04", "CR-05", "CR-06", "CR-07", "CR-08"] as const).filter((id) => id !== hidden)];
-    let next = completeCityDraft(createInitialCityGameState({ rulesVersion, gameId: state.gameId, playerIds: state.players.map((player) => player.playerId), seatOrder: state.seatOrder, cards: state.cards, deck: state.deck, initialHands: state.players.map((player) => ({ playerId: player.playerId, cardIds: player.hand })), actionId: state.window!.actionId, roleOrder }), picks);
+    const fixtureCards = rulesVersion === "city-rules-v2" ? createCityCardsV2(Array.from({length:66},()=>parseBuildingCardId(ids.generateTileId()))) : createCityCards(Array.from({length:60},()=>parseBuildingCardId(ids.generateTileId())));
+    let next = completeCityDraft(createInitialCityGameState({ rulesVersion, gameId: state.gameId, playerIds: state.players.map((player) => player.playerId), seatOrder: state.seatOrder, cards: fixtureCards, deck: fixtureCards.slice(state.players.length*4).map(c=>c.cardId), initialHands: state.players.map((player,index) => ({ playerId: player.playerId, cardIds: fixtureCards.slice(index*4,index*4+4).map(c=>c.cardId) })), actionId: state.window!.actionId, roleOrder }), picks);
     while (next.window?.kind === "ROLE_ACTION" && next.window.activeRoleId !== roleId) {
       next = actCity(actCity(next, { kind: "TAKE_INCOME" }), { kind: "END_TURN" });
     }
@@ -114,7 +145,11 @@ for (const count of [2, 3, 4, 5, 6]) test(`CITY ${count}-player start has exact 
   assert.equal(room.game.deadlineAt! - room.game.windowStartedAt!, 45_000);
   assert.equal(room.game.state.players.length, count);
   assert.ok(room.game.state.players.every((player) => player.gold === 2 && player.hand.length === 4));
-  assert.equal(room.game.state.deck.length, 60 - count * 4);
+  assert.equal(room.game.state.deck.length, 68 - count * 4);
+  assert.equal(room.game.state.cards.length, 68);
+  for (const [category, expected] of [["TRADE", 20], ["CIVIC", 12], ["GUARD", 11], ["CULTURE", 11], ["LANDMARK", 14]] as const) {
+    assert.equal(room.game.state.cards.filter(card => getCityTemplate(card.templateId).category === category).length, expected);
+  }
   assert.equal(room.game.state.round.rolesPerPlayer, count <= 3 ? 2 : 1);
   assertCityCardConservation(room.game.state);
   assert.deepEqual(await h.persistence.listActiveTurnDeadlines(), [await h.deadline()]);
@@ -417,7 +452,7 @@ test("CITY E02 forfeit cleanup precedes next CR-07 entry shuffle and conserves e
   assert.equal(cityPlayer(after.game.state, actor).hand.length, 0);
   assert.equal(cityPlayer(after.game.state).hand.length, 2);
   assert.ok(cityPlayer(after.game.state).hand.includes(returnedToDeck), "The unchosen pending card is bottomed before CR-07 draws and reshuffles released cards.");
-  assert.equal(after.game.state.deck.length, 58);
+  assert.equal(after.game.state.deck.length, 64);
   assert.equal(after.game.state.discard.length, 0);
   assert.ok(after.game.entropyCounter > before.game.entropyCounter);
   assertCityCardConservation(after.game.state);

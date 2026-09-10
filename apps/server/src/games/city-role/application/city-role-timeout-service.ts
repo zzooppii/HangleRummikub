@@ -1,3 +1,4 @@
+import { CITY_ALL_ROLE_IDS } from "../domain/role.js";
 import { PlayerIdSchema, RequestIdSchema, type PlayerId } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 import { scheduleCurrentTurnBestEffort } from "../../../application/turn-transition.js";
@@ -68,7 +69,7 @@ export class CityRoleTimeoutService {
     const discardRoleId = role !== undefined && game.state.roleDraftVersion === "city-draft-v2" && game.state.round.eligibleAtSetup.length === 2
       ? remaining[random.nextInt(remaining.length)] : undefined;
     const state = timeoutCityWindow(game.state, { gameId: game.state.gameId, actionId: window.actionId, playerId: window.activePlayerId },
-      { offline, ...(role === undefined ? {} : { selectedRoleId: role }), ...(discardRoleId === undefined ? {} : { discardRoleId }) }, cityDomainEntropy(this.#deps.idGenerator, random, discard));
+      { offline, ...(role === undefined ? {} : { selectedRoleId: role }), ...(discardRoleId === undefined ? {} : { discardRoleId }) }, cityDomainEntropy(this.#deps.idGenerator, random, discard, CITY_ALL_ROLE_IDS.slice(0, game.state.expansion?.settings.roles.length ?? 8)));
     const candidate = transitionCityRoom(room, state, at, random.counter);
     const terminalResult = cityMutationData({ ...candidate, storageRevision: room.storageRevision }, window.actionId);
     const actorForfeited = state.players.some(player => player.playerId === actor.playerId && player.forfeited);

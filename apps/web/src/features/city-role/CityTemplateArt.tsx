@@ -1,3 +1,4 @@
+import { CITY_SPECIAL_BUILDINGS } from "@hangul-rummikub/shared";
 import type { CityUiCard } from "./city-role-ui.js";
 
 /** Public visual identity only. Original scene prompts/provenance are in the asset manifest. */
@@ -35,7 +36,8 @@ export const CITY_TEMPLATE_ART = {
 } as const;
 
 export function CityTemplateArt({ templateId, category }: Readonly<Pick<CityUiCard, "templateId" | "category">>) {
-  const plate = Object.entries(CITY_TEMPLATE_ART).find(([id]) => id === templateId)?.[1];
+  const special = CITY_SPECIAL_BUILDINGS.find(b => b.templateId === templateId);
+  const plate = special ? { motif: special.name, category: "LANDMARK", src: `/city-art/expanded-v3/${special.templateId.toLowerCase()}.webp` } : Object.entries(CITY_TEMPLATE_ART).find(([id]) => id === templateId)?.[1];
   // Unknown/mismatched catalog entries get no invented building identity.
   return <span className={`city-building-art city-template-art city-art-${category.toLowerCase()}`} data-category-art={category} data-template-art={templateId} data-motif={plate?.motif ?? "도시 건물"} aria-hidden="true">
     {plate?.category === category ? <img src={plate.src} width="512" height="512" alt="" loading="lazy" decoding="async" draggable={false} /> : <span className="city-art-unavailable">그림 준비 중</span>}

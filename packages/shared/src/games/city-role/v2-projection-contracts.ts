@@ -1,3 +1,5 @@
+import { CityExpansionSettingsSchema } from "./expansion-contracts.js";
+import { CITY_SPECIAL_BUILDINGS } from "./expansion-catalog.js";
 import * as v from "valibot";
 import { GameIdSchema, PlayerIdSchema } from "../../identifiers.js";
 import { GameRevisionSchema, ServerTimeSchema } from "../../protocol.js";
@@ -5,28 +7,36 @@ import { CityActionIdSchema, CityFinishReasonSchema, CityPublicBuildingSchema, C
 
 const Natural = v.pipe(v.number(), v.integer(), v.safeInteger(), v.minValue(0));
 const Positive = v.pipe(Natural, v.minValue(1));
-const Cards = v.pipe(v.array(CityPublicBuildingSchema), v.maxLength(60));
-const Roles = v.pipe(v.array(CityRoleIdSchema), v.maxLength(8), v.check(ids => new Set(ids).size === ids.length));
+const Cards = v.pipe(v.array(CityPublicBuildingSchema), v.maxLength(68));
+const Roles = v.pipe(v.array(CityRoleIdSchema), v.maxLength(9), v.check(ids => new Set(ids).size === ids.length));
 const PlayerIds = v.pipe(v.array(PlayerIdSchema), v.minLength(2), v.maxLength(6), v.check(ids => new Set(ids).size === ids.length));
 const PrivateBase = {
+  expansion: v.optional(v.strictObject({ incomeUsed: v.boolean(), usedSpecials: v.array(v.string()), inspectedCards: Cards, choiceCards: Cards, recipients: v.array(PlayerIdSchema), realWarrant: v.optional(CityRoleIdSchema), realThreat: v.optional(CityRoleIdSchema) })),
   hand: Cards,
   selectedRoleIds: v.pipe(Roles, v.maxLength(2)),
   marks: v.pipe(v.array(v.strictObject({ kind: v.picklist(["DISABLE", "GOLD_TRANSFER"]), targetRoleId: CityRoleIdSchema, status: v.picklist(["UNRESOLVED", "RESOLVED", "CANCELLED"]) })), v.maxLength(2)),
 };
-const PendingCards = v.pipe(Cards, v.minLength(1), v.maxLength(2));
-const ActionBudget = v.strictObject({ acquisition: v.picklist(["NOT_TAKEN", "PENDING", "COMPLETE"]), abilityUsed: v.boolean(), buildingsBuilt: v.pipe(Natural, v.maxValue(3)) });
+const PendingCards = v.pipe(Cards, v.minLength(1), v.maxLength(3));
+const ActionBudget = v.strictObject({ acquisition: v.picklist(["NOT_TAKEN", "PENDING", "COMPLETE"]), abilityUsed: v.boolean(), buildingsBuilt: v.pipe(Natural, v.maxValue(68)) });
 const Common = {
+  expansion: v.optional(v.strictObject({ settings: CityExpansionSettingsSchema,
+    specialIds: v.pipe(v.array(v.picklist(CITY_SPECIAL_BUILDINGS.map(b => b.templateId))), v.length(14), v.check(ids => new Set(ids).size === 14)),
+    tax: Natural, decorated: v.array(v.string()), museum: v.array(v.strictObject({ buildingId: v.string(), count: Natural })),
+    disabledRole: v.nullable(CityRoleIdSchema), robbedRole: v.nullable(CityRoleIdSchema), warrants: Roles, threats: Roles, witchTarget: v.nullable(CityRoleIdSchema),
+    pending: v.nullable(v.picklist(['WIZARD','SEER','SCHOLAR','THEATER','BRIBE','BLACKMAIL','CONFISCATE','EMPEROR'])),
+    vaultOwners: v.array(PlayerIdSchema),
+  })),
   gameType: v.literal("CITY_ROLE"), gameId: GameIdSchema, gameRevision: GameRevisionSchema,
   roleDraftVersion: v.optional(v.literal("city-draft-v2")),
   secretPairDraft: v.optional(v.boolean()),
-  rulesVersion: v.picklist(["city-rules-v1", "city-rules-v2"]), cardSetVersion: v.picklist(["city-cardset-v1", "city-cardset-v2"]), roleSetVersion: v.literal("city-roles-v1"),
+  rulesVersion: v.picklist(["city-rules-v1", "city-rules-v2", "city-rules-v3"]), cardSetVersion: v.picklist(["city-cardset-v1", "city-cardset-v2", "city-cardset-v3"]), roleSetVersion: v.picklist(["city-roles-v1", "city-roles-v2"]),
   landmarkHistory: v.optional(v.pipe(v.array(v.strictObject({ playerId: PlayerIdSchema,
     gardenUsed: v.boolean(), sundialUsed: v.boolean(), staircaseInitialized: v.boolean(),
     staircaseRemaining: v.pipe(Natural, v.maxValue(3)), staircaseSpent: v.pipe(Natural, v.maxValue(3)),
     lastDiscountRound: v.nullable(Positive) })), v.minLength(2), v.maxLength(6))),
   roundNumber: Positive, seatOrder: PlayerIds, leaderPlayerId: PlayerIdSchema, rolesPerPlayer: v.picklist([1, 2]),
   playerStates: v.pipe(v.array(v.strictObject({ playerId: PlayerIdSchema, gold: Natural,
-    handCount: v.pipe(Natural, v.maxValue(60)), builtBuildings: Cards, scorePreview: Natural, forfeited: v.boolean() })), v.minLength(2), v.maxLength(6)),
+    handCount: v.pipe(Natural, v.maxValue(68)), builtBuildings: Cards, scorePreview: Natural, forfeited: v.boolean() })), v.minLength(2), v.maxLength(6)),
   publicRemovedRoleIds: Roles,
   revealedRoles: v.array(v.strictObject({ roundNumber: Positive, roleId: CityRoleIdSchema, playerId: PlayerIdSchema, kind: v.picklist(["NORMAL", "DISABLED"]) })),
   protectedPlayerIds: v.pipe(v.array(PlayerIdSchema), v.maxLength(1)),
@@ -43,8 +53,8 @@ const ActionObject = v.strictObject({ ...Common, phase: v.literal("ROLE_ACTION")
 });
 const Ranking = v.strictObject({ playerId: PlayerIdSchema, rank: v.pipe(Positive, v.maxValue(6)),
   score: Natural, buildingVP: Natural, completionBonus: v.picklist([0, 2, 4]), diversityBonus: v.picklist([0, 3]),
-  landmarkBonus: v.optional(v.pipe(Natural, v.maxValue(4))),
-  buildingCount: v.pipe(Natural, v.maxValue(30)), forfeited: v.boolean(), winner: v.boolean() });
+  landmarkBonus: v.optional(Natural),
+  buildingCount: v.pipe(Natural, v.maxValue(68)), forfeited: v.boolean(), winner: v.boolean() });
 export const CityRoleResultV2Schema = v.strictObject({ reason: CityFinishReasonSchema, finishedAt: ServerTimeSchema,
   rankings: v.pipe(v.array(Ranking), v.minLength(2), v.maxLength(6)), winnerPlayerIds: v.pipe(v.array(PlayerIdSchema), v.maxLength(6)) });
 const FinishedObject = v.strictObject({ ...Common, phase: v.literal("FINISHED"),
@@ -52,6 +62,16 @@ const FinishedObject = v.strictObject({ ...Common, phase: v.literal("FINISHED"),
 
 type VisibleCity = v.InferOutput<typeof SelectionObject> | v.InferOutput<typeof ActionObject> | v.InferOutput<typeof FinishedObject>;
 function coherent(game: VisibleCity): boolean {
+  if (game.rulesVersion === 'city-rules-v3') {
+    if (!game.expansion || !game.privateState.expansion || game.cardSetVersion !== 'city-cardset-v3' || game.roleSetVersion !== 'city-roles-v2' || game.landmarkHistory !== undefined) return false;
+    const ids = game.playerStates.map(p => p.playerId);
+    const visible = [...game.privateState.hand, ...game.playerStates.flatMap(p => p.builtBuildings), ...('pendingCards' in game.privateState ? game.privateState.pendingCards ?? [] : [])];
+    if (new Set(ids).size !== ids.length || game.seatOrder.length !== ids.length || !game.seatOrder.every(id => ids.includes(id)) || !ids.includes(game.leaderPlayerId)) return false;
+    if (new Set(visible.map(c => c.cardId)).size !== visible.length || visible.length > 68 || game.playerStates.some(p => p.forfeited && (p.gold !== 0 || p.handCount !== 0))) return false;
+    if (game.playerStates.some(p => p.scorePreview !== p.builtBuildings.reduce((sum,c) => sum + c.victoryPoints,0))) return false;
+    return game.phase === 'FINISHED' || game.playerStates.some(p => p.playerId === game.window.activePlayerId && !p.forfeited) && game.window.deadlineAt - game.window.startedAt === (game.phase === 'ROLE_SELECTION' ? 45000 : 90000);
+  }
+  if (game.expansion !== undefined || game.privateState.expansion !== undefined || game.roleSetVersion !== 'city-roles-v1' || game.privateState.hand.some(c => c.cost < 1 || c.cost > 6 || c.templateId.startsWith('CB-SP-'))) return false;
   if ((game.roleDraftVersion !== undefined) !== (game.secretPairDraft !== undefined)) return false;
   if (game.secretPairDraft && (game.rolesPerPlayer !== 2 || game.publicRemovedRoleIds.length !== 0)) return false;
   const v2 = game.rulesVersion === "city-rules-v2";
@@ -75,7 +95,10 @@ function coherent(game: VisibleCity): boolean {
   if (eligible.length > 0 && !eligible.some(player => player.playerId === game.leaderPlayerId)) return false;
   const pending = "pendingCards" in game.privateState ? game.privateState.pendingCards ?? [] : [];
   const visibleCards = [...game.playerStates.flatMap(player => player.builtBuildings), ...game.privateState.hand, ...pending];
-  if (visibleCards.length > 60 || new Set(visibleCards.map(card => card.cardId)).size !== visibleCards.length) return false;
+  const legacyRoles = [...game.publicRemovedRoleIds, ...game.revealedRoles.map(r => r.roleId), ...game.privateState.selectedRoleIds, ...game.privateState.marks.map(m => m.targetRoleId), ...(game.phase === "ROLE_SELECTION" ? game.privateState.availableRoleIds ?? [] : game.phase === "ROLE_ACTION" ? [game.window.activeRoleId] : [])];
+  if (legacyRoles.includes("CR-09") || pending.length > 2 || visibleCards.some(c => c.cost < 1 || c.cost > 6 || c.templateId.startsWith("CB-SP-"))) return false;
+  const cardLimit = v2 ? 66 : 60;
+  if (game.playerStates.some(player => player.handCount > cardLimit) || visibleCards.length > cardLimit || new Set(visibleCards.map(card => card.cardId)).size !== visibleCards.length) return false;
   if (!game.playerStates.every(player => new Set(player.builtBuildings.map(card => card.templateId)).size === player.builtBuildings.length &&
     player.scorePreview === player.builtBuildings.reduce((score, card) => score + card.victoryPoints, 0) && (!player.forfeited || player.gold === 0 && player.handCount === 0))) return false;
   if (game.privateState.selectedRoleIds.length > game.rolesPerPlayer || game.publicRemovedRoleIds.some(role => game.privateState.selectedRoleIds.includes(role))) return false;
@@ -100,6 +123,12 @@ export const CityRolePlayingProjectionV2Schema = v.union([CityRoleSelectionProje
 export const CityRoleFinishedProjectionV2Schema = v.pipe(FinishedObject, v.check(game => coherent(game), "CITY finished projection is inconsistent."), v.check(game => {
   const { rankings, reason, winnerPlayerIds } = game.result;
   if (rankings.length !== game.playerStates.length || new Set(rankings.map(row => row.playerId)).size !== rankings.length) return false;
+  if (game.rulesVersion === 'city-rules-v3') {
+    if (!rankings.every((row, i) => { const p = game.playerStates.find(p => p.playerId === row.playerId), prior = rankings[i-1];
+      return p !== undefined && row.buildingVP === p.scorePreview && row.buildingCount === p.builtBuildings.length && row.forfeited === p.forfeited && row.landmarkBonus !== undefined && row.score === row.buildingVP + row.completionBonus + row.diversityBonus + row.landmarkBonus && row.rank === (prior && prior.forfeited === row.forfeited && prior.score === row.score ? prior.rank : i + 1) && row.winner === (!row.forfeited && row.rank === 1);
+    })) return false;
+    return JSON.stringify(winnerPlayerIds) === JSON.stringify(rankings.filter(r => r.winner).map(r => r.playerId));
+  }
   if (!rankings.every(row => {
     const player = game.playerStates.find(entry => entry.playerId === row.playerId);
     if (player === undefined) return false;

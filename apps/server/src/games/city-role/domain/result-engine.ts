@@ -1,10 +1,12 @@
-import { CITY_CATEGORIES, getCityTemplate, validateCityCards } from "./cardset-v1.js";
+import { expandedScore } from "./expansion-scoring.js";
+import { validateCityGameCards } from "./cardset-v2.js";
+import { CITY_CATEGORIES, getCityTemplate } from "./cardset-v1.js";
 import type { CityFinishReason, CityGameResult, CityGameState, CityRanking } from "./game-state.js";
 import { cityLandmarkScoring } from "./landmarks-v2.js";
 
 /** CITY scoring only: no clock, platform revision, tie-break or shared Result model. */
 export function calculateCityResult(state: CityGameState, reason: CityFinishReason): CityGameResult {
-  const cards = validateCityCards(state.cards);
+  const cards = validateCityGameCards(state.cards, state.rulesVersion);
   const eligible = state.players.filter(player => !player.forfeited);
   if (reason === "LAST_PLAYER_STANDING") {
     if (eligible.length !== 1) throw new Error("CITY last-player-standing requires one eligible player.");
@@ -25,6 +27,7 @@ export function calculateCityResult(state: CityGameState, reason: CityFinishReas
 
   const seen = new Set<string>();
   const rows = state.players.map(player => {
+    if (state.expansion) return { playerId: player.playerId, ...expandedScore(state, player), buildingCount: player.city.length, forfeited: player.forfeited };
     const templates = player.city.map(cardId => {
       const card = cards.find(candidate => candidate.cardId === cardId);
       if (card === undefined || seen.has(cardId)) throw new Error("CITY result physical city is invalid.");

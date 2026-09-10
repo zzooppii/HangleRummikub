@@ -1,3 +1,4 @@
+import { CityExpansionClientCommandSchema, type CityExpansionClientCommand } from "@hangul-rummikub/shared";
 import { WolfClientCommandSchema, type WolfClientCommand } from "@hangul-rummikub/shared";
 import { DrawClientCommandSchema, type DrawClientCommand } from "@hangul-rummikub/shared";
 import { SneakyClientCommandSchema, type SneakyClientCommand } from "@hangul-rummikub/shared";
@@ -685,6 +686,13 @@ export class RealtimeClient {
         case "wolf:say": this.#socket.emit("wolf:say", command, acknowledge); break;
         case "wolf:rematch": this.#socket.emit("wolf:rematch", command, acknowledge); break;
       }
+    }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
+  }
+  actCityExpansion(command: CityExpansionClientCommand): Promise<StateSyncWireAck> {
+    if (!parseRematch(CityExpansionClientCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {
+      if (command.kind === "city:configure") this.#socket.emit("city:configure", command, acknowledge);
+      else this.#socket.emit("city:expansionAction", command, acknowledge);
     }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
   }
   actSneaky(command: SneakyClientCommand): Promise<StateSyncWireAck> {

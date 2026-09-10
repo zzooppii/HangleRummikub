@@ -25,3 +25,6 @@ export * from "./games/sneaky-lunch/v2-projection-contracts.js";
 
 export * from "./games/wolf-night/contracts.js";
 export * from "./games/wolf-night/v2-projection-contracts.js";
+
+export * from "./games/city-role/expansion-catalog.js";
+export * from "./games/city-role/expansion-contracts.js";

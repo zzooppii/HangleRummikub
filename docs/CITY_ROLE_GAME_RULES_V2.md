@@ -6,9 +6,11 @@
 
 2026-09-09 공개 제거 정정: **CR-04 길잡이는 공개 버림 불가, 비공개 버림은 가능**하다. 모든 이후 round setup에 적용하며 현재 저장된 round는 변경하지 않는다. 공개 제거 장수·인원별 선택 방식·역할 능력·명소 버전·wire 형식은 유지한다. 과거 문서의 ‘CR-04 공개 제거 가능’ 결정보다 이번 사용자 승인이 우선한다.
 
+2026-09-10 기본 건물 분포 **CONFIRMED**: 사용자 요청에 따라 새 게임은 교역20 / 시정12 / 수비11 / 문화11 + 명소12 = 총66장이다. 구체 매수와 기존60장 저장 게임 호환 정책은 [cardset v2](./CITY_ROLE_CARDSET_V2.md)를 따른다.
+
 ## 적용 범위와 버전
 
-[v1 규칙](./CITY_ROLE_GAME_RULES.md)은 역사적 버전으로 유지한다. 이 문서의 명소 변경을 제외한 CITY-001–070/E01–03, 2–6인 역할 배정, 45/90초, 8건물 round-end latch, 완성 4/2점, 공동순위, forfeited 처리, privacy, reconnect는 그대로다. 교역/시정/문화/수비에는 특수 능력이 없다. LANDMARK category income role도 없다.
+[v1 규칙](./CITY_ROLE_GAME_RULES.md)은 역사적 버전으로 유지한다. 이 문서의 명소·기본 건물 매수 변경을 제외한 CITY-001–070/E01–03, 2–6인 역할 배정, 45/90초, 8건물 round-end latch, 완성 4/2점, 공동순위, forfeited 처리, privacy, reconnect는 그대로다. 교역/시정/문화/수비에는 특수 능력이 없다. LANDMARK category income role도 없다.
 
 새 server start는 v2를 명시하여 생성한다. 저장된 v1은 끝까지 v1이다. 순수 domain factory의 생략 기본값은 기존 v1 호출/fixture 호환용이며 production start는 생략하지 않는다. 저장 데이터의 version string만 바꾸거나 빠진 이력을 자동 생성하지 않는다. v2는 정확히 대응하는 cardset과 플레이어별 history가 필요하고, v1은 해당 필드를 거절한다. Roles는 계속 v1이다.
 
@@ -27,7 +29,7 @@
 
 기존 인증·revision·deadline·actor·획득·pending·physical ownership·중복 template·건설 한도 검증 후 할인된 금액을 낼 수 있는지 확인한다. 지불, hand→city, 명소 효과, 건설 budget, firstCompletion은 하나의 candidate/commit이다. 실패와 duplicate request replay는 효과·gold·card·history·RNG·revision을 다시 소비하지 않는다. 환급으로 최초 지불 자격을 얻을 수 없다.
 
-작은해시계는 기존 deck top부터 최대 1장을 받는다. Deck이 비고 discard가 있으면 기존 server entropy로 정확한 discard만 shuffle한다. 둘 다 비면 0장으로 성공하고 일회 기회는 소비한다. Choice/pending/deadline을 추가하지 않는다. 자동 draw exact 카드는 자기 hand에만 공개되고, 타인은 hand count만 본다. 실제 cardId와 60장 zone conservation을 유지한다.
+작은해시계는 기존 deck top부터 최대 1장을 받는다. Deck이 비고 discard가 있으면 기존 server entropy로 정확한 discard만 shuffle한다. 둘 다 비면 0장으로 성공하고 일회 기회는 소비한다. Choice/pending/deadline을 추가하지 않는다. 자동 draw exact 카드는 자기 hand에만 공개되고, 타인은 hand count만 본다. 실제 cardId와 해당 게임 전체 inventory의 zone conservation을 유지한다.
 
 ## Lifetime / 파괴 / 재건설
 
@@ -56,6 +58,6 @@ CR-08의 actor/능력/대상, completed city(8개 이상), CR-05 protection을 �
 
 V2 `landmarkHistory[]`: playerId, gardenUsed, sundialUsed, staircaseInitialized, staircaseRemaining, staircaseSpent, lastDiscountRound. Canonical roster 순서, remaining+spent≤3, 미초기화 예산0, spent/lastRound 일치, lastRound≤현재round, 파괴/forfeit 잔여0을 검증한다. Clone/adapter는 detached frozen 이력을 보존한다.
 
-이력은 공개된 건설의 이력이므로 참가자에게 공개한다. Deck, discard 순서, RNG, 다른 hand/role/mark, credentials, offline streak는 추가 공개하지 않는다. Card inventory와 공개 card shape는 같고, rules/cardset 버전이 능력 해석을 구분한다.
+이력은 공개된 건설의 이력이므로 참가자에게 공개한다. Deck, discard 순서, RNG, 다른 hand/role/mark, credentials, offline streak는 추가 공개하지 않는다. 기존 저장 inventory와 공개 card shape는 유지하고, rules/cardset 버전이 능력 해석을 구분한다.
 
 기존 7개 concrete CITY events와 protocolVersion, Snapshot V2 shell은 유지한다. CITY projection branch만 v1/v2 version correlation + public history + v2 결과 landmarkBonus를 확장한다. 기존 배포 Web은 v2 literal/schema를 지원하지 않으므로 디코드 실패 시 행동할 수 없으며 refresh가 필요하다. 같은 GameType 광고가 rules-v2 이해를 증명한다는 가정은 하지 않는다. 서버/웹 동시 배포 필요; 이번 작업에서는 Railway 배포하지 않는다.

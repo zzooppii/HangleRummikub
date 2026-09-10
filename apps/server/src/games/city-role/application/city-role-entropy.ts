@@ -4,7 +4,7 @@ import type { IdGenerator, RandomSource } from "../../../ports/system.js";
 import type { BuildingCardId } from "../domain/identity.js";
 import { parseCityActionId } from "../domain/identity.js";
 import type { CityEntropy } from "../domain/rule-engine.js";
-import { CITY_ROLE_IDS } from "../domain/role.js";
+import { CITY_ROLE_IDS, type CityRoleId } from "../domain/role.js";
 
 /** CITY-only private random checkpoint. Mutate this detached attempt, never live state. */
 export class CityRoleEntropySource implements RandomSource {
@@ -37,13 +37,15 @@ export function createCityEntropySeed(source: RandomSource): string {
 }
 
 /** Lazy, cached application inputs: unused entropy does not consume the checkpoint. */
-export function cityDomainEntropy(ids: Pick<IdGenerator, "generateTurnId">, random: CityRoleEntropySource, discard: readonly BuildingCardId[]): CityEntropy {
+export function cityDomainEntropy(ids: Pick<IdGenerator, "generateTurnId">, random: CityRoleEntropySource, discard: readonly BuildingCardId[], roleIds: readonly CityRoleId[] = CITY_ROLE_IDS): CityEntropy {
   let actionId: CityEntropy["nextActionId"];
   let roles: CityEntropy["nextRoleOrder"];
   let cards: CityEntropy["discardOrder"];
   return Object.freeze({
+    shuffleCards: (items: readonly BuildingCardId[]) => shuffleFrozen(items, random),
+    randomIndex: (length: number) => random.nextInt(length),
     get nextActionId() { return actionId ??= parseCityActionId(ids.generateTurnId()); },
-    get nextRoleOrder() { return roles ??= shuffleFrozen(CITY_ROLE_IDS, random); },
+    get nextRoleOrder() { return roles ??= shuffleFrozen(roleIds, random); },
     get discardOrder() { return cards ??= shuffleFrozen(discard, random); },
   });
 }

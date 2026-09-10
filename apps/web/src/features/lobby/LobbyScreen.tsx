@@ -1,7 +1,7 @@
 import type { GameStartControl } from "../../lib/game-start.js";
 import type { RoomSnapshotShell } from "../../lib/room-snapshot-shell.js";
 import { GemGameHelp } from "../gem-card/GemGameHelp.js";
-import { CityGameHelp } from "../city-role/CityGameHelp.js";
+import { CityExpandedHelp } from "../city-role/CityExpandedHelp.js";
 
 export type LobbyScreenProps = Readonly<{
   snapshot: RoomSnapshotShell;
@@ -43,7 +43,7 @@ export function LobbyScreen(props: LobbyScreenProps) {
       </header>
 
       {room.gameType === "GEM_CARD" ? <GemGameHelp placement="LOBBY" /> : null}
-      {room.gameType === "CITY_ROLE" ? <><CityGameHelp placement="LOBBY" /><p className="notice">2~6명이 함께합니다. 2~3명은 각자 역할 2개, 4~6명은 역할 1개를 선택합니다. 방장이 모두 연결된 뒤 시작할 수 있습니다.</p></> : null}
+      {room.gameType === "CITY_ROLE" ? <><CityExpandedHelp /><p className="notice">2~6명이 함께합니다. 2~3명은 각자 역할 2개, 4~6명은 역할 1개를 선택합니다. 방장이 모두 연결된 뒤 시작할 수 있습니다.</p></> : null}
 
       {props.sessionReplaced ? (
         <section className="notice replaced-notice" role="alert">

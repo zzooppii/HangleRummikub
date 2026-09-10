@@ -1,3 +1,6 @@
+import { CityExpandedScreen } from "./features/city-role/CityExpandedScreen.js";
+import { CityExpansionLobby } from "./features/city-role/CityExpansionLobby.js";
+import "./features/city-role/city-expansion.css";
 import { WolfNightScreen } from "./features/wolf-night/WolfNightScreen.js";
 import "./features/wolf-night/wolf-night.css";
 import { DrawRelayScreen } from "./features/draw-relay/DrawRelayScreen.js";
@@ -348,6 +351,7 @@ export function App() {
 
     if (roomView.kind === "CITY_ROLE_PLAYING") {
       const current = roomView.snapshot;
+      if (current.game.expansion) return <ReconnectBoundary {...recovery}><CityExpandedScreen snapshot={current} connected={app.connectionState === "CONNECTED" && !app.sessionReplaced} pending={app.cityActionPending} errorMessage={app.errorMessage} onCommand={app.actCityExpansion} onAction={app.actCity} onLeave={app.leaveRoom}/></ReconnectBoundary>;
       const canAct = app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.roomLeavePending &&
         app.operationLabel === null && current.game.window.activePlayerId === current.self.playerId &&
         current.game.playerStates.some(player => player.playerId === current.self.playerId && !player.forfeited);
@@ -359,6 +363,7 @@ export function App() {
         onLeaveRoom={app.leaveRoom} onGoHome={app.goHome} /></CityImpactLayer></ReconnectBoundary>;
     }
     if (roomView.kind === "CITY_ROLE_FINISHED") {
+      if (roomView.snapshot.game.expansion) return <ReconnectBoundary {...recovery}><CityExpandedScreen snapshot={roomView.snapshot} connected={app.connectionState === "CONNECTED" && !app.sessionReplaced} pending={false} errorMessage={app.errorMessage} onCommand={app.actCityExpansion} onAction={app.actCity} onLeave={app.leaveRoom}/></ReconnectBoundary>;
       return <ReconnectBoundary {...recovery}><CityImpactLayer snapshot={roomView.snapshot} connected={connection.tone === "connected" && !app.sessionReplaced} feedback={app.cityActionFeedback}><CityRoleFinishedScreen snapshot={roomView.snapshot}
         connectionLabel={connectionLabel} connectionTone={connection.tone} errorMessage={app.errorMessage}
         sessionReplaced={app.sessionReplaced} actionFeedback={app.cityActionFeedback}
@@ -437,6 +442,7 @@ export function App() {
 
     return (
       <ReconnectBoundary {...recovery}>
+        {app.compatibleSnapshot?.kind === "PLATFORM_V2_CITY_ROLE" && app.compatibleSnapshot.platformSnapshot.room.phase === "LOBBY" && <CityExpansionLobby settings={app.compatibleSnapshot.platformSnapshot.room.settings} revision={app.compatibleSnapshot.platformSnapshot.versions.roomRevision} host={gameStartControl.isHost} connected={app.connectionState === "CONNECTED" && !app.sessionReplaced} count={app.compatibleSnapshot.platformSnapshot.room.players.length} onCommand={app.actCityExpansion}/>}
         <LobbyScreen
           snapshot={app.snapshot}
           invitationUrl={invitationUrl}

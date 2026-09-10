@@ -1,3 +1,4 @@
+import type { CityExpansionClientCommand } from "./protocol.js";
 import { GemCardPlayingPlatformSnapshotV2Schema, GemCardFinishedPlatformSnapshotV2Schema } from "./platform/platform-snapshot-v2.js";
 import type { GemCollectCommand, GemPurchaseCommand, GemReserveCommand, GemYieldCommand } from "./protocol.js";
 import * as v from "valibot";
@@ -532,6 +533,9 @@ export interface ServerToClientEvents {
  * remain available to compile old V1-only clients without changing their API.
  */
 export interface SnapshotWireClientToServerEvents {
+  "city:configure": (command: Extract<CityExpansionClientCommand, { kind: "city:configure" }>, ack: (result: StateSyncWireAck) => void) => void;
+  "city:expansionAction": (command: Extract<CityExpansionClientCommand, { kind: "city:expansionAction" }>, ack: (result: StateSyncWireAck) => void) => void;
+
   "draw:draftSave": (command: Extract<DrawClientCommand,{kind:"draw:draftSave"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "draw:submitDrawing": (command: Extract<DrawClientCommand,{kind:"draw:submitDrawing"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "draw:submitGuess": (command: Extract<DrawClientCommand,{kind:"draw:submitGuess"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;

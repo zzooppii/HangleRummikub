@@ -1,21 +1,25 @@
+import { assertExpandedCanonical } from "./expansion-validator.js";
+import { CityExpansionStateSchema } from "./expansion-state.js";
+import { CITY_SPECIAL_BUILDINGS } from "./expansion-catalog.js";
+import { validateCityGameCards } from "./cardset-v2.js";
 import * as v from "valibot";
 
-import { CITY_BUILDING_TEMPLATES, validateCityCards } from "./cardset-v1.js";
+import { CITY_BUILDING_TEMPLATES } from "./cardset-v1.js";
 import type { CityGameState } from "./game-state.js";
 import { BuildingCardIdSchema, CityActionIdSchema, CityGameIdSchema, CityPlayerIdSchema } from "./identity.js";
 import { calculateCityResult } from "./result-engine.js";
-import { CITY_ROLE_IDS, cityRoleOrder } from "./role.js";
+import { CITY_ROLE_IDS, CITY_ALL_ROLE_IDS, cityRoleOrder } from "./role.js";
 
 const Natural = v.pipe(v.number(), v.integer(), v.safeInteger(), v.minValue(0));
 const Positive = v.pipe(Natural, v.minValue(1));
-const RoleId = v.picklist(CITY_ROLE_IDS);
+const RoleId = v.picklist(CITY_ALL_ROLE_IDS);
 const RoleIds = v.array(RoleId);
 const PlayerIds = v.array(CityPlayerIdSchema);
 const CardIds = v.array(BuildingCardIdSchema);
 const Assignment = v.strictObject({ roleId: RoleId, playerId: CityPlayerIdSchema,
   status: v.picklist(["SELECTED", "ACTIVE", "RESOLVED", "DISABLED", "TOMBSTONED"]), revealed: v.boolean() });
 const Pending = v.strictObject({ kind: v.literal("DRAW_BUILDING"), ownerPlayerId: CityPlayerIdSchema,
-  actionId: CityActionIdSchema, roleId: RoleId, cards: v.pipe(CardIds, v.minLength(1), v.maxLength(2)) });
+  actionId: CityActionIdSchema, roleId: RoleId, cards: v.pipe(CardIds, v.minLength(1), v.maxLength(3)) });
 const Window = v.variant("kind", [
   v.strictObject({ kind: v.literal("ROLE_SELECTION"), actionId: CityActionIdSchema, activePlayerId: CityPlayerIdSchema }),
   v.strictObject({ kind: v.literal("ROLE_ACTION"), actionId: CityActionIdSchema, activePlayerId: CityPlayerIdSchema,
@@ -24,16 +28,16 @@ const Window = v.variant("kind", [
 ]);
 const Result = v.strictObject({ reason: v.picklist(["CITY_COMPLETION_ROUND_END", "LAST_PLAYER_STANDING", "NO_ELIGIBLE_PLAYERS"]),
   rankings: v.array(v.strictObject({ playerId: CityPlayerIdSchema, rank: Positive, score: Natural,
-    buildingVP: Natural, completionBonus: Natural, diversityBonus: Natural, landmarkBonus: v.exactOptional(v.pipe(Natural, v.maxValue(4))), buildingCount: Natural,
+    buildingVP: Natural, completionBonus: Natural, diversityBonus: Natural, landmarkBonus: v.exactOptional(Natural), buildingCount: Natural,
     forfeited: v.boolean(), winner: v.boolean() })) });
 const Base = {
-  gameId: CityGameIdSchema, rulesVersion: v.picklist(["city-rules-v1", "city-rules-v2"]), cardSetVersion: v.picklist(["city-cardset-v1", "city-cardset-v2"]), roleSetVersion: v.literal("city-roles-v1"),
+  gameId: CityGameIdSchema, rulesVersion: v.picklist(["city-rules-v1", "city-rules-v2", "city-rules-v3"]), cardSetVersion: v.picklist(["city-cardset-v1", "city-cardset-v2", "city-cardset-v3"]), roleSetVersion: v.picklist(["city-roles-v1", "city-roles-v2"]), expansion: v.exactOptional(CityExpansionStateSchema),
   roleDraftVersion: v.exactOptional(v.literal("city-draft-v2")),
   landmarkHistory: v.exactOptional(v.array(v.strictObject({ playerId: CityPlayerIdSchema,
     gardenUsed: v.boolean(), sundialUsed: v.boolean(), staircaseInitialized: v.boolean(),
     staircaseRemaining: v.pipe(Natural, v.maxValue(3)), staircaseSpent: v.pipe(Natural, v.maxValue(3)),
     lastDiscountRound: v.nullable(Positive) }))),
-  cards: v.array(v.strictObject({ cardId: BuildingCardIdSchema, templateId: v.picklist(CITY_BUILDING_TEMPLATES.map(template => template.templateId)) })),
+  cards: v.array(v.strictObject({ cardId: BuildingCardIdSchema, templateId: v.picklist([...CITY_BUILDING_TEMPLATES, ...CITY_SPECIAL_BUILDINGS].map(template => template.templateId)) })),
   players: v.pipe(v.array(v.strictObject({ playerId: CityPlayerIdSchema, gold: Natural, hand: CardIds,
     city: CardIds, forfeited: v.boolean(), offlineTimeoutStreak: v.pipe(Natural, v.maxValue(3)) })), v.minLength(2), v.maxLength(6)),
   seatOrder: PlayerIds, leaderPlayerId: CityPlayerIdSchema, deck: CardIds, discard: CardIds,
@@ -41,7 +45,7 @@ const Base = {
     eligibleAtSetup: v.pipe(PlayerIds, v.minLength(2), v.maxLength(6)), rolesPerPlayer: v.picklist([1, 2]),
     pickQueue: PlayerIds, selectionCursor: Natural, available: RoleIds, publicRemoved: RoleIds,
     hiddenRemoved: RoleIds, unselected: RoleIds, assignments: v.array(Assignment),
-    resolutionCursor: v.pipe(Natural, v.maxValue(8)), protectedPlayerIds: PlayerIds, ended: v.boolean() }),
+    resolutionCursor: v.pipe(Natural, v.maxValue(9)), protectedPlayerIds: PlayerIds, ended: v.boolean() }),
   marks: v.array(v.strictObject({ kind: v.picklist(["DISABLE", "GOLD_TRANSFER"]), sourcePlayerId: CityPlayerIdSchema,
     targetRoleId: RoleId, status: v.picklist(["UNRESOLVED", "RESOLVED", "CANCELLED"]) })),
   pendingChoice: v.nullable(Pending),
@@ -64,7 +68,9 @@ function sameSequence(left: readonly string[], right: readonly string[]): boolea
 /** Validates full canonical truth without projecting secrets or mutating the input. */
 export function assertCityGameState(state: unknown): asserts state is CityGameState {
   const game: CityGameState = v.parse(State, state);
-  const cards = validateCityCards(game.cards);
+  if (game.rulesVersion === "city-rules-v3") { assertExpandedCanonical(game); return; }
+  requireCity(game.expansion === undefined && game.roleSetVersion === "city-roles-v1" && (game.pendingChoice?.cards.length ?? 0) <= 2, "legacy version bounds");
+  const cards = validateCityGameCards(game.cards, game.rulesVersion);
   const playerIds = game.players.map(player => player.playerId);
   const eligible = game.players.filter(player => !player.forfeited);
   const player = (id: string) => game.players.find(candidate => candidate.playerId === id);
@@ -99,7 +105,7 @@ export function assertCityGameState(state: unknown): asserts state is CityGameSt
   }
   const pendingCards = game.pendingChoice?.cards ?? [];
   const zones = [...game.deck, ...game.discard, ...game.players.flatMap(entry => [...entry.hand, ...entry.city]), ...pendingCards];
-  requireCity(zones.length === 60 && new Set(zones).size === 60 && cards.every(card => zones.includes(card.cardId)), "60-card zone conservation");
+  requireCity(zones.length === cards.length && new Set(zones).size === cards.length && cards.every(card => zones.includes(card.cardId)), "complete card inventory zone conservation");
 
   requireCity(new Set(round.eligibleAtSetup).size === round.eligibleAtSetup.length && round.eligibleAtSetup.every(id => player(id) !== undefined) &&
     eligible.every(entry => round.eligibleAtSetup.includes(entry.playerId)) && round.eligibleAtSetup.includes(round.draftLeaderPlayerId), "round setup roster");

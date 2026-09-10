@@ -1,3 +1,6 @@
+import { CityExpandedScreen } from "../features/city-role/CityExpandedScreen.js";
+import { CityExpansionLobby } from "../features/city-role/CityExpansionLobby.js";
+import { CityExpandedHelp } from "../features/city-role/CityExpandedHelp.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -5,7 +8,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parse } from "valibot";
 import {
-  CITY_ROLE_IDS, CityPublicBuildingSchema, CityRolePlayingPlatformSnapshotV2Schema,
+  CITY_DEFAULT_SETTINGS, CITY_STANDARD_SPECIALS, CITY_SPECIAL_BUILDINGS, CITY_ROLE_IDS, CityPublicBuildingSchema, CityRolePlayingPlatformSnapshotV2Schema,
   CityRoleFinishedPlatformSnapshotV2Schema, RequestIdSchema,
   type CityRoleId,
 } from "@hangul-rummikub/shared";
@@ -221,7 +224,8 @@ function targetFixture() {
 }
 
 test("CITY role cards show eight original names, resolution order, and five readable category labels", () => {
-  assert.equal(Object.keys(CITY_ROLE_HELP).length, 8);
+  assert.equal(Object.keys(CITY_ROLE_HELP).length, 9);
+  assert.equal(CITY_ROLE_HELP["CR-09"].name, "9번 직업");
   for (const [index, roleId] of CITY_ROLE_IDS.entries()) assert.match(cityRoleLabel(roleId), new RegExp(`^${index + 1} · `));
   assert.equal(CITY_ROLE_HELP["CR-01"].name, "가림꾼");
   assert.equal(CITY_ROLE_HELP["CR-08"].name, "해체꾼");
@@ -602,4 +606,40 @@ test("CITY transient selections reset on canonical identity, not presence, and i
   assert.match(source, /<CityRoleAbility key=\{uiIdentity\}/u);
   for (const kind of ["selectRole", "takeIncome", "drawBuildingCards", "chooseBuildingCard", "useRoleAbility", "build", "endTurn"]) assert.ok(source.includes(`kind: "city:${kind}"`));
   assert.doesNotMatch(source, /game:command|apps\/server|localStorage.*(?:hand|gold|roleId)|setGame\(/u);
+});
+
+test("all 30 special cards render their approved cost, ability and optimized artwork", () => {
+  assert.equal(CITY_SPECIAL_BUILDINGS.length, 30);
+  for (const special of CITY_SPECIAL_BUILDINGS) {
+    const card = parse(CityPublicBuildingSchema, { cardId: `special-${special.templateId}`, templateId: special.templateId, name: special.name, category: 'LANDMARK', cost: special.cost, victoryPoints: special.cost });
+    const html = renderToStaticMarkup(createElement(CityBuildingFace, { card, rulesVersion: 'city-rules-v3' }));
+    assert.ok(html.includes(special.name));
+    assert.ok(html.includes(special.text));
+    const filename = special.templateId.toLowerCase();
+    assert.ok(html.includes(`/city-art/expanded-v3/${filename}.webp`));
+    const webp = readFileSync(new URL(`../../public/city-art/expanded-v3/${filename}.webp`, import.meta.url));
+    assert.equal(webp.toString('ascii', 0, 4), 'RIFF');
+    assert.equal(webp.toString('ascii', 8, 12), 'WEBP');
+  }
+});
+
+test('expanded CITY UI shows the chosen jobs, guide and 14 district illustrations', () => {
+  const base = cityActionFixture(true);
+  const snapshot = parse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: { ...base.game, rulesVersion: 'city-rules-v3', cardSetVersion: 'city-cardset-v3', roleSetVersion: 'city-roles-v2',
+    expansion: { settings: CITY_DEFAULT_SETTINGS, specialIds: CITY_STANDARD_SPECIALS, tax: 0, decorated: [], museum: [], disabledRole: null, robbedRole: null, warrants: [], threats: [], witchTarget: null, pending: null, vaultOwners: [] },
+    privateState: { ...base.game.privateState, expansion: { incomeUsed: false, usedSpecials: [], inspectedCards: [], choiceCards: [], recipients: [] } },
+  } });
+  const html = renderToStaticMarkup(createElement(CityExpandedScreen, { snapshot, connected: true, pending: false, errorMessage: null, onCommand: async () => {}, onAction: () => {}, onLeave: () => {} }));
+  assert.match(html, /마술사의 차례/);assert.match(html, /게임 방법 보기/);assert.match(html, /특수 건물 14종/);
+  assert.equal((html.match(/src="\/city-art\/expanded-v3\//gu) ?? []).length, 14);
+  assert.equal((html.match(/이 카드 받기/gu) ?? []).length, 2);
+  assert.doesNotMatch(html, /여섯 가지 특수 능력|바람계단 할인/);
+});
+test('expansion lobby lets only the connected host configure the cast', () => {
+  const props = {settings:{enabled:true,roles:CITY_DEFAULT_SETTINGS.roles},revision:citySelectionFixture().versions.roomRevision,count:2,onCommand:async()=>{}};
+  const host = renderToStaticMarkup(createElement(CityExpansionLobby,{...props,host:true,connected:true}));
+  const guest = renderToStaticMarkup(createElement(CityExpansionLobby,{...props,host:false,connected:true}));
+  assert.equal((host.match(/<select /gu)??[]).length,9);assert.equal((guest.match(/<select[^>]*disabled/gu)??[]).length,9);
+  assert.match(host,/<option value="EMPEROR" disabled/);assert.match(host,/<option value="QUEEN" disabled/);
+  const guide=renderToStaticMarkup(createElement(CityExpandedHelp));assert.match(guide,/총 68장/);assert.match(guide,/기념비/);assert.doesNotMatch(guide,/바람계단|달그림회랑/);
 });

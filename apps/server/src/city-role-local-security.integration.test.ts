@@ -126,6 +126,22 @@ async function harness(t: TestContext) {
 function cityIdentity(view: CityRolePlayingPlatformSnapshotV2) {
   return { gameId: view.game.gameId, expectedGameRevision: view.game.gameRevision, actionId: view.game.window.actionId };
 }
+
+test('CITY raw expansion configuration broadcasts to viewers and rejects non-host and stale actors', async t => {
+  const h=await harness(t), g=await h.group('CITY_ROLE',4);
+  const settings={enabled:true,roles:['MAGISTRATE','SPY','SEER','KING','ABBOT','ALCHEMIST','SCHOLAR','DIPLOMAT','ARTIST']};
+  h.failure(await h.call(g.members[1]!.client,'city:configure',settings,{expectedRoomRevision:g.lobby.versions.roomRevision}),'HOST_ONLY');
+  const configured=parse(LobbyPlatformSnapshotV2Schema,h.success(await h.call(g.members[0]!.client,'city:configure',settings,{expectedRoomRevision:g.lobby.versions.roomRevision})));
+  for(const member of g.members){const view=await h.sync(member.client);assert.ok('settings' in view.room);assert.deepEqual(view.room.settings,settings);}
+  let view=h.city(await h.start({...g,lobby:configured}));assert.deepEqual(view.game.expansion?.settings,settings);assert.equal(view.game.expansion?.specialIds.length,14);
+  const actor=g.members.find(m=>m.playerId===view.game.window.activePlayerId)!, other=g.members.find(m=>m!==actor)!;
+  const before=await h.checkpoint(view.room.roomId);
+  h.failure(await h.call(other.client,'city:expansionAction',{command:'INCOME'},cityIdentity(view)),'NOT_YOUR_TURN');
+  h.failure(await h.call(actor.client,'city:expansionAction',{command:'INCOME',gold:999},cityIdentity(view)),'INVALID_PAYLOAD');
+  assert.deepEqual(await h.checkpoint(view.room.roomId),before);
+  view=h.city(await h.sync(actor.client));
+  h.failure(await h.call(actor.client,'city:expansionAction',{command:'INCOME'},cityIdentity(view)),'INVALID_PHASE');
+});
 function legacyTurn(view: PlayingPlatformSnapshotV2) {
   assert.ok(view.game.gameType === "HANGUL_TILE" || view.game.gameType === "NUMBER_TILE" || view.game.gameType === "GEM_CARD");
   return view.game.gameType === "HANGUL_TILE" ? view.game.publicState.turn : view.game.turn;
@@ -230,6 +246,7 @@ test("CR02 investigation: two real socket clients resume unresolved v2 mark and 
 });
 
 test("P16 raw six-viewer network privacy spans secret draft, pending draw and both actor-private interference marks", async t => {
+  // Seed0 keeps CR-08 hidden after the current 68-card shuffle.
   // Only the injected random port is deterministic; no canonical state or server endpoint is edited.
   const actualNextInt = CryptoRandomSource.prototype.nextInt;
   t.mock.method(CryptoRandomSource.prototype, "nextInt", (max: number) => max === 0x1_0000_0000 ? 0 : actualNextInt(max));

@@ -180,9 +180,9 @@ for (const count of [2, 4, 6] as const) test(`CITY ${count}-player complete appl
   const completedDraftRounds = new Set<number>();
   let lastAccepted: Readonly<{ command: CityActionInput; move: BotMove; result: CityMutationResult }> | null = null;
   const beginning = await h.read();
-  assert.equal(beginning.game.state.rulesVersion, "city-rules-v2");
-  assert.equal(beginning.game.state.cardSetVersion, "city-cardset-v2");
-  assert.equal(beginning.game.state.roleSetVersion, "city-roles-v1");
+  assert.equal(beginning.game.state.rulesVersion, "city-rules-v3");
+  assert.equal(beginning.game.state.cardSetVersion, "city-cardset-v3");
+  assert.equal(beginning.game.state.roleSetVersion, "city-roles-v2");
   const expectedCards = beginning.game.state.cards.map(card => card.cardId);
   const seatOrder = beginning.game.state.seatOrder;
 
@@ -319,10 +319,13 @@ for (const count of [2, 4, 6] as const) test(`CITY ${count}-player complete appl
     });
     const buildingVP: number = templates.reduce((sum, template) => sum + template.victoryPoints, 0);
     const completionBonus: number = state.firstCompletion.playerId === player.playerId ? 4 : player.city.length >= 8 ? 2 : 0;
-    const categories = new Set(templates.map(template => template.category));
-    const ordinaryCount = [...categories].filter(category => category !== "LANDMARK").length;
-    const diversityBonus: number = categories.size === 5 || ordinaryCount === 3 && templates.some(template => template.templateId === "CB-LAN-05") ? 3 : 0;
-    const landmarkBonus = templates.some(template => template.templateId === "CB-LAN-06") ? ordinaryCount : 0;
+    const has = (id: string) => templates.some(t => t.templateId === id);
+    const alternatives: Array<{ diversity: number; special: number }> = ['LANDMARK','CIVIC','CULTURE','TRADE','GUARD'].map((haunted): { diversity: number; special: number } => {
+      const categories = templates.map(t => t.templateId === 'CB-SP-09' ? haunted : t.category);
+      return { diversity: new Set(categories).size === 5 ? 3 : 0,
+        special: (has('CB-SP-04') ? 2 : 0) + (has('CB-SP-10') ? player.gold : 0) + (has('CB-SP-15') ? player.hand.length : 0) + (has('CB-SP-27') && state.leaderPlayerId === player.playerId ? 5 : 0) + (has('CB-SP-30') ? categories.filter(c=>c==='LANDMARK').length : 0) };
+    }).sort((a,b)=>(b.diversity+b.special)-(a.diversity+a.special));
+    const diversityBonus: number = alternatives[0]!.diversity, landmarkBonus: number = alternatives[0]!.special;
     assert.equal(entry.landmarkBonus, landmarkBonus);
     assert.equal(entry.score, buildingVP + completionBonus + diversityBonus + landmarkBonus);
     assert.equal(entry.buildingVP, buildingVP);

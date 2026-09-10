@@ -1,3 +1,4 @@
+import { CITY_DEFAULT_SETTINGS } from "@hangul-rummikub/shared";
 import { projectWolf } from "../games/wolf-night/compatibility/projector.js";
 import type { GemCardV2GameProjector } from "../games/gem-card/compatibility/gem-card-v2-game-projector.js";
 import { projectCityRoleV2Game, type CityRoleV2GameProjector } from "../games/city-role/compatibility/city-role-v2-game-projector.js";
@@ -105,7 +106,7 @@ export class PlatformSnapshotV2Projector {
       }
       return v.parse(PlatformSnapshotV2Schema, {
         ...base,
-        room: { ...base.room, phase: "LOBBY", ...(input.room.gameType === "WOLF_NIGHT" ? { settings: input.room.settings ?? { roles: null, discussionSeconds: 180 } } : {}), ...(input.room.gameType === "SNEAKY_LUNCH" ? { settings: input.room.settings ?? { lunchboxCount: 3, difficulty: "NORMAL" } } : {}), ...(input.room.gameType === "DRAW_RELAY" ? {promptMode:input.room.promptMode ?? "MIXED",drawSeconds:input.room.drawSeconds ?? 90} : {}) },
+        room: { ...base.room, phase: "LOBBY", ...(input.room.gameType === "CITY_ROLE" ? { settings: input.room.settings ?? CITY_DEFAULT_SETTINGS } : {}), ...(input.room.gameType === "WOLF_NIGHT" ? { settings: input.room.settings ?? { roles: null, discussionSeconds: 180 } } : {}), ...(input.room.gameType === "SNEAKY_LUNCH" ? { settings: input.room.settings ?? { lunchboxCount: 3, difficulty: "NORMAL" } } : {}), ...(input.room.gameType === "DRAW_RELAY" ? {promptMode:input.room.promptMode ?? "MIXED",drawSeconds:input.room.drawSeconds ?? 90} : {}) },
         game: null,
       });
     }

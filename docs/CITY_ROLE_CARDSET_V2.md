@@ -1,6 +1,6 @@
 # CITY_ROLE cardset v2
 
-`city-cardset-v2`는 [v1 inventory](./CITY_ROLE_CARDSET_V1.md)의 §3에 있는 30 templates / 60 physical cards, 이름, ID, 비용, VP, 매수를 그대로 유지한다. 의미 변경은 아래 LANDMARK 능력 여섯 개뿐이다. [v2 규칙](./CITY_ROLE_GAME_RULES_V2.md)이 효과 authority다. v1 catalog/저장 기록에 이 의미를 소급 적용하지 않는다.
+초기 명소 v2 승인은 [v1 inventory](./CITY_ROLE_CARDSET_V1.md)의 §3에 있는 30 templates / 60 physical cards, 이름, ID, 비용, VP, 매수를 유지하고 아래 LANDMARK 능력 여섯 개를 변경했다. 현재 새 게임의 매수는 아래 2026-09-10 변경을 따른다. [v2 규칙](./CITY_ROLE_GAME_RULES_V2.md)이 효과 authority다. v1 catalog/저장 기록에 이 의미를 소급 적용하지 않는다.
 
 | Template | 이름 | Category | Cost | VP | Copies | v2 능력 |
 | --- | --- | --- | ---: | ---: | ---: | --- |
@@ -11,6 +11,24 @@
 | CB-LAN-05 | 달그림회랑 | LANDMARK | 4 | 4 | 2 | 다양성 전용 일반 category1 보완 |
 | CB-LAN-06 | 일곱길기념뜰 | LANDMARK | 5 | 5 | 2 | 실제 일반 category마다 종료+1,max4 |
 
-Category마다12장, printedVP36; 전체60장/180VP. Cost=VP, cost1..6의 매수12/14/10/12/10/2 유지. General48장에는 능력이 없다. Duplicate template city 제한, opaque physical ID와 deck/hand/pending/city/discard conservation은 동일하다. Runtime base inventory는 `cardset-v1.ts`의 불변 물리 데이터셋을 재사용하고, v2 해석은 `landmarks-v2.ts` 및 version-gated rule/result engine이 소유한다. 데이터 중복 복사나 v1 row 수정은 하지 않는다.
+## 기본 건물 매수 변경 — 2026-09-10 CONFIRMED
 
-이름/문구/아이콘/그림은 기존 자체 제작 provenance를 유지하며 새 외부 asset, 공식 카드 문구 또는 published deck 복사는 없다.
+사용자 요청으로 새 게임의 기본 건물을 **교역20 / 시정12 / 수비11 / 문화11**로 변경한다. 기존 30종의 이름·ID·비용·VP·능력은 유지하고 명소12장을 더해 **총66장**이다. 이 결정은 위 v1 기반 초기 승인 당시의 매수 유지 방침보다 우선한다.
+
+각 분류의 template ID 01–06 순서로 다음 매수를 사용한다. 분류 내부는 기존 종류를 유지하며 교역의 추가 매수를 분산하고 문화·수비는 최고비용 건물을 한 장 줄인다.
+
+| Category | 01 | 02 | 03 | 04 | 05 | 06 | 합계 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| TRADE (교역) | 4 | 4 | 3 | 3 | 3 | 3 | 20 |
+| CIVIC (시정) | 2 | 2 | 2 | 2 | 2 | 2 | 12 |
+| GUARD (수비) | 2 | 2 | 2 | 2 | 2 | 1 | 11 |
+| CULTURE (문화) | 2 | 2 | 2 | 2 | 2 | 1 | 11 |
+| LANDMARK (명소) | 2 | 2 | 2 | 2 | 2 | 2 | 12 |
+
+일반54장에는 특수 능력이 없다. Cost=VP, 전체 printed VP191, cost1..6 매수14/17/11/12/10/2다. 초기4장씩 배분 후 2–6인 deck 잔량은58/54/50/46/42장이다.
+
+`cardset-v2.ts`가 현재 매수를 소유하고 `cardset-v1.ts`의 원본 정의를 재사용한다. v1 원본 매수는 유지한다. 새 server start는66장만 생성하며, 기존 v1/v2의 완전한60장 저장 inventory도 계속 검증·진행한다. 기존 게임에 카드를 추가하거나 제거하지 않는다. v2에서 허용되는 inventory는 정확한 구형60장 또는 신형66장 분포뿐이며 혼합·누락·중복은 거절한다. 모든 zone은 해당 게임의 전체 inventory와 정확히 일치해야 한다. Wire version은 유지하고 v2 손패/카드 목록 및 교환 command 상한을66장으로 맞춘다. 서버와 웹은 함께 갱신해야 한다.
+
+카드 매수 변경의 실전 balance는 별도 플레이 검증이 필요하다.
+
+이름/문구/아이콘/그림은 기존 자체 제작 provenance를 유지한다. 이번 기본 category 총매수는 사용자가 제시한 원작 분포를 적용했으며, 개별 건물 이름·비용·능력이나 외부 asset을 추가하지 않았다.

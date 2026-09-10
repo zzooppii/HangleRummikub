@@ -1,3 +1,4 @@
+import type { CityExpansionClientCommand } from "@hangul-rummikub/shared";
 import type { WolfClientCommand } from "@hangul-rummikub/shared";
 import type { DrawClientCommand } from "@hangul-rummikub/shared";
 import type { SneakyClientCommand } from "@hangul-rummikub/shared";
@@ -230,6 +231,7 @@ export type LobbyAppState = Readonly<{
   rematchNumber: () => void;
   actDraw: (command: DrawClientCommand) => Promise<void>;
   actWolf: (command: WolfClientCommand) => Promise<void>;
+  actCityExpansion: (command: CityExpansionClientCommand) => Promise<void>;
   actSneaky: (command: SneakyClientCommand) => Promise<void>;
   collectGemResources: (selection: GemCollectSelectionDto) => void;
   purchaseGemCard: (source: GemPurchaseSourceDto) => void;
@@ -461,6 +463,21 @@ export function useLobbyApp(): LobbyAppState {
       storedSessionForCurrentRoute()?.credential.roomCode !== session.credential.roomCode) throw new Error("게임 연결이 변경되었습니다.");
     if (!ack.ok) {
       void requestLatestSnapshot();
+      throw new Error(getUserErrorMessage(ack.error.code));
+    }
+    applyWireSnapshot(ack.data.snapshot, session);
+  }
+
+  async function actCityExpansion(command: CityExpansionClientCommand): Promise<void> {
+    const client = clientRef.current, session = storedSessionForCurrentRoute();
+    if (!client?.connected || session === null || sessionReplacedRef.current || compatibleSnapshotRef.current?.kind !== "PLATFORM_V2_CITY_ROLE") throw new Error("연결을 확인하고 다시 시도해주세요.");
+    const ack = await client.actCityExpansion(command);
+    if (clientRef.current !== client || sessionReplacedRef.current || storedSessionForCurrentRoute()?.playerId !== session.playerId ||
+      storedSessionForCurrentRoute()?.credential.roomCode !== session.credential.roomCode) throw new Error("게임 연결이 변경되었습니다.");
+    if (!ack.ok) {
+      void requestLatestSnapshot();
+      // An old teacher frame is neither a bite nor a catch; restore the current view silently.
+
       throw new Error(getUserErrorMessage(ack.error.code));
     }
     applyWireSnapshot(ack.data.snapshot, session);
@@ -2953,6 +2970,7 @@ export function useLobbyApp(): LobbyAppState {
     actDraw,
     actWolf,
     actSneaky,
+    actCityExpansion,
     collectGemResources,
     purchaseGemCard,
     reserveGemCard,

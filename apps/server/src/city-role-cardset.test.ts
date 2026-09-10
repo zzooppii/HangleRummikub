@@ -1,3 +1,4 @@
+import { CITY_BUILDING_TEMPLATES_V2, CITY_CARD_COUNT_V2, createCityCardsV2, validateCityGameCards } from "./games/city-role/domain/cardset-v2.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -205,4 +206,31 @@ test("CITY versions, 8 original role names/order, and approved window durations 
   for (const value of ["CR-00", "CR-09", "CR01", "", 1, {}, null]) {
     assert.equal(isCityRoleId(value), false);
   }
+});
+
+
+test("CITY current deck has trade20/civic12/guard11/culture11 and unchanged landmark12", () => {
+  const cards = createCityCardsV2(Array.from({ length: CITY_CARD_COUNT_V2 }, (_, i) => parseBuildingCardId(`current-${i}`)));
+  assert.equal(CITY_CARD_COUNT_V2, 66);
+  assert.equal(new Set(cards.map(card => card.cardId)).size, 66);
+  assert.deepEqual(Object.fromEntries(CITY_CATEGORIES.map(category => [category,
+    cards.filter(card => getCityTemplate(card.templateId).category === category).length])),
+  { CIVIC: 12, CULTURE: 11, TRADE: 20, GUARD: 11, LANDMARK: 12 });
+  for (const template of CITY_BUILDING_TEMPLATES_V2) {
+    const { copies: _copies, ...definition } = template;
+    const { copies: _legacyCopies, ...legacyDefinition } = getCityTemplate(template.templateId);
+    assert.deepEqual(definition, legacyDefinition);
+    assert.equal(cards.filter(card => card.templateId === template.templateId).length, template.copies);
+  }
+  assert.equal(cards.reduce((sum, card) => sum + getCityTemplate(card.templateId).victoryPoints, 0), 191);
+  assert.deepEqual(validateCityGameCards(cards, "city-rules-v2"), cards);
+  assert.throws(() => validateCityGameCards(cards, "city-rules-v1"));
+  assert.throws(() => createCityCardsV2(suppliedCardIds()));
+  assert.throws(() => validateCityGameCards(cards.slice(1), "city-rules-v2"));
+  assert.throws(() => validateCityGameCards(cards.slice(0, 60), "city-rules-v2"));
+  assert.throws(() => validateCityGameCards(cards.map((card, i) => i === 0
+    ? { ...card, templateId: "CB-TRA-01" } : card), "city-rules-v2"));
+  const legacy = createCityCards(suppliedCardIds());
+  assert.deepEqual(validateCityGameCards(legacy, "city-rules-v1"), legacy);
+  assert.deepEqual(validateCityGameCards(legacy, "city-rules-v2"), legacy);
 });

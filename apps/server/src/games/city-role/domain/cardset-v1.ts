@@ -1,3 +1,4 @@
+import { CITY_SPECIAL_BUILDINGS, type CitySpecialId } from "./expansion-catalog.js";
 import { parseBuildingCardId, type BuildingCardId } from "./identity.js";
 
 export const CITY_CARDSET_VERSION = "city-cardset-v1";
@@ -39,14 +40,14 @@ const TEMPLATE_ROWS = [
   ["CB-LAN-06", "일곱길기념뜰", "LANDMARK", 5],
 ] as const satisfies readonly (readonly [string, string, CityCategory, number])[];
 
-export type BuildingTemplateId = (typeof TEMPLATE_ROWS)[number][0];
+export type BuildingTemplateId = (typeof TEMPLATE_ROWS)[number][0] | CitySpecialId;
 export type CityBuildingTemplate = Readonly<{
   templateId: BuildingTemplateId;
   name: string;
   category: CityCategory;
   cost: number;
   victoryPoints: number;
-  copies: 2;
+  copies: number;
 }>;
 export type CityBuildingCard = Readonly<{
   cardId: BuildingCardId;
@@ -60,14 +61,18 @@ export const CITY_BUILDING_TEMPLATES: readonly CityBuildingTemplate[] = Object.f
 );
 
 export function getCityTemplate(templateId: BuildingTemplateId): CityBuildingTemplate {
+  const special = CITY_SPECIAL_BUILDINGS.find(candidate => candidate.templateId === templateId);
+  if (special) return { ...special, category: "LANDMARK", victoryPoints: special.cost, copies: 1 };
   const template = CITY_BUILDING_TEMPLATES.find((candidate) => candidate.templateId === templateId);
   if (template === undefined) throw new Error("CITY building template is not in city-cardset-v1.");
   return template;
 }
 
 /** Validates a complete inventory, not a hand or deck zone on its own. */
-export function validateCityCards(cards: readonly CityBuildingCard[]): readonly CityBuildingCard[] {
-  if (cards.length !== 60) throw new Error("CITY inventory must contain exactly 60 physical cards.");
+export function validateCityCards(cards: readonly CityBuildingCard[],
+  templates: readonly CityBuildingTemplate[] = CITY_BUILDING_TEMPLATES): readonly CityBuildingCard[] {
+  const total = templates.reduce((sum, template) => sum + template.copies, 0);
+  if (cards.length !== total) throw new Error(`CITY inventory must contain exactly ${total} physical cards.`);
   const seen = new Set<BuildingCardId>();
   const templateCounts = new Map<BuildingTemplateId, number>();
   const detached = cards.map((card) => {
@@ -78,24 +83,26 @@ export function validateCityCards(cards: readonly CityBuildingCard[]): readonly 
     templateCounts.set(templateId, (templateCounts.get(templateId) ?? 0) + 1);
     return Object.freeze({ cardId, templateId });
   });
-  for (const template of CITY_BUILDING_TEMPLATES) {
+  for (const template of templates) {
     if (templateCounts.get(template.templateId) !== template.copies) {
-      throw new Error("CITY inventory must contain exactly two copies of each approved template.");
+      throw new Error("CITY inventory must contain the approved number of copies of each template.");
     }
   }
   return Object.freeze(detached);
 }
 
 /** Caller supplies opaque identities; this binding is not the shuffled deck order. */
-export function createCityCards(cardIds: readonly BuildingCardId[]): readonly CityBuildingCard[] {
-  if (cardIds.length !== 60) throw new Error("CITY card creation requires exactly 60 supplied identities.");
+export function createCityCards(cardIds: readonly BuildingCardId[],
+  templates: readonly CityBuildingTemplate[] = CITY_BUILDING_TEMPLATES): readonly CityBuildingCard[] {
+  const total = templates.reduce((sum, template) => sum + template.copies, 0);
+  if (cardIds.length !== total) throw new Error(`CITY card creation requires exactly ${total} supplied identities.`);
   const cards: CityBuildingCard[] = [];
-  for (const template of CITY_BUILDING_TEMPLATES) {
+  for (const template of templates) {
     for (let copy = 0; copy < template.copies; copy += 1) {
       const cardId = cardIds[cards.length];
       if (cardId === undefined) throw new Error("CITY physical card identity is missing.");
       cards.push({ cardId, templateId: template.templateId });
     }
   }
-  return validateCityCards(cards);
+  return validateCityCards(cards, templates);
 }

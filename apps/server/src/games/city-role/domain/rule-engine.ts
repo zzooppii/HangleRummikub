@@ -1,7 +1,11 @@
-import { CITY_CARDSET_VERSION, getCityTemplate, validateCityCards, type CityBuildingCard } from "./cardset-v1.js";
+import { expandedBuild, expandedAction, expandedAfterResources, expandedEnter, expandedEnd, expandedBeforeResolution, expandedCloseRound, initialExpansion, expandedValidateAbility, expandedTimeout, expandedForfeit, expandedFinishPending } from "./expansion-engine.js";
+import type { CityExpansionAction } from "./expansion-state.js";
+import type { CityExpansionSettings, CitySpecialId } from "./expansion-catalog.js";
+import { validateCityGameCards } from "./cardset-v2.js";
+import { CITY_CARDSET_VERSION, getCityTemplate, type CityBuildingCard } from "./cardset-v1.js";
 import { cloneCityGameState, type CityActionWindow, type CityFinishReason, type CityGameState, type CityPlayerState, type CityRound, type CityWindow } from "./game-state.js";
 import { parseCityActionId, parseCityGameId, parseCityPlayerId, type BuildingCardId, type CityActionId, type CityGameId, type CityPlayerId } from "./identity.js";
-import { CITY_ROLE_IDS, CITY_ROLESET_VERSION, CITY_RULES_VERSION, cityRoleOrder, isCityRoleId, type CityRoleId } from "./role.js";
+import { CITY_ROLE_IDS, CITY_ALL_ROLE_IDS, CITY_ROLESET_VERSION, CITY_RULES_VERSION, cityRoleOrder, isCityRoleId, type CityRoleId } from "./role.js";
 import { calculateCityResult } from "./result-engine.js";
 import { assertCityGameState } from "./state-validator.js";
 import { CITY_RULES_V2, CITY_CARDSET_V2, initialCityLandmarkHistory, cityLandmarkDiscount, type CityLandmarkHistory } from "./landmarks-v2.js";
@@ -10,7 +14,7 @@ export type CityRuleFailure = "INVALID_SETUP" | "INVALID_STATE" | "STALE_ACTION"
 export class CityRuleError extends Error {
   constructor(readonly code: CityRuleFailure) { super(code); this.name = "CityRuleError"; }
 }
-function requireRule(condition: boolean, code: CityRuleFailure): asserts condition {
+export function requireRule(condition: boolean, code: CityRuleFailure): asserts condition {
   if (!condition) throw new CityRuleError(code);
 }
 
@@ -20,6 +24,8 @@ export type CityEntropy = Readonly<{
   nextActionId?: CityActionId;
   nextRoleOrder?: readonly CityRoleId[];
   discardOrder?: readonly BuildingCardId[];
+  shuffleCards?: (cards: readonly BuildingCardId[]) => readonly BuildingCardId[];
+  randomIndex?: (length: number) => number;
 }>;
 export type CityActionContext = Readonly<{ gameId: CityGameId; actionId: CityActionId; playerId: CityPlayerId }>;
 export type CityAbility =
@@ -28,6 +34,7 @@ export type CityAbility =
   | Readonly<{ kind: "REPLACE_OWN_CARDS"; cardIds: readonly BuildingCardId[] }>
   | Readonly<{ kind: "DESTROY_BUILDING"; targetPlayerId: CityPlayerId; cardId: BuildingCardId }>;
 export type CityAction =
+  | Readonly<{ kind: "EXPANSION"; action: CityExpansionAction }>
   | Readonly<{ kind: "SELECT_ROLE"; roleId: CityRoleId; discardRoleId?: CityRoleId }>
   | Readonly<{ kind: "TAKE_INCOME" | "DRAW_BUILDING_CARDS" | "END_TURN" }>
   | Readonly<{ kind: "CHOOSE_BUILDING_CARD" | "BUILD"; cardId: BuildingCardId }>
@@ -35,9 +42,9 @@ export type CityAction =
 
 // Only the detached candidate's top-level fields are mutable. Every nested edit
 // below replaces a concrete collection/value; the caller's graph is never edited.
-type CityWorkingState = { -readonly [K in keyof CityGameState]: CityGameState[K] };
+export type CityWorkingState = { -readonly [K in keyof CityGameState]: CityGameState[K] };
 
-function asState(s: CityWorkingState): CityGameState {
+export function asState(s: CityWorkingState): CityGameState {
   if (s.result !== null) return { ...s, window: null, result: s.result };
   if (s.window === null) throw new CityRuleError("INVALID_STATE");
   return { ...s, window: s.window, result: null };
@@ -52,15 +59,15 @@ function candidate(state: CityGameState): CityWorkingState {
   requireRule(state.result === null, "ALREADY_FINISHED");
   return { ...cloneCityGameState(state) };
 }
-function player(s: CityWorkingState, id: CityPlayerId): CityPlayerState {
+export function player(s: CityWorkingState, id: CityPlayerId): CityPlayerState {
   const found = s.players.find(p => p.playerId === id);
   requireRule(found !== undefined, "WRONG_ACTOR");
   return found;
 }
-function putPlayer(s: CityWorkingState, value: CityPlayerState): void {
+export function putPlayer(s: CityWorkingState, value: CityPlayerState): void {
   s.players = s.players.map(p => p.playerId === value.playerId ? value : p);
 }
-function addGold(s: CityWorkingState, id: CityPlayerId, amount: number): void {
+export function addGold(s: CityWorkingState, id: CityPlayerId, amount: number): void {
   const p = player(s, id), gold = p.gold + amount;
   requireRule(Number.isSafeInteger(gold) && gold >= 0, "INSUFFICIENT_GOLD");
   putPlayer(s, { ...p, gold });
@@ -68,7 +75,7 @@ function addGold(s: CityWorkingState, id: CityPlayerId, amount: number): void {
 function eligible(s: CityWorkingState): readonly CityPlayerId[] {
   return s.seatOrder.filter(id => !player(s, id).forfeited);
 }
-function template(s: CityWorkingState, id: BuildingCardId) {
+export function template(s: CityWorkingState, id: BuildingCardId) {
   const card = s.cards.find(c => c.cardId === id);
   requireRule(card !== undefined, "INVALID_CARD");
   return getCityTemplate(card.templateId);
@@ -77,7 +84,7 @@ function sameSet(actual: readonly string[], expected: readonly string[]): boolea
   return actual.length === expected.length && new Set(actual).size === actual.length && new Set(expected).size === expected.length && expected.every(id => actual.includes(id));
 }
 function makeRound(s: CityWorkingState, roleOrder: readonly CityRoleId[] | undefined, roundNumber: number): CityRound {
-  requireRule(roleOrder !== undefined && sameSet(roleOrder, CITY_ROLE_IDS), "INVALID_ENTROPY");
+  requireRule(roleOrder !== undefined && sameSet(roleOrder, s.expansion?.settings.roles.length === 9 ? CITY_ALL_ROLE_IDS : CITY_ROLE_IDS), "INVALID_ENTROPY");
   const seats = eligible(s);
   requireRule(seats.length >= 2 && seats.length <= 6, "INVALID_STATE");
   const start = seats.indexOf(s.leaderPlayerId);
@@ -85,15 +92,16 @@ function makeRound(s: CityWorkingState, roleOrder: readonly CityRoleId[] | undef
   const ordered = [...seats.slice(start), ...seats.slice(0, start)];
   const rolesPerPlayer = seats.length <= 3 ? 2 : 1;
   const pickQueue = rolesPerPlayer === 2 ? [...ordered, ...ordered] : ordered;
-  const publicCount = s.roleDraftVersion === "city-draft-v2" && seats.length === 2 ? 0 : Math.max(0, 8 - pickQueue.length - 2);
+  const publicCount = s.roleDraftVersion === "city-draft-v2" && seats.length === 2 ? 0 : Math.max(0, (s.expansion?.settings.roles.length ?? 8) - pickQueue.length - 2);
   // CR-04 may be hidden, but must never be removed face-up. Keep the
   // injected shuffle order and exact removal count without drawing new entropy.
-  const remaining = roleOrder.slice(1);
+  const hiddenCount = s.expansion && seats.length === 2 && s.roleDraftVersion === "city-draft-v2" ? roleOrder.length - 7 : 1;
+  const remaining = roleOrder.slice(hiddenCount);
   const publicRemoved: readonly CityRoleId[] = remaining.filter(id => id !== "CR-04").slice(0, publicCount);
   return {
     roundNumber, draftLeaderPlayerId: s.leaderPlayerId, eligibleAtSetup: ordered,
     rolesPerPlayer, pickQueue, selectionCursor: 0,
-    hiddenRemoved: roleOrder.slice(0, 1), publicRemoved,
+    hiddenRemoved: roleOrder.slice(0, hiddenCount), publicRemoved,
     available: remaining.filter(id => !publicRemoved.includes(id)), unselected: [], assignments: [],
     resolutionCursor: 0, protectedPlayerIds: [], ended: false,
   };
@@ -102,7 +110,7 @@ function nextToken(entropy: CityEntropy, previous: CityActionId | undefined): Ci
   requireRule(entropy.nextActionId !== undefined && entropy.nextActionId !== previous, "INVALID_ENTROPY");
   try { return parseCityActionId(entropy.nextActionId); } catch { throw new CityRuleError("INVALID_ENTROPY"); }
 }
-function draw(s: CityWorkingState, count: number, entropy: CityEntropy): readonly BuildingCardId[] {
+export function draw(s: CityWorkingState, count: number, entropy: CityEntropy): readonly BuildingCardId[] {
   const first = s.deck.slice(0, count);
   s.deck = s.deck.slice(first.length);
   if (first.length === count || s.discard.length === 0) return first;
@@ -120,46 +128,50 @@ function checkedWindow(s: CityWorkingState, context: CityActionContext): CityWin
   requireRule(window.activePlayerId === context.playerId && !player(s, context.playerId).forfeited, "WRONG_ACTOR");
   return window;
 }
-function actionWindow(s: CityWorkingState): CityActionWindow {
+export function actionWindow(s: CityWorkingState): CityActionWindow {
   requireRule(s.window?.kind === "ROLE_ACTION", "INVALID_PHASE");
   return s.window;
 }
-function readyAction(s: CityWorkingState): CityActionWindow {
+export function readyAction(s: CityWorkingState): CityActionWindow {
   const w = actionWindow(s);
   requireRule(s.pendingChoice === null, "PENDING_CHOICE");
   requireRule(w.acquisition === "COMPLETE", "ACQUISITION_REQUIRED");
   return w;
 }
-function completeAcquisition(s: CityWorkingState): void {
+function completeAcquisition(s: CityWorkingState, entropy: CityEntropy): void {
   const w = actionWindow(s);
   s.window = { ...w, acquisition: "COMPLETE" };
   s.pendingChoice = null;
-  if (w.activeRoleId === "CR-06") addGold(s, w.activePlayerId, 1);
+  if (s.expansion) expandedAfterResources(s, entropy);
+  else if (w.activeRoleId === "CR-06") addGold(s, w.activePlayerId, 1);
 }
-function takeIncome(s: CityWorkingState): void {
+function takeIncome(s: CityWorkingState, entropy: CityEntropy): void {
   const w = actionWindow(s);
   requireRule(w.acquisition === "NOT_TAKEN", "ACQUISITION_TAKEN");
-  addGold(s, w.activePlayerId, 2);
-  completeAcquisition(s);
+  addGold(s, w.activePlayerId, 2 + (s.expansion && player(s, w.activePlayerId).city.some(id => template(s, id).templateId === "CB-SP-07") ? 1 : 0));
+  completeAcquisition(s, entropy);
 }
 function drawBuildingCards(s: CityWorkingState, entropy: CityEntropy): void {
   const w = actionWindow(s);
   requireRule(w.acquisition === "NOT_TAKEN", "ACQUISITION_TAKEN");
   requireRule(s.deck.length + s.discard.length > 0, "EMPTY_SUPPLY");
-  const cards = draw(s, 2, entropy);
+  const cards = draw(s, s.expansion && player(s, w.activePlayerId).city.some(id => template(s, id).templateId === "CB-SP-19") ? 3 : 2, entropy);
+  if (s.expansion && player(s, w.activePlayerId).city.some(id => template(s, id).templateId === "CB-SP-14")) {
+    const p = player(s, w.activePlayerId); putPlayer(s, { ...p, hand: [...p.hand, ...cards] }); completeAcquisition(s, entropy); return;
+  }
   s.window = { ...w, acquisition: "PENDING" };
   s.pendingChoice = {
     kind: "DRAW_BUILDING", ownerPlayerId: w.activePlayerId, actionId: w.actionId, roleId: w.activeRoleId, cards,
   };
 }
-function chooseBuildingCard(s: CityWorkingState, cardId: BuildingCardId): void {
+function chooseBuildingCard(s: CityWorkingState, cardId: BuildingCardId, entropy: CityEntropy): void {
   const w = actionWindow(s), choice = s.pendingChoice;
   requireRule(w.acquisition === "PENDING" && choice !== null, "INVALID_PHASE");
   requireRule(choice.cards.includes(cardId), "INVALID_CARD");
   const p = player(s, w.activePlayerId);
   putPlayer(s, { ...p, hand: [...p.hand, cardId] });
   s.deck = [...s.deck, ...choice.cards.filter(id => id !== cardId)];
-  completeAcquisition(s);
+  completeAcquisition(s, entropy);
 }
 function updateLandmarkHistory(s: CityWorkingState, history: CityLandmarkHistory): void {
   requireRule(s.rulesVersion === CITY_RULES_V2 && s.landmarkHistory !== undefined, "INVALID_STATE");
@@ -170,6 +182,7 @@ function expireStaircase(s: CityWorkingState, playerId: CityPlayerId): void {
   if (history !== undefined) updateLandmarkHistory(s, { ...history, staircaseRemaining: 0 });
 }
 function build(s: CityWorkingState, cardId: BuildingCardId, entropy: CityEntropy): void {
+  if (s.expansion) { expandedBuild(s, { command: "BUILD", cardId }, entropy); return; }
   const w = readyAction(s), p = player(s, w.activePlayerId);
   requireRule(p.hand.includes(cardId), "INVALID_CARD");
   const card = template(s, cardId);
@@ -203,13 +216,14 @@ function build(s: CityWorkingState, cardId: BuildingCardId, entropy: CityEntropy
   }
 }
 function useAbility(s: CityWorkingState, ability: CityAbility, entropy: CityEntropy): void {
+  if (s.expansion) expandedValidateAbility(s, ability);
   const w = readyAction(s), p = player(s, w.activePlayerId);
   requireRule(!w.abilityUsed, "ABILITY_UNAVAILABLE");
   switch (ability.kind) {
     case "MARK_ROLE_DISABLED":
     case "MARK_ROLE_GOLD_TRANSFER": {
       requireRule(w.activeRoleId === (ability.kind === "MARK_ROLE_DISABLED" ? "CR-01" : "CR-02"), "ABILITY_UNAVAILABLE");
-      requireRule(isCityRoleId(ability.targetRoleId) && cityRoleOrder(ability.targetRoleId) > cityRoleOrder(w.activeRoleId), "INVALID_TARGET");
+      requireRule((isCityRoleId(ability.targetRoleId) || s.expansion !== undefined && ability.targetRoleId === "CR-09") && cityRoleOrder(ability.targetRoleId) > cityRoleOrder(w.activeRoleId), "INVALID_TARGET");
       // No hidden owner/removal/disable lookup: all higher roles have identical admission.
       s.marks = [...s.marks, { kind: ability.kind === "MARK_ROLE_DISABLED" ? "DISABLE" : "GOLD_TRANSFER",
         sourcePlayerId: p.playerId, targetRoleId: ability.targetRoleId, status: "UNRESOLVED" }];
@@ -228,7 +242,8 @@ function useAbility(s: CityWorkingState, ability: CityAbility, entropy: CityEntr
       requireRule(ability.cardIds.length > 0 && new Set(ability.cardIds).size === ability.cardIds.length && ability.cardIds.every(id => p.hand.includes(id)), "INVALID_CARD");
       // E03 validation precedes every card/RNG operation. Discard-first is intentional.
       const retained = p.hand.filter(id => !ability.cardIds.includes(id));
-      s.discard = [...s.discard, ...ability.cardIds];
+      if (s.expansion) s.deck = [...s.deck, ...ability.cardIds];
+      else s.discard = [...s.discard, ...ability.cardIds];
       const drawn = draw(s, ability.cardIds.length, entropy);
       requireRule(drawn.length === ability.cardIds.length, "EMPTY_SUPPLY");
       putPlayer(s, { ...p, hand: [...retained, ...drawn] });
@@ -257,7 +272,7 @@ function setAssignment(s: CityWorkingState, roleId: CityRoleId, changes: Partial
   s.round = { ...s.round, assignments: s.round.assignments.map(a => a.roleId === roleId ? { ...a, ...changes } : a) };
 }
 function activeMarks(s: CityWorkingState, roleId: CityRoleId, owner: CityPlayerId) {
-  return s.marks.filter(m => m.targetRoleId === roleId && m.status === "UNRESOLVED" && m.sourcePlayerId !== owner && !player(s, m.sourcePlayerId).forfeited);
+  return s.marks.filter(m => m.targetRoleId === roleId && m.status === "UNRESOLVED" && (s.expansion !== undefined || m.sourcePlayerId !== owner) && !player(s, m.sourcePlayerId).forfeited);
 }
 function disabled(s: CityWorkingState, roleId: CityRoleId, owner: CityPlayerId): boolean {
   return activeMarks(s, roleId, owner).some(m => m.kind === "DISABLE");
@@ -285,6 +300,10 @@ function enterRole(s: CityWorkingState, roleId: CityRoleId, owner: CityPlayerId,
     }
   }
   resolveMarks(s, roleId);
+  if (s.expansion) {
+    s.window = { kind: "ROLE_ACTION", actionId, activePlayerId: owner, activeRoleId: roleId, acquisition: "NOT_TAKEN", abilityUsed: false, buildingsBuilt: 0 };
+    expandedEnter(s, entropy); return;
+  }
   if (roleId === "CR-04") s.leaderPlayerId = owner;
   if (roleId === "CR-05") s.round = { ...s.round, protectedPlayerIds: [...s.round.protectedPlayerIds, owner] };
   const category = roleId === "CR-04" ? "CIVIC" : roleId === "CR-05" ? "CULTURE" : roleId === "CR-06" ? "TRADE" : roleId === "CR-08" ? "GUARD" : null;
@@ -296,15 +315,18 @@ function enterRole(s: CityWorkingState, roleId: CityRoleId, owner: CityPlayerId,
   s.window = { kind: "ROLE_ACTION", actionId, activePlayerId: owner, activeRoleId: roleId,
     acquisition: "NOT_TAKEN", abilityUsed: false, buildingsBuilt: 0 };
 }
-function closeRound(s: CityWorkingState): void {
+function closeRound(s: CityWorkingState, entropy: CityEntropy): void {
+  if (s.round.ended) return;
+  if (s.expansion) expandedCloseRound(s, entropy);
   s.revealedRoles = [...s.revealedRoles, ...s.round.assignments
     .filter(a => a.status === "DISABLED" && !a.revealed)
     .map(a => ({ roundNumber: s.round.roundNumber, roleId: a.roleId, playerId: a.playerId, kind: "DISABLED" as const }))];
-  s.round = { ...s.round, ended: true, resolutionCursor: 8, protectedPlayerIds: [],
+  s.round = { ...s.round, ended: true, resolutionCursor: s.expansion?.settings.roles.length ?? 8, protectedPlayerIds: [],
     assignments: s.round.assignments.map(a => a.status === "DISABLED" ? { ...a, revealed: true } : a) };
   s.marks = [];
 }
 function finish(s: CityWorkingState, reason: CityFinishReason): void {
+  if (s.expansion) expandedFinishPending(s);
   // Result calculation reads canonical assets only; the former window supplies
   // no timer/revision/policy information to scoring.
   const scoringState = { ...s, window: null, result: { reason, rankings: [] } };
@@ -351,12 +373,13 @@ function selectRole(s: CityWorkingState, roleId: CityRoleId, discardRoleId?: Cit
   s.window = null;
   skipAbsentPicks(s);
 }
-function endRole(s: CityWorkingState): void {
+export function endRole(s: CityWorkingState, entropy: CityEntropy = {}): void {
   const w = readyAction(s);
+  if (s.expansion) expandedEnd(s, entropy);
   setAssignment(s, w.activeRoleId, { status: "RESOLVED" });
   s.window = null;
 }
-function advance(s: CityWorkingState, entropy: CityEntropy, previous: CityActionId): void {
+export function advance(s: CityWorkingState, entropy: CityEntropy, previous: CityActionId): void {
   if (s.result !== null || terminalEligibility(s)) return;
   if (s.window !== null) return;
   skipAbsentPicks(s);
@@ -364,7 +387,8 @@ function advance(s: CityWorkingState, entropy: CityEntropy, previous: CityAction
     s.window = { kind: "ROLE_SELECTION", actionId: nextToken(entropy, previous), activePlayerId: s.round.pickQueue[s.round.selectionCursor]! };
     return;
   }
-  for (const roleId of CITY_ROLE_IDS) {
+  if (s.expansion && expandedBeforeResolution(s, entropy, previous)) return;
+  for (const roleId of (s.expansion?.settings.roles.length === 9 ? CITY_ALL_ROLE_IDS : CITY_ROLE_IDS)) {
     if (cityRoleOrder(roleId) <= s.round.resolutionCursor) continue;
     const assignment = s.round.assignments.find(a => a.roleId === roleId);
     if (assignment === undefined || assignment.status === "TOMBSTONED" || player(s, assignment.playerId).forfeited || disabled(s, roleId, assignment.playerId)) {
@@ -374,7 +398,8 @@ function advance(s: CityWorkingState, entropy: CityEntropy, previous: CityAction
     enterRole(s, roleId, assignment.playerId, nextToken(entropy, previous), entropy);
     return;
   }
-  closeRound(s);
+  closeRound(s, entropy);
+  if (s.window !== null) return;
   if (s.firstCompletion !== null) { finish(s, "CITY_COMPLETION_ROUND_END"); return; }
   s.round = makeRound(s, entropy.nextRoleOrder, s.round.roundNumber + 1);
   s.window = { kind: "ROLE_SELECTION", actionId: nextToken(entropy, previous), activePlayerId: s.round.pickQueue[0]! };
@@ -385,11 +410,12 @@ export function createInitialCityGameState(input: Readonly<{
   cards: readonly CityBuildingCard[]; deck: readonly BuildingCardId[];
   initialHands: readonly Readonly<{ playerId: CityPlayerId; cardIds: readonly BuildingCardId[] }>[];
   actionId: CityActionId; roleOrder: readonly CityRoleId[];
-  rulesVersion?: "city-rules-v1" | "city-rules-v2";
+  rulesVersion?: "city-rules-v1" | "city-rules-v2" | "city-rules-v3";
+  expansionSettings?: CityExpansionSettings; specialIds?: readonly CitySpecialId[];
   roleDraftVersion?: "city-draft-v2";
 }>): CityGameState {
   try {
-    requireRule(input.rulesVersion === undefined || input.rulesVersion === "city-rules-v1" || input.rulesVersion === CITY_RULES_V2, "INVALID_SETUP");
+    requireRule(input.rulesVersion === undefined || input.rulesVersion === "city-rules-v1" || input.rulesVersion === CITY_RULES_V2 || input.rulesVersion === "city-rules-v3", "INVALID_SETUP");
     requireRule(input.playerIds.length >= 2 && input.playerIds.length <= 6 && sameSet(input.seatOrder, input.playerIds), "INVALID_SETUP");
     requireRule(input.initialHands.length === input.playerIds.length && sameSet(input.initialHands.map(h => h.playerId), input.playerIds), "INVALID_SETUP");
     const players = input.playerIds.map(id => {
@@ -402,7 +428,8 @@ export function createInitialCityGameState(input: Readonly<{
       ...(input.roleDraftVersion === undefined ? {} : { roleDraftVersion: input.roleDraftVersion }),
       ...(input.rulesVersion === CITY_RULES_V2 ? { rulesVersion: CITY_RULES_V2, cardSetVersion: CITY_CARDSET_V2,
         landmarkHistory: players.map(p => initialCityLandmarkHistory(p.playerId)) } : {}),
-      cards: validateCityCards(input.cards), players, seatOrder: [...input.seatOrder], leaderPlayerId: input.seatOrder[0]!,
+      ...(input.rulesVersion === "city-rules-v3" ? { rulesVersion: "city-rules-v3" as const, cardSetVersion: "city-cardset-v3" as const, roleSetVersion: "city-roles-v2" as const, expansion: initialExpansion(input.expansionSettings, input.specialIds) } : {}),
+      cards: validateCityGameCards(input.cards, input.rulesVersion ?? CITY_RULES_VERSION), players, seatOrder: [...input.seatOrder], leaderPlayerId: input.seatOrder[0]!,
       deck: [...input.deck], discard: [], marks: [], revealedRoles: [], pendingChoice: null, firstCompletion: null, result: null,
       window: { kind: "ROLE_SELECTION", actionId: parseCityActionId(input.actionId), activePlayerId: input.seatOrder[0]! },
       round: { roundNumber: 1, draftLeaderPlayerId: input.seatOrder[0]!, eligibleAtSetup: [], rolesPerPlayer: 1, pickQueue: [], selectionCursor: 0, available: [], publicRemoved: [], hiddenRemoved: [], unselected: [], assignments: [], resolutionCursor: 0, protectedPlayerIds: [], ended: false },
@@ -419,22 +446,24 @@ export function applyCityAction(state: CityGameState, context: CityActionContext
   const s = candidate(state);
   const previous = checkedWindow(s, context).actionId;
   switch (action.kind) {
+    case "EXPANSION": expandedAction(s, action.action, entropy); if (s.window === null) advance(s, entropy, previous); break;
     case "SELECT_ROLE": selectRole(s, action.roleId, action.discardRoleId); advance(s, entropy, previous); break;
-    case "TAKE_INCOME": takeIncome(s); break;
+    case "TAKE_INCOME": takeIncome(s, entropy); break;
     case "DRAW_BUILDING_CARDS": drawBuildingCards(s, entropy); break;
-    case "CHOOSE_BUILDING_CARD": chooseBuildingCard(s, action.cardId); break;
+    case "CHOOSE_BUILDING_CARD": chooseBuildingCard(s, action.cardId, entropy); break;
     case "BUILD": build(s, action.cardId, entropy); break;
     case "USE_ROLE_ABILITY": useAbility(s, action.ability, entropy); break;
-    case "END_TURN": endRole(s); advance(s, entropy, previous); break;
+    case "END_TURN": endRole(s, entropy); advance(s, entropy, previous); break;
     default: throw new CityRuleError("INVALID_PHASE");
   }
   return commit(s);
 }
 
-function cleanForfeits(s: CityWorkingState, ids: readonly CityPlayerId[]): void {
+function cleanForfeits(s: CityWorkingState, ids: readonly CityPlayerId[], entropy: CityEntropy): void {
   for (const id of ids) {
     const p = player(s, id);
     requireRule(!p.forfeited, "WRONG_ACTOR");
+    if (s.expansion) expandedForfeit(s, id, entropy);
     const pending = s.pendingChoice?.ownerPlayerId === id ? s.pendingChoice.cards : [];
     if (s.pendingChoice?.ownerPlayerId === id) s.pendingChoice = null;
     s.discard = [...s.discard, ...p.hand, ...pending];
@@ -454,7 +483,7 @@ function cleanForfeits(s: CityWorkingState, ids: readonly CityPlayerId[]): void 
 export function forfeitCityPlayers(state: CityGameState, playerIds: readonly CityPlayerId[], entropy: CityEntropy = {}): CityGameState {
   const s = candidate(state), previous = state.window?.actionId;
   requireRule(previous !== undefined && playerIds.length > 0 && new Set(playerIds).size === playerIds.length, "WRONG_ACTOR");
-  cleanForfeits(s, playerIds);
+  cleanForfeits(s, playerIds, entropy);
   advance(s, entropy, previous);
   return commit(s);
 }
@@ -465,18 +494,19 @@ export function timeoutCityWindow(state: CityGameState, context: CityActionConte
     requireRule(input.selectedRoleId !== undefined, "INVALID_ROLE");
     selectRole(s, input.selectedRoleId, input.discardRoleId);
   } else {
-    if (w.acquisition === "NOT_TAKEN") takeIncome(s);
-    else if (s.pendingChoice !== null) chooseBuildingCard(s, s.pendingChoice.cards[0]!);
-    endRole(s);
+    if (w.acquisition === "NOT_TAKEN") takeIncome(s, entropy);
+    else if (s.pendingChoice !== null) chooseBuildingCard(s, s.pendingChoice.cards[0]!, entropy);
+    if (s.expansion) expandedTimeout(s, entropy);
+    if (s.window !== null && s.window.activePlayerId === context.playerId) endRole(s, entropy);
   }
   // E02: inspect terminal completion without entering/rewarding a new actor or
   // preparing the next round with the pre-forfeit roster.
-  if (!terminalEligibility(s) && s.round.selectionCursor === s.round.pickQueue.length && !hasRemainingRole(s) && s.firstCompletion !== null) {
-    for (const roleId of CITY_ROLE_IDS) if (cityRoleOrder(roleId) > s.round.resolutionCursor) skipRole(s, roleId);
-    closeRound(s);
-    finish(s, "CITY_COMPLETION_ROUND_END");
+  if (s.window === null && !terminalEligibility(s) && s.round.selectionCursor === s.round.pickQueue.length && !hasRemainingRole(s) && s.firstCompletion !== null) {
+    for (const roleId of CITY_ALL_ROLE_IDS.slice(0, s.expansion?.settings.roles.length ?? 8)) if (cityRoleOrder(roleId) > s.round.resolutionCursor) skipRole(s, roleId);
+    closeRound(s, entropy);
+    if (s.window === null) finish(s, "CITY_COMPLETION_ROUND_END");
   }
-  if (s.result === null && input.offline && player(s, context.playerId).offlineTimeoutStreak >= 3) cleanForfeits(s, [context.playerId]);
+  if (s.result === null && input.offline && player(s, context.playerId).offlineTimeoutStreak >= 3) cleanForfeits(s, [context.playerId], entropy);
   advance(s, entropy, w.actionId);
   return commit(s);
 }

@@ -98,7 +98,7 @@ test("CITY command envelopes reject missing/stale-shape identity and client auth
 });
 test("CITY ability is a closed five-variant payload and zero/duplicate self replacement fails", () => {
   for (const payload of [{ ability: "MARK_ROLE_DISABLED", targetRoleId: "CR-08" }, { ability: "MARK_ROLE_GOLD_TRANSFER", targetRoleId: "CR-07" }, { ability: "EXCHANGE_HANDS", targetPlayerId: "P1" }, { ability: "REPLACE_OWN_CARDS", cardIds: ["card1"] }, { ability: "DESTROY_BUILDING", targetPlayerId: "P1", cardId: "card1" }]) assert.equal(v.safeParse(CityRoleAbilityPayloadSchema, payload).success, true);
-  for (const payload of [{ ability: "REPLACE_OWN_CARDS", cardIds: [] }, { ability: "REPLACE_OWN_CARDS", cardIds: ["a", "a"] }, { ability: "ARBITRARY" }, { ability: "MARK_ROLE_DISABLED", targetRoleId: "CR-09" }, { ability: "EXCHANGE_HANDS", targetPlayerId: "P1", gold: 2 }]) assert.equal(v.safeParse(CityRoleAbilityPayloadSchema, payload).success, false);
+  for (const payload of [{ ability: "REPLACE_OWN_CARDS", cardIds: [] }, { ability: "REPLACE_OWN_CARDS", cardIds: ["a", "a"] }, { ability: "ARBITRARY" }, { ability: "MARK_ROLE_DISABLED", targetRoleId: "CR-10" }, { ability: "EXCHANGE_HANDS", targetPlayerId: "P1", gold: 2 }]) assert.equal(v.safeParse(CityRoleAbilityPayloadSchema, payload).success, false);
 });
 test("CITY ACK contains committed identity only and no private replay snapshot", () => {
   const ack = { scope: "ROOM", requestId: "request", ok: true, serverTime: 1000, versions: { roomRevision: 0, presenceVersion: 0, gameRevision: 2 }, data: { gameId: "city-game", committedGameRevision: 2 } };
@@ -177,4 +177,25 @@ test("CITY no-eligible finished result has no winners and no leaked pending card
     result: { ...value.game.result, reason: "NO_ELIGIBLE_PLAYERS", winnerPlayerIds: [], rankings: value.game.result.rankings.map(row => ({ ...row, rank: 1, forfeited: true, winner: false })) } };
   assert.equal(v.safeParse(CityRoleFinishedPlatformSnapshotV2Schema, { ...value, game }).success, true);
   assert.equal(v.safeParse(CityRoleFinishedPlatformSnapshotV2Schema, { ...value, game: { ...game, privateState: { ...game.privateState, pendingCards: [card()] } } }).success, false);
+});
+
+test("CITY expanded deck accepts a 66-card v2 hand and replacement, but rejects overflow", () => {
+  const base = selection();
+  const hand = Array.from({ length: 66 }, (_, i) => card(`expanded-${i}`));
+  const snapshot = { ...base, game: { ...base.game, rulesVersion: "city-rules-v2", cardSetVersion: "city-cardset-v2",
+    landmarkHistory: base.game.playerStates.map(p => ({ playerId: p.playerId, gardenUsed: false, sundialUsed: false,
+      staircaseInitialized: false, staircaseRemaining: 0, staircaseSpent: 0, lastDiscountRound: null })),
+    playerStates: base.game.playerStates.map((p, i) => ({ ...p, handCount: i === 0 ? 66 : 0 })),
+    privateState: { ...base.game.privateState, hand },
+  } };
+  assert.equal(v.safeParse(CityRolePlayingPlatformSnapshotV2Schema, snapshot).success, true);
+  assert.equal(v.safeParse(CityRolePlayingPlatformSnapshotV2Schema, { ...snapshot,
+    game: { ...snapshot.game, privateState: { ...snapshot.game.privateState, hand: [...hand, card("overflow")] } },
+  }).success, false);
+  assert.equal(v.safeParse(CityRolePlayingPlatformSnapshotV2Schema, { ...snapshot,
+    game: { ...snapshot.game, rulesVersion: "city-rules-v1", cardSetVersion: "city-cardset-v1", landmarkHistory: undefined },
+  }).success, false);
+  const payload = { ability: "REPLACE_OWN_CARDS", cardIds: hand.map(c => c.cardId) };
+  assert.equal(v.safeParse(CityRoleAbilityPayloadSchema, payload).success, true);
+  assert.equal(v.safeParse(CityRoleAbilityPayloadSchema, { ...payload, cardIds: [...payload.cardIds, "extra-67", "extra-68", "overflow-69"] }).success, false);
 });

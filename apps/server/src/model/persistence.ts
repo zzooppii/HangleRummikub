@@ -1,3 +1,4 @@
+import type { CityExpansionSettings } from "@hangul-rummikub/shared";
 import type { WolfStoredGame } from "../games/wolf-night/compatibility/adapter.js";
 import type { WolfSettings } from "@hangul-rummikub/shared";
 import type { SneakyLunchStoredGame } from "../games/sneaky-lunch/compatibility/adapter.js";
@@ -80,7 +81,7 @@ export type NumberTileRoomRecord = RoomRecordBase &
  * whose game metadata and concrete state disagree.
  */
 export type GemCardRoomRecord = RoomRecordBase & Readonly<{ gameType: "GEM_CARD"; game: GemGameState | null }>;
-export type CityRoleRoomRecord = RoomRecordBase & Readonly<{ gameType: "CITY_ROLE"; game: CityRoleStoredGame | null }>;
+export type CityRoleRoomRecord = RoomRecordBase & Readonly<{ gameType: "CITY_ROLE"; settings?: CityExpansionSettings; game: CityRoleStoredGame | null }>;
 export type DrawRelayRoomRecord = RoomRecordBase & Readonly<{ gameType:"DRAW_RELAY";game:DrawRelayStoredGame|null; departedPlayerIds?:readonly PlayerId[]; promptMode?:"EASY"|"NORMAL"|"MIXED"; drawSeconds?:15|30|45|60|90 }>;
 export type SneakyLunchRoomRecord = RoomRecordBase & Readonly<{ gameType: "SNEAKY_LUNCH"; game: SneakyLunchStoredGame | null; departedPlayerIds?: readonly PlayerId[]; settings?: LunchSettings }>;
 export type WolfRoomRecord = RoomRecordBase & Readonly<{ gameType: "WOLF_NIGHT"; game: WolfStoredGame | null; departedPlayerIds?: readonly PlayerId[]; settings?: WolfSettings }>;

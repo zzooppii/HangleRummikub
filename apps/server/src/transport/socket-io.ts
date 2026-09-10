@@ -1,3 +1,4 @@
+import { CityExpansionClientCommandSchema } from "@hangul-rummikub/shared";
 import { DrawClientCommandSchema } from "@hangul-rummikub/shared";
 import { validateGemCollectCommand, validateGemPurchaseCommand, validateGemReserveCommand, validateGemYieldCommand, type GemCollectWireAck, type GemCardPlayingPlatformSnapshotV2, type GemCardFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import { validateCityClientCommand, type CityClientCommand, type CityActionWireAck } from "@hangul-rummikub/shared";
@@ -1970,6 +1971,23 @@ function registerCityHandlers(io: RealtimeServer, socket: RealtimeSocket, runtim
       else acknowledgeIfPresent(acknowledge, failureAck(raw, INTERNAL_ERROR, receivedAt));
     });
   }
+  for (const event of ["city:configure", "city:expansionAction"] as const) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
+    const receivedAt = runtime.clock.now(), parsed = parseNumberRematch(CityExpansionClientCommandSchema, raw);
+    if (!parsed.success || parsed.output.kind !== event) { acknowledgeIfPresent(acknowledge, failureAck(raw, INVALID_PAYLOAD_ERROR, receivedAt)); return; }
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(createSocketId(socket.id));
+      if (!binding) { acknowledgeIfPresent(acknowledge, failureAck(raw, UNAUTHENTICATED_ERROR, receivedAt)); return; }
+      if (!isRoomAdmissionCompatible("CITY_ROLE", socketAdmissionCapabilities(socket))) { acknowledgeIfPresent(acknowledge, failureAck(raw, INVALID_PAYLOAD_ERROR, receivedAt)); return; }
+      const service = runtime.cityRoleCommandService;
+      if (!service) { acknowledgeIfPresent(acknowledge, failureAck(raw, INTERNAL_ERROR, receivedAt)); return; }
+      const c = parsed.output, base = { roomId: binding.roomId, actorPlayerId: binding.playerId, requestId: c.requestId, authorization: { isCurrent: () => socket.connected && isCurrentBinding(runtime, binding) } };
+      const result = c.kind === "city:configure" ? await service.configure({ ...base, expectedRoomRevision: c.expectedRoomRevision, settings: c.payload }) : await service.expansion({ ...base, gameId: c.gameId, expectedGameRevision: c.expectedGameRevision, actionId: c.actionId, receivedAt, action: c.payload });
+      if (!result.ok) { acknowledgeIfPresent(acknowledge, failureAck(raw, result.error, receivedAt)); return; }
+      await fanOutRoomSnapshots(io, runtime, binding.roomId);
+      const loaded = await loadSnapshotForSocket(runtime, socket, binding.roomId, binding.playerId);
+      if (loaded && socket.connected && isCurrentBinding(runtime, binding)) acknowledgeIfPresent(acknowledge, snapshotSuccessAck(c.requestId, loaded.metadata, loaded.wireSnapshot));
+    })().catch(() => acknowledgeIfPresent(acknowledge, failureAck(raw, INTERNAL_ERROR, receivedAt)));
+  });
   socket.on("city:selectRole", (raw, ack) => receive("city:selectRole", raw, ack));
   socket.on("city:takeIncome", (raw, ack) => receive("city:takeIncome", raw, ack));
   socket.on("city:drawBuildingCards", (raw, ack) => receive("city:drawBuildingCards", raw, ack));

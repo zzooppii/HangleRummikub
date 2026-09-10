@@ -16,6 +16,10 @@ import { parseBuildingCardId, parseCityActionId, parseCityGameId, parseCityPlaye
 import { applyCityAction, CityRuleError, type CityAbility, type CityAction } from "../domain/rule-engine.js";
 import { CityRoleEntropySource, cityDomainEntropy } from "./city-role-entropy.js";
 import { transitionCityRoom } from "./city-role-transition.js";
+import { CityExpansionSettingsSchema, CityExpansionActionSchema, type CityExpansionAction } from '../domain/expansion-state.js';
+import { CITY_STANDARD_CAST, type CityExpansionSettings } from '../domain/expansion-catalog.js';
+import { CITY_ALL_ROLE_IDS } from '../domain/role.js';
+import type { RoomRevision } from '@hangul-rummikub/shared';
 
 export type CityActionInput = Readonly<{
   roomId: RoomId; actorPlayerId: PlayerId; requestId: RequestId; gameId: GameId;
@@ -87,6 +91,32 @@ function domainAbility(ability: CityRoleAbilityPayload): CityAbility {
 export class CityRoleCommandService {
   readonly #deps: CityCommandDependencies;
   constructor(deps: CityCommandDependencies) { this.#deps = deps; }
+  expansion(input: CityActionInput & { action: CityExpansionAction }) {
+    const parsed = v.safeParse(CityExpansionActionSchema, input.action);
+    if (!parsed.success) return Promise.resolve(cityFailure('INVALID_PAYLOAD'));
+    return this.#execute(input, 'city:expansionAction', { kind: 'EXPANSION', action: parsed.output });
+  }
+  async configure(input: Pick<CityActionInput, 'roomId' | 'actorPlayerId' | 'requestId' | 'authorization'> & { expectedRoomRevision: RoomRevision; settings: CityExpansionSettings }): Promise<{ ok: true } | { ok: false; error: ErrorDto }> {
+    return this.#deps.roomMutationExecutor.run(input.roomId, async () => {
+      const parsed = v.safeParse(CityExpansionSettingsSchema, input.settings);
+      if (!parsed.success) return cityFailure('INVALID_PAYLOAD');
+      if (!input.authorization.isCurrent()) return cityFailure('UNAUTHENTICATED');
+      const settings = parsed.output.enabled ? parsed.output : { enabled: false, roles: [...CITY_STANDARD_CAST] };
+      const scopeKey = `room-player:${input.roomId}:${input.actorPlayerId}`, payloadFingerprint = JSON.stringify(['city:configure', input.expectedRoomRevision, settings]);
+      const prior = await this.#deps.idempotencyRepository.classify(scopeKey, input.requestId, payloadFingerprint);
+      if (prior.status === 'CONFLICT') return cityFailure('REQUEST_ID_REUSED');
+      if (prior.status === 'REPLAY') return { ok: true };
+      const room = await this.#deps.roomRepository.findById(input.roomId);
+      if (!room) return cityFailure('ROOM_NOT_FOUND');
+      if (room.gameType !== 'CITY_ROLE' || room.phase !== 'LOBBY' || room.game !== null) return cityFailure('INVALID_PHASE');
+      if (room.hostPlayerId !== input.actorPlayerId) return cityFailure('HOST_ONLY');
+      if (room.roomRevision !== input.expectedRoomRevision) return cityFailure('STALE_ROOM_REVISION');
+      const at = this.#deps.clock.now();
+      const result = await this.#deps.roomUnitOfWork.commit({ roomMutation: { kind: 'REPLACE', candidate: { ...room, settings, roomRevision: v.parse(RoomRevisionSchema, room.roomRevision + 1), updatedAt: at }, expectedRoomRevision: room.roomRevision, expectedStorageRevision: room.storageRevision }, sessionMutation: { kind: 'NONE' }, idempotency: { scopeKey, requestId: input.requestId, payloadFingerprint, terminalResult: { configured: true }, createdAt: at } }, { isSatisfied: () => input.authorization.isCurrent() });
+      if (result.status === 'COMMITTED' || result.status === 'REPLAY') return { ok: true };
+      return cityFailure(result.status === 'IDEMPOTENCY_CONFLICT' ? 'REQUEST_ID_REUSED' : 'STALE_ROOM_REVISION');
+    });
+  }
   selectRole(input: CitySelectRoleInput) { return this.#execute(input, "city:selectRole", { kind: "SELECT_ROLE", roleId: input.roleId, ...(input.discardRoleId === undefined ? {} : { discardRoleId: input.discardRoleId }) }); }
   takeIncome(input: CityActionInput) { return this.#execute(input, "city:takeIncome", { kind: "TAKE_INCOME" }); }
   drawBuildingCards(input: CityActionInput) { return this.#execute(input, "city:drawBuildingCards", { kind: "DRAW_BUILDING_CARDS" }); }
@@ -127,7 +157,7 @@ export class CityRoleCommandService {
       ? [...game.state.discard, ...action.ability.cardIds] : game.state.discard;
     let state;
     try { state = applyCityAction(game.state, { gameId: parseCityGameId(input.gameId), actionId: parseCityActionId(input.actionId),
-      playerId: parseCityPlayerId(input.actorPlayerId) }, action, cityDomainEntropy(this.#deps.idGenerator, random, discard)); }
+      playerId: parseCityPlayerId(input.actorPlayerId) }, action, cityDomainEntropy(this.#deps.idGenerator, random, discard, CITY_ALL_ROLE_IDS.slice(0, game.state.expansion?.settings.roles.length ?? 8))); }
     catch (error) { return error instanceof CityRuleError ? cityDomainFailure(error) : cityFailure("INTERNAL_ERROR"); }
     const at = this.#deps.clock.now();
     const candidate = transitionCityRoom(room, state, at, random.counter);

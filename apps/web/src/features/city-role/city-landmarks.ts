@@ -1,3 +1,4 @@
+import { CITY_SPECIAL_BUILDINGS } from "@hangul-rummikub/shared";
 /** Versioned public card text. This catalog never decides a server transition. */
 export const CITY_LANDMARK_TEXT: Readonly<Record<string, Readonly<{ short: string; detail: string }>>> = {
   "CB-LAN-01": { short: "처음 지으면 금화 1 환급", detail: "비용 전액을 먼저 지불합니다. 플레이어당 게임 전체 1회이며, 파괴 후 재건설하거나 다른 카드를 지어도 다시 지급되지 않습니다." },
@@ -8,6 +9,7 @@ export const CITY_LANDMARK_TEXT: Readonly<Record<string, Readonly<{ short: strin
   "CB-LAN-06": { short: "종료 때 실제 일반 분류마다 +1점", detail: "교역·시정·문화·수비 중 실제 지은 분류마다 1점, 최대 4점입니다. 달그림회랑의 가상 분류는 제외하며, 기권 시 특수 보너스는 없습니다." },
 };
 export function cityLandmarkText(version: string, templateId: string) {
+  if (version === "city-rules-v3") { const b = CITY_SPECIAL_BUILDINGS.find(b => b.templateId === templateId); return b ? { short: b.text, detail: b.text } : undefined; }
   return version === "city-rules-v2" ? CITY_LANDMARK_TEXT[templateId] : undefined;
 }
 export const CITY_LANDMARK_NAMES: Readonly<Record<string, string>> = {

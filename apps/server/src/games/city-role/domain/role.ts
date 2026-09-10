@@ -6,7 +6,8 @@ export const CITY_ACTION_SECONDS = 90;
 export const CITY_ROLE_IDS = Object.freeze([
   "CR-01", "CR-02", "CR-03", "CR-04", "CR-05", "CR-06", "CR-07", "CR-08",
 ] as const);
-export type CityRoleId = (typeof CITY_ROLE_IDS)[number];
+export const CITY_ALL_ROLE_IDS = [...CITY_ROLE_IDS, "CR-09"] as const;
+export type CityRoleId = (typeof CITY_ALL_ROLE_IDS)[number];
 
 export type CityRole = Readonly<{
   roleId: CityRoleId;
@@ -30,6 +31,7 @@ export function isCityRoleId(value: unknown): value is CityRoleId {
 }
 
 export function cityRoleOrder(roleId: CityRoleId): number {
+  if (roleId === "CR-09") return 9;
   const role = CITY_ROLES.find((candidate) => candidate.roleId === roleId);
   if (role === undefined) throw new Error("CITY role is not in the approved roster.");
   return role.resolutionOrder;

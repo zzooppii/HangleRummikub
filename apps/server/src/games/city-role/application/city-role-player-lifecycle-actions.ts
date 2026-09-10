@@ -1,3 +1,4 @@
+import { CITY_ALL_ROLE_IDS } from "../domain/role.js";
 import { TurnIdSchema, type GameId, type GameRevision, type PlayerId, type ServerTime } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 import type { CurrentTurnIdentity } from "../../../application/turn-transition.js";
@@ -29,7 +30,7 @@ export function createCityRolePlayerLifecycleActions(ids: IdGenerator): CityRole
       const random = new CityRoleEntropySource(room.game.entropySeed, room.game.entropyCounter);
       const pending = room.game.state.pendingChoice?.ownerPlayerId === actor.playerId ? room.game.state.pendingChoice.cards : [];
       const discard = [...room.game.state.discard, ...actor.hand, ...pending];
-      const state = forfeitCityPlayers(room.game.state, [actor.playerId], cityDomainEntropy(ids, random, discard));
+      const state = forfeitCityPlayers(room.game.state, [actor.playerId], cityDomainEntropy(ids, random, discard, CITY_ALL_ROLE_IDS.slice(0, room.game.state.expansion?.settings.roles.length ?? 8)));
       const candidate = transitionCityRoom(room, state, input.occurredAt, random.counter);
       const game = candidate.game;
       return { candidate, advisory: "NONE", finishedGameId: state.window === null ? game.gameId : null,

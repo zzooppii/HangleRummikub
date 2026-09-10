@@ -1,5 +1,5 @@
 import {
-  CITY_ROLE_IDS,
+  CITY_ROLE_IDS, CITY_ALL_ROLE_IDS,
   type CityRoleId,
   type CityRolePlayingProjectionV2,
   type CityRoleFinishedProjectionV2,
@@ -17,6 +17,7 @@ export const CITY_CATEGORY_LABELS: Readonly<Record<CityUiCard["category"], strin
 
 /** Public role descriptions, never a record of another player's secret selection. */
 export const CITY_ROLE_HELP: Readonly<Record<CityRoleId, Readonly<{ name: string; summary: string; detail: string }>>> = {
+  "CR-09": { name: "9번 직업", summary: "확장판 직업", detail: "방장이 선택한 9번 직업을 사용합니다." },
   "CR-01": { name: "가림꾼", summary: "뒤에 불릴 역할 하나의 차례를 막습니다.", detail: "기본 획득 후 한 번, 더 높은 순서의 역할을 비밀리에 지목할 수 있습니다. 자기의 다른 역할에는 효과가 없습니다." },
   "CR-02": { name: "징수꾼", summary: "지목한 역할이 나타날 때 금화를 가져옵니다.", detail: "기본 획득 후 한 번, 더 높은 순서의 역할을 지목합니다. 그 역할의 정상 등장 때 금화 전부를 가져옵니다. 자기 역할·미등장·봉쇄 역할에는 효과가 없습니다." },
   "CR-03": { name: "교환꾼", summary: "손패 전체를 교환하거나 내 카드를 교체합니다.", detail: "기본 획득 후 한 번, 다른 참가자와 손패 전체를 교환하거나 내 카드 1장 이상을 버리고 같은 수만큼 뽑습니다. 건물·금화·역할은 바뀌지 않습니다." },
@@ -28,7 +29,7 @@ export const CITY_ROLE_HELP: Readonly<Record<CityRoleId, Readonly<{ name: string
 };
 
 export function cityRoleOrder(roleId: CityRoleId): number {
-  return CITY_ROLE_IDS.indexOf(roleId) + 1;
+  return CITY_ALL_ROLE_IDS.indexOf(roleId) + 1;
 }
 
 export function cityRoleLabel(roleId: CityRoleId): string {
