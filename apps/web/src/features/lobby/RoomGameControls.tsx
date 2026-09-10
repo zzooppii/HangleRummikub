@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { GameType } from "@hangul-rummikub/shared";
 import type { RoomSnapshotShell } from "../../lib/room-snapshot-shell.js";
 import { GAME_CATALOG } from "../game-catalog/game-catalog.js";
@@ -10,11 +10,19 @@ export function RoomGameControls({ snapshot, disabled, onSelectGame, onReady }: 
   onReady(ready: boolean): void;
 }>) {
   const [selected, setSelected] = useState(snapshot.room.gameType);
+  const controlsRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    // SPA navigation retains the entry screen's scroll position. Reveal the
+    // shared controls on room/phase changes, without interrupting ready updates.
+    if (snapshot.room.phase !== "PLAYING") {
+      controlsRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
+    }
+  }, [snapshot.room.roomId, snapshot.room.gameType, snapshot.room.phase]);
   if (snapshot.room.phase === "PLAYING") return null;
   const self = snapshot.room.players.find(player => player.playerId === snapshot.self.playerId);
   const finished = snapshot.room.phase === "FINISHED";
   const preparationRequired = !finished && self?.isReady !== undefined;
-  return <section className="room-game-controls" aria-label="같은 방에서 다음 게임 준비">
+  return <section ref={controlsRef} className="room-game-controls" aria-label="같은 방에서 다음 게임 준비">
     <div><strong>{finished ? "다음 게임도 이 방에서" : "함께할 게임 선택"}</strong><p>방 코드 {snapshot.room.roomCode} · 참가자와 초대 링크는 그대로 유지됩니다.</p></div>
     {self?.isHost ? <div className="room-game-selection">
       <label htmlFor="room-next-game">플레이할 게임</label>
