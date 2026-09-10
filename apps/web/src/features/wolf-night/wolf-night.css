@@ -4,3 +4,24 @@
 @media(max-width:760px){.wolf-shell{padding:18px 16px}.wolf-header{align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:22px}.wolf-header nav{justify-content:flex-start;width:100%;gap:6px}.wolf-header button{font-size:11px;padding:8px 10px}.wolf-connection{margin-left:auto;order:4}.wolf-brand h1{font-size:23px}.wolf-brand small{font-size:8px}.wolf-lobby{grid-template-columns:1fr}.wolf-invitation{min-height:345px;padding:18px 10px 108px}.wolf-invitation h2{font-size:42px;max-width:75%;position:relative;z-index:1;margin-top:18px}.wolf-invitation>p{font-size:12px;position:relative;z-index:1}.wolf-emblem.large{position:absolute;right:0;top:85px;width:140px;height:150px;opacity:.7}.wolf-chapters{justify-content:flex-start;font-size:10px}.wolf-landscape{height:130px}.wolf-setup{padding:22px}.wolf-stage-banner h2{font-size:25px;line-height:1.4}.wolf-timer{font-size:26px;padding-left:15px}.wolf-play-layout{grid-template-columns:1fr}.wolf-seats{grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.wolf-private-column{display:grid;grid-template-columns:1fr 1fr}.wolf-card-back{height:74px;margin-left:0;margin-right:0}.wolf-table{padding:20px}.wolf-role-guide{grid-template-columns:1fr}.wolf-results{padding:22px}.wolf-guide{padding:22px}}
 @media(max-width:480px){.wolf-seats{grid-template-columns:repeat(3,minmax(0,1fr))}.wolf-private-column{display:flex}.wolf-card-back{height:82px}.wolf-result-grid{grid-template-columns:1fr}.wolf-lobby-players{grid-template-columns:1fr}.wolf-invitation h2{font-size:32px;max-width:100%}.wolf-emblem.large{right:-10px;width:120px;top:83px;opacity:.4}.wolf-brand small{letter-spacing:.14em}.wolf-header nav button{padding:8px;font-size:10px}.wolf-connection{font-size:10px}.wolf-stage-banner h2{font-size:22px}.wolf-eyebrow{font-size:9px}.wolf-section-head{gap:8px}.wolf-section-head h2{font-size:22px}.wolf-setup{padding:18px}.wolf-deck-editor{grid-template-columns:1fr}.wolf-stage-banner{gap:10px}.wolf-timer{padding-left:10px;font-size:23px}.wolf-chapters{gap:14px}.wolf-chapters span{font-size:9px}.wolf-guide h2{font-size:23px}}
 @media(prefers-reduced-motion:reduce){.wolf-shell *{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+
+/* Keep the live phase and countdown visible while the mobile page scrolls. */
+@media (max-width: 760px) {
+  .wolf-play-layout { grid-template-columns: minmax(0, 1fr); }
+  .wolf-stage-banner.wolf-stage-live {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    max-width: none;
+    margin-inline: -16px;
+    padding: calc(12px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px));
+    gap: 12px;
+    background: #0d1420;
+    border-bottom: 1px solid #dfbf8540;
+    box-shadow: 0 6px 16px #00000030;
+  }
+  .wolf-stage-live > div:first-child { min-width: 0; }
+  .wolf-stage-live .wolf-eyebrow { display: none; }
+  .wolf-stage-live h2 { margin: 0; font-size: 18px; line-height: 1.4; overflow-wrap: anywhere; }
+  .wolf-stage-live .wolf-timer { flex-shrink: 0; font-size: 26px; padding-left: 12px; }
+}
