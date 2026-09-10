@@ -52,6 +52,21 @@
 .city-selection-time{margin-bottom:18px}.city-selection-time small{min-height:0}
 
 .city-expanded-reference{display:flex;flex-wrap:wrap;gap:8px}
+.city-role-targets{grid-column:1/-1;min-width:0}
+.city-role-target-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.city-role-target-heading h3{font-family:Georgia,"Noto Serif KR",serif;font-size:20px;margin:4px 0;color:#4f3958}
+.city-role-target-heading>span{padding:6px 10px;border:1px solid #b9a17d;border-radius:20px;font-size:12px;white-space:nowrap}
+.city-role-target-cards{display:flex;gap:12px;overflow-x:auto;padding:7px 5px 14px;scroll-snap-type:x proximity;scrollbar-width:thin}
+.city-expanded-page button.city-role-target-card[data-role]{flex:0 0 145px;display:flex;flex-direction:column;align-items:center;gap:8px;scroll-snap-align:start;min-height:0}
+.city-role-target-card[data-role]::before{height:85px}
+.city-role-target-card .city-role-emblem{width:48px;height:48px}.city-role-target-card .city-role-emblem>.city-icon{width:27px;height:27px}
+.city-expanded-page button.city-role-target-card.is-targeted{outline:3px solid #795784;outline-offset:1px;background:linear-gradient(#fff9eb,#e7d9eb);box-shadow:0 4px 14px #684c6338}
+.city-role-target-card>strong{font-size:16px}.city-role-target-mark{font-size:11px;padding:5px 8px;border-radius:6px;background:#fff9e5;color:#6e5d46;min-height:25px}
+.is-targeted .city-role-target-mark{background:#73527e;color:#fff}
+.city-role-target-confirm{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#f8efdc;border:1px solid #c7b28e;border-radius:10px;padding:12px;font-size:13px}
+.city-expanded-page .city-role-target-confirm>button{background:#71517b;border-color:#71517b;color:#fff7ec;min-height:44px;flex-shrink:0}
+.city-expanded-page .city-role-target-confirm>button:hover:not(:disabled){background:#583961;border-color:#583961}
+@media(max-width:620px){.city-expanded-page button.city-role-target-card[data-role]{flex-basis:125px}.city-role-target-confirm{flex-direction:column;align-items:stretch}.city-role-target-heading h3{font-size:18px}}
 .city-expanded-page .city-expanded-reference>button{font-size:13px;padding:8px 12px}
 .city-expanded-page .city-reference-dialog{width:min(860px,calc(100vw - 24px));color:#302f27}
 .city-reference-dialog .city-help-header h2{margin:0;font-size:16px;line-height:1.4;color:#fff0cc}

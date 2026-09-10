@@ -1,4 +1,5 @@
 import { CityExpandedCatalog } from '../features/city-role/CityExpandedCatalog.js';
+import { CityRoleTargets, toggleCityRoleTarget } from '../features/city-role/CityRoleTargets.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createElement } from 'react';
@@ -41,7 +42,7 @@ function thiefWithBuildings(handIds: string[] = [], builtIds: string[] = [], car
 
 test('thief without relevant buildings keeps role targeting and normal construction without special controls', () => {
   const html = screen(thiefWithBuildings());
-  assert.match(html, /직업 지목/);
+  assert.match(html, /도둑질 지목 확정/);
   assert.match(html, /class="city-inline-build">건설/);
   assert.doesNotMatch(html, /특수 건물 사용|대체 건설|희생할 내 건물/);
 });
@@ -68,10 +69,41 @@ test('alternative construction appears for hand payment, built framework, necrop
   for (const snapshot of [thiefWithBuildings(['CB-SP-29']), thiefWithBuildings([], ['CB-SP-06']), thiefWithBuildings(['CB-SP-18'], ['CB-SP-14']), thiefWithBuildings([], [], true)]) {
     assert.match(screen(snapshot), /건설할 카드/);
     assert.match(screen(snapshot), /대체 건설/);
+    assert.doesNotMatch(screen(snapshot), /<summary>특수 건물 사용/);
   }
   for (const snapshot of [thiefWithBuildings(['CB-SP-06']), thiefWithBuildings(['CB-SP-18']), thiefWithBuildings([], ['CB-SP-29'])]) {
     assert.doesNotMatch(screen(snapshot), /대체 건설|희생할 내 건물/);
   }
+});
+
+test('assassin uses illustrated single-target cards without checkboxes, hand instructions or irrelevant specials', () => {
+  const base = thiefWithBuildings();
+  const snapshot = parse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: { ...base.game, window: { ...base.game.window, activeRoleId: 'CR-01' } } });
+  const html = screen(snapshot);
+  assert.match(html, /aria-label="암살 대상 직업"/);
+  assert.match(html, /aria-label="도둑 지목"/);
+  assert.match(html, /data-role-art="CR-08"/);
+  assert.match(html, /암살 지목 확정/);
+  assert.doesNotMatch(html, /type="checkbox"|aria-label="암살자 지목"|카드를 사용하는 능력은|<summary>특수 건물 사용|대체 건설/);
+});
+
+test('single role target replaces the previous target while multi-target marks preserve order and count', () => {
+  assert.deepEqual(toggleCityRoleTarget(['CR-02'], 'CR-03', 1), ['CR-03']);
+  assert.deepEqual(toggleCityRoleTarget(['CR-03'], 'CR-03', 1), []);
+  assert.deepEqual(toggleCityRoleTarget(['CR-02', 'CR-03'], 'CR-04', 3), ['CR-02', 'CR-03', 'CR-04']);
+  assert.deepEqual(toggleCityRoleTarget(['CR-02', 'CR-03'], 'CR-04', 2), ['CR-02', 'CR-03']);
+  assert.deepEqual(toggleCityRoleTarget(['CR-02', 'CR-03'], 'CR-02', 2), ['CR-03']);
+});
+
+test('target cards show ordered private marks and disable confirmation for unavailable targets or used abilities', () => {
+  const props = { targets: [{ id: 'CR-02' as const, name: '도둑', reason: null }, { id: 'CR-03' as const, name: '마술사', reason: null }], selected: ['CR-02' as const, 'CR-03' as const], count: 2, verb: '협박', disabled: false, used: false, onChange: () => {}, onConfirm: () => {} };
+  const render = (patch: Partial<typeof props> = {}) => renderToStaticMarkup(createElement(CityRoleTargets, { ...props, ...patch }));
+  assert.match(render(), /① 진짜 표식/);
+  assert.match(render(), /2 · 가짜 표식/);
+  assert.doesNotMatch(render(), /disabled=""/);
+  assert.match(render({ selected: ['CR-02'] }), /disabled="">협박 지목 확정/);
+  assert.match(render({ disabled: true }), /disabled="">협박 지목 확정/);
+  assert.match(render({ used: true }), /disabled="">능력 사용 완료/);
 });
 
 test('v3 selection restores illustrated selectable roles, private summary, public track and timed HUD', () => {
