@@ -1,6 +1,7 @@
 import { CityRolePlayingProjectionV2Schema, CityRoleFinishedProjectionV2Schema, type PlayerId } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 import { getCityTemplate } from "../domain/cardset-v1.js";
+import { expandedBonusBreakdown } from "../domain/expansion-scoring.js";
 import { parseBuildingCardId, type BuildingCardId } from "../domain/identity.js";
 import type { CityRoleStoredGame } from "./city-role-game-state-adapter.js";
 
@@ -60,7 +61,11 @@ export function projectCityRoleV2Game(input: {
   const ownPending = state.pendingChoice?.ownerPlayerId === self.playerId ? { pendingCards: state.pendingChoice.cards.map(card) } : {};
   if (input.phase === "FINISHED" && state.result !== null && input.game.finishedAt !== null) {
     return parse(CityRoleFinishedProjectionV2Schema, { ...common, phase: "FINISHED", privateState: { ...privateState, ...ownPending },
-      result: { reason: state.result.reason, finishedAt: input.game.finishedAt, rankings: state.result.rankings.map(row => ({ ...row })), winnerPlayerIds: state.result.rankings.filter(row => row.winner).map(row => row.playerId) } });
+      result: { reason: state.result.reason, finishedAt: input.game.finishedAt, rankings: state.result.rankings.map(row => {
+        const player = state.players.find(player => player.playerId === row.playerId);
+        if (!player) throw new Error('CITY result player missing.');
+        return { ...row, ...(e === undefined ? {} : { specialBonusBreakdown: expandedBonusBreakdown(state, player) }) };
+      }), winnerPlayerIds: state.result.rankings.filter(row => row.winner).map(row => row.playerId) } });
   }
   if (input.phase !== "PLAYING" || state.window === null || input.game.deadlineAt === null || input.game.windowStartedAt === null) throw new Error("CITY projection phase mismatch.");
   const window = { actionId: state.window.actionId, activePlayerId: state.window.activePlayerId, startedAt: input.game.windowStartedAt, deadlineAt: input.game.deadlineAt };

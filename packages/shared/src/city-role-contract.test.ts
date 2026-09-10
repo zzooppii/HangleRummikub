@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CITY_DEFAULT_SETTINGS, CITY_STANDARD_SPECIALS, CityConfigureCommandSchema } from './index.js';
+import { CITY_DEFAULT_SETTINGS, CITY_STANDARD_SPECIALS, CityConfigureCommandSchema, CityRoleResultV2Schema } from './index.js';
 import * as v from "valibot";
 import { CityClientCommandSchema, CityActionWireAckSchema, CityRoleLobbyPlatformSnapshotV2Schema, CityRolePlayingPlatformSnapshotV2Schema,
   CityRoleFinishedPlatformSnapshotV2Schema, PlatformSnapshotV2Schema, StateSnapshotSchema, GameTypeSchema,
@@ -9,6 +9,16 @@ import { CityClientCommandSchema, CityActionWireAckSchema, CityRoleLobbyPlatform
   validateCityChooseBuildingCardCommand, validateCityUseRoleAbilityCommand, validateCityBuildCommand, validateCityEndTurnCommand } from "./index.js";
 
 const envelope = { protocolVersion: 1, requestId: "city-request", gameId: "city-game", expectedGameRevision: 0, actionId: "city-action" };
+
+test('CITY special bonus entries are optional but must be unique, positive and equal the server total', () => {
+  const base = finished().game.result;
+  const result = { ...base, rankings: base.rankings.map((row, i) => ({ ...row, score: i === 0 ? 2 : 0, landmarkBonus: i === 0 ? 2 : 0, specialBonusBreakdown: i === 0 ? [{ templateId: 'CB-SP-04', points: 2 }] : [] })) };
+  assert.equal(v.safeParse(CityRoleResultV2Schema, result).success, true);
+  assert.equal(v.safeParse(CityRoleResultV2Schema, base).success, true);
+  for (const entries of [[{ templateId: 'CB-SP-04', points: 1 }], [{ templateId: 'CB-SP-04', points: 1 }, { templateId: 'CB-SP-04', points: 1 }], [{ templateId: 'CB-SP-13', points: 2 }], [{ templateId: 'CB-SP-04', points: 0 }]]) {
+    assert.equal(v.safeParse(CityRoleResultV2Schema, { ...result, rankings: result.rankings.map((row, i) => i === 0 ? { ...row, specialBonusBreakdown: entries } : row) }).success, false);
+  }
+});
 
 test('CITY configure accepts only 10, 20 or 30 seconds and keeps old payloads readable', () => {
   const command = { protocolVersion: 1, requestId: 'city-timer', kind: 'city:configure', expectedRoomRevision: 0 };

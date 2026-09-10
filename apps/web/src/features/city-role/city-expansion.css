@@ -52,6 +52,13 @@
 .city-selection-time{margin-bottom:18px}.city-selection-time small{min-height:0}
 
 .city-expanded-reference{display:flex;flex-wrap:wrap;gap:8px}
+.city-results-table td{vertical-align:top}.city-results-table .city-result-bonus{width:44%}.city-result-total{white-space:nowrap}.city-result-total b{font-size:24px;color:#285746}.city-result-mobile-label{display:none}
+.city-bonus-total{display:block;font-size:13px;color:#84652f;margin-bottom:10px}.city-bonus-details ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}.city-bonus-details li{display:flex;align-items:flex-start;gap:8px;font-size:13px}.city-bonus-details li>.city-icon{width:20px;height:20px;flex-shrink:0;color:#9b7c40}.city-bonus-details li>div{flex:1;min-width:0}.city-bonus-details li small{display:block;margin-top:3px;color:#746d5b;font-size:11px;line-height:1.5}.city-bonus-details li>b{white-space:nowrap;color:#315a47}.city-bonus-details>.city-muted{margin:0;font-size:12px}
+@media(max-width:620px){
+  .city-results-table,.city-results-table tbody{display:block}.city-results-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  .city-results-table tbody>tr{display:grid;grid-template-columns:auto 1fr auto;grid-template-areas:"rank player total" "building building building" "bonus bonus bonus";gap:8px 12px;padding:16px 0;border-bottom:1px solid #cdbd9b}
+  .city-expanded-page .city-results-table td{padding:0;border:0;min-width:0}.city-results-table .city-result-rank{grid-area:rank}.city-results-table .city-result-player{grid-area:player;overflow-wrap:anywhere;font-weight:700}.city-results-table .city-result-total{grid-area:total}.city-results-table .city-result-building{grid-area:building;color:#746d5b;font-size:12px}.city-results-table .city-result-bonus{grid-area:bonus;width:auto;background:#fff9e780;border:1px solid #d9caaa;border-radius:10px;padding:12px}.city-result-mobile-label{display:inline}
+}
 .city-role-targets{grid-column:1/-1;min-width:0}
 .city-role-target-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .city-role-target-heading h3{font-family:Georgia,"Noto Serif KR",serif;font-size:20px;margin:4px 0;color:#4f3958}

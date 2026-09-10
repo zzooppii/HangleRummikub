@@ -51,10 +51,14 @@ const ActionObject = v.strictObject({ ...Common, phase: v.literal("ROLE_ACTION")
   window: v.strictObject({ ...Window, activeRoleId: CityRoleIdSchema, waitingFor: v.picklist(["ACTION", "DRAW_BUILDING_CHOICE"]) }),
   privateState: v.strictObject({ ...PrivateBase, action: v.optional(ActionBudget), pendingCards: v.optional(PendingCards) }),
 });
-const Ranking = v.strictObject({ playerId: PlayerIdSchema, rank: v.pipe(Positive, v.maxValue(6)),
+const Ranking = v.pipe(v.strictObject({ playerId: PlayerIdSchema, rank: v.pipe(Positive, v.maxValue(6)),
   score: Natural, buildingVP: Natural, completionBonus: v.picklist([0, 2, 4]), diversityBonus: v.picklist([0, 3]),
   landmarkBonus: v.optional(Natural),
-  buildingCount: v.pipe(Natural, v.maxValue(68)), forfeited: v.boolean(), winner: v.boolean() });
+  specialBonusBreakdown: v.optional(v.pipe(v.array(v.strictObject({
+    templateId: v.picklist(['CB-SP-02','CB-SP-03','CB-SP-04','CB-SP-10','CB-SP-11','CB-SP-15','CB-SP-17','CB-SP-24','CB-SP-27','CB-SP-30']), points: Positive,
+  })), v.maxLength(10), v.check(rows => new Set(rows.map(row => row.templateId)).size === rows.length))),
+  buildingCount: v.pipe(Natural, v.maxValue(68)), forfeited: v.boolean(), winner: v.boolean() }),
+  v.check(row => row.specialBonusBreakdown === undefined || row.landmarkBonus !== undefined && row.specialBonusBreakdown.reduce((sum, item) => sum + item.points, 0) === row.landmarkBonus && (!row.forfeited || row.specialBonusBreakdown.length === 0), 'CITY special bonus breakdown is inconsistent.'));
 export const CityRoleResultV2Schema = v.strictObject({ reason: CityFinishReasonSchema, finishedAt: ServerTimeSchema,
   rankings: v.pipe(v.array(Ranking), v.minLength(2), v.maxLength(6)), winnerPlayerIds: v.pipe(v.array(PlayerIdSchema), v.maxLength(6)) });
 const FinishedObject = v.strictObject({ ...Common, phase: v.literal("FINISHED"),

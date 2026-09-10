@@ -13,7 +13,7 @@ import { parseBuildingCardId, parseCityPlayerId, parseCityGameId, parseCityActio
 import { CITY_ALL_ROLE_IDS, type CityRoleId } from './games/city-role/domain/role.js';
 import type { CityGameState, CityRoleAssignment } from './games/city-role/domain/game-state.js';
 import { assertCityGameState } from './games/city-role/domain/state-validator.js';
-import { expandedScore } from './games/city-role/domain/expansion-scoring.js';
+import { expandedScore, expandedBonusBreakdown } from './games/city-role/domain/expansion-scoring.js';
 import type { CityExpansionAction } from './games/city-role/domain/expansion-state.js';
 
 let counter = 0;
@@ -103,7 +103,22 @@ test('all end scoring effects use the approved table including haunted category 
     {specials:['CB-SP-04','CB-SP-27'],city:['CB-SP-04','CB-SP-27'],bonus:7},
     {specials:['CB-SP-09','CB-SP-30'],city:['CB-SP-09','CB-SP-30','CB-CIV-01','CB-CUL-01','CB-TRA-01'],bonus:1,diversity:3},
   ];
-  for(const row of cases){const s=zones(setup('KING',row.specials),row.city,row.hand);const result=expandedScore(s,ownPlayer(s));assert.equal(result.landmarkBonus,row.bonus);assert.equal(result.diversityBonus,row.diversity??0);}
+  for(const row of cases){const s=zones(setup('KING',row.specials),row.city,row.hand);const result=expandedScore(s,ownPlayer(s));assert.equal(result.landmarkBonus,row.bonus);assert.equal(result.diversityBonus,row.diversity??0);
+    const details=expandedBonusBreakdown(s,ownPlayer(s));assert.equal(details.reduce((sum,b)=>sum+b.points,0),row.bonus);assert.ok(details.every(b=>row.specials.includes(b.templateId)));assert.deepEqual(expandedBonusBreakdown(s,{...ownPlayer(s),forfeited:true}),[]);
+    if(row.specials.includes('CB-SP-10'))assert.deepEqual(details,[{templateId:'CB-SP-10',points:30},{templateId:'CB-SP-15',points:2}]);
+    if(row.specials.includes('CB-SP-30'))assert.deepEqual(details,[{templateId:'CB-SP-30',points:1}]);
+  }
+});
+test('finished bonus projection itemizes every player without publishing their private cards or changing stored results',()=>{
+  let s=zones(setup('KING',['CB-SP-04','CB-SP-15','CB-SP-24']),['CB-SP-04','CB-SP-15'],['CB-SP-24','CB-CIV-01']);
+  assert.equal('result' in visible(s,me),false);
+  s=forfeitCityPlayers(s,people.slice(1),entropy(s));assertCityGameState(s);
+  const before=structuredClone(s);
+  const projections=people.map(viewer=>projectCityRoleV2Game({phase:'FINISHED',selfPlayerId:parse(PlayerIdSchema,viewer),playerIds:people.map(id=>parse(PlayerIdSchema,id)),game:{state:s,gameId:parse(GameIdSchema,s.gameId),gameRevision:parse(GameRevisionSchema,1),startedAt:parse(ServerTimeSchema,1000),windowStartedAt:null,deadlineAt:null,finishedAt:parse(ServerTimeSchema,91000),entropySeed:'0'.repeat(64),entropyCounter:0}}));
+  const result=projections[0];assert.ok(result?.phase==='FINISHED');
+  assert.deepEqual(result.result.rankings[0]?.specialBonusBreakdown,[{templateId:'CB-SP-04',points:2},{templateId:'CB-SP-15',points:2},{templateId:'CB-SP-24',points:3}]);
+  for(const projection of projections){assert.equal(projection.phase,'FINISHED');assert.deepEqual(projection.result,result.result);for(const id of ownPlayer(s).hand)assert.equal(JSON.stringify(projection.result).includes(id),false);}
+  assert.deepEqual(s,before);
 });
 test('monument completes a seven-card physical city as eight buildings',()=>{
  let s=zones(setup('KING',['CB-SP-16']),['CB-SP-16','CB-CIV-01','CB-CIV-02','CB-CIV-03','CB-CUL-01','CB-TRA-01'],['CB-GUA-01']);
