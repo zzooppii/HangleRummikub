@@ -2,6 +2,7 @@ import { CITY_DEFAULT_SETTINGS } from "@hangul-rummikub/shared";
 import { projectIsland } from "../games/island/compatibility/projector.js";
 import { projectSplendor } from "../games/splendor/compatibility/projector.js";
 import { projectJaipur } from "../games/jaipur/compatibility/projector.js";
+import { projectSaboteur } from "../games/saboteur/compatibility/projector.js";
 import { projectLostCities } from "../games/lost-cities/compatibility/projector.js";
 import { projectHalli } from "../games/halli-galli/compatibility/projector.js";
 import { projectWolf } from "../games/wolf-night/compatibility/projector.js";
@@ -125,6 +126,7 @@ export class PlatformSnapshotV2Projector {
     if(input.room.gameType === "ISLAND_SETTLERS") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectIsland(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "SPLENDOR") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectSplendor(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "JAIPUR") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectJaipur(input.room.game,input.selfPlayerId)});
+    if(input.room.gameType === "SABOTEUR") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectSaboteur(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "LOST_CITIES") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase,settings:input.room.settings??{mode:"BASE"}},game:projectLostCities(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "HALLI_GALLI") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectHalli(input.room.game)});
     if(input.room.gameType === "WOLF_NIGHT") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectWolf(input.room.game,input.selfPlayerId)});

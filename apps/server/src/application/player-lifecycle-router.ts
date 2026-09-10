@@ -1,6 +1,7 @@
 import type { createIslandLifecycle } from "../games/island/application/lifecycle.js";
 import type { createSplendorLifecycle } from "../games/splendor/application/lifecycle.js";
 import type { createJaipurLifecycle } from "../games/jaipur/application/lifecycle.js";
+import type { createSaboteurLifecycle } from "../games/saboteur/application/lifecycle.js";
 import type { createLostCitiesLifecycle } from "../games/lost-cities/application/lifecycle.js";
 import type { createHalliLifecycle } from "../games/halli-galli/application/lifecycle.js";
 import type { createWolfLifecycle } from "../games/wolf-night/application/lifecycle.js";
@@ -67,6 +68,7 @@ export type PlayerLifecycleRouterDependencies = Readonly<{
   island?: ReturnType<typeof createIslandLifecycle>;
   splendor?: ReturnType<typeof createSplendorLifecycle>;
   jaipur?: ReturnType<typeof createJaipurLifecycle>;
+  saboteur?: ReturnType<typeof createSaboteurLifecycle>;
   lostCities?: ReturnType<typeof createLostCitiesLifecycle>;
   halli?: ReturnType<typeof createHalliLifecycle>;
   wolf?: ReturnType<typeof createWolfLifecycle>;
@@ -95,6 +97,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
   readonly #island: ReturnType<typeof createIslandLifecycle> | undefined;
   readonly #splendor: ReturnType<typeof createSplendorLifecycle> | undefined;
   readonly #jaipur: ReturnType<typeof createJaipurLifecycle> | undefined;
+  readonly #saboteur: ReturnType<typeof createSaboteurLifecycle> | undefined;
   readonly #lostCities: ReturnType<typeof createLostCitiesLifecycle> | undefined;
   readonly #halli: ReturnType<typeof createHalliLifecycle> | undefined;
   readonly #wolf: ReturnType<typeof createWolfLifecycle> | undefined;
@@ -115,6 +118,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
     this.#island = dependencies.island;
     this.#splendor = dependencies.splendor;
     this.#jaipur = dependencies.jaipur;
+    this.#saboteur = dependencies.saboteur;
     this.#lostCities = dependencies.lostCities;
     this.#halli = dependencies.halli;
     this.#wolf = dependencies.wolf;
@@ -141,6 +145,9 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
       case "SPLENDOR":
         if (!this.#splendor) throw new Error("SPLENDOR lifecycle missing.");
         return this.#splendor.applyPlayingLeave(input);
+      case "SABOTEUR":
+        if (!this.#saboteur) throw new Error("SABOTEUR lifecycle missing.");
+        return this.#saboteur.applyPlayingLeave(input);
       case "JAIPUR":
         if (!this.#jaipur) throw new Error("JAIPUR lifecycle missing.");
         return this.#jaipur.applyPlayingLeave(input);
@@ -178,6 +185,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
       case "ISLAND_SETTLERS": return {status:"NO_CHANGE"};
       case "SPLENDOR": return {status:"NO_CHANGE"};
       case "JAIPUR": return {status:"NO_CHANGE"};
+      case "SABOTEUR": return {status:"NO_CHANGE"};
       case "LOST_CITIES": return {status:"NO_CHANGE"};
       case "HALLI_GALLI": return {status:"NO_CHANGE"};
       case "WOLF_NIGHT": return {status:"NO_CHANGE"};

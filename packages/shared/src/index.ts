@@ -43,3 +43,7 @@ export * from "./games/jaipur/actions.js";
 export * from "./games/lost-cities/actions.js";
 export * from "./games/jaipur/contracts.js";
 export * from "./games/lost-cities/contracts.js";
+
+export * from "./games/saboteur/actions.js";
+export * from "./games/saboteur/contracts.js";
+export * from "./games/saboteur/geometry.js";

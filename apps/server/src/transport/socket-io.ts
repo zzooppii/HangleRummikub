@@ -1341,6 +1341,7 @@ function registerResumeHandler(
         runtime.islandHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.splendorHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.jaipurHostSuccession?.resumed(result.data.roomId, result.data.playerId);
+        runtime.saboteurHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.lostCitiesHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.halliHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.wolfHostSuccession?.resumed(result.data.roomId, result.data.playerId);
@@ -2759,6 +2760,28 @@ function registerJaipurHandlers(socket: RealtimeSocket, runtime: ApplicationRunt
   });
 }
 
+import { SaboteurClientCommandSchema } from "@hangul-rummikub/shared";
+function registerSaboteurHandlers(socket: RealtimeSocket, runtime: ApplicationRuntime): void {
+  for (const event of ["saboteur:act", "saboteur:nextRound", "saboteur:say"] as const) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
+    const receivedAt = runtime.clock.now(), command = parseNumberRematch(SaboteurClientCommandSchema, raw);
+    if (!command.success || command.output.kind !== event) { acknowledgeIfPresent(acknowledge, failureAck(raw, INVALID_PAYLOAD_ERROR, receivedAt)); return; }
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(createSocketId(socket.id));
+      if (!binding) { acknowledgeIfPresent(acknowledge, failureAck(raw, UNAUTHENTICATED_ERROR, receivedAt)); return; }
+      if (!isRoomAdmissionCompatible("SABOTEUR", socketAdmissionCapabilities(socket))) {
+        acknowledgeIfPresent(acknowledge, failureAck(raw, {code:"INCOMPATIBLE_GAME_CAPABILITY",message:"SABOTEUR requires V2 capability.",recoverable:false}, receivedAt)); return;
+      }
+      if (!runtime.saboteurService) { acknowledgeIfPresent(acknowledge, failureAck(raw, INTERNAL_ERROR, receivedAt)); return; }
+      const result = await runtime.saboteurService.command({roomId:binding.roomId,actorPlayerId:binding.playerId,command:command.output,receivedAt,
+        authorization:{isCurrent:()=>socket.connected && isCurrentBinding(runtime,binding)}});
+      if (!result.ok) { acknowledgeIfPresent(acknowledge, failureAck(raw,result.error,receivedAt)); return; }
+      const loaded = await loadSnapshotForSocket(runtime,socket,binding.roomId,binding.playerId);
+      if (loaded && socket.connected && isCurrentBinding(runtime,binding)) acknowledgeIfPresent(acknowledge,snapshotSuccessAck(command.output.requestId,loaded.metadata,loaded.wireSnapshot));
+    })().catch(()=>acknowledgeIfPresent(acknowledge,failureAck(raw,INTERNAL_ERROR,receivedAt)));
+  });
+}
+
+
 import { LostCitiesClientCommandSchema } from "@hangul-rummikub/shared";
 function registerLostCitiesHandlers(socket: RealtimeSocket, runtime: ApplicationRuntime): void {
   for (const event of ["lostCities:configure", "lostCities:act", "lostCities:nextRound"] as const) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
@@ -3121,6 +3144,7 @@ function registerDisconnectHandler(
     runtime.islandHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.splendorHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.jaipurHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
+    runtime.saboteurHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.lostCitiesHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.halliHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.wolfHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
@@ -3205,6 +3229,7 @@ export function registerSocketIoHandlers(
   const unsubscribeIsland = runtime.islandService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeSplendor = runtime.splendorService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeJaipur = runtime.jaipurService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
+  const unsubscribeSaboteur = runtime.saboteurService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeLostCities = runtime.lostCitiesService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeHalli = runtime.halliService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeWolf = runtime.wolfService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
@@ -3260,6 +3285,7 @@ export function registerSocketIoHandlers(
     registerIslandHandlers(socket, runtime);
     registerSplendorHandlers(socket, runtime);
     registerJaipurHandlers(socket, runtime);
+    registerSaboteurHandlers(socket, runtime);
     registerLostCitiesHandlers(socket, runtime);
     registerHalliHandlers(socket, runtime);
     registerWolfHandlers(socket, runtime);
@@ -3284,6 +3310,7 @@ export function registerSocketIoHandlers(
     unsubscribeIsland?.();
     unsubscribeSplendor?.();
     unsubscribeJaipur?.();
+    unsubscribeSaboteur?.();
     unsubscribeLostCities?.();
     unsubscribeHalli?.();
     unsubscribeWolf?.();

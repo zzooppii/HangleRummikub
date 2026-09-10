@@ -52,6 +52,10 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 
 # CONFIRMED
 
+### 사보타지 추가 — 2026-09-11
+
+사용자의 개발안 승인과 실제 보드게임 UI 요청에 따라 기본판 3–10인, 3라운드와 온라인 기본 정책을 [SABOTEUR_GAME_RULES.md](./SABOTEUR_GAME_RULES.md)에 확정한다. 기존 게임의 미확정 항목은 변경하지 않는다.
+
 ### 로스트시티 추가 — 2026-09-11
 
 사용자의 개발안 승인에 따라 2인 5색 기본판과 일러스트 중심 화면을 추가한다. [LOST_CITIES_GAME_RULES.md](./LOST_CITIES_GAME_RULES.md)에 규칙과 온라인 기본값을 확정한다. 기존 미확정 규칙은 유지한다.

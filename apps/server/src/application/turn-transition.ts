@@ -1,5 +1,6 @@
 import type { SplendorStoredGame } from "../games/splendor/compatibility/adapter.js";
 import type { JaipurStoredGame } from "../games/jaipur/compatibility/adapter.js";
+import type { SaboteurStoredGame } from "../games/saboteur/compatibility/adapter.js";
 import type { LostCitiesStoredGame } from "../games/lost-cities/compatibility/adapter.js";
 import type { IslandStoredGame } from "../games/island/compatibility/adapter.js";
 import type { HalliStoredGame } from "../games/halli-galli/compatibility/adapter.js";
@@ -76,10 +77,11 @@ export function createNextTurn(
 
 export function toScheduledTurnDeadline(
   roomId: RoomId,
-  game: PlayingGameState | PlayingNumberTileGameState | PlayingGemGameState | CityRoleStoredGame | DrawRelayStoredGame | SneakyLunchStoredGame | WolfStoredGame | JaipurStoredGame | LostCitiesStoredGame | SplendorStoredGame | HalliStoredGame | IslandStoredGame,
+  game: PlayingGameState | PlayingNumberTileGameState | PlayingGemGameState | CityRoleStoredGame | DrawRelayStoredGame | SneakyLunchStoredGame | WolfStoredGame | JaipurStoredGame | SaboteurStoredGame | LostCitiesStoredGame | SplendorStoredGame | HalliStoredGame | IslandStoredGame,
 ): ScheduledTurnDeadline {
   if ("state" in game && !("windowStartedAt" in game)) {
     if (game.state.rulesVersion === "jaipur-base-v1") throw new Error("Jaipur has no turn deadline.");
+    if (game.state.rulesVersion === "saboteur-base-2025-v1") throw new Error("Saboteur has no turn deadline.");
     if ("startingPlayerId" in game.state) throw new Error("LostCities has no turn deadline.");
     if ("turnId" in game.state) return { roomId, gameId: game.gameId, expectedGameRevision: game.gameRevision, turnId: game.state.turnId, deadlineAt: game.state.deadlineAt };
     if ("nextTransitionAt" in game.state) return {roomId,gameId:game.gameId,expectedGameRevision:game.gameRevision,turnId:parse(TurnIdSchema,game.state.transitionId),deadlineAt:parse(ServerTimeSchema,game.state.nextTransitionAt)};
@@ -160,6 +162,7 @@ export async function scheduleCurrentTurnBestEffort(
 
     if ("state" in game && !("windowStartedAt" in game)) {
       if (game.state.rulesVersion === "jaipur-base-v1") return false;
+      if (game.state.rulesVersion === "saboteur-base-2025-v1") return false;
       if ("startingPlayerId" in game.state) return false;
       if ("turnId" in game.state) {
         if (game.state.turnId !== identity.turnId) return false;

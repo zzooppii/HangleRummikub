@@ -1,5 +1,6 @@
 import type { SplendorClientCommand } from "./protocol.js";
 import type { JaipurClientCommand } from "./protocol.js";
+import type { SaboteurClientCommand } from "./protocol.js";
 import type { LostCitiesClientCommand } from "./protocol.js";
 import type { IslandClientCommand } from "./protocol.js";
 import type { HalliClientCommand } from "./protocol.js";
@@ -553,10 +554,13 @@ export interface SnapshotWireClientToServerEvents {
   "island:rematch": (command: Extract<IslandClientCommand,{kind:"island:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "splendor:act": (command: Extract<SplendorClientCommand,{kind:"splendor:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "jaipur:act": (command: Extract<JaipurClientCommand,{kind:"jaipur:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "saboteur:act": (command: Extract<SaboteurClientCommand,{kind:"saboteur:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "lostCities:configure": (command: Extract<LostCitiesClientCommand,{kind:"lostCities:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "lostCities:act": (command: Extract<LostCitiesClientCommand,{kind:"lostCities:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "splendor:rematch": (command: Extract<SplendorClientCommand,{kind:"splendor:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "jaipur:nextRound": (command: Extract<JaipurClientCommand,{kind:"jaipur:nextRound"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "saboteur:say": (command: Extract<SaboteurClientCommand,{kind:"saboteur:say"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "saboteur:nextRound": (command: Extract<SaboteurClientCommand,{kind:"saboteur:nextRound"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "lostCities:nextRound": (command: Extract<LostCitiesClientCommand,{kind:"lostCities:nextRound"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "halli:flip": (command: Extract<HalliClientCommand,{kind:"halli:flip"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "halli:bell": (command: Extract<HalliClientCommand,{kind:"halli:bell"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;

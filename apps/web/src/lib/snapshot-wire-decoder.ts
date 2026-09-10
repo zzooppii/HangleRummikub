@@ -1,6 +1,7 @@
 import type { IslandLobbyPlatformSnapshotV2, IslandPlayingPlatformSnapshotV2, IslandFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import type { SplendorLobbyPlatformSnapshotV2, SplendorPlayingPlatformSnapshotV2, SplendorFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import type { JaipurLobbyPlatformSnapshotV2, JaipurPlayingPlatformSnapshotV2, JaipurFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
+import type { SaboteurLobbyPlatformSnapshotV2, SaboteurPlayingPlatformSnapshotV2, SaboteurFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import type { LostCitiesLobbyPlatformSnapshotV2, LostCitiesPlayingPlatformSnapshotV2, LostCitiesFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import type { HalliLobbyPlatformSnapshotV2, HalliPlayingPlatformSnapshotV2, HalliFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import type { WolfLobbyPlatformSnapshotV2, WolfPlayingPlatformSnapshotV2, WolfFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
@@ -39,6 +40,7 @@ export const WEB_SUPPORTED_GAME_TYPES = Object.freeze([
   "SPLENDOR",
   "JAIPUR",
   "LOST_CITIES",
+  "SABOTEUR",
 ] as const);
 
 export type CityRolePlatformSnapshotV2 =
@@ -60,6 +62,7 @@ export type DrawRelayWebSnapshot = DrawRelayLobbyPlatformSnapshotV2 | DrawRelayP
 export type IslandWebSnapshot = IslandLobbyPlatformSnapshotV2 | IslandPlayingPlatformSnapshotV2 | IslandFinishedPlatformSnapshotV2;
 export type SplendorWebSnapshot = SplendorLobbyPlatformSnapshotV2 | SplendorPlayingPlatformSnapshotV2 | SplendorFinishedPlatformSnapshotV2;
 export type JaipurWebSnapshot = JaipurLobbyPlatformSnapshotV2 | JaipurPlayingPlatformSnapshotV2 | JaipurFinishedPlatformSnapshotV2;
+export type SaboteurWebSnapshot = SaboteurLobbyPlatformSnapshotV2 | SaboteurPlayingPlatformSnapshotV2 | SaboteurFinishedPlatformSnapshotV2;
 export type LostCitiesWebSnapshot = LostCitiesLobbyPlatformSnapshotV2 | LostCitiesPlayingPlatformSnapshotV2 | LostCitiesFinishedPlatformSnapshotV2;
 export type HalliWebSnapshot = HalliLobbyPlatformSnapshotV2 | HalliPlayingPlatformSnapshotV2 | HalliFinishedPlatformSnapshotV2;
 export type WolfWebSnapshot = WolfLobbyPlatformSnapshotV2 | WolfPlayingPlatformSnapshotV2 | WolfFinishedPlatformSnapshotV2;
@@ -68,6 +71,7 @@ export type CompatibleWebSnapshot =
   | Readonly<{kind: "PLATFORM_V2_ISLAND_SETTLERS"; snapshotVersion: 2; gameType: "ISLAND_SETTLERS"; platformSnapshot: IslandWebSnapshot }>
   | Readonly<{kind: "PLATFORM_V2_SPLENDOR"; snapshotVersion: 2; gameType: "SPLENDOR"; platformSnapshot: SplendorWebSnapshot }>
   | Readonly<{kind: "PLATFORM_V2_JAIPUR"; snapshotVersion: 2; gameType: "JAIPUR"; platformSnapshot: JaipurWebSnapshot }>
+  | Readonly<{kind: "PLATFORM_V2_SABOTEUR"; snapshotVersion: 2; gameType: "SABOTEUR"; platformSnapshot: SaboteurWebSnapshot }>
   | Readonly<{kind: "PLATFORM_V2_LOST_CITIES"; snapshotVersion: 2; gameType: "LOST_CITIES"; platformSnapshot: LostCitiesWebSnapshot }>
   | Readonly<{kind: "PLATFORM_V2_HALLI_GALLI"; snapshotVersion: 2; gameType: "HALLI_GALLI"; platformSnapshot: HalliWebSnapshot }>
   | Readonly<{kind: "PLATFORM_V2_WOLF_NIGHT"; snapshotVersion: 2; gameType: "WOLF_NIGHT"; platformSnapshot: WolfWebSnapshot }>
@@ -173,7 +177,7 @@ function decodePlatformSnapshotV2(
     input.room.gameType !== "HANGUL_TILE" &&
     input.room.gameType !== "NUMBER_TILE" &&
     input.room.gameType !== "GEM_CARD" &&
-    input.room.gameType !== "CITY_ROLE" && input.room.gameType !== "DRAW_RELAY" && input.room.gameType !== "SNEAKY_LUNCH" && input.room.gameType !== "WOLF_NIGHT" && input.room.gameType !== "JAIPUR" && input.room.gameType !== "LOST_CITIES" && input.room.gameType !== "SPLENDOR" && input.room.gameType !== "HALLI_GALLI" && input.room.gameType !== "ISLAND_SETTLERS"
+    input.room.gameType !== "CITY_ROLE" && input.room.gameType !== "DRAW_RELAY" && input.room.gameType !== "SNEAKY_LUNCH" && input.room.gameType !== "WOLF_NIGHT" && input.room.gameType !== "JAIPUR" && input.room.gameType !== "SABOTEUR" && input.room.gameType !== "LOST_CITIES" && input.room.gameType !== "SPLENDOR" && input.room.gameType !== "HALLI_GALLI" && input.room.gameType !== "ISLAND_SETTLERS"
   ) {
     return typeof input.room.gameType === "string"
       ? { kind: "INCOMPATIBLE", reason: "UNSUPPORTED_GAME_TYPE" }
@@ -203,6 +207,12 @@ function decodePlatformSnapshotV2(
     if (!isJaipurSnapshot(snapshot)) return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
     return { kind: "COMPATIBLE", value: { kind: "PLATFORM_V2_JAIPUR", snapshotVersion: 2, gameType: "JAIPUR", platformSnapshot: snapshot } };
   }
+  if (input.room.gameType === "SABOTEUR") {
+    const snapshot = validation.value;
+    if (!isSaboteurSnapshot(snapshot)) return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
+    return { kind: "COMPATIBLE", value: { kind: "PLATFORM_V2_SABOTEUR", snapshotVersion: 2, gameType: "SABOTEUR", platformSnapshot: snapshot } };
+  }
+
   if (input.room.gameType === "LOST_CITIES") {
     const snapshot = validation.value;
     if (!isLostCitiesSnapshot(snapshot)) return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
@@ -316,6 +326,7 @@ function isSneakySnapshot(s: PlatformSnapshotV2): s is SneakyWebSnapshot { retur
 function isIslandSnapshot(s: PlatformSnapshotV2): s is IslandWebSnapshot { return s.room.gameType === "ISLAND_SETTLERS" && (s.game === null || s.game.gameType === "ISLAND_SETTLERS"); }
 function isSplendorSnapshot(s: PlatformSnapshotV2): s is SplendorWebSnapshot { return s.room.gameType === "SPLENDOR" && (s.game === null || s.game.gameType === "SPLENDOR"); }
 function isJaipurSnapshot(s: PlatformSnapshotV2): s is JaipurWebSnapshot { return s.room.gameType === "JAIPUR" && (s.game === null || s.game.gameType === "JAIPUR"); }
+function isSaboteurSnapshot(s: PlatformSnapshotV2): s is SaboteurWebSnapshot { return s.room.gameType === "SABOTEUR" && (s.game === null || s.game.gameType === "SABOTEUR"); }
 function isLostCitiesSnapshot(s: PlatformSnapshotV2): s is LostCitiesWebSnapshot { return s.room.gameType === "LOST_CITIES" && (s.game === null || s.game.gameType === "LOST_CITIES"); }
 function isHalliSnapshot(s: PlatformSnapshotV2): s is HalliWebSnapshot { return s.room.gameType === "HALLI_GALLI" && (s.game === null || s.game.gameType === "HALLI_GALLI"); }
 function isWolfSnapshot(s: PlatformSnapshotV2): s is WolfWebSnapshot { return s.room.gameType === "WOLF_NIGHT" && (s.game === null || s.game.gameType === "WOLF_NIGHT"); }

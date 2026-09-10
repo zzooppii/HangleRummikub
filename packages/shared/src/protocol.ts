@@ -1,3 +1,4 @@
+import { SaboteurActionSchema } from "./games/saboteur/actions.js";
 import { JaipurActionSchema } from "./games/jaipur/actions.js";
 import { LostCitiesSettingsSchema, LostCitiesActionSchema } from "./games/lost-cities/actions.js";
 import { SplendorActionSchema } from "./games/splendor/actions.js";
@@ -658,3 +659,10 @@ export const IslandActCommandSchema = v.strictObject({ ...IslandIdentity, kind: 
 export const IslandRematchCommandSchema = v.strictObject({ ...IslandIdentity, kind: v.literal("island:rematch"), expectedRoomRevision: RoomRevisionSchema, payload: v.strictObject({}) });
 export const IslandClientCommandSchema = v.variant("kind", [IslandActCommandSchema, IslandRematchCommandSchema]);
 export type IslandClientCommand = v.InferOutput<typeof IslandClientCommandSchema>;
+
+const SaboteurIdentity = {protocolVersion:ProtocolVersionSchema,requestId:RequestIdSchema,gameId:GameIdSchema};
+export const SaboteurActCommandSchema=v.strictObject({...SaboteurIdentity,kind:v.literal('saboteur:act'),expectedGameRevision:GameRevisionSchema,turnId:TurnIdSchema,payload:SaboteurActionSchema});
+export const SaboteurNextRoundCommandSchema=v.strictObject({...SaboteurIdentity,kind:v.literal('saboteur:nextRound'),expectedGameRevision:GameRevisionSchema,roundId:TurnIdSchema,payload:v.strictObject({})});
+export const SaboteurSayCommandSchema=v.strictObject({...SaboteurIdentity,kind:v.literal('saboteur:say'),roundId:TurnIdSchema,payload:v.strictObject({text:v.pipe(v.string(),v.minLength(1),v.maxLength(240)),sequence:v.pipe(v.number(),v.safeInteger(),v.minValue(0))})});
+export const SaboteurClientCommandSchema=v.variant('kind',[SaboteurActCommandSchema,SaboteurNextRoundCommandSchema,SaboteurSayCommandSchema]);
+export type SaboteurClientCommand=v.InferOutput<typeof SaboteurClientCommandSchema>;
