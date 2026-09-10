@@ -17,7 +17,7 @@ import { applyCityAction, CityRuleError, type CityAbility, type CityAction } fro
 import { CityRoleEntropySource, cityDomainEntropy } from "./city-role-entropy.js";
 import { transitionCityRoom } from "./city-role-transition.js";
 import { CityExpansionSettingsSchema, CityExpansionActionSchema, type CityExpansionAction } from '../domain/expansion-state.js';
-import { CITY_STANDARD_CAST, type CityExpansionSettings } from '../domain/expansion-catalog.js';
+import { CITY_DEFAULT_SELECTION_SECONDS, CITY_STANDARD_CAST, type CityExpansionSettings } from '../domain/expansion-catalog.js';
 import { CITY_ALL_ROLE_IDS } from '../domain/role.js';
 import type { RoomRevision } from '@hangul-rummikub/shared';
 
@@ -101,7 +101,7 @@ export class CityRoleCommandService {
       const parsed = v.safeParse(CityExpansionSettingsSchema, input.settings);
       if (!parsed.success) return cityFailure('INVALID_PAYLOAD');
       if (!input.authorization.isCurrent()) return cityFailure('UNAUTHENTICATED');
-      const settings = parsed.output.enabled ? parsed.output : { enabled: false, roles: [...CITY_STANDARD_CAST] };
+      const settings = { enabled: parsed.output.enabled, roles: parsed.output.enabled ? parsed.output.roles : [...CITY_STANDARD_CAST], selectionSeconds: parsed.output.selectionSeconds ?? CITY_DEFAULT_SELECTION_SECONDS };
       const scopeKey = `room-player:${input.roomId}:${input.actorPlayerId}`, payloadFingerprint = JSON.stringify(['city:configure', input.expectedRoomRevision, settings]);
       const prior = await this.#deps.idempotencyRepository.classify(scopeKey, input.requestId, payloadFingerprint);
       if (prior.status === 'CONFLICT') return cityFailure('REQUEST_ID_REUSED');

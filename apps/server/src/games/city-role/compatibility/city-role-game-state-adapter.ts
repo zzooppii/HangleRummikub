@@ -47,7 +47,7 @@ export class CityRoleGameStateAdapter implements CityRoleGameStateStorage {
     }
     const windowStartedAt = parse(ServerTimeSchema, game.windowStartedAt);
     const deadlineAt = parse(ServerTimeSchema, game.deadlineAt);
-    const duration = state.window.kind === "ROLE_SELECTION" ? CITY_SELECTION_SECONDS : CITY_ACTION_SECONDS;
+    const duration = state.window.kind === "ROLE_SELECTION" ? (state.expansion?.settings.selectionSeconds ?? CITY_SELECTION_SECONDS) : CITY_ACTION_SECONDS;
     if (game.finishedAt !== null || windowStartedAt < startedAt || deadlineAt !== windowStartedAt + duration * 1000) throw new Error("CITY window metadata mismatch.");
     parse(TurnIdSchema, state.window.actionId);
     return Object.freeze({ gameId, gameRevision, startedAt, state, ...entropy, windowStartedAt, deadlineAt, finishedAt: null });

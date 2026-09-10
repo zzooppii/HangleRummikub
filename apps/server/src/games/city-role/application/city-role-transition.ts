@@ -12,7 +12,7 @@ export function transitionCityRoom(room: CityRoleRoomRecord, state: CityGameStat
   const finished = state.window === null;
   const sameWindow = !finished && previous.state.window?.actionId === state.window.actionId;
   const windowStartedAt = finished ? null : sameWindow ? previous.windowStartedAt : at;
-  const deadlineAt = finished ? null : sameWindow ? previous.deadlineAt : parse(ServerTimeSchema, at + (state.window.kind === "ROLE_SELECTION" ? CITY_SELECTION_SECONDS : CITY_ACTION_SECONDS) * 1000);
+  const deadlineAt = finished ? null : sameWindow ? previous.deadlineAt : parse(ServerTimeSchema, at + (state.window.kind === "ROLE_SELECTION" ? (state.expansion?.settings.selectionSeconds ?? CITY_SELECTION_SECONDS) : CITY_ACTION_SECONDS) * 1000);
   const game: CityRoleStoredGame = Object.freeze({ ...previous, state, entropyCounter,
     gameRevision: nextGameRevision(previous.gameRevision), windowStartedAt, deadlineAt,
     finishedAt: finished ? at : null });

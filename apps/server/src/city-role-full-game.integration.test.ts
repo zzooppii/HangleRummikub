@@ -203,7 +203,7 @@ for (const count of [2, 4, 6] as const) test(`CITY ${count}-player complete appl
       assert.deepEqual(deadlines[0], { roomId: room.roomId, gameId: game.gameId, turnId: parse(TurnIdSchema, state.window.actionId),
         expectedGameRevision: game.gameRevision, deadlineAt: game.deadlineAt });
       assert.ok(game.windowStartedAt !== null && game.deadlineAt !== null);
-      assert.equal(game.deadlineAt - game.windowStartedAt, state.window.kind === "ROLE_SELECTION" ? 45_000 : 90_000);
+      assert.equal(game.deadlineAt - game.windowStartedAt, state.window.kind === "ROLE_SELECTION" ? 20_000 : 90_000);
       if (state.window.kind === "ROLE_ACTION") {
         roles.add(state.window.activeRoleId);
         completedDraftRounds.add(state.round.roundNumber);

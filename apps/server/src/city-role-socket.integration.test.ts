@@ -94,7 +94,7 @@ test("raw CITY two-player create/join/start/draft/acquire/build/round/resume pre
   assert.equal(view.game.gameRevision, 0);
   assert.equal(view.game.phase, "ROLE_SELECTION");
   assert.equal(view.game.rolesPerPlayer, 2);
-  assert.equal(view.game.window.deadlineAt - view.game.window.startedAt, 45_000);
+  assert.equal(view.game.window.deadlineAt - view.game.window.startedAt, 20_000);
   assert.equal(view.game.privateState.hand.length, 4);
   assert.equal(view.game.playerStates.length, 2);
   assert.equal(view.game.roleDraftVersion, "city-draft-v2");

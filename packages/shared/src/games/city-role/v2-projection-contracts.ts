@@ -69,7 +69,7 @@ function coherent(game: VisibleCity): boolean {
     if (new Set(ids).size !== ids.length || game.seatOrder.length !== ids.length || !game.seatOrder.every(id => ids.includes(id)) || !ids.includes(game.leaderPlayerId)) return false;
     if (new Set(visible.map(c => c.cardId)).size !== visible.length || visible.length > 68 || game.playerStates.some(p => p.forfeited && (p.gold !== 0 || p.handCount !== 0))) return false;
     if (game.playerStates.some(p => p.scorePreview !== p.builtBuildings.reduce((sum,c) => sum + c.victoryPoints,0))) return false;
-    return game.phase === 'FINISHED' || game.playerStates.some(p => p.playerId === game.window.activePlayerId && !p.forfeited) && game.window.deadlineAt - game.window.startedAt === (game.phase === 'ROLE_SELECTION' ? 45000 : 90000);
+    return game.phase === 'FINISHED' || game.playerStates.some(p => p.playerId === game.window.activePlayerId && !p.forfeited) && game.window.deadlineAt - game.window.startedAt === (game.phase === 'ROLE_SELECTION' ? (game.expansion.settings.selectionSeconds ?? 45) * 1000 : 90000);
   }
   if (game.expansion !== undefined || game.privateState.expansion !== undefined || game.roleSetVersion !== 'city-roles-v1' || game.privateState.hand.some(c => c.cost < 1 || c.cost > 6 || c.templateId.startsWith('CB-SP-'))) return false;
   if ((game.roleDraftVersion !== undefined) !== (game.secretPairDraft !== undefined)) return false;

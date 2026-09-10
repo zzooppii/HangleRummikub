@@ -640,7 +640,24 @@ test('expansion lobby lets only the connected host configure the cast', () => {
   const props = {settings:{enabled:true,roles:CITY_DEFAULT_SETTINGS.roles},revision:citySelectionFixture().versions.roomRevision,count:2,onCommand:async()=>{}};
   const host = renderToStaticMarkup(createElement(CityExpansionLobby,{...props,host:true,connected:true}));
   const guest = renderToStaticMarkup(createElement(CityExpansionLobby,{...props,host:false,connected:true}));
-  assert.equal((host.match(/<select /gu)??[]).length,9);assert.equal((guest.match(/<select[^>]*disabled/gu)??[]).length,9);
+  assert.equal((host.match(/<select /gu)??[]).length,10);assert.equal((guest.match(/<select[^>]*disabled/gu)??[]).length,10);
   assert.match(host,/<option value="EMPEROR" disabled/);assert.match(host,/<option value="QUEEN" disabled/);
   const guide=renderToStaticMarkup(createElement(CityExpandedHelp));assert.match(guide,/총 68장/);assert.match(guide,/기념비/);assert.doesNotMatch(guide,/바람계단|달그림회랑/);
+});
+
+
+test('CITY host selection-time options are available in both modes and guests see the same locked value', () => {
+  for (const enabled of [false, true]) for (const selectionSeconds of [10, 20, 30] as const) {
+    const props = { settings: { ...CITY_DEFAULT_SETTINGS, enabled, selectionSeconds }, revision: citySelectionFixture().versions.roomRevision, count: 4, onCommand: async () => {}, connected: true };
+    const host = renderToStaticMarkup(createElement(CityExpansionLobby, { ...props, host: true }));
+    const guest = renderToStaticMarkup(createElement(CityExpansionLobby, { ...props, host: false }));
+    const offline = renderToStaticMarkup(createElement(CityExpansionLobby, { ...props, host: true, connected: false }));
+    assert.match(host, /aria-label="직업 선택 시간"/);
+    assert.ok(host.includes(`value="${selectionSeconds}" selected=""`));
+    assert.match(guest, /aria-label="직업 선택 시간"[^>]*disabled=""/);
+    assert.match(offline, /aria-label="직업 선택 시간"[^>]*disabled=""/);
+    const guide = renderToStaticMarkup(createElement(CityExpandedHelp, { selectionSeconds }));
+    assert.ok(guide.includes(`선택 시간은 ${selectionSeconds}초`));
+    assert.doesNotMatch(guide, /45초/);
+  }
 });

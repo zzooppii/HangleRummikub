@@ -64,5 +64,8 @@ export type CitySpecialId = (typeof CITY_SPECIAL_BUILDINGS)[number]['templateId'
 export type CitySpecialEffect = (typeof CITY_SPECIAL_BUILDINGS)[number]['effect'];
 export const CITY_STANDARD_CAST: readonly CityJobId[] = ['ASSASSIN','THIEF','MAGICIAN','KING','BISHOP','MERCHANT','ARCHITECT','WARLORD'];
 export const CITY_STANDARD_SPECIALS: readonly CitySpecialId[] = ['CB-SP-04','CB-SP-05','CB-SP-09','CB-SP-10','CB-SP-12','CB-SP-13','CB-SP-14','CB-SP-15','CB-SP-22','CB-SP-23','CB-SP-25','CB-SP-27','CB-SP-29','CB-SP-30'];
-export type CityExpansionSettings = Readonly<{ enabled: boolean; roles: readonly CityJobId[] }>;
-export const CITY_DEFAULT_SETTINGS: CityExpansionSettings = { enabled: false, roles: CITY_STANDARD_CAST };
+export const CITY_SELECTION_TIME_OPTIONS = [10, 20, 30] as const;
+export const CITY_DEFAULT_SELECTION_SECONDS = 20;
+/** Missing selectionSeconds is retained only for older saved 45-second games. */
+export type CityExpansionSettings = Readonly<{ enabled: boolean; roles: readonly CityJobId[]; selectionSeconds?: typeof CITY_SELECTION_TIME_OPTIONS[number] | undefined }>;
+export const CITY_DEFAULT_SETTINGS: CityExpansionSettings = { enabled: false, roles: CITY_STANDARD_CAST, selectionSeconds: CITY_DEFAULT_SELECTION_SECONDS };

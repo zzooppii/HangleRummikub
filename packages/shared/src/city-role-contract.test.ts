@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { CITY_DEFAULT_SETTINGS, CITY_STANDARD_SPECIALS, CityConfigureCommandSchema } from './index.js';
 import * as v from "valibot";
 import { CityClientCommandSchema, CityActionWireAckSchema, CityRoleLobbyPlatformSnapshotV2Schema, CityRolePlayingPlatformSnapshotV2Schema,
   CityRoleFinishedPlatformSnapshotV2Schema, PlatformSnapshotV2Schema, StateSnapshotSchema, GameTypeSchema,
@@ -8,6 +9,28 @@ import { CityClientCommandSchema, CityActionWireAckSchema, CityRoleLobbyPlatform
   validateCityChooseBuildingCardCommand, validateCityUseRoleAbilityCommand, validateCityBuildCommand, validateCityEndTurnCommand } from "./index.js";
 
 const envelope = { protocolVersion: 1, requestId: "city-request", gameId: "city-game", expectedGameRevision: 0, actionId: "city-action" };
+
+test('CITY configure accepts only 10, 20 or 30 seconds and keeps old payloads readable', () => {
+  const command = { protocolVersion: 1, requestId: 'city-timer', kind: 'city:configure', expectedRoomRevision: 0 };
+  for (const selectionSeconds of [10, 20, 30]) assert.equal(v.safeParse(CityConfigureCommandSchema, { ...command, payload: { ...CITY_DEFAULT_SETTINGS, selectionSeconds } }).success, true);
+  for (const selectionSeconds of [0, 15, 45, -10, 10.5, '20', null]) assert.equal(v.safeParse(CityConfigureCommandSchema, { ...command, payload: { ...CITY_DEFAULT_SETTINGS, selectionSeconds } }).success, false);
+  assert.equal(v.safeParse(CityConfigureCommandSchema, { ...command, payload: { enabled: false, roles: CITY_DEFAULT_SETTINGS.roles } }).success, true);
+  assert.equal(CITY_DEFAULT_SETTINGS.selectionSeconds, 20);
+});
+
+test('CITY v3 projection validates deadlines against saved settings, including old 45-second games', () => {
+  const base = selection();
+  for (const selectionSeconds of [10, 20, 30, undefined]) {
+    const settings = { enabled: false, roles: CITY_DEFAULT_SETTINGS.roles, ...(selectionSeconds === undefined ? {} : { selectionSeconds }) };
+    const game = { ...base.game, rulesVersion: 'city-rules-v3', cardSetVersion: 'city-cardset-v3', roleSetVersion: 'city-roles-v2',
+      expansion: { settings, specialIds: CITY_STANDARD_SPECIALS, tax: 0, decorated: [], museum: [], disabledRole: null, robbedRole: null, warrants: [], threats: [], witchTarget: null, pending: null, vaultOwners: [] },
+      privateState: { ...base.game.privateState, expansion: { incomeUsed: false, usedSpecials: [], inspectedCards: [], choiceCards: [], recipients: [] } },
+      window: { ...base.game.window, deadlineAt: base.game.window.startedAt + (selectionSeconds ?? 45) * 1000 },
+    };
+    assert.equal(v.safeParse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game }).success, true);
+    assert.equal(v.safeParse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: { ...game, window: { ...game.window, deadlineAt: game.window.deadlineAt + 1000 } } }).success, false);
+  }
+});
 const commands = [
   { ...envelope, kind: "city:selectRole", payload: { roleId: "CR-03" } },
   { ...envelope, kind: "city:takeIncome", payload: {} },

@@ -12,7 +12,8 @@ import { cityActionFixture, citySelectionFixture } from './city-role-test-fixtur
 function expanded(base: CityRolePlayingPlatformSnapshotV2, roles = [...CITY_DEFAULT_SETTINGS.roles]) {
   return parse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: { ...base.game,
     rulesVersion: 'city-rules-v3', cardSetVersion: 'city-cardset-v3', roleSetVersion: 'city-roles-v2',
-    expansion: { settings: { enabled: true, roles }, specialIds: CITY_STANDARD_SPECIALS, tax: 0, decorated: [], museum: [], disabledRole: null, robbedRole: null, warrants: [], threats: [], witchTarget: null, pending: null, vaultOwners: [] },
+    window: { ...base.game.window, deadlineAt: base.game.window.startedAt + (base.game.phase === 'ROLE_SELECTION' ? 20_000 : 90_000) },
+    expansion: { settings: { enabled: true, roles, selectionSeconds: 20 }, specialIds: CITY_STANDARD_SPECIALS, tax: 0, decorated: [], museum: [], disabledRole: null, robbedRole: null, warrants: [], threats: [], witchTarget: null, pending: null, vaultOwners: [] },
     privateState: { ...base.game.privateState, expansion: { incomeUsed: false, usedSpecials: [], inspectedCards: [], choiceCards: [], recipients: [] } },
   } });
 }
@@ -27,7 +28,7 @@ test('v3 selection restores illustrated selectable roles, private summary, publi
   assert.match(html, /aria-label="공개 역할 진행 순서"/);
   assert.match(html, /aria-label="내 비공개 역할과 금화"/);
   assert.match(html, /class="city-turn-hud is-mine"/);
-  assert.match(html, /role="timer" aria-label="남은 시간 45초">00:45/);
+  assert.match(html, /role="timer" aria-label="남은 시간 20초">00:20/);
   assert.match(html, /class="city-role-card" data-role="CR-01"[^>]*aria-label="암살자 선택"/);
   assert.match(html, /data-role-art="CR-01"/);
   assert.doesNotMatch(html, /가면꾼|장터지기/);

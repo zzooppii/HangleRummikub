@@ -99,7 +99,7 @@ test("production same-origin four-game client serves SPA and plays CITY through 
     const actor = members.find((member) => member.playerId === view.game.window.activePlayerId)!;
     view = await sync(actor.client);
     if (view.game.phase === "ROLE_SELECTION") {
-      assert.equal(view.game.window.deadlineAt - view.game.window.startedAt, 45000);
+      assert.equal(view.game.window.deadlineAt - view.game.window.startedAt, 20000);
       const roles = view.game.privateState.availableRoleIds;
       assert.ok(roles && roles.length > 0);
       view = await action(actor.client, view, "city:selectRole", { roleId: roles[0], ...(view.game.secretPairDraft ? { discardRoleId: roles[1] } : {}) });

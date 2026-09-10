@@ -129,7 +129,12 @@ function cityIdentity(view: CityRolePlayingPlatformSnapshotV2) {
 
 test('CITY raw expansion configuration broadcasts to viewers and rejects non-host and stale actors', async t => {
   const h=await harness(t), g=await h.group('CITY_ROLE',4);
-  const settings={enabled:true,roles:['MAGISTRATE','SPY','SEER','KING','ABBOT','ALCHEMIST','SCHOLAR','DIPLOMAT','ARTIST']};
+  const settings={selectionSeconds:20,enabled:true,roles:['MAGISTRATE','SPY','SEER','KING','ABBOT','ALCHEMIST','SCHOLAR','DIPLOMAT','ARTIST']};
+  const unchanged = await h.checkpoint(g.lobby.room.roomId);
+  for (const selectionSeconds of [0, 15, 45, '20', null]) {
+    h.failure(await h.call(g.members[0]!.client, 'city:configure', { ...settings, selectionSeconds }, { expectedRoomRevision: g.lobby.versions.roomRevision }), 'INVALID_PAYLOAD');
+    assert.deepEqual(await h.checkpoint(g.lobby.room.roomId), unchanged);
+  }
   h.failure(await h.call(g.members[1]!.client,'city:configure',settings,{expectedRoomRevision:g.lobby.versions.roomRevision}),'HOST_ONLY');
   const configured=parse(LobbyPlatformSnapshotV2Schema,h.success(await h.call(g.members[0]!.client,'city:configure',settings,{expectedRoomRevision:g.lobby.versions.roomRevision})));
   for(const member of g.members){const view=await h.sync(member.client);assert.ok('settings' in view.room);assert.deepEqual(view.room.settings,settings);}

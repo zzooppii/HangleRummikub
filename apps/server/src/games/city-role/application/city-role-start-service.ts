@@ -9,10 +9,10 @@ import type { RandomSource } from "../../../ports/system.js";
 import type { CityRoleStoredGame } from "../compatibility/city-role-game-state-adapter.js";
 import { CITY_BUILDING_TEMPLATES_V2 } from "../domain/cardset-v2.js";
 import { createCityCards, getCityTemplate } from "../domain/cardset-v1.js";
-import { CITY_DEFAULT_SETTINGS, CITY_STANDARD_SPECIALS, CITY_SPECIAL_BUILDINGS } from "../domain/expansion-catalog.js";
+import { CITY_DEFAULT_SETTINGS, CITY_DEFAULT_SELECTION_SECONDS, CITY_STANDARD_SPECIALS, CITY_SPECIAL_BUILDINGS } from "../domain/expansion-catalog.js";
 import { parseBuildingCardId, parseCityActionId, parseCityGameId, parseCityPlayerId } from "../domain/identity.js";
 import { createInitialCityGameState } from "../domain/rule-engine.js";
-import { CITY_ALL_ROLE_IDS, CITY_SELECTION_SECONDS } from "../domain/role.js";
+import { CITY_ALL_ROLE_IDS } from "../domain/role.js";
 import { CityRoleEntropySource, createCityEntropySeed } from "./city-role-entropy.js";
 import { cityFailure, type CityCommandDependencies } from "./city-role-command-service.js";
 
@@ -54,7 +54,7 @@ export class CityRoleStartService {
     const lease = await this.#deps.presenceLeaseReader.acquireRoomPresenceLease(room.roomId);
     if (!lease.isCurrent() || !room.players.every(player => lease.connectionStatusByPlayerId.get(player.playerId) === "CONNECTED")) return cityFailure("PLAYERS_NOT_CONNECTED");
     if (!input.authorization.isCurrent()) return cityFailure("UNAUTHENTICATED");
-    const settings = room.settings ?? CITY_DEFAULT_SETTINGS;
+    const settings = { ...(room.settings ?? CITY_DEFAULT_SETTINGS), selectionSeconds: room.settings?.selectionSeconds ?? CITY_DEFAULT_SELECTION_SECONDS };
     if (room.players.length === 2 && (settings.roles.length !== 8 || settings.roles.includes("EMPEROR")) || room.players.length < 5 && settings.roles.includes("QUEEN")) return cityFailure("RULE_VIOLATION");
     const startedAt = this.#deps.clock.now();
     const random = new CityRoleEntropySource(createCityEntropySeed(this.#deps.randomSource), 0);
@@ -70,7 +70,7 @@ export class CityRoleStartService {
       initialHands: playerIds.map((playerId, index) => ({ playerId, cardIds: shuffledCards.slice(index * 4, index * 4 + 4) })),
       deck: shuffledCards.slice(playerIds.length * 4), actionId, roleOrder: shuffleFrozen(CITY_ALL_ROLE_IDS.slice(0, settings.roles.length), random) });
     const game: CityRoleStoredGame = Object.freeze({ gameId, state, gameRevision: parse(GameRevisionSchema, 0),
-      startedAt, windowStartedAt: startedAt, deadlineAt: parse(ServerTimeSchema, startedAt + CITY_SELECTION_SECONDS * 1000),
+      startedAt, windowStartedAt: startedAt, deadlineAt: parse(ServerTimeSchema, startedAt + settings.selectionSeconds * 1000),
       finishedAt: null, entropySeed: random.seed, entropyCounter: random.counter });
     const roomRevision = parse(RoomRevisionSchema, room.roomRevision + 1);
     const terminalResult = parse(GameStartSuccessDataSchema, { roomId: room.roomId, gameId, roomRevision,

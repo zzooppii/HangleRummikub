@@ -29,9 +29,56 @@ import { actCity, assertCityCardConservation, cityCard, cityPlayer, completeCity
 const current = { isCurrent: () => true };
 const rid = (value: string) => parse(RequestIdSchema, value);
 
+for (const selectionSeconds of [10, 20, 30] as const) for (const enabled of [false, true]) {
+  test(`CITY ${enabled ? 'expanded' : 'classic'} host choice ${selectionSeconds}s controls every draft window and survives persistence`, async () => {
+    const h = await harness(2, false);
+    const roles = ['ASSASSIN','THIEF','MAGICIAN','KING','BISHOP','MERCHANT','ARCHITECT','WARLORD'] as const;
+    const config = { roomId: h.roomId, actorPlayerId: h.players[0]!.playerId, requestId: rid('timer-config'), expectedRoomRevision: parse(RoomRevisionSchema, 0), authorization: current, settings: { enabled, roles, selectionSeconds } };
+    const before = await h.read();
+    const guest = await h.service.configure({ ...config, actorPlayerId: h.players[1]!.playerId });
+    assert.ok(!guest.ok); assert.equal(guest.error.code, 'HOST_ONLY');
+    assert.deepEqual(await h.read(), before);
+    assert.deepEqual(await h.service.configure(config), { ok: true });
+    assert.equal((await h.read()).settings?.selectionSeconds, selectionSeconds);
+    assert.equal((await h.start.start({ ...h.startInput, expectedRoomRevision: parse(RoomRevisionSchema, 1) })).ok, true);
+    const adapter = new CityRoleGameStateAdapter();
+    let steps = 0;
+    while (true) {
+      const room = await h.playing();
+      assert.equal(room.game.state.expansion?.settings.selectionSeconds, selectionSeconds);
+      assert.equal(room.game.deadlineAt! - room.game.windowStartedAt!, room.window.kind === 'ROLE_SELECTION' ? selectionSeconds * 1000 : 90_000);
+      assert.deepEqual(adapter.cloneAndValidate(room.game), room.game);
+      if (room.game.state.round.roundNumber > 1) break;
+      const deadline = await h.deadline();
+      h.clock.set(deadline.deadlineAt - 1);
+      assert.deepEqual(await h.timeout.timeout(deadline), { status: 'NO_OP', reason: 'NOT_DUE' });
+      h.clock.set(deadline.deadlineAt);
+      assert.equal((await h.timeout.timeout(deadline)).status, 'APPLIED');
+      assert.ok(++steps < 20);
+    }
+    const locked = await h.service.configure({ ...config, requestId: rid('timer-after-start'), expectedRoomRevision: (await h.read()).roomRevision, settings: { ...config.settings, selectionSeconds: 30 } });
+    assert.ok(!locked.ok); assert.equal(locked.error.code, 'INVALID_PHASE');
+  });
+}
+
+test('CITY saved v3 games without a selection duration retain their 45-second window and subsequent picks', async () => {
+  const h = await harness(), currentRoom = await h.playing();
+  const expansion = currentRoom.game.state.expansion;
+  assert.ok(expansion);
+  const { selectionSeconds: _duration, ...legacySettings } = expansion.settings;
+  await h.seedState({ ...currentRoom.game.state, expansion: { ...expansion, settings: legacySettings } });
+  const legacy = await h.playing();
+  assert.equal(legacy.game.deadlineAt! - legacy.game.windowStartedAt!, 45_000);
+  assert.deepEqual(new CityRoleGameStateAdapter().cloneAndValidate(legacy.game), legacy.game);
+  const deadline = await h.deadline(); h.clock.set(deadline.deadlineAt);
+  assert.equal((await h.timeout.timeout(deadline)).status, 'APPLIED');
+  const next = await h.playing();
+  assert.equal(next.game.deadlineAt! - next.game.windowStartedAt!, 45_000);
+});
+
 test('CITY host configuration is authenticated, revision checked, replayable and pinned at start', async () => {
   const h = await harness(4, false);
-  const settings = { enabled: true, roles: ['MAGISTRATE','SPY','SEER','EMPEROR','CARDINAL','ALCHEMIST','SCHOLAR','DIPLOMAT','ARTIST'] as const };
+  const settings = { selectionSeconds: 20 as const, enabled: true, roles: ['MAGISTRATE','SPY','SEER','EMPEROR','CARDINAL','ALCHEMIST','SCHOLAR','DIPLOMAT','ARTIST'] as const };
   const input = { roomId: h.roomId, actorPlayerId: h.players[0]!.playerId, requestId: rid('configure-city'), expectedRoomRevision: parse(RoomRevisionSchema,0), authorization: current, settings };
   const rejected = await h.service.configure({ ...input, actorPlayerId: h.players[1]!.playerId });
   assert.ok(!rejected.ok); assert.equal(rejected.error.code, 'HOST_ONLY');
@@ -119,7 +166,7 @@ async function harness(count = 3, autoStart = true) {
   }
   async function seedState(state: CityGameState) {
     const room = await playing();
-    const duration = state.window?.kind === "ROLE_SELECTION" ? 45_000 : 90_000;
+    const duration = state.window?.kind === "ROLE_SELECTION" ? (state.expansion?.settings.selectionSeconds ?? 45) * 1000 : 90_000;
     await seed({ ...room.game, state, windowStartedAt: state.window === null ? null : clock.now(), deadlineAt: state.window === null ? null : parse(ServerTimeSchema, clock.now() + duration), finishedAt: state.window === null ? clock.now() : null });
   }
   async function roleFixture(roleId: CityRoleId, picks: readonly CityRoleId[] = ["CR-01", "CR-02", "CR-03", "CR-04", "CR-05", "CR-06"], rulesVersion: "city-rules-v1" | "city-rules-v2" = "city-rules-v2") {
@@ -138,11 +185,11 @@ async function harness(count = 3, autoStart = true) {
     randomCalls: () => randomCalls, setOffline: (value: boolean) => { offline = value; }, setLeaseCurrent: (value: boolean) => { leaseCurrent = value; }, setSchedulingFailure: (value: boolean) => { schedulingFails = value; } };
 }
 
-for (const count of [2, 3, 4, 5, 6]) test(`CITY ${count}-player start has exact private inventory, initial gold and one 45-second selection deadline`, async () => {
+for (const count of [2, 3, 4, 5, 6]) test(`CITY ${count}-player start has exact private inventory, initial gold and one 20-second selection deadline`, async () => {
   const h = await harness(count), room = await h.playing();
   assert.equal(room.game.gameRevision, 0);
   assert.equal(room.window.kind, "ROLE_SELECTION");
-  assert.equal(room.game.deadlineAt! - room.game.windowStartedAt!, 45_000);
+  assert.equal(room.game.deadlineAt! - room.game.windowStartedAt!, 20_000);
   assert.equal(room.game.state.players.length, count);
   assert.ok(room.game.state.players.every((player) => player.gold === 2 && player.hand.length === 4));
   assert.equal(room.game.state.deck.length, 68 - count * 4);
@@ -228,7 +275,7 @@ test("CITY selection timeout uses available roles only and stale presence/deadli
   assert.equal(cityPlayer(after.game.state, assignment.playerId).offlineTimeoutStreak, 1);
   assert.equal(after.game.gameRevision, before.game.gameRevision + 1);
   assert.ok(after.game.entropyCounter > before.game.entropyCounter);
-  assert.equal(after.game.deadlineAt! - after.game.windowStartedAt!, 45_000);
+  assert.equal(after.game.deadlineAt! - after.game.windowStartedAt!, 20_000);
   assert.equal((await h.timeout.timeout(deadline)).status, "NO_OP");
 });
 
