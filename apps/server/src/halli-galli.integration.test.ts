@@ -28,7 +28,14 @@ async function harness(t:TestContext,count=3,start=true){
  function time(at:number){now=parse(ServerTimeSchema,at);}
  async function advance(){const room=await stored(),s=room.game!.state;time(s.nextTransitionAt!);const deadline={roomId:room.roomId,gameId:room.game!.gameId,expectedGameRevision:room.game!.gameRevision,turnId:parse(TurnIdSchema,s.transitionId),deadlineAt:now};
  assert.equal((await server.runtime.halliService!.timeout(deadline)).status,"APPLIED");assert.equal((await server.runtime.halliService!.timeout(deadline)).status,"NO_OP");return deadline;}
- return{server,connect,bootstrap,request,send,call,success,failure,lobby,members,stored,sync,time,advance};
+ async function finishByExhaustion() {
+  for (let i = 0; i < 56 && (await stored()).phase === "PLAYING"; i++) await advance();
+  const end = parse(HalliFinishedPlatformSnapshotV2Schema, await sync());
+  assert.equal(end.game.result.reason, "LAST_PLAYER"); assert.equal(end.game.result.winnerPlayerIds.length, 1);
+  assert.deepEqual(end.game.result.scores.map(p => p.cards).sort((a, b) => b - a), [56, ...Array.from({ length: count - 1 }, () => 0)]);
+  return end;
+ }
+ return{finishByExhaustion,server,connect,bootstrap,request,send,call,success,failure,lobby,members,stored,sync,time,advance};
 }
 for (const count of [2, 3, 6]) test(`HALLI raw ${count} players: admission, start, flip, privacy and timer`, async t => {
  const h = await harness(t, count); const first = parse(HalliPlayingPlatformSnapshotV2Schema, await h.sync());
@@ -44,8 +51,8 @@ for (const count of [2, 3, 6]) test(`HALLI raw ${count} players: admission, star
  assert.equal(h.failure(await h.send(host.client, { ...request, kind: "halli:bell", turnId: undefined })), "REQUEST_ID_REUSED");
  await h.advance(); assert.equal((await h.stored()).game!.gameRevision, 2); assert.equal(h.server.runtime.turnScheduler.scheduledCount, 1);
 });
-test("HALLI simultaneous correct bells award exactly once; stale input has no penalty; retries are idempotent", async t => {
- const h = await harness(t, 3);
+for (const count of [2, 3]) test(`HALLI ${count} players: correct bell awards once and continues; stale input and retries cannot mutate`, async t => {
+ const h = await harness(t, count);
  // Reach a valid five through real sequential flips rather than replacing repository state.
  let current = parse(HalliPlayingPlatformSnapshotV2Schema, await h.sync());
  for (let i = 0; i < 45; i++) {
@@ -54,14 +61,22 @@ test("HALLI simultaneous correct bells award exactly once; stale input has no pe
   const actor = h.members.find(p => p.playerId === current.game.activePlayerId)!; h.time(current.game.flipAvailableAt);
   current = parse(HalliPlayingPlatformSnapshotV2Schema, h.success(await h.call(actor.client, "halli:flip", {}, { gameId: current.game.gameId, expectedGameRevision: current.game.gameRevision, turnId: current.game.turnId })));
  }
- const before = await h.stored(); const count = before.game!.state.players.reduce((n, p) => n + p.discard.length, 0);
+ const before = await h.stored(); const pileCount = before.game!.state.players.reduce((n, p) => n + p.discard.length, 0);
  const commands = h.members.map(() => h.request("halli:bell", {}, { gameId: current.game.gameId, expectedGameRevision: current.game.gameRevision }));
  const acks = await Promise.all(h.members.map((p, i) => h.send(p.client, commands[i]!)));
  assert.equal(acks.map(x => parse(StateSyncWireAckSchema, x)).filter(a => a.ok).length, 1);
- const after = (await h.stored()).game!; assert.equal(after.gameRevision, before.game!.gameRevision + 1); assert.equal(after.state.feedback?.kind, "CORRECT"); assert.equal(after.state.feedback.cards, count);
+ const after = (await h.stored()).game!; assert.equal(after.state.phase, "PLAYING"); assert.equal(after.state.result, null); assert.equal(after.gameRevision, before.game!.gameRevision + 1); assert.equal(after.state.feedback?.kind, "CORRECT"); assert.equal(after.state.feedback.cards, pileCount);
  const winner = acks.findIndex(x => parse(StateSyncWireAckSchema, x).ok); h.success(await h.send(h.members[winner]!.client, commands[winner]!));
  assert.deepEqual((await h.stored()).game, after);
- assert.equal(h.failure(await h.send(h.members[winner]!.client, { ...commands[winner]!, expectedGameRevision: after.gameRevision })), "REQUEST_ID_REUSED");
+ const awarded = after.state.players[winner]!, previousDeck = before.game!.state.players[winner]!.deck;
+ assert.deepEqual(awarded.deck, [...previousDeck, ...before.game!.state.players.flatMap(p => p.discard)]);
+ const replacement = await h.connect(); h.success(await h.call(replacement, "session:resume", { credential: { ...h.members[winner]!.credential, roomCode: h.lobby.room.roomCode }, lastSeenVersions: null }));
+ assert.deepEqual((await h.stored()).game, after);
+ assert.equal(h.failure(await h.send(replacement, { ...commands[winner]!, expectedGameRevision: after.gameRevision })), "REQUEST_ID_REUSED");
+ h.time(after.state.flipAvailableAt);
+ const next = parse(HalliPlayingPlatformSnapshotV2Schema, h.success(await h.call(replacement, "halli:flip", {}, { gameId: after.gameId, expectedGameRevision: after.gameRevision, turnId: after.state.transitionId })));
+ assert.equal(next.game.gameRevision, after.gameRevision + 1);
+ assert.deepEqual((await h.stored()).game!.state.players[winner]!.discard[0], previousDeck[0]);
 });
 test("HALLI resume preserves deck/turn and replaces old primary; wrong game and malformed commands rejected", async t => {
  const h = await harness(t), host = h.members[0]!, before = await h.stored();
@@ -77,8 +92,7 @@ test("HALLI resume preserves deck/turn and replaces old primary; wrong game and 
 test("HALLI finished result, host rematch, old callbacks and old commands isolation", async t => {
  const h = await harness(t, 2), host = h.members[0]!, first = parse(HalliPlayingPlatformSnapshotV2Schema, await h.sync());
  const room = await h.stored(); const oldTimer = { roomId: room.roomId, gameId: room.game!.gameId, expectedGameRevision: room.game!.gameRevision, turnId: parse(TurnIdSchema, room.game!.state.transitionId), deadlineAt: parse(ServerTimeSchema, room.game!.state.nextTransitionAt) };
- const bell = h.request("halli:bell", {}, { gameId: first.game.gameId, expectedGameRevision: first.game.gameRevision });
- const end = parse(HalliFinishedPlatformSnapshotV2Schema, h.success(await h.send(host.client, bell))); assert.equal(end.game.result.reason, "FINAL_BELL"); assert.equal(h.server.runtime.turnScheduler.scheduledCount, 0);
+ const end = await h.finishByExhaustion(); assert.equal(h.server.runtime.turnScheduler.scheduledCount, 0);
  const extra = { gameId: end.game.gameId, expectedGameRevision: end.game.gameRevision, expectedRoomRevision: end.versions.roomRevision };
  assert.equal(h.failure(await h.call(h.members[1]!.client, "halli:rematch", {}, extra)), "HOST_ONLY");
  const lobby = parse(HalliLobbyPlatformSnapshotV2Schema, h.success(await h.call(host.client, "halli:rematch", {}, extra)));
@@ -101,18 +115,17 @@ test("HALLI explicit leave cancels game, preserves result and removes departed p
  const lobby = parse(HalliLobbyPlatformSnapshotV2Schema, h.success(await h.call(host.client, "halli:rematch", {}, { gameId: end.game.gameId, expectedGameRevision: end.game.gameRevision, expectedRoomRevision: end.versions.roomRevision })));
  assert.equal(lobby.room.players.length, 2);
 });
-test("HALLI timer recovery and game limit use server Clock", async t => {
+test("HALLI timer recovery continues past fifteen minutes using server Clock", async t => {
  const h = await harness(t, 3, false), runtime = h.server.runtime;
  const diagnostic = t.mock.method(console, "error", () => undefined);
  const schedule = t.mock.method(runtime.turnScheduler, "scheduleTimeout", async () => { throw new Error("offline scheduler"); });
  h.success(await h.call(h.members[0]!.client, "game:start", {}, { expectedRoomRevision: h.lobby.versions.roomRevision })); assert.equal(diagnostic.mock.callCount(), 1); schedule.mock.restore();
  const room = await h.stored(); h.time(room.game!.state.nextTransitionAt!); assert.equal(await runtime.overdueTurnSweeper.sweepOnce(), 1);
- const current = await h.stored(); h.time(current.game!.state.gameDeadlineAt); assert.equal(await runtime.overdueTurnSweeper.sweepOnce(), 1);
- const end = parse(HalliFinishedPlatformSnapshotV2Schema, await h.sync()); assert.equal(end.game.result.reason, "TIME_LIMIT");
+ const current = await h.stored(); h.time(current.game!.state.startedAt + 900_000); assert.equal(await runtime.overdueTurnSweeper.sweepOnce(), 1);
+ const ongoing = parse(HalliPlayingPlatformSnapshotV2Schema, await h.sync()); assert.equal(ongoing.game.gameRevision, current.game!.gameRevision + 1); assert.equal(runtime.turnScheduler.scheduledCount, 1);
 });
 test("HALLI finished offline host transfers after 60 seconds without changing result", async t => {
- const h = await harness(t, 2); const first = parse(HalliPlayingPlatformSnapshotV2Schema, await h.sync());
- h.success(await h.call(h.members[0]!.client, "halli:bell", {}, { gameId: first.game.gameId, expectedGameRevision: first.game.gameRevision }));
+ const h = await harness(t, 2); await h.finishByExhaustion();
  const before = (await h.stored()).game!, runtime = h.server.runtime, host = h.members[0]!;
  const binding = runtime.connectionRegistry.listActiveBindings(h.lobby.room.roomId).find(b => b.playerId === host.playerId)!;
  runtime.connectionRegistry.disconnect(binding.socketId, binding.connectionGeneration); const at = runtime.clock.now();
