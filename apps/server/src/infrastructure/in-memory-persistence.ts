@@ -1,4 +1,4 @@
-import { CityExpansionSettingsSchema } from "@hangul-rummikub/shared";
+import { LostCitiesSettingsSchema, CityExpansionSettingsSchema } from "@hangul-rummikub/shared";
 import { IslandGameStateAdapter, type IslandLifecycle } from "../games/island/compatibility/adapter.js";
 import { SplendorGameStateAdapter, type SplendorLifecycle } from "../games/splendor/compatibility/adapter.js";
 import { JaipurGameStateAdapter, type JaipurLifecycle } from "../games/jaipur/compatibility/adapter.js";
@@ -259,7 +259,9 @@ function cloneRoomWriteCandidate(
       validateRoomGameCoherence(shell.phase, shell.players, game, () => game === null ? null : adapter.inspectLifecycle(game));
       const departedPlayerIds = Object.freeze([...(candidate.departedPlayerIds ?? [])]);
       if (new Set(departedPlayerIds).size !== departedPlayerIds.length || departedPlayerIds.some(id => !shell.players.some(p => p.playerId === id)) || shell.phase === "LOBBY" && departedPlayerIds.length > 0) throw new Error("Invalid departed LOST_CITIES roster.");
-      return Object.freeze({...shell, gameType:"LOST_CITIES", game, departedPlayerIds});
+      const settings=v.parse(LostCitiesSettingsSchema,candidate.settings??{mode:"BASE"});
+      if(game&&settings.mode!==game.state.settings.mode)throw new Error("Lost Cities mode changed during game.");
+      return Object.freeze({...shell, gameType:"LOST_CITIES", game, departedPlayerIds, settings});
     }
     case "HALLI_GALLI": {
       const adapter = new HalliGameStateAdapter(), game = candidate.game === null ? null : adapter.cloneAndValidate(candidate.game);

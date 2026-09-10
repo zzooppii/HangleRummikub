@@ -106,10 +106,10 @@ test('LOST_CITIES resume restores exactly the same hand and turn without admitti
   assert.equal(lostCities(await h.sync(replacement)).gameRevision,before.gameRevision);
   h.success(await h.send(replacement,action(h,resumed,move(view))));
 });
-test('LOST_CITIES full three-round socket match, dual confirmations, joint victory and same-room restart',async t=>{
-  const h=await harness(t);let s=await start(h),oldGameId=lostCities(s).gameId;
+for(const mode of ['BASE','SIX_EXPEDITIONS'] as const) test(`LOST_CITIES ${mode} full three-round socket match, dual confirmations, joint victory and same-room restart`,async t=>{
+  const h=await harness(t);const initial=await h.sync();h.success(await h.call(h.host,'lostCities:configure',{mode},{expectedRoomRevision:initial.versions.roomRevision}));let s=await start(h),oldGameId=lostCities(s).gameId;
   for(let round=1;round<=3;round++){
-    for(let turn=0;turn<44;turn++){
+    for(let turn=0;turn<(mode==='BASE'?44:56);turn++){
       const g=lostCities(s);assert.equal(g.phase,'PLAYING');if(g.phase!=='PLAYING')throw new Error();const actor=h.members.find(p=>p.playerId===g.activePlayerId)!;s=await h.sync(actor.client);const own=lostCities(s);if(own.phase!=='PLAYING')throw new Error();s=h.success(await h.send(actor.client,action(h,s,move(own))));
     }
     const ended=lostCities(s);assert.equal(ended.deckCount,0);assert.equal(ended.roundResults.length,round);assert.deepEqual(ended.roundResults.at(-1)?.scores.map(p=>p.total),[0,0]);
@@ -121,11 +121,30 @@ test('LOST_CITIES full three-round socket match, dual confirmations, joint victo
     }
   }
   const final=lostCities(s);assert.equal(final.phase,'FINISHED');if(final.phase!=='FINISHED')throw new Error();assert.equal(final.result.reason,'THREE_ROUNDS');assert.equal(final.result.winnerPlayerIds.length,2);
-  const lobby=h.success(await h.send(h.host,h.selection(await h.sync(),'LOST_CITIES')));assert.equal(lobby.room.roomCode,s.room.roomCode);assert.equal(lobby.game,null);const restarted=await start(h);assert.notEqual(lostCities(restarted).gameId,oldGameId);
+  const lobby=h.success(await h.send(h.host,h.selection(await h.sync(),'LOST_CITIES')));assert.equal(lobby.room.roomCode,s.room.roomCode);assert.equal(lobby.game,null);assert.equal(lobby.room.gameType,'LOST_CITIES');if(lobby.room.gameType!=='LOST_CITIES')throw new Error();assert.equal(lobby.room.settings?.mode,mode);const restarted=await start(h);assert.equal(lostCities(restarted).settings?.mode,mode);assert.notEqual(lostCities(restarted).gameId,oldGameId);
 });
 test('LOST_CITIES leave cancels and keeps remaining player eligible to select another game',async t=>{
   const h=await harness(t),s=await start(h),depart=h.members[1]!;
   const result=v.parse(RoomLeaveAckSchema,await h.call(depart.client,'room:leave',{}, {expectedRoomRevision:s.versions.roomRevision,expectedGameRevision:lostCities(s).gameRevision}));assert.ok(result.ok,result.ok?'':JSON.stringify(result.error));
   const final=await h.sync(),g=lostCities(final);assert.equal(g.phase,'FINISHED');if(g.phase!=='FINISHED')throw new Error();assert.deepEqual(g.result,{reason:'CANCELLED',winnerPlayerIds:[]});
   const selected=h.success(await h.send(h.host,h.selection(final,'JAIPUR')));assert.equal(selected.room.gameType,'JAIPUR');assert.equal(selected.room.players.length,1);assert.equal(selected.room.roomCode,s.room.roomCode);
+});
+
+test('LOST_CITIES host settings enforce authorization, revision, replay, persistence and lobby-only changes',async t=>{
+  const h=await harness(t),initial=await h.sync(),guest=h.members[1]!;
+  const c=h.request('lostCities:configure',{mode:'SIX_EXPEDITIONS'},{expectedRoomRevision:initial.versions.roomRevision});
+  assert.equal(h.failure(await h.send(guest.client,c)),'HOST_ONLY');
+  assert.equal(h.failure(await h.send(h.host,{...c,payload:{mode:'UNKNOWN'}})),'INVALID_PAYLOAD');
+  let s=h.success(await h.send(h.host,c));
+  assert.equal(s.versions.roomRevision,initial.versions.roomRevision+1);
+  assert.equal(h.success(await h.send(h.host,c)).versions.roomRevision,s.versions.roomRevision);
+  assert.equal(h.failure(await h.send(h.host,{...c,payload:{mode:'BASE'}})),'REQUEST_ID_REUSED');
+  assert.equal(h.failure(await h.send(h.host,{...c,requestId:'old-settings'})),'STALE_ROOM_REVISION');
+  const guestView=await h.sync(guest.client);if(guestView.room.gameType!=='LOST_CITIES')throw new Error();assert.equal(guestView.room.settings?.mode,'SIX_EXPEDITIONS');
+  const resumed=h.success(await h.call(await h.connect(),'session:resume',{credential:{...guest.credential,roomCode:s.room.roomCode},lastSeenVersions:null}));
+  if(resumed.room.gameType!=='LOST_CITIES')throw new Error();assert.equal(resumed.room.settings?.mode,'SIX_EXPEDITIONS');
+  s=h.success(await h.call(h.host,'lostCities:configure',{mode:'BASE'},{expectedRoomRevision:s.versions.roomRevision}));
+  s=await start(h);assert.equal(lostCities(s).deckCount,44);assert.equal(lostCities(s).discards.length,5);
+  assert.equal(h.failure(await h.call(h.host,'lostCities:configure',{mode:'SIX_EXPEDITIONS'},{expectedRoomRevision:s.versions.roomRevision})),'INVALID_PHASE');
+  assert.equal(lostCities(await h.sync()).settings?.mode,'BASE');
 });

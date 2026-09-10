@@ -1028,3 +1028,7 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 섬 개척의 3–4인 기본판과 차례당 2분·시간 초과 자동 처리는 사용자의 개발 승인 및 시간 정책 선택에 따라 확정했다. 세부 내용은 [ISLAND_GAME_RULES.md](./ISLAND_GAME_RULES.md)의 `CONFIRMED`와 `DIGITAL_MVP_POLICY`를 따른다. 이 결정은 한글 타일 게임의 미확정 항목을 확정하거나 변경하지 않는다.
 
 섬 개척 자원 공개 정책은 사용자 확인에 따라 **CONFIRMED: 모든 참가자의 자원 종류별 정확한 수량 공개**로 변경했다. 발전 카드 앞면·ID와 숨은 승점은 비공개를 유지한다. 세부 내용은 [ISLAND_GAME_RULES.md](./ISLAND_GAME_RULES.md)를 따른다.
+
+### 로스트시티 방장 선택형 확장 — 2026-09-11 (CONFIRMED)
+
+사용자가 일반판/확장판의 방장 선택을 요청했다. 대기실에서 5색 60장 또는 6색 72장을 선택하며 손패 8장과 3라운드 규칙은 동일하다. 모드는 시작 후 고정하고 재접속·라운드 전환·동일 게임 재시작에 유지한다. 근거와 상세 정책은 [LOST_CITIES_GAME_RULES.md](./LOST_CITIES_GAME_RULES.md)에 기록한다.

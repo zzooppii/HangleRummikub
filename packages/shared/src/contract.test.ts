@@ -4622,6 +4622,7 @@ test("runtime Socket.IO map은 Number events를 additive하게 제공하고 lega
     | (typeof LEGACY_HANGUL_V1_CLIENT_EVENT_NAMES)[number]
     | "jaipur:act"
     | "jaipur:nextRound"
+    | "lostCities:configure"
     | "lostCities:act"
     | "lostCities:nextRound"
     | "island:act"

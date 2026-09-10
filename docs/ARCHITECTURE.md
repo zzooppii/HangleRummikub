@@ -995,3 +995,5 @@ Phase 18 deployment checkpoint에서 Codex는 public `/health`, Home/assets, dir
 ## 로스트시티 추가 (2026-09-11)
 
 서버 권위형 2인 3라운드 카드 게임을 기존 구체 게임 경계에 연결한다. [LOST_CITIES_ARCHITECTURE.md](./LOST_CITIES_ARCHITECTURE.md)와 [규칙](./LOST_CITIES_GAME_RULES.md)을 따른다.
+
+로스트시티는 `lostCities:configure`와 Room 설정으로 일반판/여섯 탐험 모드를 지원한다. 설정은 대기실 방장 권한과 room revision으로 검증하며 시작 후 Game 상태에 고정한다. 카드 구성·개인별 projection·정산은 같은 모드에 따른다. [구현 경계](./LOST_CITIES_ARCHITECTURE.md)를 참조한다.

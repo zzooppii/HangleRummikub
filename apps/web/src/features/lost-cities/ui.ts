@@ -1,6 +1,6 @@
-import { LOST_CITIES_SUITS, type LostCitiesAction, type LostCitiesCard, type LostCitiesProjection, type LostCitiesSuit } from "@hangul-rummikub/shared";
-export const LC_LABELS:Record<LostCitiesSuit,string>={DESERT:'사막',JUNGLE:'정글',OCEAN:'바다',VOLCANO:'화산',SNOW:'설산'};
-export const LC_MARKS:Record<LostCitiesSuit,string>={DESERT:'☀',JUNGLE:'❧',OCEAN:'≈',VOLCANO:'▲',SNOW:'❄'};
+import { LOST_CITIES_ALL_SUITS, type LostCitiesAction, type LostCitiesCard, type LostCitiesProjection, type LostCitiesSuit } from "@hangul-rummikub/shared";
+export const LC_LABELS:Record<LostCitiesSuit,string>={DESERT:'사막',JUNGLE:'정글',OCEAN:'바다',VOLCANO:'화산',SNOW:'설산',CANYON:'협곡'};
+export const LC_MARKS:Record<LostCitiesSuit,string>={DESERT:'☀',JUNGLE:'❧',OCEAN:'≈',VOLCANO:'▲',SNOW:'❄',CANYON:'◈'};
 export type LostCitiesDraft={cardId:LostCitiesCard['cardId']|null;kind:LostCitiesAction['kind']|null;draw:LostCitiesAction['draw']|null};
 export const emptyLostCitiesDraft=():LostCitiesDraft=>({cardId:null,kind:null,draw:null});
 export const cardLabel=(card:LostCitiesCard)=>`${LC_LABELS[card.suit]} ${card.kind==='INVESTMENT'?'투자':card.value}`;
@@ -9,7 +9,7 @@ export function canPlaceLostCities(card:LostCitiesCard,cards:readonly LostCities
   return last?.kind==='NUMBER'?card.kind==='NUMBER'&&card.value>last.value:true;
 }
 export function sortLostCitiesHand(hand:readonly LostCitiesCard[]):LostCitiesCard[] {
-  return [...hand].sort((a,b)=>LOST_CITIES_SUITS.indexOf(a.suit)-LOST_CITIES_SUITS.indexOf(b.suit)||(a.kind==='NUMBER'?a.value:0)-(b.kind==='NUMBER'?b.value:0));
+  return [...hand].sort((a,b)=>LOST_CITIES_ALL_SUITS.indexOf(a.suit)-LOST_CITIES_ALL_SUITS.indexOf(b.suit)||(a.kind==='NUMBER'?a.value:0)-(b.kind==='NUMBER'?b.value:0));
 }
 export function previewLostCities(game:LostCitiesProjection,draft:LostCitiesDraft):{action:LostCitiesAction|null;hint:string} {
   if(game.phase!=='PLAYING')return {action:null,hint:'라운드 결과를 확인하세요.'};

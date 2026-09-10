@@ -92,3 +92,30 @@ test('Lost Cities persistence rejects duplicate zone identity, wrong inventory, 
   assert.throws(()=>parseLostCitiesState({...s,phase:'ROUND_RESULT'}));
   const ended=finishRound(s);ended.roundResults[0]!.scores[0]!.expeditions[0]!.total=100;assert.throws(()=>parseLostCitiesState(ended));
 });
+
+test('six expeditions conserve 72 cards and preserve mode through three complete rounds',()=>{
+  const settings={mode:'SIX_EXPEDITIONS' as const};
+  const expansionSetup=()=>({cards:makeLostCitiesCards(()=>`six-${++seq}`,settings.mode)});
+  let s=createLostCitiesGame({...expansionSetup(),settings,gameId:parse(GameIdSchema,'six-match'),playerIds:[a,b],now:at,transitionId:next(),starter:0});
+  for(let round=1;round<=3;round++){
+    assert.equal(s.deck.length,56);assert.equal(s.cards.length,72);assert.equal(s.discards.length,6);
+    assert.equal(s.cards.filter(c=>c.suit==='CANYON').length,12);
+    for(let turn=0;turn<56;turn++){
+      const actor=s.players.find(p=>p.playerId===s.activePlayerId)!;
+      s=accept(applyLostCitiesAction(s,actor.playerId,{kind:'DISCARD',cardId:actor.hand[0],draw:{kind:'DECK'}},at,next()));
+      const projected=projectLostCities({gameId:s.gameId,gameRevision:s.revision,startedAt:s.startedAt,finishedAt:s.finishedAt,state:s},a);
+      assert.equal(projected.settings?.mode,settings.mode);assert.equal(projected.privateState.hand.length,8);
+      assert.equal(projected.discards.length,6);assert.equal(s.cards.length,72);
+    }
+    assert.equal(s.roundResults.at(-1)?.scores[0]?.expeditions.length,6);
+    if(round<3){s=accept(confirmLostCitiesRound(s,a,null,next()));s=accept(confirmLostCitiesRound(s,b,expansionSetup(),next()));}
+  }
+  assert.equal(s.phase,'FINISHED');assert.equal(s.result?.winnerPlayerIds.length,2);
+  assert.throws(()=>parseLostCitiesState({...s,settings:{mode:'BASE'}}));
+});
+test('base rejects expansion-only draw source atomically; expansion requires complete six-suit inventory',()=>{
+  const s=game(),before=structuredClone(s);
+  const result=applyLostCitiesAction(s,a,{kind:'DISCARD',cardId:s.players[0]!.hand[0],draw:{kind:'DISCARD',suit:'CANYON'}},at,next());
+  assert.deepEqual(result,{ok:false,reason:'INVALID_ACTION'});assert.deepEqual(s,before);
+  assert.throws(()=>createLostCitiesGame({...setup(),settings:{mode:'SIX_EXPEDITIONS'},gameId:s.gameId,playerIds:[a,b],now:at,transitionId:next(),starter:0}));
+});

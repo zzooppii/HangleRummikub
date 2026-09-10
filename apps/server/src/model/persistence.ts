@@ -1,5 +1,5 @@
 import type { IslandStoredGame } from "../games/island/compatibility/adapter.js";
-import type { CityExpansionSettings } from "@hangul-rummikub/shared";
+import type { LostCitiesSettings, CityExpansionSettings } from "@hangul-rummikub/shared";
 import type { SplendorStoredGame } from "../games/splendor/compatibility/adapter.js";
 import type { JaipurStoredGame } from "../games/jaipur/compatibility/adapter.js";
 import type { LostCitiesStoredGame } from "../games/lost-cities/compatibility/adapter.js";
@@ -96,7 +96,7 @@ export type SneakyLunchRoomRecord = RoomRecordBase & Readonly<{ gameType: "SNEAK
 export type WolfRoomRecord = RoomRecordBase & Readonly<{ gameType: "WOLF_NIGHT"; game: WolfStoredGame | null; departedPlayerIds?: readonly PlayerId[]; settings?: WolfSettings }>;
 export type SplendorRoomRecord = RoomRecordBase & Readonly<{ gameType: "SPLENDOR"; game: SplendorStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
 export type JaipurRoomRecord = RoomRecordBase & Readonly<{ gameType: "JAIPUR"; game: JaipurStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
-export type LostCitiesRoomRecord = RoomRecordBase & Readonly<{ gameType: "LOST_CITIES"; game: LostCitiesStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
+export type LostCitiesRoomRecord = RoomRecordBase & Readonly<{ gameType: "LOST_CITIES"; settings?: LostCitiesSettings; game: LostCitiesStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
 export type HalliRoomRecord = RoomRecordBase & Readonly<{ gameType: "HALLI_GALLI"; game: HalliStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
 export type IslandRoomRecord = RoomRecordBase & Readonly<{ gameType: "ISLAND_SETTLERS"; game: IslandStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
 export type RoomRecord = LostCitiesRoomRecord | JaipurRoomRecord | SplendorRoomRecord | IslandRoomRecord | HalliRoomRecord | WolfRoomRecord | HangulRoomRecord | NumberTileRoomRecord | GemCardRoomRecord | CityRoleRoomRecord | DrawRelayRoomRecord | SneakyLunchRoomRecord;

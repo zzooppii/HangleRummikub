@@ -715,6 +715,7 @@ export class RealtimeClient {
     if (!parseRematch(LostCitiesClientCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
     return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {
       switch (command.kind) {
+        case "lostCities:configure": this.#socket.emit("lostCities:configure", command, acknowledge); break;
         case "lostCities:act": this.#socket.emit("lostCities:act", command, acknowledge); break;
         case "lostCities:nextRound": this.#socket.emit("lostCities:nextRound", command, acknowledge); break;
       }

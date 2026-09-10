@@ -1,7 +1,12 @@
 import * as v from "valibot";
 
 export const LOST_CITIES_SUITS = ["DESERT", "JUNGLE", "OCEAN", "VOLCANO", "SNOW"] as const;
-export const LostCitiesSuitSchema = v.picklist(LOST_CITIES_SUITS);
+export const LOST_CITIES_ALL_SUITS = [...LOST_CITIES_SUITS, "CANYON"] as const;
+export const LostCitiesSettingsSchema = v.strictObject({ mode: v.picklist(["BASE", "SIX_EXPEDITIONS"]) });
+export type LostCitiesSettings = v.InferOutput<typeof LostCitiesSettingsSchema>;
+export const lostCitiesSuits = (mode: LostCitiesSettings["mode"] = "BASE"): readonly LostCitiesSuit[] => mode === "SIX_EXPEDITIONS" ? LOST_CITIES_ALL_SUITS : LOST_CITIES_SUITS;
+export const lostCitiesRulesVersion = (mode: LostCitiesSettings["mode"]) => mode === "SIX_EXPEDITIONS" ? "lost-cities-six-v1" : "lost-cities-base-v1";
+export const LostCitiesSuitSchema = v.picklist(LOST_CITIES_ALL_SUITS);
 export type LostCitiesSuit = v.InferOutput<typeof LostCitiesSuitSchema>;
 export const LostCitiesCardIdSchema = v.pipe(v.string(), v.minLength(1), v.maxLength(128), v.brand("LostCitiesCardId"));
 export const LostCitiesCardSchema = v.variant("kind", [

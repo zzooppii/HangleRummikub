@@ -553,6 +553,7 @@ export interface SnapshotWireClientToServerEvents {
   "island:rematch": (command: Extract<IslandClientCommand,{kind:"island:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "splendor:act": (command: Extract<SplendorClientCommand,{kind:"splendor:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "jaipur:act": (command: Extract<JaipurClientCommand,{kind:"jaipur:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "lostCities:configure": (command: Extract<LostCitiesClientCommand,{kind:"lostCities:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "lostCities:act": (command: Extract<LostCitiesClientCommand,{kind:"lostCities:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "splendor:rematch": (command: Extract<SplendorClientCommand,{kind:"splendor:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "jaipur:nextRound": (command: Extract<JaipurClientCommand,{kind:"jaipur:nextRound"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;

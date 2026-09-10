@@ -1,6 +1,6 @@
 import { shuffleFrozen } from "../../../domain/frozen-fisher-yates.js";
 import * as v from "valibot";
-import { LostCitiesClientCommandSchema, GameRevisionSchema, RoomRevisionSchema, ServerTimeSchema, type LostCitiesClientCommand, type ErrorDto, type RoomId, type PlayerId, type ServerTime } from "@hangul-rummikub/shared";
+import { LostCitiesClientCommandSchema, GameRevisionSchema, RoomRevisionSchema, ServerTimeSchema, type LostCitiesSettings, type LostCitiesClientCommand, type ErrorDto, type RoomId, type PlayerId, type ServerTime } from "@hangul-rummikub/shared";
 import { GameStartSuccessDataSchema, type StartGameInput, type GameStartResult } from "../../../application/game-start-service.js";
 import type { RoomMutationSerialExecutor } from "../../../application/room-session-service.js";
 import type { RoomRepository } from "../../../ports/room-repository.js";
@@ -25,8 +25,8 @@ export class LostCitiesService {
   constructor(readonly deps:LostCitiesDependencies) {}
   subscribe(listener:(roomId:RoomId)=>void|Promise<void>){this.listeners.add(listener);return ()=>{this.listeners.delete(listener);};}
   async notify(roomId:RoomId){await Promise.allSettled([...this.listeners].map(fn=>Promise.resolve().then(()=>fn(roomId))));}
-  private roundSetup():LostCitiesRoundSetup {
-    return { cards: [...shuffleFrozen(makeLostCitiesCards(() => this.deps.ids.generateTileId()), this.deps.random)] };
+  private roundSetup(mode:LostCitiesSettings["mode"]="BASE"):LostCitiesRoundSetup {
+    return { cards: [...shuffleFrozen(makeLostCitiesCards(() => this.deps.ids.generateTileId(),mode), this.deps.random)] };
   }
 
   async start(input:StartGameInput):Promise<GameStartResult> {
@@ -46,7 +46,7 @@ export class LostCitiesService {
       const lease=await d.presence.acquireRoomPresenceLease(room.roomId);
       if(!lease.isCurrent()||!room.players.every(p=>lease.connectionStatusByPlayerId.get(p.playerId)==='CONNECTED'))return failure('PLAYERS_NOT_CONNECTED');
       const now=d.clock.now(),gameId=d.ids.generateGameId(),turnId=d.ids.generateTurnId();
-      const state=createLostCitiesGame({...this.roundSetup(),gameId,playerIds:room.players.map(p=>p.playerId),now,transitionId:turnId,starter:d.random.nextInt(2)});
+      const state=createLostCitiesGame({...this.roundSetup(room.settings?.mode),settings:room.settings??{mode:"BASE"},gameId,playerIds:room.players.map(p=>p.playerId),now,transitionId:turnId,starter:d.random.nextInt(2)});
       const roomRevision=v.parse(RoomRevisionSchema,room.roomRevision+1),gameRevision=v.parse(GameRevisionSchema,0);
       const data=v.parse(GameStartSuccessDataSchema,{roomId:room.roomId,roomRevision,gameId,gameRevision,turnId});
       const committed=await d.roomUnitOfWork.commit({roomMutation:{kind:'REPLACE',candidate:{...room,phase:'PLAYING',roomRevision,updatedAt:now,game:{gameId,gameRevision,startedAt:now,finishedAt:null,state}},expectedRoomRevision:room.roomRevision,expectedStorageRevision:room.storageRevision},sessionMutation:{kind:'NONE'},idempotency:{scopeKey,requestId:input.requestId,payloadFingerprint,terminalResult:data,createdAt:now}},{isSatisfied:()=>input.authorization.isCurrent()&&lease.isCurrent()});
@@ -65,12 +65,21 @@ export class LostCitiesService {
         const prior=await d.idempotencyRepository.classify(scopeKey,c.requestId,payloadFingerprint);
         if(prior.status==='CONFLICT')return failure('REQUEST_ID_REUSED');
         if(prior.status==='REPLAY'){v.parse(Receipt,prior.record.terminalResult);return {ok:true as const};}
+        if(c.kind==='lostCities:configure') {
+          if(room.phase!=='LOBBY'||room.game!==null)return failure('INVALID_PHASE');
+          if(room.hostPlayerId!==input.actorPlayerId)return failure('HOST_ONLY');
+          if(room.roomRevision!==c.expectedRoomRevision)return failure('STALE_ROOM_REVISION');
+          const now=d.clock.now();
+          const committed=await d.roomUnitOfWork.commit({roomMutation:{kind:'REPLACE',candidate:{...room,settings:c.payload,roomRevision:v.parse(RoomRevisionSchema,room.roomRevision+1),updatedAt:now},expectedRoomRevision:room.roomRevision,expectedStorageRevision:room.storageRevision},sessionMutation:{kind:'NONE'},idempotency:{scopeKey,requestId:c.requestId,payloadFingerprint,terminalResult:{outcome:'ACCEPTED'},createdAt:now}},{isSatisfied:()=>input.authorization.isCurrent()});
+          if(committed.status!=='COMMITTED')return failure('STALE_ROOM_REVISION');
+          changed=true;return {ok:true as const};
+        }
         if(!room.game||room.game.gameId!==c.gameId||room.game.gameRevision!==c.expectedGameRevision)return failure('STALE_GAME_REVISION');
         if(room.phase!=='PLAYING')return failure('INVALID_PHASE');
         const s=room.game.state,now=v.parse(ServerTimeSchema,d.clock.now());
         if(c.kind==='lostCities:act' && c.turnId!==s.transitionId || c.kind==='lostCities:nextRound' && c.roundId!==s.roundId)return failure('STALE_GAME_REVISION');
         if(c.kind==='lostCities:nextRound'&&(s.phase!=='ROUND_RESULT'||s.confirmedPlayerIds.includes(input.actorPlayerId)))return failure('INVALID_PHASE');
-        const applied=c.kind==='lostCities:act'?applyLostCitiesAction(s,input.actorPlayerId,c.payload,now,d.ids.generateTurnId()):confirmLostCitiesRound(s,input.actorPlayerId,s.confirmedPlayerIds.length===1?this.roundSetup():null,d.ids.generateTurnId());
+        const applied=c.kind==='lostCities:act'?applyLostCitiesAction(s,input.actorPlayerId,c.payload,now,d.ids.generateTurnId()):confirmLostCitiesRound(s,input.actorPlayerId,s.confirmedPlayerIds.length===1?this.roundSetup(s.settings.mode):null,d.ids.generateTurnId());
         if(!applied.ok)return failure(applied.reason==='INVALID_ACTION'?'RULE_VIOLATION':applied.reason);
         const committed=await d.roomUnitOfWork.commit({roomMutation:{kind:'REPLACE',candidate:transitionLostCities(room,applied.state,now),expectedRoomRevision:room.roomRevision,expectedStorageRevision:room.storageRevision},sessionMutation:{kind:'NONE'},idempotency:{scopeKey,requestId:c.requestId,payloadFingerprint,terminalResult:{outcome:'ACCEPTED'},createdAt:now}},{isSatisfied:()=>input.authorization.isCurrent()});
         if(committed.status!=='COMMITTED')return failure('STALE_GAME_REVISION');

@@ -80,7 +80,7 @@ export function toScheduledTurnDeadline(
 ): ScheduledTurnDeadline {
   if ("state" in game && !("windowStartedAt" in game)) {
     if (game.state.rulesVersion === "jaipur-base-v1") throw new Error("Jaipur has no turn deadline.");
-    if (game.state.rulesVersion === "lost-cities-base-v1") throw new Error("LostCities has no turn deadline.");
+    if ("startingPlayerId" in game.state) throw new Error("LostCities has no turn deadline.");
     if ("turnId" in game.state) return { roomId, gameId: game.gameId, expectedGameRevision: game.gameRevision, turnId: game.state.turnId, deadlineAt: game.state.deadlineAt };
     if ("nextTransitionAt" in game.state) return {roomId,gameId:game.gameId,expectedGameRevision:game.gameRevision,turnId:parse(TurnIdSchema,game.state.transitionId),deadlineAt:parse(ServerTimeSchema,game.state.nextTransitionAt)};
     if(game.state.deadlineAt===null)throw new Error("DRAW has no deadline.");
@@ -160,7 +160,7 @@ export async function scheduleCurrentTurnBestEffort(
 
     if ("state" in game && !("windowStartedAt" in game)) {
       if (game.state.rulesVersion === "jaipur-base-v1") return false;
-      if (game.state.rulesVersion === "lost-cities-base-v1") return false;
+      if ("startingPlayerId" in game.state) return false;
       if ("turnId" in game.state) {
         if (game.state.turnId !== identity.turnId) return false;
       } else if ("nextTransitionAt" in game.state) {

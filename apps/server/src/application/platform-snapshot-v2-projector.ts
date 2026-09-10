@@ -112,7 +112,7 @@ export class PlatformSnapshotV2Projector {
       }
       return v.parse(PlatformSnapshotV2Schema, {
         ...base,
-        room: { ...base.room, phase: "LOBBY", ...(input.room.gameType === "CITY_ROLE" ? { settings: input.room.settings ?? CITY_DEFAULT_SETTINGS } : {}), ...(input.room.gameType === "WOLF_NIGHT" ? { settings: input.room.settings ?? { roles: null, discussionSeconds: 180 } } : {}), ...(input.room.gameType === "SNEAKY_LUNCH" ? { settings: input.room.settings ?? { lunchboxCount: 3, difficulty: "NORMAL" } } : {}), ...(input.room.gameType === "DRAW_RELAY" ? {promptMode:input.room.promptMode ?? "MIXED",drawSeconds:input.room.drawSeconds ?? 90} : {}) },
+        room: { ...base.room, phase: "LOBBY", ...(input.room.gameType === "LOST_CITIES" ? {settings:input.room.settings??{mode:"BASE"}} : {}), ...(input.room.gameType === "CITY_ROLE" ? { settings: input.room.settings ?? CITY_DEFAULT_SETTINGS } : {}), ...(input.room.gameType === "WOLF_NIGHT" ? { settings: input.room.settings ?? { roles: null, discussionSeconds: 180 } } : {}), ...(input.room.gameType === "SNEAKY_LUNCH" ? { settings: input.room.settings ?? { lunchboxCount: 3, difficulty: "NORMAL" } } : {}), ...(input.room.gameType === "DRAW_RELAY" ? {promptMode:input.room.promptMode ?? "MIXED",drawSeconds:input.room.drawSeconds ?? 90} : {}) },
         game: null,
       });
     }
@@ -125,7 +125,7 @@ export class PlatformSnapshotV2Projector {
     if(input.room.gameType === "ISLAND_SETTLERS") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectIsland(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "SPLENDOR") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectSplendor(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "JAIPUR") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectJaipur(input.room.game,input.selfPlayerId)});
-    if(input.room.gameType === "LOST_CITIES") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectLostCities(input.room.game,input.selfPlayerId)});
+    if(input.room.gameType === "LOST_CITIES") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase,settings:input.room.settings??{mode:"BASE"}},game:projectLostCities(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "HALLI_GALLI") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectHalli(input.room.game)});
     if(input.room.gameType === "WOLF_NIGHT") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectWolf(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "SNEAKY_LUNCH") return v.parse(PlatformSnapshotV2Schema, {...base, room:{...base.room,phase:input.room.phase},game:projectSneakyLunch(input.room.game)});

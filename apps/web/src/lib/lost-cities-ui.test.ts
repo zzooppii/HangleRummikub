@@ -53,3 +53,22 @@ test('Lost Cities strict wire rejects secret fields, false card counts, wrong se
   const c={kind:'lostCities:act',protocolVersion:1,requestId:'req',gameId:'game',expectedGameRevision:0,turnId:'turn',payload:{kind:'PLAY',cardId:'card',draw:{kind:'DECK'}}};
   assert.equal(safeParse(LostCitiesClientCommandSchema,c).success,true);assert.equal(safeParse(LostCitiesClientCommandSchema,{...c,payload:{...c.payload,score:100}}).success,false);assert.equal(safeParse(LostCitiesClientCommandSchema,{...c,turnId:undefined}).success,false);
 });
+
+test('Lost Cities expansion lobby exposes host selection and renders six illustrated lanes',()=>{
+  const l=lobby();l.room.settings={mode:'SIX_EXPEDITIONS'};
+  const html=render(l);assert.match(html,/게임 모드 · 방장 선택/);assert.match(html,/확장판/);assert.match(html,/6개 탐험 · 72장/);assert.match(html,/canyon.png/);
+  const guest=render({...l,self:{playerId:l.room.players[1]!.playerId}});assert.match(guest,/<fieldset[^>]*disabled/);
+  const p=playing(),suit='CANYON' as const;
+  p.room.settings={mode:'SIX_EXPEDITIONS'};p.game.settings={mode:'SIX_EXPEDITIONS'};p.game.rulesVersion='lost-cities-six-v1';p.game.deckCount=56;
+  p.game.discards.push({suit,count:0,top:null});p.game.playerStates.forEach(player=>player.expeditions.push({suit,cards:[],score:{suit,cardCount:0,sum:0,cost:0,multiplier:1,bonus:0,total:0}}));
+  p.game.privateState.hand[0]=card(suit,'purple-hand',2);
+  const parsed=parse(LostCitiesPlayingPlatformSnapshotV2Schema,p),board=render(parsed);
+  assert.equal((board.match(/class="lc-lane /g)??[]).length,6);assert.match(board,/협곡 2/);assert.match(board,/여섯 탐험 보드/);assert.match(board,/56장/);
+  assert.equal(safeParse(LostCitiesPlayingPlatformSnapshotV2Schema,{...p,room:{...p.room,settings:{mode:'BASE'}}}).success,false);
+  assert.equal(safeParse(LostCitiesPlayingPlatformSnapshotV2Schema,{...p,game:{...p.game,settings:{mode:'BASE'}}}).success,false);
+});
+test('Lost Cities configure command accepts only explicit modes and a room revision',()=>{
+  const c={kind:'lostCities:configure',protocolVersion:1,requestId:'configure',expectedRoomRevision:3,payload:{mode:'SIX_EXPEDITIONS'}};
+  assert.equal(safeParse(LostCitiesClientCommandSchema,c).success,true);
+  for(const invalid of [{...c,payload:{mode:'EXPANSION'}},{...c,payload:{mode:'BASE',cards:72}},{...c,expectedRoomRevision:undefined}])assert.equal(safeParse(LostCitiesClientCommandSchema,invalid).success,false);
+});

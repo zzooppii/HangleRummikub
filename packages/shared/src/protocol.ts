@@ -1,5 +1,5 @@
 import { JaipurActionSchema } from "./games/jaipur/actions.js";
-import { LostCitiesActionSchema } from "./games/lost-cities/actions.js";
+import { LostCitiesSettingsSchema, LostCitiesActionSchema } from "./games/lost-cities/actions.js";
 import { SplendorActionSchema } from "./games/splendor/actions.js";
 import { IslandActionSchema } from "./games/island/actions.js";
 import { CityExpansionSettingsSchema, CityExpansionActionSchema } from "./games/city-role/expansion-contracts.js";
@@ -335,7 +335,8 @@ export const LostCitiesActCommandSchema = v.strictObject({ ...LostCitiesIdentity
 export const JaipurNextRoundCommandSchema = v.strictObject({ ...JaipurIdentity, kind: v.literal("jaipur:nextRound"), roundId: TurnIdSchema, payload: v.strictObject({}) });
 export const LostCitiesNextRoundCommandSchema = v.strictObject({ ...LostCitiesIdentity, kind: v.literal("lostCities:nextRound"), roundId: TurnIdSchema, payload: v.strictObject({}) });
 export const JaipurClientCommandSchema = v.variant("kind", [JaipurActCommandSchema, JaipurNextRoundCommandSchema]);
-export const LostCitiesClientCommandSchema = v.variant("kind", [LostCitiesActCommandSchema, LostCitiesNextRoundCommandSchema]);
+export const LostCitiesConfigureCommandSchema = v.strictObject({kind:v.literal("lostCities:configure"),protocolVersion:ProtocolVersionSchema,requestId:RequestIdSchema,expectedRoomRevision:RoomRevisionSchema,payload:LostCitiesSettingsSchema});
+export const LostCitiesClientCommandSchema = v.variant("kind", [LostCitiesConfigureCommandSchema, LostCitiesActCommandSchema, LostCitiesNextRoundCommandSchema]);
 export type JaipurClientCommand = v.InferOutput<typeof JaipurClientCommandSchema>;
 export type LostCitiesClientCommand = v.InferOutput<typeof LostCitiesClientCommandSchema>;
 
