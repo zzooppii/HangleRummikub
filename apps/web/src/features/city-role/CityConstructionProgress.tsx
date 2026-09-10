@@ -1,5 +1,4 @@
 import type { CityPublicBuilding } from '@hangul-rummikub/shared';
-import { CityTemplateArt } from './CityTemplateArt.js';
 import { CityIcon } from './CityVisuals.js';
 
 /** A visual summary of public v3 buildings; completion and game end remain server-owned. */
@@ -17,7 +16,7 @@ export function CityConstructionProgress({ buildings, ending, finished }: Readon
       {Array.from({ length: 8 }, (_, index) => {
         const card = slots[index];
         return <span key={index} className={`city-construction-slot${card ? ' is-built' : ''}`} title={card ? `${card.name}${card === monument ? ' · 완성 2칸' : ''}` : '빈 건물 터'} aria-hidden="true">
-          {card ? <CityTemplateArt templateId={card.templateId} category={card.category} /> : <CityIcon name="civic" />}
+          <CityIcon name="civic" />
           <small>{index + 1}</small>
         </span>;
       })}
