@@ -15,6 +15,7 @@
 | 그림 릴레이 (`DRAW_RELAY`) | 3~8명이 그림과 추측을 전달하고 함께 공개하는 파티게임 | [그림 릴레이 규칙](./docs/DRAW_RELAY_GAME_RULES.md) |
 | 몰래 한입 (`SNEAKY_LUNCH`) | 2~8명이 선생님 눈을 피해 도시락을 비우는 교실 파티게임 | [몰래 한입 규칙](./docs/SNEAKY_LUNCH_GAME_RULES.md) · [로컬 검증](./docs/SNEAKY_LUNCH_LOCAL_RELEASE_GATE.md) |
 | 섬 개척 (`ISLAND_SETTLERS`) | 3~4명이 자원을 생산·거래하고 마을과 도시를 건설하는 섬 전략 게임. 차례당 2분, 시간 초과 자동 처리 | [섬 개척 규칙](./docs/ISLAND_GAME_RULES.md) · [구현과 검증](./docs/ISLAND_ARCHITECTURE.md) |
+| 자이푸르 (`JAIPUR`) | 정확히 2명이 상품과 낙타를 교환하고 판매해 인장 2개를 겨루는 카드 게임. 시간 제한 없음 | [자이푸르 규칙](./docs/JAIPUR_GAME_RULES.md) · [구현과 검증](./docs/JAIPUR_ARCHITECTURE.md) |
 
 현재 소스의 기능과 실제 public 배포 상태는 구분한다. 기존 3게임의 공개 검증 이력은 [release gate](./docs/THREE_GAME_PLATFORM_RELEASE_GATE.md), CITY의 로컬 검증 이력은 [CITY local gate](./docs/CITY_ROLE_LOCAL_RELEASE_GATE.md)에 기록되어 있다. 이후 변경이 모두 Railway에 배포되었다는 의미는 아니다.
 

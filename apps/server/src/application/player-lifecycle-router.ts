@@ -1,5 +1,6 @@
 import type { createIslandLifecycle } from "../games/island/application/lifecycle.js";
 import type { createSplendorLifecycle } from "../games/splendor/application/lifecycle.js";
+import type { createJaipurLifecycle } from "../games/jaipur/application/lifecycle.js";
 import type { createHalliLifecycle } from "../games/halli-galli/application/lifecycle.js";
 import type { createWolfLifecycle } from "../games/wolf-night/application/lifecycle.js";
 import type { createSneakyLifecycle } from "../games/sneaky-lunch/application/lifecycle.js";
@@ -64,6 +65,7 @@ export type PresenceRestoredPlan =
 export type PlayerLifecycleRouterDependencies = Readonly<{
   island?: ReturnType<typeof createIslandLifecycle>;
   splendor?: ReturnType<typeof createSplendorLifecycle>;
+  jaipur?: ReturnType<typeof createJaipurLifecycle>;
   halli?: ReturnType<typeof createHalliLifecycle>;
   wolf?: ReturnType<typeof createWolfLifecycle>;
   sneaky?: ReturnType<typeof createSneakyLifecycle>;
@@ -90,6 +92,7 @@ export interface PlayerLifecycleActionRouting {
 export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
   readonly #island: ReturnType<typeof createIslandLifecycle> | undefined;
   readonly #splendor: ReturnType<typeof createSplendorLifecycle> | undefined;
+  readonly #jaipur: ReturnType<typeof createJaipurLifecycle> | undefined;
   readonly #halli: ReturnType<typeof createHalliLifecycle> | undefined;
   readonly #wolf: ReturnType<typeof createWolfLifecycle> | undefined;
   readonly #sneaky: ReturnType<typeof createSneakyLifecycle> | undefined;
@@ -108,6 +111,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
     }
     this.#island = dependencies.island;
     this.#splendor = dependencies.splendor;
+    this.#jaipur = dependencies.jaipur;
     this.#halli = dependencies.halli;
     this.#wolf = dependencies.wolf;
     this.#sneaky = dependencies.sneaky;
@@ -133,6 +137,9 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
       case "SPLENDOR":
         if (!this.#splendor) throw new Error("SPLENDOR lifecycle missing.");
         return this.#splendor.applyPlayingLeave(input);
+      case "JAIPUR":
+        if (!this.#jaipur) throw new Error("JAIPUR lifecycle missing.");
+        return this.#jaipur.applyPlayingLeave(input);
       case "HALLI_GALLI":
         if (!this.#halli) throw new Error("HALLI lifecycle missing.");
         return this.#halli.applyPlayingLeave(input);
@@ -163,6 +170,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
     switch (room.gameType) {
       case "ISLAND_SETTLERS": return {status:"NO_CHANGE"};
       case "SPLENDOR": return {status:"NO_CHANGE"};
+      case "JAIPUR": return {status:"NO_CHANGE"};
       case "HALLI_GALLI": return {status:"NO_CHANGE"};
       case "WOLF_NIGHT": return {status:"NO_CHANGE"};
       case "SNEAKY_LUNCH": return {status:"NO_CHANGE"};

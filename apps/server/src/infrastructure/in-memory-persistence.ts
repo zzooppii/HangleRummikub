@@ -1,6 +1,7 @@
 import { CityExpansionSettingsSchema } from "@hangul-rummikub/shared";
 import { IslandGameStateAdapter, type IslandLifecycle } from "../games/island/compatibility/adapter.js";
 import { SplendorGameStateAdapter, type SplendorLifecycle } from "../games/splendor/compatibility/adapter.js";
+import { JaipurGameStateAdapter, type JaipurLifecycle } from "../games/jaipur/compatibility/adapter.js";
 import { HalliGameStateAdapter, type HalliLifecycle } from "../games/halli-galli/compatibility/adapter.js";
 import { WolfGameStateAdapter, type WolfLifecycle } from "../games/wolf-night/compatibility/adapter.js";
 import { WolfSettingsSchema } from "@hangul-rummikub/shared";
@@ -111,6 +112,7 @@ type GameStateStorageAdapters = Readonly<{
 type RoomGameLifecycleInspection =
   | Readonly<{gameType:"ISLAND_SETTLERS";inspection:IslandLifecycle}>
   | Readonly<{gameType:"SPLENDOR";inspection:SplendorLifecycle}>
+  | Readonly<{gameType:"JAIPUR";inspection:JaipurLifecycle}>
   | Readonly<{gameType:"HALLI_GALLI";inspection:HalliLifecycle}>
   | Readonly<{gameType:"WOLF_NIGHT";inspection:WolfLifecycle}>
   | Readonly<{gameType:"SNEAKY_LUNCH";inspection:SneakyLunchLifecycle}>
@@ -242,6 +244,13 @@ function cloneRoomWriteCandidate(
       const departedPlayerIds = Object.freeze([...(candidate.departedPlayerIds ?? [])]);
       if (new Set(departedPlayerIds).size !== departedPlayerIds.length || departedPlayerIds.some(id => !shell.players.some(p => p.playerId === id)) || shell.phase === "LOBBY" && departedPlayerIds.length > 0) throw new Error("Invalid departed SPLENDOR roster.");
       return Object.freeze({...shell, gameType:"SPLENDOR", game, departedPlayerIds});
+    }
+    case "JAIPUR": {
+      const adapter = new JaipurGameStateAdapter(), game = candidate.game === null ? null : adapter.cloneAndValidate(candidate.game);
+      validateRoomGameCoherence(shell.phase, shell.players, game, () => game === null ? null : adapter.inspectLifecycle(game));
+      const departedPlayerIds = Object.freeze([...(candidate.departedPlayerIds ?? [])]);
+      if (new Set(departedPlayerIds).size !== departedPlayerIds.length || departedPlayerIds.some(id => !shell.players.some(p => p.playerId === id)) || shell.phase === "LOBBY" && departedPlayerIds.length > 0) throw new Error("Invalid departed JAIPUR roster.");
+      return Object.freeze({...shell, gameType:"JAIPUR", game, departedPlayerIds});
     }
     case "HALLI_GALLI": {
       const adapter = new HalliGameStateAdapter(), game = candidate.game === null ? null : adapter.cloneAndValidate(candidate.game);
@@ -397,6 +406,7 @@ function persistRoom(
     case "DRAW_RELAY":
     case "ISLAND_SETTLERS":
     case "SPLENDOR":
+    case "JAIPUR":
     case "HALLI_GALLI":
     case "WOLF_NIGHT":
     case "SNEAKY_LUNCH":
@@ -421,6 +431,7 @@ function inspectRoomGame(
   switch (room.gameType) {
     case "ISLAND_SETTLERS": return {gameType:"ISLAND_SETTLERS",inspection:new IslandGameStateAdapter().inspectLifecycle(room.game)};
     case "SPLENDOR": return {gameType:"SPLENDOR",inspection:new SplendorGameStateAdapter().inspectLifecycle(room.game)};
+    case "JAIPUR": return {gameType:"JAIPUR",inspection:new JaipurGameStateAdapter().inspectLifecycle(room.game)};
     case "HALLI_GALLI": return {gameType:"HALLI_GALLI",inspection:new HalliGameStateAdapter().inspectLifecycle(room.game)};
     case "WOLF_NIGHT": return {gameType:"WOLF_NIGHT",inspection:new WolfGameStateAdapter().inspectLifecycle(room.game)};
     case "SNEAKY_LUNCH": return {gameType:"SNEAKY_LUNCH",inspection:new SneakyLunchGameStateAdapter().inspectLifecycle(room.game)};

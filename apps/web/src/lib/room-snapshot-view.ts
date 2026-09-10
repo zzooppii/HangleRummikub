@@ -1,5 +1,6 @@
 import type { IslandWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { SplendorWebSnapshot } from "./snapshot-wire-decoder.js";
+import type { JaipurWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { HalliWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { WolfWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { DrawRelayWebSnapshot, SneakyWebSnapshot } from "./snapshot-wire-decoder.js";
@@ -47,6 +48,7 @@ function isNumberTileFinishedSnapshot(
 export type RoomSnapshotView =
   | Readonly<{ kind: "ISLAND_SETTLERS"; snapshot: IslandWebSnapshot }>
   | Readonly<{ kind: "SPLENDOR"; snapshot: SplendorWebSnapshot }>
+  | Readonly<{ kind: "JAIPUR"; snapshot: JaipurWebSnapshot }>
   | Readonly<{ kind: "HALLI_GALLI"; snapshot: HalliWebSnapshot }>
   | Readonly<{ kind: "WOLF_NIGHT"; snapshot: WolfWebSnapshot }>
   | Readonly<{ kind: "SNEAKY_LUNCH"; snapshot: SneakyWebSnapshot }>
@@ -92,6 +94,7 @@ export function resolveRoomSnapshotView(
   if (decoded.kind === "PLATFORM_V2_DRAW_RELAY") return { kind: "DRAW_RELAY", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "PLATFORM_V2_ISLAND_SETTLERS") return { kind: "ISLAND_SETTLERS", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "PLATFORM_V2_SPLENDOR") return { kind: "SPLENDOR", snapshot: decoded.platformSnapshot };
+  if (decoded.kind === "PLATFORM_V2_JAIPUR") return { kind: "JAIPUR", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "PLATFORM_V2_HALLI_GALLI") return { kind: "HALLI_GALLI", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "PLATFORM_V2_WOLF_NIGHT") return { kind: "WOLF_NIGHT", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "PLATFORM_V2_SNEAKY_LUNCH") return { kind: "SNEAKY_LUNCH", snapshot: decoded.platformSnapshot };

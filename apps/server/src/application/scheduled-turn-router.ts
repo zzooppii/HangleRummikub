@@ -109,6 +109,7 @@ export class ScheduledTurnRouter {
         return { status: "NO_OP" };
       }
       switch (room.gameType) {
+        case "JAIPUR": return { status: "NO_OP" };
         case "HANGUL_TILE":
           return await this.#hangul.handleTurnTimeout(input);
         case "GEM_CARD":

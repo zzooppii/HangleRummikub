@@ -176,6 +176,7 @@ export function HomeScreen(props: HomeScreenProps) {
                           >
                             {game.gameType === "DRAW_RELAY" ? <RelayDoodle/> : null}
                             {game.gameType === "ISLAND_SETTLERS" ? <span style={{ display: "block", width: 110 }}><IslandEmblem/></span> : null}
+                            {game.gameType === "JAIPUR" ? <span aria-hidden="true" style={{ fontSize: 52 }}>🐪</span> : null}
                             {game.gameType === "SPLENDOR" ? <img src="/assets/splendor/gems.jpg" alt="스플렌더의 다채로운 보석" style={{ width: 125, height: 84, objectFit: "cover", borderRadius: 10 }}/> : null}
                             {game.gameType === "HALLI_GALLI" ? <span style={{ display: "block", width: 90 }}><HalliBellArt/></span> : null}
                             {game.gameType === "WOLF_NIGHT" ? <WolfEmblem/> : null}

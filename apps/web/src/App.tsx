@@ -1,7 +1,9 @@
 import "./features/lobby/room-game-controls.css";
 import { RoomGameControls } from "./features/lobby/RoomGameControls.js";
 import { SplendorScreen } from "./features/splendor/SplendorScreen.js";
+import { JaipurScreen } from "./features/jaipur/JaipurScreen.js";
 import "./features/splendor/splendor.css";
+import "./features/jaipur/jaipur.css";
 import { IslandScreen } from "./features/island/IslandScreen.js";
 import "./features/island/island.css";
 import { CityExpandedScreen } from "./features/city-role/CityExpandedScreen.js";
@@ -356,6 +358,14 @@ export function App() {
     if (roomView.kind === "SPLENDOR") {
       return <ReconnectBoundary {...recovery}><SplendorScreen snapshot={roomView.snapshot}
         connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={async command => { if (command.kind === "splendor:rematch") app.selectRoomGame("SPLENDOR"); else await app.actSplendor(command); }}
+        onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
+        pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
+        error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;
+    }
+
+    if (roomView.kind === "JAIPUR") {
+      return <ReconnectBoundary {...recovery}><JaipurScreen snapshot={roomView.snapshot}
+        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={app.actJaipur} onRematch={() => app.selectRoomGame("JAIPUR")}
         onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
         pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
         error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;

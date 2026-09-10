@@ -2,6 +2,8 @@
 
 > **2026-09-10 방 유지·게임 교체:** 현재 정책은 [ROOM_GAME_SWITCH.md](./ROOM_GAME_SWITCH.md)를 따른다. 아래 과거 checkpoint의 방 생애 전체 gameType 불변·rematch 제외 정책은 이 기능에 대해 대체된다. 게임 한 판의 종류는 고정하며, 방장만 대기실 또는 종료 후 전용 명령으로 다음 게임을 선택한다. 방 코드·참가자·세션은 유지한다.
 
+자이푸르의 구체 모듈과 라운드/매치 경계는 [JAIPUR_ARCHITECTURE.md](./JAIPUR_ARCHITECTURE.md)를 따른다.
+
 ## 1. 목적과 설계 원칙
 
 이 문서는 한글 루미큐브 MVP의 client/server/shared 경계, 상태 수명주기, 실시간 protocol, 원자적 검증, 재접속, 배포 및 확장 지점을 정의한다. Phase 7에서 확정한 gameplay 수치, exact Tile inventory와 symbol 표현은 [GAME_RULES.md](./GAME_RULES.md)를 규범적 source로 삼는다. exact inventory table은 그 문서의 C-22에만 두고 여기서는 구조 경계만 정의한다.

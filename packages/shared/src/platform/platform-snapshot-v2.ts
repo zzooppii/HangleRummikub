@@ -1,5 +1,6 @@
 import { ISLAND_RESOURCES } from "../games/island/actions.js";
 import { SplendorPlayingProjectionSchema, SplendorFinishedProjectionSchema } from "../games/splendor/contracts.js";
+import { JaipurPlayingProjectionSchema, JaipurFinishedProjectionSchema, jaipurProjectionIsConsistent } from "../games/jaipur/contracts.js";
 import { IslandPlayingProjectionSchema, IslandFinishedProjectionSchema } from "../games/island/contracts.js";
 import { HalliPlayingProjectionSchema, HalliFinishedProjectionSchema } from "../games/halli-galli/contracts.js";
 import { CityExpansionSettingsSchema } from "../games/city-role/expansion-contracts.js";
@@ -308,6 +309,23 @@ export const SplendorLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, Spl
 export const SplendorPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, SplendorPlayingPlatformSnapshotV2> = SplendorPlayingRaw;
 export const SplendorFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, SplendorFinishedPlatformSnapshotV2> = SplendorFinishedRaw;
 
+const JaipurOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const JaipurRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("JAIPUR") };
+const JaipurPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.length(2));
+const JaipurLobbyRaw = v.pipe(v.strictObject({ ...JaipurOuter, room: v.strictObject({ ...JaipurRoom, phase: v.literal("LOBBY"),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)) }), game: v.null() }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
+const JaipurPlayingRaw = v.pipe(v.strictObject({ ...JaipurOuter, room: v.strictObject({ ...JaipurRoom, phase: v.literal("PLAYING"), players: JaipurPlayers }), game: JaipurPlayingProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.hand.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.handCount), v.check(s => jaipurProjectionIsConsistent(s.game)));
+const JaipurFinishedRaw = v.pipe(v.strictObject({ ...JaipurOuter, room: v.strictObject({ ...JaipurRoom, phase: v.literal("FINISHED"), players: JaipurPlayers }), game: JaipurFinishedProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.hand.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.handCount), v.check(s => jaipurProjectionIsConsistent(s.game)));
+export type JaipurLobbyPlatformSnapshotV2 = v.InferOutput<typeof JaipurLobbyRaw>;
+export type JaipurPlayingPlatformSnapshotV2 = v.InferOutput<typeof JaipurPlayingRaw>;
+export type JaipurFinishedPlatformSnapshotV2 = v.InferOutput<typeof JaipurFinishedRaw>;
+export const JaipurLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, JaipurLobbyPlatformSnapshotV2> = JaipurLobbyRaw;
+export const JaipurPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, JaipurPlayingPlatformSnapshotV2> = JaipurPlayingRaw;
+export const JaipurFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, JaipurFinishedPlatformSnapshotV2> = JaipurFinishedRaw;
+
 const HalliOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
 const HalliRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("HALLI_GALLI") };
 const HalliPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(6));
@@ -362,6 +380,7 @@ export const SneakyFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, Sn
 export const LobbyPlatformSnapshotV2Schema = v.union([
   IslandLobbyPlatformSnapshotV2Schema,
   SplendorLobbyPlatformSnapshotV2Schema,
+  JaipurLobbyPlatformSnapshotV2Schema,
   HalliLobbyPlatformSnapshotV2Schema,
   WolfLobbyPlatformSnapshotV2Schema,
   SneakyLobbyPlatformSnapshotV2Schema,
@@ -506,6 +525,7 @@ export type GemCardPlayingPlatformSnapshotV2 = v.InferOutput<
 export const PlayingPlatformSnapshotV2Schema = v.union([
   IslandPlayingPlatformSnapshotV2Schema,
   SplendorPlayingPlatformSnapshotV2Schema,
+  JaipurPlayingPlatformSnapshotV2Schema,
   HalliPlayingPlatformSnapshotV2Schema,
   WolfPlayingPlatformSnapshotV2Schema,
   DrawRelayPlayingPlatformSnapshotV2Schema,
@@ -650,6 +670,7 @@ export type GemCardFinishedPlatformSnapshotV2 = v.InferOutput<
 export const FinishedPlatformSnapshotV2Schema = v.union([
   IslandFinishedPlatformSnapshotV2Schema,
   SplendorFinishedPlatformSnapshotV2Schema,
+  JaipurFinishedPlatformSnapshotV2Schema,
   HalliFinishedPlatformSnapshotV2Schema,
   WolfFinishedPlatformSnapshotV2Schema,
   DrawRelayFinishedPlatformSnapshotV2Schema,

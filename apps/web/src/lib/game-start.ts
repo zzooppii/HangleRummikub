@@ -1,12 +1,11 @@
 import {
   PROTOCOL_VERSION,
+  GAME_PLAYER_LIMITS,
   type GameStartCommand,
   type GameType,
   type RequestId,
   type RoomRevision,
 } from "@hangul-rummikub/shared";
-
-const MIN_GAME_PLAYERS = 2;
 
 export type GameStartControl = Readonly<{
   isHost: boolean;
@@ -32,8 +31,7 @@ export function getGameStartControl(
   snapshot: GameStartSnapshot,
   commandPending: boolean,
 ): GameStartControl {
-  const minPlayers = snapshot.room.gameType === "DRAW_RELAY" || snapshot.room.gameType === "WOLF_NIGHT" || snapshot.room.gameType === "ISLAND_SETTLERS" ? 3 : MIN_GAME_PLAYERS;
-  const maxPlayers = snapshot.room.gameType === "WOLF_NIGHT" ? 10 : snapshot.room.gameType === "DRAW_RELAY" || snapshot.room.gameType === "SNEAKY_LUNCH" ? 8 : (snapshot.room.gameType === "CITY_ROLE" || snapshot.room.gameType === "HALLI_GALLI") ? 6 : 4;
+  const { min: minPlayers, max: maxPlayers } = GAME_PLAYER_LIMITS[snapshot.room.gameType ?? "HANGUL_TILE"];
   const self = snapshot.room.players.find(
     (player) => player.playerId === snapshot.self.playerId,
   );
@@ -61,7 +59,7 @@ export function getGameStartControl(
     return {
       isHost: true,
       canStart: false,
-      guidance: `참가자가 ${minPlayers}~${maxPlayers}명일 때 시작할 수 있습니다.`,
+      guidance: minPlayers === maxPlayers ? `참가자가 정확히 ${minPlayers}명일 때 시작할 수 있습니다.` : `참가자가 ${minPlayers}~${maxPlayers}명일 때 시작할 수 있습니다.`,
     };
   }
 
