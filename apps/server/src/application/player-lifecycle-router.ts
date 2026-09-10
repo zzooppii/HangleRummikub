@@ -1,3 +1,4 @@
+import type { createHalliLifecycle } from "../games/halli-galli/application/lifecycle.js";
 import type { createWolfLifecycle } from "../games/wolf-night/application/lifecycle.js";
 import type { createSneakyLifecycle } from "../games/sneaky-lunch/application/lifecycle.js";
 import type { DrawRelayStoredGame } from "../games/draw-relay/compatibility/adapter.js";
@@ -59,6 +60,7 @@ export type PresenceRestoredPlan =
     }>;
 
 export type PlayerLifecycleRouterDependencies = Readonly<{
+  halli?: ReturnType<typeof createHalliLifecycle>;
   wolf?: ReturnType<typeof createWolfLifecycle>;
   sneaky?: ReturnType<typeof createSneakyLifecycle>;
   drawRelay?: ReturnType<typeof createDrawRelayLifecycle>;
@@ -82,6 +84,7 @@ export interface PlayerLifecycleActionRouting {
 
 /** Dispatches platform lifecycle orchestration by immutable Room gameType. */
 export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
+  readonly #halli: ReturnType<typeof createHalliLifecycle> | undefined;
   readonly #wolf: ReturnType<typeof createWolfLifecycle> | undefined;
   readonly #sneaky: ReturnType<typeof createSneakyLifecycle> | undefined;
   readonly #drawRelay: ReturnType<typeof createDrawRelayLifecycle> | undefined;
@@ -97,6 +100,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
     if (dependencies.numberTile.gameType !== "NUMBER_TILE") {
       throw new Error("Missing NUMBER_TILE player lifecycle capability.");
     }
+    this.#halli = dependencies.halli;
     this.#wolf = dependencies.wolf;
     this.#sneaky = dependencies.sneaky;
     this.#drawRelay = dependencies.drawRelay;
@@ -115,6 +119,9 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
     occurredAt: ServerTime;
   }): PlayingLeaveActionResult {
     switch (input.room.gameType) {
+      case "HALLI_GALLI":
+        if (!this.#halli) throw new Error("HALLI lifecycle missing.");
+        return this.#halli.applyPlayingLeave(input);
       case "WOLF_NIGHT":
         if (!this.#wolf) throw new Error("WOLF lifecycle missing.");
         return this.#wolf.applyPlayingLeave(input);
@@ -140,6 +147,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
     playerId: PlayerId,
   ): PresenceRestoredPlan {
     switch (room.gameType) {
+      case "HALLI_GALLI": return {status:"NO_CHANGE"};
       case "WOLF_NIGHT": return {status:"NO_CHANGE"};
       case "SNEAKY_LUNCH": return {status:"NO_CHANGE"};
       case "DRAW_RELAY":

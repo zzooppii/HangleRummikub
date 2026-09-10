@@ -324,6 +324,13 @@ export const DrawConfigureCommandSchema = v.strictObject({ kind: v.literal("draw
 export const DrawClientCommandSchema = v.variant("kind",[DrawDraftSaveCommandSchema,DrawSubmitDrawingCommandSchema,DrawSubmitGuessCommandSchema,DrawRevealNextCommandSchema,DrawRematchCommandSchema,DrawConfigureCommandSchema]);
 export type DrawClientCommand = v.InferOutput<typeof DrawClientCommandSchema>;
 
+const HalliIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
+export const HalliFlipCommandSchema = v.strictObject({ ...HalliIdentity, kind: v.literal("halli:flip"), turnId: TurnIdSchema, payload: v.strictObject({}) });
+export const HalliBellCommandSchema = v.strictObject({ ...HalliIdentity, kind: v.literal("halli:bell"), payload: v.strictObject({}) });
+export const HalliRematchCommandSchema = v.strictObject({ ...HalliIdentity, kind: v.literal("halli:rematch"), expectedRoomRevision: RoomRevisionSchema, payload: v.strictObject({}) });
+export const HalliClientCommandSchema = v.variant("kind", [HalliFlipCommandSchema, HalliBellCommandSchema, HalliRematchCommandSchema]);
+export type HalliClientCommand = v.InferOutput<typeof HalliClientCommandSchema>;
+
 const WolfIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema };
 const WolfGameIdentity = { ...WolfIdentity, gameId: GameIdSchema, phaseId: TurnIdSchema };
 export const WolfConfigureCommandSchema = v.strictObject({ ...WolfIdentity, kind: v.literal("wolf:configure"), expectedRoomRevision: RoomRevisionSchema, payload: WolfSettingsSchema });

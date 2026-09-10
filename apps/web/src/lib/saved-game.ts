@@ -54,7 +54,7 @@ export class SavedGameStorage {
       return {
         session: session.value,
         gameType: gameType === "HANGUL_TILE" || gameType === "NUMBER_TILE" ||
-          gameType === "GEM_CARD" || gameType === "CITY_ROLE" || gameType === "DRAW_RELAY" || gameType === "SNEAKY_LUNCH" || gameType === "WOLF_NIGHT" ? gameType : null,
+          gameType === "GEM_CARD" || gameType === "CITY_ROLE" || gameType === "DRAW_RELAY" || gameType === "SNEAKY_LUNCH" || gameType === "WOLF_NIGHT" || gameType === "HALLI_GALLI" ? gameType : null,
       };
     } catch {
       return null;

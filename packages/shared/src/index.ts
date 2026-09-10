@@ -1,3 +1,5 @@
+export * from "./games/halli-galli/contracts.js";
+
 export const APP_NAME = "한글 루미큐브";
 
 export * from "./game-type.js";

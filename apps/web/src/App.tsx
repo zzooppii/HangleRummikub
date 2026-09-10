@@ -1,7 +1,9 @@
 import { CityExpandedScreen } from "./features/city-role/CityExpandedScreen.js";
 import { CityExpansionLobby } from "./features/city-role/CityExpansionLobby.js";
 import "./features/city-role/city-expansion.css";
+import { HalliGalliScreen } from "./features/halli-galli/HalliGalliScreen.js";
 import { WolfNightScreen } from "./features/wolf-night/WolfNightScreen.js";
+import "./features/halli-galli/halli-galli.css";
 import "./features/wolf-night/wolf-night.css";
 import { DrawRelayScreen } from "./features/draw-relay/DrawRelayScreen.js";
 import { SneakyLunchScreen } from "./features/sneaky-lunch/SneakyLunchScreen.js";
@@ -328,6 +330,14 @@ export function App() {
     if (roomView.kind === "DRAW_RELAY") {
       return <ReconnectBoundary {...recovery}><DrawRelayScreen snapshot={roomView.snapshot}
         connected={app.connectionState === "CONNECTED" && !app.sessionReplaced} onCommand={app.actDraw}
+        onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
+        pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
+        error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;
+    }
+
+    if (roomView.kind === "HALLI_GALLI") {
+      return <ReconnectBoundary {...recovery}><HalliGalliScreen snapshot={roomView.snapshot}
+        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={app.actHalli}
         onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
         pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
         error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;

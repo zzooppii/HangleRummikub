@@ -977,3 +977,7 @@ Phase 18 deployment checkpoint에서 Codex는 public `/health`, Home/assets, dir
 | rematch와 누적 match | result model, Room lifecycle |
 
 이 항목은 [GAME_RULES.md](./GAME_RULES.md)의 `TO_BE_CONFIRMED`에 동기화한다. Tile inventory와 symbol representation은 같은 문서의 C-15/C-22/C-23이 canonical source이며 변경 시 새 inventory/rules version과 검증이 필요하다.
+
+## HALLI_GALLI 추가 (2026-09-10)
+
+기존 게임 선택 목록과 방 흐름에 2–6인 할리갈리를 추가하여 현재 지원 게임은 8개다. 서버/공유 계약/화면 연결과 검증 경계는 [HALLI_GALLI_ARCHITECTURE.md](./HALLI_GALLI_ARCHITECTURE.md), 규칙과 온라인 정책은 [HALLI_GALLI_GAME_RULES.md](./HALLI_GALLI_GAME_RULES.md)를 따른다. 기존 게임 규칙과 상위 아키텍처 경계를 유지한다.

@@ -1,5 +1,8 @@
+import { HalliHostSuccession } from "./games/halli-galli/application/host-succession.js";
 import { WolfHostSuccession } from "./games/wolf-night/application/host-succession.js";
+import { HalliService } from "./games/halli-galli/application/service.js";
 import { WolfService } from "./games/wolf-night/application/service.js";
+import { createHalliLifecycle } from "./games/halli-galli/application/lifecycle.js";
 import { createWolfLifecycle } from "./games/wolf-night/application/lifecycle.js";
 import { SneakyLunchService } from "./games/sneaky-lunch/application/service.js";
 import { SneakyLunchPresence } from "./games/sneaky-lunch/application/presence.js";
@@ -113,7 +116,9 @@ import {
 } from "./infrastructure/system.js";
 
 export type ApplicationRuntime = Readonly<{
+  halliService?: HalliService;
   wolfService?: WolfService;
+  halliHostSuccession?: HalliHostSuccession;
   wolfHostSuccession?: WolfHostSuccession;
   sneakyLunchService?: SneakyLunchService;
   sneakyLunchPresence?: SneakyLunchPresence;
@@ -217,6 +222,7 @@ export function createApplicationRuntime(
       createCityRoleRegistration(),
       { gameType: "DRAW_RELAY" },
       { gameType: "SNEAKY_LUNCH" },
+      { gameType: "HALLI_GALLI" },
       { gameType: "WOLF_NIGHT" },
     ],
   );
@@ -246,6 +252,7 @@ export function createApplicationRuntime(
     gemCard: createGemCardPlayerLifecycleActions(idGenerator),
     cityRole: createCityRolePlayerLifecycleActions(idGenerator),
     drawRelay: createDrawRelayLifecycle(idGenerator),
+    halli: createHalliLifecycle(),
     wolf: createWolfLifecycle(),
     sneaky: createSneakyLifecycle(),
   });
@@ -508,6 +515,13 @@ export function createApplicationRuntime(
     turnScheduler,
     onTurnSchedulingFailure: reportTurnSchedulingFailure,
   });
+  const halliService = new HalliService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
+    roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource, turnScheduler });
+  const halliHostSuccession = new HalliHostSuccession(halliService.deps, roomId => halliService.notify(roomId));
+  halliService.subscribe(async roomId => {
+    const room = await persistence.findById(roomId);
+    if (room?.gameType === "HALLI_GALLI" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
+  });
   const wolfService = new WolfService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
     roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource, turnScheduler });
   const wolfHostSuccession = new WolfHostSuccession(wolfService.deps, roomId => wolfService.notify(roomId));
@@ -583,6 +597,7 @@ export function createApplicationRuntime(
   });
   const gameStartRouter = new GameStartRouter({
     drawRelay: { gameType: "DRAW_RELAY", start: input => drawRelayService.start(input) },
+    halli: { gameType: "HALLI_GALLI", start: input => halliService.start(input) },
     wolf: { gameType: "WOLF_NIGHT", start: input => wolfService.start(input) },
     sneaky: { gameType: "SNEAKY_LUNCH", start: input => sneakyLunchService.start(input) },
     cityRole: { gameType: "CITY_ROLE", start: input => cityRoleStartService.start(input) },
@@ -699,6 +714,7 @@ export function createApplicationRuntime(
   });
   scheduledTurnRouter = new ScheduledTurnRouter({
     drawRelay: { gameType: "DRAW_RELAY", handleTurnTimeout: input => drawRelayService.timeout(input) },
+    halli: { gameType: "HALLI_GALLI", handleTurnTimeout: input => halliService.timeout(input) },
     wolf: { gameType: "WOLF_NIGHT", handleTurnTimeout: input => wolfService.timeout(input) },
     sneaky: { gameType: "SNEAKY_LUNCH", handleTurnTimeout: input => sneakyLunchService.timeout(input) },
     cityRole: { gameType: "CITY_ROLE", handleTurnTimeout: input => cityRoleTimeoutService.timeout(input) },
@@ -767,7 +783,9 @@ export function createApplicationRuntime(
     cityRoleCommandService,
     drawRelayService,
     drawRelayHostSuccession,
+    halliService,
     wolfService,
+    halliHostSuccession,
     wolfHostSuccession,
     sneakyLunchService,
     sneakyLunchPresence,
@@ -818,6 +836,7 @@ export function createApplicationRuntime(
       acceptsRoomPolicyWork = true;
       drawRelayHostSuccession.start();
       sneakyLunchPresence.start();
+      halliHostSuccession.start();
       wolfHostSuccession.start();
       roomPolicyScheduler.start();
       turnScheduler.start();
@@ -836,6 +855,7 @@ export function createApplicationRuntime(
       acceptsRoomPolicyWork = false;
       drawRelayHostSuccession.stop();
       sneakyLunchPresence.stop();
+      halliHostSuccession.stop();
       wolfHostSuccession.stop();
       roomPolicyScheduler.stop();
       overdueTurnSweeper.stop();

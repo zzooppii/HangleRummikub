@@ -1359,3 +1359,7 @@ Four typed RealtimeClient methods preserve strict validation, ack identity and s
 The market has fixed 3×3 nullable slots and rack-free public player data. Original CSS/letter markers and generated audio add no asset/dependency. Number's direct editor and bare-Joker V2 semantics are unchanged. [GEM_CARD_WEB_IMPLEMENTATION.md](./GEM_CARD_WEB_IMPLEMENTATION.md) records implementation and verification. Public release/IP/product review and Railway verification remain P12 gates, not an inferred result of pushing source.
 
 P11C source gate: 1114 tests (85 shared / 211 Web / 818 server), typecheck/build and production-serving 6/6 PASS. Built-client H/N/GEM smoke and local in-app GEM A/B gameplay/refresh/390/320 inspection passed. Status is **SOURCE COMPLETE / MANUAL PUBLIC VERIFICATION PENDING**, with browser/API limitations and remaining P12 checks recorded in the implementation document.
+
+## HALLI_GALLI 추가 (2026-09-10)
+
+기존 게임 선택 목록과 방 흐름에 2–6인 할리갈리를 추가하여 현재 지원 게임은 8개다. 서버/공유 계약/화면 연결과 검증 경계는 [HALLI_GALLI_ARCHITECTURE.md](./HALLI_GALLI_ARCHITECTURE.md), 규칙과 온라인 정책은 [HALLI_GALLI_GAME_RULES.md](./HALLI_GALLI_GAME_RULES.md)를 따른다. 기존 게임 규칙과 상위 아키텍처 경계를 유지한다.

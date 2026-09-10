@@ -1,3 +1,4 @@
+import type { HalliClientCommand } from "./protocol.js";
 import type { CityExpansionClientCommand } from "./protocol.js";
 import { GemCardPlayingPlatformSnapshotV2Schema, GemCardFinishedPlatformSnapshotV2Schema } from "./platform/platform-snapshot-v2.js";
 import type { GemCollectCommand, GemPurchaseCommand, GemReserveCommand, GemYieldCommand } from "./protocol.js";
@@ -542,6 +543,9 @@ export interface SnapshotWireClientToServerEvents {
   "draw:revealNext": (command: Extract<DrawClientCommand,{kind:"draw:revealNext"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "draw:rematch": (command: Extract<DrawClientCommand,{kind:"draw:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "draw:configure": (command: Extract<DrawClientCommand,{kind:"draw:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "halli:flip": (command: Extract<HalliClientCommand,{kind:"halli:flip"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "halli:bell": (command: Extract<HalliClientCommand,{kind:"halli:bell"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "halli:rematch": (command: Extract<HalliClientCommand,{kind:"halli:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "wolf:configure": (command: Extract<WolfClientCommand,{kind:"wolf:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "wolf:act": (command: Extract<WolfClientCommand,{kind:"wolf:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "wolf:vote": (command: Extract<WolfClientCommand,{kind:"wolf:vote"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;

@@ -374,11 +374,11 @@ export class RoomPresencePolicyService {
       room === null ||
       room.phase !== "FINISHED" ||
       room.game === null ||
-      ((room.gameType === "CITY_ROLE" || room.gameType === "DRAW_RELAY" || room.gameType === "SNEAKY_LUNCH" || room.gameType === "WOLF_NIGHT") ? room.game.finishedAt === null : room.game.result === null)
+      ((room.gameType === "CITY_ROLE" || room.gameType === "DRAW_RELAY" || room.gameType === "SNEAKY_LUNCH" || room.gameType === "WOLF_NIGHT" || room.gameType === "HALLI_GALLI") ? room.game.finishedAt === null : room.game.result === null)
     ) {
       return false;
     }
-    const finishedAt = (room.gameType === "CITY_ROLE" || room.gameType === "DRAW_RELAY" || room.gameType === "SNEAKY_LUNCH" || room.gameType === "WOLF_NIGHT") ? room.game.finishedAt : room.game.result?.finishedAt;
+    const finishedAt = (room.gameType === "CITY_ROLE" || room.gameType === "DRAW_RELAY" || room.gameType === "SNEAKY_LUNCH" || room.gameType === "WOLF_NIGHT" || room.gameType === "HALLI_GALLI") ? room.game.finishedAt : room.game.result?.finishedAt;
     if (finishedAt === null || finishedAt === undefined) return false;
     await this.#dependencies.scheduler.schedule({
       kind: "FINISHED_ROOM_RETENTION",

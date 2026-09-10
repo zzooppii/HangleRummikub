@@ -1,3 +1,4 @@
+import type { GameType } from "@hangul-rummikub/shared";
 import {
   PROTOCOL_VERSION,
   type GameRevision,
@@ -72,11 +73,12 @@ export function runRoomLeaveSingleFlight(
   return runAsyncSingleFlight(flightRef, execute);
 }
 
-export function roomLeaveConfirmationMessage(phase: RoomPhase): string {
+export function roomLeaveConfirmationMessage(phase: RoomPhase, gameType?: GameType): string {
   switch (phase) {
     case "LOBBY":
       return "방에서 나가시겠습니까?";
     case "PLAYING":
+      if (gameType === "HALLI_GALLI") return "나가면 모든 참가자의 이번 할리갈리 판이 취소됩니다. 방에서 나가시겠습니까?";
       return "게임 중 나가면 기권 처리됩니다. 방에서 나가시겠습니까?";
     case "FINISHED":
       return "방에서 나가 홈으로 돌아가시겠습니까?";

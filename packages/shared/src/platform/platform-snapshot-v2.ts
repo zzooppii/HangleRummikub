@@ -1,3 +1,4 @@
+import { HalliPlayingProjectionSchema, HalliFinishedProjectionSchema } from "../games/halli-galli/contracts.js";
 import { CityExpansionSettingsSchema } from "../games/city-role/expansion-contracts.js";
 import { GemCardPlayingProjectionV2Schema, GemCardFinishedProjectionV2Schema } from "../games/gem-card/v2-projection-contracts.js";
 import { CityRolePlayingProjectionV2Schema, CityRoleFinishedProjectionV2Schema, cityPrivateStateMatchesViewer } from "../games/city-role/v2-projection-contracts.js";
@@ -268,6 +269,23 @@ export const DrawRelayPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown,D
 export type DrawRelayFinishedPlatformSnapshotV2 = v.InferOutput<typeof DrawRelayFinishedPlatformSnapshotV2Raw>;
 export const DrawRelayFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown,DrawRelayFinishedPlatformSnapshotV2> = DrawRelayFinishedPlatformSnapshotV2Raw;
 
+const HalliOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const HalliRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("HALLI_GALLI") };
+const HalliPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(6));
+const HalliLobbyRaw = v.pipe(v.strictObject({ ...HalliOuter, room: v.strictObject({ ...HalliRoom, phase: v.literal("LOBBY"),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(6)) }), game: v.null() }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
+const HalliPlayingRaw = v.pipe(v.strictObject({ ...HalliOuter, room: v.strictObject({ ...HalliRoom, phase: v.literal("PLAYING"), players: HalliPlayers }), game: HalliPlayingProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)));
+const HalliFinishedRaw = v.pipe(v.strictObject({ ...HalliOuter, room: v.strictObject({ ...HalliRoom, phase: v.literal("FINISHED"), players: HalliPlayers }), game: HalliFinishedProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)));
+export type HalliLobbyPlatformSnapshotV2 = v.InferOutput<typeof HalliLobbyRaw>;
+export type HalliPlayingPlatformSnapshotV2 = v.InferOutput<typeof HalliPlayingRaw>;
+export type HalliFinishedPlatformSnapshotV2 = v.InferOutput<typeof HalliFinishedRaw>;
+export const HalliLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, HalliLobbyPlatformSnapshotV2> = HalliLobbyRaw;
+export const HalliPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, HalliPlayingPlatformSnapshotV2> = HalliPlayingRaw;
+export const HalliFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, HalliFinishedPlatformSnapshotV2> = HalliFinishedRaw;
+
 const WolfOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
 const WolfRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("WOLF_NIGHT") };
 const WolfPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(3), v.maxLength(10));
@@ -303,6 +321,7 @@ export const SneakyPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, Sne
 export const SneakyFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, SneakyFinishedPlatformSnapshotV2> = SneakyFinishedRaw;
 
 export const LobbyPlatformSnapshotV2Schema = v.union([
+  HalliLobbyPlatformSnapshotV2Schema,
   WolfLobbyPlatformSnapshotV2Schema,
   SneakyLobbyPlatformSnapshotV2Schema,
   DrawRelayLobbyPlatformSnapshotV2Schema,
@@ -444,6 +463,7 @@ export type GemCardPlayingPlatformSnapshotV2 = v.InferOutput<
 >;
 
 export const PlayingPlatformSnapshotV2Schema = v.union([
+  HalliPlayingPlatformSnapshotV2Schema,
   WolfPlayingPlatformSnapshotV2Schema,
   DrawRelayPlayingPlatformSnapshotV2Schema,
   SneakyPlayingPlatformSnapshotV2Schema,
@@ -585,6 +605,7 @@ export type GemCardFinishedPlatformSnapshotV2 = v.InferOutput<
 >;
 
 export const FinishedPlatformSnapshotV2Schema = v.union([
+  HalliFinishedPlatformSnapshotV2Schema,
   WolfFinishedPlatformSnapshotV2Schema,
   DrawRelayFinishedPlatformSnapshotV2Schema,
   SneakyFinishedPlatformSnapshotV2Schema,

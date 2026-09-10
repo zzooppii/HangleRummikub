@@ -1,0 +1,55 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { parse } from "valibot";
+import { PlayerIdSchema } from "@hangul-rummikub/shared";
+import { makeHalliDeck, createHalliGame, flipHalli, ringHalli, timeoutHalli, cancelHalli, parseHalliState, hasFive, type HalliState } from "./games/halli-galli/domain/game.js";
+const ids = Array.from({ length: 6 }, (_, i) => parse(PlayerIdSchema, `fruit-${i}`));
+function game(n = 3) { return createHalliGame({ gameId: "game-fruit", playerIds: ids.slice(0, n), deck: makeHalliDeck(i => `private-${i}`), now: 1000, transitionId: "turn-fruit" }); }
+function reveal(s: HalliState, fruit: string, count: number, seat: number) {
+ for (const p of s.players) { const at = p.deck.findIndex(c => c.fruit === fruit && c.count === count); if (at >= 0) { s.players[seat]!.discard.push(...p.deck.splice(at, 1)); return; } }
+ throw new Error("fixture card absent");
+}
+for (const n of [2, 3, 4, 5, 6]) test(`HALLI ${n}-player distribution preserves exact inventory and detached input`, () => {
+ const s = game(n); assert.equal(s.players.flatMap(p => p.deck).length, 56); assert.ok(Math.max(...s.players.map(p => p.deck.length)) - Math.min(...s.players.map(p => p.deck.length)) <= 1);
+ const copied = parseHalliState(s); copied.players[0]!.deck.pop(); assert.equal(s.players.flatMap(p => p.deck).length, 56); assert.throws(() => parseHalliState(copied));
+});
+test("HALLI counts only tops, exact five, including eliminated open pile", () => {
+ const s = game(); reveal(s, "STRAWBERRY", 2, 0); reveal(s, "STRAWBERRY", 3, 1); assert.equal(hasFive(s), true);
+ reveal(s, "STRAWBERRY", 4, 1); assert.equal(hasFive(s), false); reveal(s, "BANANA", 5, 2); assert.equal(hasFive(s), true);
+ s.players[2]!.eliminated = true; assert.equal(hasFive(s), true);
+});
+test("HALLI successful bell collects every discard below existing deck, caller becomes next", () => {
+ const s = game(); reveal(s, "LIME", 2, 0); reveal(s, "LIME", 3, 1); reveal(s, "PLUM", 1, 2); const before = structuredClone(s);
+ const result = ringHalli(s, ids[2]!, 2500, "next"); assert.ok(result); assert.equal(result.feedback?.kind, "CORRECT"); assert.equal(result.feedback.cards, 3); assert.equal(result.activePlayerId, ids[2]);
+ assert.deepEqual(result.players[2]!.deck.slice(0, before.players[2]!.deck.length), before.players[2]!.deck); assert.equal(result.players.flatMap(p => p.discard).length, 0); assert.deepEqual(s, before);
+});
+test("HALLI wrong bell pays each opponent, throttles spam without mutation", () => {
+ const s = game(), sizes = s.players.map(p => p.deck.length), result = ringHalli(s, ids[0]!, 2500, "next"); assert.ok(result); assert.deepEqual(result.players.map(p => p.deck.length), [sizes[0]! - 2, sizes[1]! + 1, sizes[2]! + 1]);
+ assert.equal(ringHalli(result, ids[0]!, 3199, "spam"), null); assert.ok(ringHalli(result, ids[0]!, 3200, "allowed"));
+});
+test("HALLI insufficient penalty pays clockwise and eliminates empty deck", () => {
+ const s = game(4), p = s.players[0]!; s.players[3]!.deck.push(...p.deck.splice(1)); const sizes = s.players.map(p => p.deck.length);
+ const result = ringHalli(s, ids[0]!, 2500, "next"); assert.ok(result); assert.equal(result.players[0]!.eliminated, true); assert.equal(result.players[1]!.deck.length, sizes[1]! + 1); assert.equal(result.players[2]!.deck.length, sizes[2]); assert.equal(result.activePlayerId, ids[1]);
+ assert.equal(ringHalli(result, ids[0]!, 4000, "bad"), null);
+});
+test("HALLI rejects early/late/wrong actor flips and advances with fresh token", () => {
+ const s = game(); assert.equal(flipHalli(s, ids[0]!, 1999, "next"), null); assert.equal(flipHalli(s, ids[1]!, 2000, "next"), null); assert.equal(flipHalli(s, ids[0]!, 11000, "next"), null);
+ const next = flipHalli(s, ids[0]!, 2000, "next"); assert.ok(next); assert.equal(next.activePlayerId, ids[1]); assert.equal(next.nextTransitionAt, 12000); assert.equal(next.transitionId, "next"); assert.equal(s.revision, 0);
+});
+test("HALLI final-card flip eliminates player but leaves top for counting", () => {
+ const s = game(); s.players[2]!.deck.push(...s.players[0]!.deck.splice(1)); const next = flipHalli(s, ids[0]!, 2000, "next"); assert.ok(next); assert.equal(next.players[0]!.eliminated, true); assert.equal(next.players[0]!.discard.length, 1); assert.equal(next.phase, "PLAYING");
+});
+for (const correct of [true, false]) test(`HALLI final two bell (${correct}) finishes by card counts`, () => {
+ const s = game(2); reveal(s, "BANANA", correct ? 5 : 4, 0); const r = ringHalli(s, ids[0]!, 2500, "next"); assert.ok(r); assert.equal(r.phase, "FINISHED"); assert.equal(r.result?.reason, "FINAL_BELL"); assert.equal(r.players[correct ? 0 : 1]!.discard.length, 0); assert.equal(r.result?.scores.reduce((n, p) => n + p.cards, 0), 56);
+ assert.equal(ringHalli(r, ids[1]!, 2600, "late"), null);
+});
+test("HALLI timeout uses server deadline and time-limit result, cancellation has no winner", () => {
+ const s = game(); assert.equal(timeoutHalli(s, 10999, "next"), null); const r = timeoutHalli(s, 11000, "next"); assert.ok(r); assert.equal(r.feedback?.kind, "AUTO");
+ const end = timeoutHalli(s, 901000, "end"); assert.ok(end); assert.equal(end.result?.reason, "TIME_LIMIT"); assert.equal(end.nextTransitionAt, null);
+ assert.deepEqual(cancelHalli(s, 2000).result?.winnerPlayerIds, []);
+});
+test("HALLI validator rejects duplicate IDs, altered fruit quantities and forged result", () => {
+ const s = game(); s.players[0]!.deck[0]!.id = s.players[1]!.deck[0]!.id; assert.throws(() => parseHalliState(s));
+ const changed = game(); changed.players[0]!.deck[0]!.count = 5; assert.throws(() => parseHalliState(changed));
+ const end = cancelHalli(game(), 2000); end.result!.winnerPlayerIds = [ids[0]!]; assert.throws(() => parseHalliState(end));
+});

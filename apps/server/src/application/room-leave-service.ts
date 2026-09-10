@@ -336,7 +336,7 @@ export class RoomLeaveService {
           } else if (
             room.phase === "FINISHED" &&
             room.game !== null &&
-            ((room.gameType === "CITY_ROLE" || room.gameType === "DRAW_RELAY" || room.gameType === "SNEAKY_LUNCH" || room.gameType === "WOLF_NIGHT") ? room.game.finishedAt !== null : room.game.result !== null)
+            ((room.gameType === "CITY_ROLE" || room.gameType === "DRAW_RELAY" || room.gameType === "SNEAKY_LUNCH" || room.gameType === "WOLF_NIGHT" || room.gameType === "HALLI_GALLI") ? room.game.finishedAt !== null : room.game.result !== null)
           ) {
             candidate = { ...room, updatedAt: now };
             finishedGameId = room.game.gameId;
@@ -353,7 +353,7 @@ export class RoomLeaveService {
             return failure(ERRORS.INTERNAL_ERROR);
           }
 
-          if ((candidate.gameType === "NUMBER_TILE" || candidate.gameType === "DRAW_RELAY" || candidate.gameType === "SNEAKY_LUNCH" || candidate.gameType === "WOLF_NIGHT")) {
+          if ((candidate.gameType === "NUMBER_TILE" || candidate.gameType === "DRAW_RELAY" || candidate.gameType === "SNEAKY_LUNCH" || candidate.gameType === "WOLF_NIGHT" || candidate.gameType === "HALLI_GALLI")) {
             const departedPlayerIds = Object.freeze([...new Set([...(candidate.departedPlayerIds ?? []), input.actorPlayerId])]);
             const remaining = candidate.players.filter(p => !departedPlayerIds.includes(p.playerId));
             const hostPlayerId = candidate.hostPlayerId === input.actorPlayerId

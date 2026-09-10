@@ -30,6 +30,7 @@ export const GAME_CATALOG = Object.freeze([
   Object.freeze({ gameType: "DRAW_RELAY", displayName: "그림 릴레이", description: "3~8명이 그림과 추측을 이어가며 처음 단어가 어떻게 변했는지 함께 보는 파티게임입니다." }),
   Object.freeze({ gameType: "SNEAKY_LUNCH", displayName: "몰래 한입", description: "2~8명이 선생님 눈을 피해 도시락을 비우는 교실 눈치 파티게임입니다." }),
   Object.freeze({ gameType: "WOLF_NIGHT", displayName: "늑대의 밤", description: "3~10명이 단 하룻밤의 비밀을 추리하는 역할 교환·비밀 투표 게임입니다." }),
+  Object.freeze({ gameType: "HALLI_GALLI", displayName: "할리갈리", description: "2~6명이 같은 과일 5개를 발견하면 벨을 누르는 스피드 카드 게임입니다." }),
 ] as const satisfies readonly GameCatalogItem[]);
 
 export const DEFAULT_SELECTED_GAME_TYPE = GAME_CATALOG[0].gameType;

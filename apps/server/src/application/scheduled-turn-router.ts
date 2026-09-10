@@ -7,7 +7,7 @@ export type ScheduledTurnDispatchResult =
   | Readonly<{ status: "FAILED" }>;
 
 type ScheduledTurnCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "HALLI_GALLI",
 > = Readonly<{
   gameType: TGameType;
   handleTurnTimeout(
@@ -28,6 +28,7 @@ export type ScheduledTurnRouterDependencies = Readonly<{
   numberTile: NumberTileScheduledTurnCapability;
   gemCard: GemCardScheduledTurnCapability;
   cityRole: CityRoleScheduledTurnCapability;
+  halli?: ScheduledTurnCapability<"HALLI_GALLI">;
   wolf?: ScheduledTurnCapability<"WOLF_NIGHT">;
   sneaky?: ScheduledTurnCapability<"SNEAKY_LUNCH">;
   drawRelay?: ScheduledTurnCapability<"DRAW_RELAY">;
@@ -38,7 +39,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function isCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "HALLI_GALLI",
 >(
   value: unknown,
   gameType: TGameType,
@@ -51,7 +52,7 @@ function isCapability<
 }
 
 function requireCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "HALLI_GALLI",
 >(
   value: unknown,
   gameType: TGameType,
@@ -72,12 +73,14 @@ export class ScheduledTurnRouter {
   readonly #numberTile: NumberTileScheduledTurnCapability;
   readonly #gemCard: GemCardScheduledTurnCapability;
   readonly #cityRole: CityRoleScheduledTurnCapability;
+  readonly #halli: ScheduledTurnCapability<"HALLI_GALLI"> | undefined;
   readonly #wolf: ScheduledTurnCapability<"WOLF_NIGHT"> | undefined;
   readonly #sneaky: ScheduledTurnCapability<"SNEAKY_LUNCH"> | undefined;
   readonly #drawRelay: ScheduledTurnCapability<"DRAW_RELAY"> | undefined;
 
   constructor(dependencies: ScheduledTurnRouterDependencies) {
     this.#roomRepository = dependencies.roomRepository;
+    this.#halli = dependencies.halli;
     this.#wolf = dependencies.wolf;
     this.#sneaky = dependencies.sneaky;
     this.#drawRelay = dependencies.drawRelay;
@@ -104,6 +107,7 @@ export class ScheduledTurnRouter {
           return await this.#hangul.handleTurnTimeout(input);
         case "GEM_CARD":
           return await this.#gemCard.handleTurnTimeout(input);
+        case "HALLI_GALLI": return this.#halli ? await this.#halli.handleTurnTimeout(input) : {status:"FAILED"};
         case "WOLF_NIGHT": return this.#wolf ? await this.#wolf.handleTurnTimeout(input) : {status:"FAILED"};
         case "SNEAKY_LUNCH": return this.#sneaky ? await this.#sneaky.handleTurnTimeout(input) : {status:"FAILED"};
         case "DRAW_RELAY": return this.#drawRelay ? await this.#drawRelay.handleTurnTimeout(input) : {status:"FAILED"};

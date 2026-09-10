@@ -8,6 +8,7 @@ export const SUPPORTED_GAME_TYPES = Object.freeze([
   "DRAW_RELAY",
   "SNEAKY_LUNCH",
   "WOLF_NIGHT",
+  "HALLI_GALLI",
 ] as const);
 
 export const GameTypeSchema = v.picklist(SUPPORTED_GAME_TYPES);

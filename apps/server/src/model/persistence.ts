@@ -1,4 +1,5 @@
 import type { CityExpansionSettings } from "@hangul-rummikub/shared";
+import type { HalliStoredGame } from "../games/halli-galli/compatibility/adapter.js";
 import type { WolfStoredGame } from "../games/wolf-night/compatibility/adapter.js";
 import type { WolfSettings } from "@hangul-rummikub/shared";
 import type { SneakyLunchStoredGame } from "../games/sneaky-lunch/compatibility/adapter.js";
@@ -85,7 +86,8 @@ export type CityRoleRoomRecord = RoomRecordBase & Readonly<{ gameType: "CITY_ROL
 export type DrawRelayRoomRecord = RoomRecordBase & Readonly<{ gameType:"DRAW_RELAY";game:DrawRelayStoredGame|null; departedPlayerIds?:readonly PlayerId[]; promptMode?:"EASY"|"NORMAL"|"MIXED"; drawSeconds?:15|30|45|60|90 }>;
 export type SneakyLunchRoomRecord = RoomRecordBase & Readonly<{ gameType: "SNEAKY_LUNCH"; game: SneakyLunchStoredGame | null; departedPlayerIds?: readonly PlayerId[]; settings?: LunchSettings }>;
 export type WolfRoomRecord = RoomRecordBase & Readonly<{ gameType: "WOLF_NIGHT"; game: WolfStoredGame | null; departedPlayerIds?: readonly PlayerId[]; settings?: WolfSettings }>;
-export type RoomRecord = WolfRoomRecord | HangulRoomRecord | NumberTileRoomRecord | GemCardRoomRecord | CityRoleRoomRecord | DrawRelayRoomRecord | SneakyLunchRoomRecord;
+export type HalliRoomRecord = RoomRecordBase & Readonly<{ gameType: "HALLI_GALLI"; game: HalliStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
+export type RoomRecord = HalliRoomRecord | WolfRoomRecord | HangulRoomRecord | NumberTileRoomRecord | GemCardRoomRecord | CityRoleRoomRecord | DrawRelayRoomRecord | SneakyLunchRoomRecord;
 
 type WithoutStorageRevision<TRoom> = TRoom extends RoomRecord
   ? Omit<TRoom, "storageRevision">

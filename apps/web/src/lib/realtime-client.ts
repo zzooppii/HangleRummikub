@@ -1,4 +1,5 @@
 import { CityExpansionClientCommandSchema, type CityExpansionClientCommand } from "@hangul-rummikub/shared";
+import { HalliClientCommandSchema, type HalliClientCommand } from "@hangul-rummikub/shared";
 import { WolfClientCommandSchema, type WolfClientCommand } from "@hangul-rummikub/shared";
 import { DrawClientCommandSchema, type DrawClientCommand } from "@hangul-rummikub/shared";
 import { SneakyClientCommandSchema, type SneakyClientCommand } from "@hangul-rummikub/shared";
@@ -672,6 +673,17 @@ export class RealtimeClient {
         case "draw:revealNext": this.#socket.emit("draw:revealNext", command, acknowledge); break;
         case "draw:rematch": this.#socket.emit("draw:rematch", command, acknowledge); break;
         case "draw:configure": this.#socket.emit("draw:configure", command, acknowledge); break;
+      }
+    }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
+  }
+
+  actHalli(command: HalliClientCommand): Promise<StateSyncWireAck> {
+    if (!parseRematch(HalliClientCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {
+      switch (command.kind) {
+                case "halli:flip": this.#socket.emit("halli:flip", command, acknowledge); break;
+        case "halli:bell": this.#socket.emit("halli:bell", command, acknowledge); break;
+        case "halli:rematch": this.#socket.emit("halli:rematch", command, acknowledge); break;
       }
     }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
   }
