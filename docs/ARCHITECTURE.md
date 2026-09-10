@@ -1,5 +1,7 @@
 # 시스템 아키텍처
 
+> **2026-09-10 방 유지·게임 교체:** 현재 정책은 [ROOM_GAME_SWITCH.md](./ROOM_GAME_SWITCH.md)를 따른다. 아래 과거 checkpoint의 방 생애 전체 gameType 불변·rematch 제외 정책은 이 기능에 대해 대체된다. 게임 한 판의 종류는 고정하며, 방장만 대기실 또는 종료 후 전용 명령으로 다음 게임을 선택한다. 방 코드·참가자·세션은 유지한다.
+
 ## 1. 목적과 설계 원칙
 
 이 문서는 한글 루미큐브 MVP의 client/server/shared 경계, 상태 수명주기, 실시간 protocol, 원자적 검증, 재접속, 배포 및 확장 지점을 정의한다. Phase 7에서 확정한 gameplay 수치, exact Tile inventory와 symbol 표현은 [GAME_RULES.md](./GAME_RULES.md)를 규범적 source로 삼는다. exact inventory table은 그 문서의 C-22에만 두고 여기서는 구조 경계만 정의한다.
@@ -434,7 +436,7 @@ exact inventory와 Joker 시작 배분은 GAME_RULES C-02/C-22, 연결 조건과
 - pure Result Engine이 rack Tile descriptor와 forfeited 집합에서 penaltyCost, score, competition rank, winner collection을 reason별로 계산한다. `RACK_EMPTY`/`LAST_PLAYER_STANDING`은 단독 winner positive transfer, `TIME_LIMIT`/`STALEMATE`/`ALL_PLAYERS_FORFEITED`는 negative penalty score를 사용한다.
 - 최종 Board/rack/forfeit state, generalized result, `turn = null`, `gameRevision + 1`, Room `FINISHED`, `roomRevision + 1`, `storageRevision + 1`과 client mutation의 accepted idempotency result는 하나의 unit-of-work에 포함한다.
 - `FINISHED`에서는 gameplay mutation을 거절한다. snapshot/resume과 별도의 leave/retention command 허용 여부는 Room policy가 결정한다.
-- 모든 finish reason은 Phase 15의 fixed `finishedAt + 30분` retention을 사용하며 resume은 deadline을 연장하지 않는다. rematch와 Room 내 새 Game 생성은 범위 밖이다.
+- 모든 finish reason은 Phase 15의 fixed `finishedAt + 30분` retention을 사용하며 resume은 deadline을 연장하지 않는다. 이후 승인된 동일 방 rematch/게임 교체는 [ROOM_GAME_SWITCH.md](./ROOM_GAME_SWITCH.md)를 따른다.
 
 ## 8. Connection과 reconnection
 
@@ -976,7 +978,7 @@ Phase 18 deployment checkpoint에서 Codex는 public `/health`, Home/assets, dir
 | --- | --- |
 | production dictionary dataset·license·exact 어휘 범위 | `DictionaryProvider`, version storage |
 | command byte-size/rate 운영 한도 | transport ingress, rate limiting |
-| rematch와 누적 match | result model, Room lifecycle |
+| 누적 점수와 장기 match | result model; 동일 방 새 게임은 ROOM_GAME_SWITCH.md에서 확정 |
 
 이 항목은 [GAME_RULES.md](./GAME_RULES.md)의 `TO_BE_CONFIRMED`에 동기화한다. Tile inventory와 symbol representation은 같은 문서의 C-15/C-22/C-23이 canonical source이며 변경 시 새 inventory/rules version과 검증이 필요하다.
 

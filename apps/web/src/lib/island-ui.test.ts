@@ -15,7 +15,7 @@ import { resolveRoomSnapshotView } from "./room-snapshot-view.js";
 import { getGameStartControl } from "./game-start.js";
 import { roomLeaveConfirmationMessage } from "./room-leave.js";
 
-const players = Array.from({ length: 5 }, (_, i) => ({ playerId: `islander-${i}`, nickname: `친구${i}`, isHost: i === 0, connectionStatus: "CONNECTED" }));
+const players = Array.from({ length: 11 }, (_, i) => ({ playerId: `islander-${i}`, nickname: `친구${i}`, isHost: i === 0, connectionStatus: "CONNECTED" }));
 function lobby(n = 3) {
   return parse(IslandLobbyPlatformSnapshotV2Schema, { snapshotVersion: 2, versions: { roomRevision: 0, presenceVersion: 0 }, serverTime: 1000,
     self: { playerId: "islander-0" }, room: { roomId: "island-room", roomCode: "BCDFGH", gameType: "ISLAND_SETTLERS", phase: "LOBBY", players: players.slice(0, n) }, game: null });
@@ -62,7 +62,8 @@ test("ISLAND lobby, game and result decode into their concrete screen", () => {
 test("ISLAND lobby requires 3–4 connected players and host authority", () => {
   assert.equal(getGameStartControl(lobby(2), false).canStart, false);
   for (const n of [3, 4]) assert.equal(getGameStartControl(lobby(n), false).canStart, true);
-  assert.throws(() => lobby(5));
+  assert.equal(getGameStartControl(lobby(5), false).canStart, false);
+  assert.throws(() => lobby(11));
   assert.equal(getGameStartControl({ ...lobby(), self: { playerId: "islander-1" } }, false).canStart, false);
   const s = lobby(); s.room.players[1]!.connectionStatus = "OFFLINE";
   assert.equal(getGameStartControl(s, false).canStart, false);

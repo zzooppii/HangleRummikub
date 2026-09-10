@@ -54,7 +54,7 @@ function NumberPlacementFinished(props: NumberTileFinishedScreenProps) {
       <h2 id="number-placement-result-heading">게임 결과</h2><p>{game.result.reason === "LAST_PLAYER_STANDING" ? "기권으로 남은 참가자의 순위가 확정되었습니다." : reasonLabel(game.result.reason)}</p>
       <ol className="score-list">{game.result.rankings.map(entry => <li key={entry.playerId}><strong>{entry.rank}위</strong><span>{room.players.find(p => p.playerId === entry.playerId)?.nickname ?? "참가자"}{entry.forfeited ? " · 기권" : ""}<small>남은 타일 {entry.remainingRackCount}개</small></span></li>)}</ol>
       <button type="button" onClick={() => dialog.current?.close()}>결과 닫기</button>
-      {host ? <button type="button" className="primary-button" disabled={props.sessionReplaced || props.connectionTone !== "connected" || props.rematchPending} onClick={props.onRematch}>같은 방에서 다시 하기</button> : <p>방장이 새 게임을 준비할 때까지 기다려 주세요.</p>}
+      {host ? <button type="button" className="primary-button" disabled={props.sessionReplaced || props.connectionTone !== "connected" || props.rematchPending} onClick={props.onRematch}>대기실로 돌아가기</button> : <p>방장이 새 게임을 준비할 때까지 기다려 주세요.</p>}
     </dialog>
   </main>;
 }

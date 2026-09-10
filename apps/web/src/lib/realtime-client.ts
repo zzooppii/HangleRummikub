@@ -1,3 +1,4 @@
+import { RoomPreparationCommandSchema, type RoomPreparationCommand } from "@hangul-rummikub/shared";
 import { SplendorClientCommandSchema, type SplendorClientCommand } from "@hangul-rummikub/shared";
 import { CityExpansionClientCommandSchema, type CityExpansionClientCommand } from "@hangul-rummikub/shared";
 import { IslandClientCommandSchema, type IslandClientCommand } from "@hangul-rummikub/shared";
@@ -366,6 +367,7 @@ export class RealtimeClient {
       autoConnect: false,
       path: options.path ?? DEFAULT_SOCKET_PATH,
       auth: {
+        supportsRoomPreparation: true,
         supportedSnapshotVersions: [...WEB_SUPPORTED_SNAPSHOT_VERSIONS],
         supportedGameTypes: [...WEB_SUPPORTED_GAME_TYPES],
       },
@@ -736,6 +738,14 @@ export class RealtimeClient {
         case "sneaky:eat": this.#socket.emit("sneaky:eat", command, acknowledge); break;
         case "sneaky:rematch": this.#socket.emit("sneaky:rematch", command, acknowledge); break;
       }
+    }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
+  }
+
+  prepareRoom(command: RoomPreparationCommand): Promise<StateSyncWireAck> {
+    if (!parseRematch(RoomPreparationCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {
+      if (command.kind === "room:selectGame") this.#socket.emit("room:selectGame", command, acknowledge);
+      else this.#socket.emit("room:ready", command, acknowledge);
     }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
   }
 

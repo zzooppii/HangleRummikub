@@ -21,6 +21,7 @@ export type GameStartSnapshot = Readonly<{
     players: readonly Readonly<{
       playerId: string;
       isHost: boolean;
+      isReady?: boolean | undefined;
       connectionStatus: "CONNECTED" | "OFFLINE";
     }>[];
   }>;
@@ -74,6 +75,10 @@ export function getGameStartControl(
       canStart: false,
       guidance: "모든 참가자가 접속 중일 때 시작할 수 있습니다.",
     };
+  }
+
+  if (snapshot.room.players.some(player => player.isReady === false)) {
+    return { isHost: true, canStart: false, guidance: "모든 참가자가 준비를 완료해야 시작할 수 있습니다." };
   }
 
   if (commandPending) {

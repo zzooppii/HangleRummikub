@@ -1,3 +1,4 @@
+import { RoomPreparationCommandSchema } from "@hangul-rummikub/shared";
 import { CityExpansionClientCommandSchema } from "@hangul-rummikub/shared";
 import { DrawClientCommandSchema } from "@hangul-rummikub/shared";
 import { validateGemCollectCommand, validateGemPurchaseCommand, validateGemReserveCommand, validateGemYieldCommand, type GemCollectWireAck, type GemCardPlayingPlatformSnapshotV2, type GemCardFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
@@ -92,6 +93,7 @@ type EmptyEvents = Record<never, never>;
 export type RealtimeSocketData = {
   selectedSnapshotVersion: SnapshotWireVersion;
   supportedGameTypes: readonly GameType[];
+  supportsRoomPreparation: boolean;
 };
 
 export type RealtimeServer = SocketIOServer<
@@ -589,6 +591,7 @@ function socketAdmissionCapabilities(
   return {
     selectedSnapshotVersion: socket.data.selectedSnapshotVersion,
     supportedGameTypes: socket.data.supportedGameTypes,
+    supportsRoomPreparation: socket.data.supportsRoomPreparation,
   };
 }
 
@@ -675,6 +678,7 @@ async function projectSnapshotForSocket(
     !isRoomAdmissionCompatible(
       room.gameType,
       socketAdmissionCapabilities(socket),
+      room.readyPlayerIds !== undefined,
     )
   ) {
     throw new IncompatibleGameCapabilityError(
@@ -682,7 +686,7 @@ async function projectSnapshotForSocket(
     );
   }
 
-  if (room.gameType === "HANGUL_TILE") {
+  if (room.gameType === "HANGUL_TILE" && !(room.phase === "LOBBY" && socket.data.selectedSnapshotVersion === 2)) {
     const legacySnapshot = await runtime.snapshotProjector.project({
       room,
       selfPlayerId,
@@ -860,6 +864,7 @@ async function bindPrimarySocket(
     !isRoomAdmissionCompatible(
       admissionRoom.gameType,
       socketAdmissionCapabilities(socket),
+      admissionRoom.readyPlayerIds !== undefined,
     )
   ) {
     throw new IncompatibleGameCapabilityError(
@@ -898,6 +903,7 @@ async function bindPrimarySocket(
     !isRoomAdmissionCompatible(
       currentRoom.gameType,
       socketAdmissionCapabilities(socket),
+      currentRoom.readyPlayerIds !== undefined,
     )
   ) {
     await socket.leave(roomChannel);
@@ -2818,6 +2824,36 @@ function registerDrawRelayHandlers(socket: RealtimeSocket, runtime: ApplicationR
   });
 }
 
+function registerRoomPreparationHandlers(io: RealtimeServer, socket: RealtimeSocket, runtime: ApplicationRuntime): void {
+  for (const event of ["room:selectGame", "room:ready"] as const) {
+    socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
+      const now = runtime.clock.now();
+      const parsed = parseNumberRematch(RoomPreparationCommandSchema, raw);
+      if (!parsed.success || parsed.output.kind !== event) {
+        acknowledgeIfPresent(acknowledge, failureAck(raw, { code: "INVALID_PAYLOAD", message: "Invalid room preparation command.", recoverable: false }, now));
+        return;
+      }
+      void (async () => {
+        const binding = runtime.connectionRegistry.getAuthenticatedBinding(createSocketId(socket.id));
+        if (!binding) { acknowledgeIfPresent(acknowledge, failureAck(raw, UNAUTHENTICATED_ERROR, now)); return; }
+        const result = await runtime.roomGameSelectionService.prepare({
+          roomId: binding.roomId, actorPlayerId: binding.playerId, command: parsed.output,
+          authorization: { isCurrent: () => socket.connected && isCurrentBinding(runtime, binding) },
+          canRepresentGame: gameType => [...io.sockets.sockets.values()].every(member => {
+            const current = runtime.connectionRegistry.getAuthenticatedBinding(createSocketId(member.id));
+            return current?.roomId !== binding.roomId || (member.data.supportsRoomPreparation && member.data.selectedSnapshotVersion === 2 && isRoomAdmissionCompatible(gameType, socketAdmissionCapabilities(member)));
+          }),
+        });
+        if (!result.ok) { acknowledgeIfPresent(acknowledge, failureAck(raw, result.error, now)); return; }
+        const loaded = await loadSnapshotForSocket(runtime, socket, binding.roomId, binding.playerId);
+        if (!loaded || !socket.connected || !isCurrentBinding(runtime, binding)) return;
+        acknowledgeIfPresent(acknowledge, snapshotSuccessAck(parsed.output.requestId, loaded.metadata, loaded.wireSnapshot));
+        await fanOutRoomSnapshots(io, runtime, binding.roomId);
+      })().catch(() => acknowledgeIfPresent(acknowledge, failureAck(raw, INTERNAL_ERROR, now)));
+    });
+  }
+}
+
 function registerNumberRematchHandler(io: RealtimeServer, socket: RealtimeSocket, runtime: ApplicationRuntime): void {
   socket.on("number:rematch", (raw, acknowledge) => {
     const now = runtime.clock.now(), parsed = parseNumberRematch(NumberRematchCommandSchema, raw);
@@ -3082,6 +3118,7 @@ export function registerSocketIoHandlers(
 
     socket.data.selectedSnapshotVersion = negotiation.selectedVersion;
     socket.data.supportedGameTypes = gameCapability.supportedGameTypes;
+    socket.data.supportsRoomPreparation = isRecord(socket.handshake.auth) && socket.handshake.auth.supportsRoomPreparation === true;
     next();
   });
   const unsubscribeTimeoutApplied = runtime.subscribeTurnTimeoutApplied(
@@ -3181,6 +3218,7 @@ export function registerSocketIoHandlers(
     registerNumberDrawHandler(io, socket, runtime);
     registerNumberPassHandler(io, socket, runtime);
     registerNumberRematchHandler(io, socket, runtime);
+    registerRoomPreparationHandlers(io, socket, runtime);
     registerRoomLeaveHandler(io, socket, runtime, authenticationExecutor);
     registerDisconnectHandler(io, socket, runtime);
   });

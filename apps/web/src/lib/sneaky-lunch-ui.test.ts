@@ -77,7 +77,7 @@ test("SNEAKY Finished exact winner/teacher result and host-only same-room rematc
   const p = playing(); const { teacherState: _teacher, ...base } = p.game.phase === "CLASSROOM" ? p.game : { ...p.game, teacherState: null };
   const win = parse(SneakyFinishedPlatformSnapshotV2Schema, { ...p, room: { ...p.room, phase: "FINISHED" }, game: { ...base, phase: "FINISHED",
     gameRevision: 10, result: { reason: "PLAYER_FINISHED", winnerPlayerId: "lunch-0" }, playerStates: p.game.playerStates.map((v, i) => ({ ...v, completedBites: i === 0 ? 90 : 0 })) } });
-  assert.match(html(win), /친구1님 완식 성공!|같은 방에서 다시 하기/); assert.doesNotMatch(html({ ...win, self: { playerId: win.room.players[1]!.playerId } }), /같은 방에서 다시 하기/);
+  assert.match(html(win), /친구1님 완식 성공!|대기실로 돌아가기/); assert.doesNotMatch(html({ ...win, self: { playerId: win.room.players[1]!.playerId } }), /대기실로 돌아가기/);
   assert.ok(deriveLunchFeedback(p, win).some(e => e.cue === "VICTORY"));
   const lose = parse(SneakyFinishedPlatformSnapshotV2Schema, { ...win, game: { ...win.game, result: { reason: "TEACHER_WIN", winnerPlayerId: null }, playerStates: win.game.playerStates.map(v => ({ ...v, status: "CAUGHT", completedBites: 0 })) } });
   assert.match(html(lose), /전원 적발!|점심시간까지/); assert.ok(deriveLunchFeedback(p, lose).some(e => e.cue === "TEACHER_WIN"));

@@ -52,6 +52,10 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 
 # CONFIRMED
 
+## 공통 방에서 다음 게임 준비 (2026-09-10)
+
+사용자가 같은 방에서 게임을 교체하는 흐름의 구현을 승인했다. 방장만 LOBBY 또는 FINISHED에서 다음 게임을 선택할 수 있다. RoomId/code, 참가자와 세션은 유지하고 기존 게임은 제거한다. 다음 시작은 새 GameId를 생성한다. 게임 선택 후 모든 참가자의 준비를 초기화하고, 전원 준비·접속 및 해당 게임의 인원 조건을 서버에서 확인한다. 진행 중 교체, 관전, 누적 점수·결과 보관은 포함하지 않는다. 구체 계약은 [ROOM_GAME_SWITCH.md](./ROOM_GAME_SWITCH.md)를 따른다.
+
 ### 할리갈리 추가 및 종료 규칙 정정 — 2026-09-10
 
 기존 방 선택에서 플레이할 수 있도록 기본판과 온라인 처리 정책을 추가한다. 상세 결정은 [HALLI_GALLI_GAME_RULES.md](./HALLI_GALLI_GAME_RULES.md)를 따른다. 기존 게임의 미확정 항목은 유지한다. 사용자 정정에 따라 할리갈리는 카드가 소진되어 마지막 생존자가 남을 때까지 진행하며, 2인 최종 벨과 15분 강제 종료를 제거한다. 추가 속도 개선 요청으로 뒤집기 사이의 1초 강제 대기를 제거하고, 차례가 되면 바로 뒤집도록 한다.
@@ -983,7 +987,6 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 
 ## TBC-F. Rematch와 장기 match
 
-- FINISHED Room에서 새 Game을 시작하는 rematch
 - 여러 Game 누적 점수와 match winner
 
 ---

@@ -98,7 +98,7 @@ export const LobbyPublicRoomViewSchema = v.strictObject({
   roomId: RoomIdSchema,
   roomCode: RoomCodeSchema,
   phase: v.literal("LOBBY"),
-  players: v.pipe(v.array(PublicPlayerViewSchema), v.maxLength(4)),
+  players: v.pipe(v.array(PublicPlayerViewSchema), v.maxLength(10)),
 });
 export type LobbyPublicRoomView = v.InferOutput<
   typeof LobbyPublicRoomViewSchema

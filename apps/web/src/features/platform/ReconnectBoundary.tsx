@@ -6,9 +6,11 @@ export function ReconnectBoundary(props: Readonly<{
   pending: boolean;
   onReconnect: () => void;
   children: ReactNode;
+  roomControls?: ReactNode;
 }>) {
   return (
     <div data-protocol-version={PROTOCOL_VERSION} className={props.visible ? "room-recovery-active" : undefined}>
+      {props.roomControls}
       {props.children}
       {props.visible ? (
         <aside className="room-recovery-notice" aria-label="게임 재접속">

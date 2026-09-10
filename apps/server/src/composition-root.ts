@@ -16,6 +16,7 @@ import { createSneakyLifecycle } from "./games/sneaky-lunch/application/lifecycl
 import { DrawRelayService } from "./games/draw-relay/application/service.js";
 import { DrawRelayHostSuccession } from "./games/draw-relay/application/host-succession.js";
 import { createDrawRelayLifecycle } from "./games/draw-relay/application/lifecycle.js";
+import { RoomGameSelectionService } from "./application/room-game-selection-service.js";
 import { NumberTileRematchService } from "./games/number-tile/application/number-tile-rematch-service.js";
 import { createGemCardRegistration } from "./games/gem-card/gem-card-registration.js";
 import { createCityRoleRegistration } from "./games/city-role/city-role-registration.js";
@@ -151,6 +152,7 @@ export type ApplicationRuntime = Readonly<{
   overdueGameDeadlineSweeper: OverdueGameDeadlineSweeper;
   persistence: InMemoryPersistence;
   roomLeaveService: RoomLeaveService;
+  roomGameSelectionService: RoomGameSelectionService;
   roomPolicyScheduler: InProcessRoomPolicyScheduler;
   roomPresencePolicyService: RoomPresencePolicyService;
   roomSessionService: RoomSessionApplicationService;
@@ -809,6 +811,7 @@ export function createApplicationRuntime(
     legacyHangulServerActionRouter,
     legacyHangulV1CommandRouter,
     numberTileCommandRouter,
+    roomGameSelectionService: new RoomGameSelectionService({ roomRepository: persistence, idempotencyRepository: persistence, roomUnitOfWork: persistence, roomMutationExecutor, clock }),
     numberTileRematchService: new NumberTileRematchService({ roomRepository: persistence, idempotencyRepository: persistence, roomUnitOfWork: persistence, roomMutationExecutor, clock, idGenerator, turnScheduler }),
     gemCardCommandRouter,
     cityRoleCommandRouter,

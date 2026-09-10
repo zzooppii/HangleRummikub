@@ -42,7 +42,7 @@ test("NUMBER rematch game scopes accept newer Lobby/new game and reject delayed 
   assert.equal(decideSnapshotUpdate(finished, state(11, null, null, 4)), "REQUEST_SYNC");
   assert.equal(decideSnapshotUpdate(finished, state(11, 46, "old-game")), "REQUEST_SYNC");
   assert.equal(decideSnapshotUpdate({ ...finished, room: { ...finished.room, gameType: "GEM_CARD" } },
-    { ...lobby, room: { ...lobby.room, gameType: "GEM_CARD" } }), "REQUEST_SYNC");
+    { ...lobby, room: { ...lobby.room, gameType: "GEM_CARD" } }), "APPLY");
 });
 
 function snapshot(
@@ -440,4 +440,22 @@ test("game:finished advisory는 matching final snapshot을 유지하고 stale/di
     ),
     "REQUEST_SYNC",
   );
+});
+
+test("cross-game snapshots use room revision across lobby, missed transitions and late delivery", () => {
+  const state = (gameType: string, roomRevision: number, gameId: string | null, gameRevision: number | null, presenceVersion = 8) => {
+    const versions = validateStateVersions({ roomRevision, gameRevision, presenceVersion });
+    assert.ok(versions.ok);
+    return { versions: versions.value, gameId, room: { roomId: "persistent-room", gameType }, self: { playerId: "self" } };
+  };
+  for (const type of ["HANGUL_TILE", "NUMBER_TILE", "GEM_CARD", "CITY_ROLE", "HALLI_GALLI", "SPLENDOR", "ISLAND_SETTLERS", "WOLF_NIGHT", "SNEAKY_LUNCH", "DRAW_RELAY"]) {
+    const old = state(type, 10, "old", 200), lobby = state("SPLENDOR", 11, null, null), next = state("SPLENDOR", 15, "new", 0);
+    assert.equal(decideSnapshotUpdate(old, lobby), "APPLY");
+    assert.equal(decideSnapshotUpdate(old, next), "APPLY");
+    assert.equal(decideSnapshotUpdate(next, old), "IGNORE_STALE");
+    assert.equal(decideSnapshotUpdate(lobby, old), "IGNORE_STALE");
+    assert.equal(decideSnapshotUpdate(old, state("SPLENDOR", 10, null, null)), "REQUEST_SYNC");
+    assert.equal(decideSnapshotUpdate(old, state("SPLENDOR", 11, null, null, 7)), "REQUEST_SYNC");
+    assert.equal(decideSnapshotUpdate(old, state(type, 11, null, null)), "APPLY");
+  }
 });

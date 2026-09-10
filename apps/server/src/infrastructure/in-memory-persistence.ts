@@ -216,6 +216,8 @@ function cloneRoomWriteCandidate(
   }
 
   const shell = {
+    ...(candidate.readyPlayerIds === undefined ? {} : { readyPlayerIds: Object.freeze(candidate.readyPlayerIds.filter(id => candidate.players.some(player => player.playerId === id))) }),
+    ...(candidate.departedPlayerIds === undefined ? {} : { departedPlayerIds: Object.freeze([...candidate.departedPlayerIds]) }),
     roomId: candidate.roomId,
     roomCode: candidate.roomCode,
     phase: candidate.phase,
@@ -631,6 +633,7 @@ function replaceRoomInState(
   state: InMemoryState,
   input: ReplaceRoomInput,
   adapters: GameStateStorageAdapters,
+  resetGame = false,
 ): ReplaceRoomResult {
   const current = state.roomsById.get(input.candidate.roomId);
   if (current === undefined) {
@@ -642,7 +645,12 @@ function replaceRoomInState(
   if (current.storageRevision !== input.expectedStorageRevision) {
     return { status: "STALE_STORAGE_REVISION" };
   }
-  if (current.gameType !== input.candidate.gameType) {
+  if (resetGame && (current.phase === "PLAYING" || input.candidate.phase !== "LOBBY" ||
+      input.candidate.game !== null || input.candidate.roomCode !== current.roomCode ||
+      input.candidate.roomRevision !== current.roomRevision + 1)) {
+    return { status: "GAME_TYPE_MISMATCH" };
+  }
+  if (!resetGame && current.gameType !== input.candidate.gameType) {
     return { status: "GAME_TYPE_MISMATCH" };
   }
 
@@ -654,8 +662,13 @@ function replaceRoomInState(
     return { status: "STORAGE_REVISION_EXHAUSTED" };
   }
 
+  // Gameplay transitions may rebuild a concrete game candidate. Explicit room
+  // departures must survive those transitions until a new lobby is created.
+  const candidate = input.candidate.phase !== "LOBBY" && current.departedPlayerIds !== undefined
+    ? { ...input.candidate, departedPlayerIds: [...new Set([...current.departedPlayerIds, ...(input.candidate.departedPlayerIds ?? [])])] }
+    : input.candidate;
   const room = persistRoom(
-    input.candidate,
+    candidate,
     incrementStorageRevision(current.storageRevision),
     adapters,
   );
@@ -828,6 +841,7 @@ function applyRoomMutation(
         ? { status: "APPLIED", room: result.room }
         : { status: "FAILED", reason: roomFailure(result) };
     }
+    case "RESET_GAME":
     case "REPLACE": {
       const result = replaceRoomInState(
         state,
@@ -838,6 +852,7 @@ function applyRoomMutation(
             changeSet.roomMutation.expectedStorageRevision,
         },
         adapters,
+        changeSet.roomMutation.kind === "RESET_GAME",
       );
       return result.status === "REPLACED"
         ? { status: "APPLIED", room: result.room }

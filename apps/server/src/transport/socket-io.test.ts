@@ -1,3 +1,4 @@
+import { RoomGameSelectionService } from "../application/room-game-selection-service.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -768,6 +769,7 @@ function createDeterministicRuntime(): DeterministicRuntime {
 
   return {
     runtime: {
+      roomGameSelectionService: new RoomGameSelectionService({ roomRepository: persistence, idempotencyRepository: persistence, roomUnitOfWork: persistence, roomMutationExecutor, clock }),
       numberTileRematchService: new NumberTileRematchService({ roomRepository: persistence, idempotencyRepository: persistence, roomUnitOfWork: persistence, roomMutationExecutor, clock, idGenerator, turnScheduler }),
       cityRoleCommandRouter: new CityRoleCommandRouter({ roomRepository: persistence, capability: {
         gameType: "CITY_ROLE",

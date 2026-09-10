@@ -395,6 +395,7 @@ export class RoomSessionApplicationService {
         !isRoomAdmissionCompatible(
           locatedRoom.gameType,
           admissionCapabilities,
+          locatedRoom.readyPlayerIds !== undefined,
         )
       ) {
         return failed(INCOMPATIBLE_GAME_CAPABILITY_ERROR);
@@ -643,7 +644,7 @@ export class RoomSessionApplicationService {
         ROOM_NOT_FOUND_ERROR,
       );
     }
-    if (!isRoomAdmissionCompatible(room.gameType, admissionCapabilities)) {
+    if (!isRoomAdmissionCompatible(room.gameType, admissionCapabilities, room.readyPlayerIds !== undefined)) {
       return failed(INCOMPATIBLE_GAME_CAPABILITY_ERROR);
     }
     if (room.phase !== "LOBBY") {

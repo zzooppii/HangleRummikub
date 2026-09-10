@@ -117,6 +117,11 @@ export class GameStartRouter implements GameStartRouting {
         return { ok: false, error: ROOM_NOT_FOUND_ERROR };
       }
 
+      if (room.phase === "LOBBY" && room.readyPlayerIds !== undefined &&
+          room.players.some(player => !room.readyPlayerIds?.includes(player.playerId))) {
+        return { ok: false, error: { code: "RULE_VIOLATION", message: "모든 참가자가 준비를 완료해야 시작할 수 있습니다.", recoverable: true } };
+      }
+
       switch (room.gameType) {
         case "HANGUL_TILE":
           return await this.#hangul.start(input);

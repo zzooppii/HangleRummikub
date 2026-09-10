@@ -37,7 +37,7 @@ export function adaptPlatformSnapshotV2ToLegacyHangulV1(
       },
       room: {
         ...common.room,
-        players: snapshot.room.players.map((player) => ({ ...player })),
+        players: snapshot.room.players.map(({ playerId, nickname, isHost, connectionStatus }) => ({ playerId, nickname, isHost, connectionStatus })),
       },
       self: { playerId: snapshot.self.playerId },
     });

@@ -1,5 +1,7 @@
 # Multi-game Platform Specification
 
+> **2026-09-10 방 유지·게임 교체:** 현재 정책은 [ROOM_GAME_SWITCH.md](./ROOM_GAME_SWITCH.md)를 따른다. 아래 과거 checkpoint의 방 생애 전체 gameType 불변·rematch 제외 정책은 이 기능에 대해 대체된다. 게임 한 판의 종류는 고정하며, 방장만 대기실 또는 종료 후 전용 명령으로 다음 게임을 선택한다. 방 코드·참가자·세션은 유지한다.
+
 > 상태: P11C SOURCE COMPLETE / P12 COMPLETE / THREE-GAME PLATFORM V1 VERIFIED
 > 작성일: 2026-09-07
 > 적용 범위: 현재 production 한글 타일 게임을 보존하면서 여러 턴제 보드게임을 수용하기 위한 제품 경계  
@@ -67,7 +69,7 @@ P11B server/shared `SUPPORTED_GAME_TYPES`, `GameTypeSchema`와 identity-only Gam
 - Room 생성·참가·퇴장·cleanup
 - Player 지속 식별자와 Host 역할
 - player 수용 정책을 조회·적용하는 경계
-- immutable `gameType`
+- 게임 한 판 동안 고정되는 `gameType`
 - Room phase와 게임 instance의 연결
 
 플랫폼의 player와 Socket.IO connection은 동일한 개념이 아니다. 기존과 같이 `playerId`와 `socketId`를 분리한다.
@@ -87,7 +89,7 @@ P11B server/shared `SUPPORTED_GAME_TYPES`, `GameTypeSchema`와 identity-only Gam
 
 - runtime validation
 - actor와 Room membership 인증
-- phase와 immutable `gameType` 확인
+- phase와 서버의 현재 `gameType` 확인
 - idempotency와 request replay
 - scoped revision 확인
 - Room 단위 mutation serialization
@@ -157,7 +159,7 @@ P10은 [GEM_CARD_GAME_RULES.md](./GEM_CARD_GAME_RULES.md), [GEM_CARD_CARDSET_V1.
 
 - 사용자는 Home catalog에서 Room을 만들기 전 game을 선택한다.
 - `gameType`은 Room 생성 요청에서 선택되고 서버가 검증한다.
-- 생성된 Room의 `gameType`은 immutable이다.
+- Room의 선택 `gameType`은 대기실 또는 종료 후 전용 `room:selectGame`으로 변경할 수 있다. 진행 중인 게임의 종류는 고정이다.
 - 저장·복구·snapshot·registry lookup의 권위는 서버의 Room record다.
 - client가 보낸 `gameType`은 권위가 아니며 해당 Room의 값과 반드시 대조한다.
 - invitation URL에는 Room code만 둔다. URL query/path의 game 이름으로 renderer를 선택하지 않는다.

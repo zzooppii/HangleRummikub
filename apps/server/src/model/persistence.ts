@@ -52,6 +52,10 @@ export type PlayerRecord = Readonly<{
 }>;
 
 type RoomRecordBase = Readonly<{
+  /** Present after selecting the next game; all members must prepare again. */
+  readyPlayerIds?: readonly PlayerId[];
+  /** Explicit departures stay separate from the completed game roster. */
+  departedPlayerIds?: readonly PlayerId[];
   roomId: RoomId;
   roomCode: RoomCode;
   phase: RoomPhase;

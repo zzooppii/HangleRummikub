@@ -138,9 +138,9 @@ test("CITY ACK contains committed identity only and no private replay snapshot",
   assert.equal(v.safeParse(CityActionWireAckSchema, ack).success, true);
   assert.equal(v.safeParse(CityActionWireAckSchema, { ...ack, data: { ...ack.data, snapshot: selection() } }).success, false);
 });
-test("CITY V2 Lobby supports six but not seven and legacy V1 rejects CITY", () => {
-  for (const count of [1, 2, 3, 4, 5, 6]) assert.equal(v.safeParse(CityRoleLobbyPlatformSnapshotV2Schema, lobby(count)).success, true);
-  assert.equal(v.safeParse(CityRoleLobbyPlatformSnapshotV2Schema, lobby(7)).success, false);
+test("CITY V2 shared Lobby retains up to ten members while legacy V1 rejects CITY", () => {
+  for (const count of [1, 2, 3, 4, 5, 6, 7, 10]) assert.equal(v.safeParse(CityRoleLobbyPlatformSnapshotV2Schema, lobby(count)).success, true);
+  assert.equal(v.safeParse(CityRoleLobbyPlatformSnapshotV2Schema, lobby(11)).success, false);
   assert.equal(v.safeParse(StateSnapshotSchema, lobby()).success, false);
   assert.equal(v.safeParse(PlatformSnapshotV2Schema, { ...lobby(), snapshotVersion: 1 }).success, false);
 });

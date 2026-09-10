@@ -353,14 +353,16 @@ export class RoomLeaveService {
             return failure(ERRORS.INTERNAL_ERROR);
           }
 
-          if ((candidate.gameType === "NUMBER_TILE" || candidate.gameType === "DRAW_RELAY" || candidate.gameType === "SNEAKY_LUNCH" || candidate.gameType === "WOLF_NIGHT" || candidate.gameType === "SPLENDOR" || candidate.gameType === "HALLI_GALLI" || candidate.gameType === "ISLAND_SETTLERS")) {
-            const departedPlayerIds = Object.freeze([...new Set([...(candidate.departedPlayerIds ?? []), input.actorPlayerId])]);
+          {
+            const departedPlayerIds = Object.freeze([...new Set([...(room.departedPlayerIds ?? []), ...(candidate.departedPlayerIds ?? []), input.actorPlayerId])]);
             const remaining = candidate.players.filter(p => !departedPlayerIds.includes(p.playerId));
             const hostPlayerId = candidate.hostPlayerId === input.actorPlayerId
               ? [...remaining].sort((a,b) => a.joinOrder - b.joinOrder)[0]?.playerId ?? candidate.hostPlayerId
               : candidate.hostPlayerId;
             // Room membership metadata changes, never the completed Game/result.
-            const roomRevision = incrementRoomRevision(candidate.roomRevision);
+            const roomRevision = candidate.gameType === "HANGUL_TILE" || candidate.gameType === "GEM_CARD" || candidate.gameType === "CITY_ROLE"
+              ? (candidate.roomRevision > room.roomRevision ? candidate.roomRevision : incrementRoomRevision(room.roomRevision))
+              : incrementRoomRevision(candidate.roomRevision);
             candidate = { ...candidate, departedPlayerIds, hostPlayerId, roomRevision };
             terminalResult = { ...terminalResult, roomRevision };
           }

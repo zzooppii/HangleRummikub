@@ -19,7 +19,7 @@ export type AtomicRoomUpsert =
       candidate: RoomWriteCandidate;
     }>
   | Readonly<{
-      kind: "REPLACE";
+      kind: "REPLACE" | "RESET_GAME";
       candidate: RoomWriteCandidate;
       expectedRoomRevision: RoomRevision;
       expectedStorageRevision: StorageRevision;

@@ -77,7 +77,7 @@ test("DRAW Finished recap has no score/winner and offers host rematch", () => {
   const r = playing("REVEAL");
   const finished = parse(DrawRelayFinishedPlatformSnapshotV2Schema, { ...r, room: { ...r.room, phase: "FINISHED" }, game: { ...r.game, phase: "FINISHED", reveal: { bookIndex: 2, pageIndex: 2 },
     books: players.map(p => ({ ownerPlayerId: p.playerId, initialPrompt: "고양이", pages: [{ kind: "DRAWING", authorPlayerId: p.playerId, timedOut: false, drawing: BLANK_DRAWING }, { kind: "GUESS", authorPlayerId: p.playerId, timedOut: false, text: "호랑이" }] })) } });
-  assert.match(html(finished), /같은 방에서 다시 하기|처음에는|마지막에는/); assert.doesNotMatch(html(finished), /우승|승점|1위/);
+  assert.match(html(finished), /대기실로 돌아가기|처음에는|마지막에는/); assert.doesNotMatch(html(finished), /우승|승점|1위/);
 });
 test("DRAW pointer coordinate clamp, append/undo immutable, limits", () => {
   assert.deepEqual(logicalPoint(-10, 900, { left: 0, top: 0, width: 500, height: 350 }), { x: 0, y: 700 });

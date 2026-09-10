@@ -40,7 +40,7 @@ test("WOLF night chat disabled, dormant players cannot select actions, disconnec
 });
 test("WOLF result uses final role and winner IDs and rematch cannot be replaced by delayed old-game snapshots",()=>{
  const p=playing(),finished=parse(WolfFinishedPlatformSnapshotV2Schema,{...p,versions:{roomRevision:2,presenceVersion:0},room:{...p.room,phase:"FINISHED"},game:{gameType:p.game.gameType,gameId:p.game.gameId,gameRevision:8,rulesVersion:p.game.rulesVersion,settings:p.game.settings,deck:p.game.deck,playerStates:p.game.playerStates,messages:[],phase:"FINISHED",result:{reason:"VOTED",eliminatedPlayerIds:[],winnerPlayerIds:p.room.players.map(x=>x.playerId),villageWins:true,wolvesWin:false,tannerWins:false,players:p.room.players.map(x=>({playerId:x.playerId,originalRole:"SEER",finalRole:"ROBBER",effectiveRole:"ROBBER",votedFor:null,votesReceived:0})),center:["SEER","WEREWOLF","WEREWOLF"]}}});
- assert.match(html(finished),/마을팀 승리/);assert.match(html(finished),/같은 방에서 다시 하기/);
+ assert.match(html(finished),/마을팀 승리/);assert.match(html(finished),/대기실로 돌아가기/);
  const next={...lobby(),versions:{roomRevision:parse(WolfLobbyPlatformSnapshotV2Schema,{...lobby(),versions:{roomRevision:3,presenceVersion:0}}).versions.roomRevision,presenceVersion:lobby().versions.presenceVersion}};
  assert.equal(decideSnapshotUpdate(shell(next),shell(finished)),"IGNORE_STALE");
 });

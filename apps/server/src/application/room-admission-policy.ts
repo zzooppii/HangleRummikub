@@ -10,6 +10,7 @@ import type {
 export type RoomAdmissionCapabilities = Readonly<{
   selectedSnapshotVersion: SnapshotWireVersion;
   supportedGameTypes: readonly GameType[];
+  supportsRoomPreparation?: boolean;
 }>;
 
 /** Missing supportedGameTypes is the pre-P7B Hangul-only compatibility mode. */
@@ -22,7 +23,9 @@ export const LEGACY_ROOM_ADMISSION_CAPABILITIES: RoomAdmissionCapabilities =
 export function isRoomAdmissionCompatible(
   gameType: GameType,
   capabilities: RoomAdmissionCapabilities,
+  preparationRequired = false,
 ): boolean {
+  if (preparationRequired && (capabilities.supportsRoomPreparation !== true || capabilities.selectedSnapshotVersion !== 2)) return false;
   if (!capabilities.supportedGameTypes.includes(gameType)) {
     return false;
   }

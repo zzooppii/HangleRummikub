@@ -700,7 +700,8 @@ test("이미 forfeited인 Playing Player leave는 session만 정리하고 gamepl
   const after = await harness.persistence.findById(before.roomId);
   assert.equal(after?.gameType, "HANGUL_TILE");
   assert.ok(after?.game?.turn && beforeGame.turn);
-  assert.equal(after.roomRevision, before.roomRevision);
+  assert.equal(after.roomRevision, before.roomRevision + 1);
+  assert.deepEqual(after.departedPlayerIds, [forfeitedPlayerId]);
   assert.equal(after.game.gameRevision, beforeGame.gameRevision);
   assert.equal(after.game.turn.turnId, beforeGame.turn.turnId);
   assert.deepEqual(after.game.forfeitedPlayerIds, beforeGame.forfeitedPlayerIds);

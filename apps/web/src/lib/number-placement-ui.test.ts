@@ -32,7 +32,7 @@ test("Number placement result is scoreless and keeps final board behind a host r
   assert.match(html, /<dialog/);
   assert.match(html, /결과 닫기/);
   assert.match(html, /게임 결과/);
-  assert.match(html, /같은 방에서 다시 하기/);
+  assert.match(html, /대기실로 돌아가기/);
   assert.match(html, /1위/);
   assert.match(html, /2위/);
   assert.doesNotMatch(html, /벌점|score =|점수/);
@@ -46,7 +46,7 @@ test("Number non-host result cannot show rematch and exposes only own remaining 
     snapshot, connectionLabel: "OFFLINE", connectionTone: "offline", errorMessage: null,
     sessionReplaced: false, roomLeavePending: false, onLeaveRoom() {}, onGoHome() {},
   }));
-  assert.doesNotMatch(html, /같은 방에서 다시 하기/);
+  assert.doesNotMatch(html, /대기실로 돌아가기/);
   assert.match(html, /방장이 새 게임을 준비/);
   assert.doesNotMatch(html, /rack-0|rack-1/);
 });
@@ -61,7 +61,7 @@ test("Number placed spectator sees live rank without a final modal while other p
   assert.match(html, /1위를 확정했습니다/);
   assert.match(html, /순위 결정이 진행 중/);
   assert.match(html, /공용 타일 보드/);
-  assert.doesNotMatch(html, /<dialog|같은 방에서 다시 하기/);
+  assert.doesNotMatch(html, /<dialog|대기실로 돌아가기/);
 });
 
 test("Number result dialog uses native close/reopen and bounded mobile layout", () => {

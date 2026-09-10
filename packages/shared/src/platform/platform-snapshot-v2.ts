@@ -44,6 +44,7 @@ export type PlatformSnapshotVersionsV2 = v.InferOutput<
 >;
 
 export const PlatformPlayerViewV2Schema = v.strictObject({
+  isReady: v.optional(v.boolean()),
   playerId: PlayerIdSchema,
   nickname: NicknameSchema,
   isHost: v.boolean(),
@@ -59,7 +60,7 @@ const PlatformSelfViewV2Schema = v.strictObject({
 
 const LobbyPlatformPlayersV2Schema = v.pipe(
   v.array(PlatformPlayerViewV2Schema),
-  v.maxLength(4),
+  v.maxLength(10),
 );
 
 const ActivePlatformPlayersV2Schema = v.pipe(
@@ -229,7 +230,7 @@ export type GemCardLobbyPlatformSnapshotV2 = v.InferOutput<
   typeof GemCardLobbyPlatformSnapshotV2Schema
 >;
 
-const CityLobbyPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(1), v.maxLength(6));
+const CityLobbyPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(1), v.maxLength(10));
 const CityActivePlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(6));
 const CityOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema,
   serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
@@ -255,7 +256,7 @@ const DrawOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: Pl
 const DrawRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("DRAW_RELAY") };
 const DrawPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema),v.minLength(3),v.maxLength(8));
 const DrawRelayLobbyPlatformSnapshotV2Raw = v.pipe(v.strictObject({ ...DrawOuter,
-  room: v.strictObject({ ...DrawRoom, phase:v.literal("LOBBY"), players:v.pipe(v.array(PlatformPlayerViewV2Schema),v.maxLength(8)), promptMode:v.picklist(["EASY","NORMAL","MIXED"]), drawSeconds:v.optional(DrawRelayDrawSecondsSchema,90) }), game:v.null() }),
+  room: v.strictObject({ ...DrawRoom, phase:v.literal("LOBBY"), players:v.pipe(v.array(PlatformPlayerViewV2Schema),v.maxLength(10)), promptMode:v.picklist(["EASY","NORMAL","MIXED"]), drawSeconds:v.optional(DrawRelayDrawSecondsSchema,90) }), game:v.null() }),
   v.check(s => hasUniqueRoomPlayers(s)),v.check(s => containsSelfPlayer(s)),v.check(s => hasAtMostOneHost(s)));
 const DrawRelayPlayingPlatformSnapshotV2Raw = v.pipe(v.strictObject({ ...DrawOuter,
   room:v.strictObject({ ...DrawRoom,phase:v.literal("PLAYING"),players:DrawPlayers }),game:DrawRelayPlayingProjectionSchema }),
@@ -275,7 +276,7 @@ const IslandOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: 
 const IslandRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("ISLAND_SETTLERS") };
 const IslandPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(3), v.maxLength(4));
 const IslandLobbyRaw = v.pipe(v.strictObject({ ...IslandOuter, room: v.strictObject({ ...IslandRoom, phase: v.literal("LOBBY"),
-  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(4)) }), game: v.null() }),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)) }), game: v.null() }),
   v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
 const IslandPlayingRaw = v.pipe(v.strictObject({ ...IslandOuter, room: v.strictObject({ ...IslandRoom, phase: v.literal("PLAYING"), players: IslandPlayers }), game: IslandPlayingProjectionSchema }),
   v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.cards.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.developmentCount), v.check(s => Object.values(s.game.privateState.resources).reduce((n, count) => n + count, 0) === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.resourceCount));
@@ -293,7 +294,7 @@ const SplendorOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions
 const SplendorRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("SPLENDOR") };
 const SplendorPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(4));
 const SplendorLobbyRaw = v.pipe(v.strictObject({ ...SplendorOuter, room: v.strictObject({ ...SplendorRoom, phase: v.literal("LOBBY"),
-  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(4)) }), game: v.null() }),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)) }), game: v.null() }),
   v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
 const SplendorPlayingRaw = v.pipe(v.strictObject({ ...SplendorOuter, room: v.strictObject({ ...SplendorRoom, phase: v.literal("PLAYING"), players: SplendorPlayers }), game: SplendorPlayingProjectionSchema }),
   v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.reserved.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.reservedCount));
@@ -310,7 +311,7 @@ const HalliOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: P
 const HalliRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("HALLI_GALLI") };
 const HalliPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(6));
 const HalliLobbyRaw = v.pipe(v.strictObject({ ...HalliOuter, room: v.strictObject({ ...HalliRoom, phase: v.literal("LOBBY"),
-  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(6)) }), game: v.null() }),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)) }), game: v.null() }),
   v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
 const HalliPlayingRaw = v.pipe(v.strictObject({ ...HalliOuter, room: v.strictObject({ ...HalliRoom, phase: v.literal("PLAYING"), players: HalliPlayers }), game: HalliPlayingProjectionSchema }),
   v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)));
@@ -344,7 +345,7 @@ const SneakyOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: 
 const SneakyRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("SNEAKY_LUNCH") };
 const SneakyPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(8));
 const SneakyLobbyRaw = v.pipe(v.strictObject({ ...SneakyOuter, room: v.strictObject({ ...SneakyRoom, phase: v.literal("LOBBY"),
-  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(8)), settings: SneakySettingsSchema }), game: v.null() }),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)), settings: SneakySettingsSchema }), game: v.null() }),
   v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
 const SneakyPlayingRaw = v.pipe(v.strictObject({ ...SneakyOuter, room: v.strictObject({ ...SneakyRoom, phase: v.literal("PLAYING"), players: SneakyPlayers }), game: SneakyPlayingProjectionSchema }),
   v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)));

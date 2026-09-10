@@ -100,21 +100,16 @@ export function decideSnapshotUpdate(
 
   if (
     currentSnapshot.room.roomId !== incomingSnapshot.room.roomId ||
-    currentSnapshot.self.playerId !== incomingSnapshot.self.playerId ||
-    (currentSnapshot.room.gameType !== undefined &&
-      incomingSnapshot.room.gameType !== undefined &&
-      currentSnapshot.room.gameType !== incomingSnapshot.room.gameType)
+    currentSnapshot.self.playerId !== incomingSnapshot.self.playerId
   ) {
     return "REQUEST_SYNC";
   }
 
-  // NUMBER's rematch can reset gameRevision or remove the old game entirely.
-  // Room revision orders these scope changes; a delayed old-game snapshot
-  // must never replace a new Lobby or a newer game with a smaller revision.
-  if ((currentSnapshot.room.gameType === "NUMBER_TILE" || currentSnapshot.room.gameType === "DRAW_RELAY" || currentSnapshot.room.gameType === "SNEAKY_LUNCH" || currentSnapshot.room.gameType === "WOLF_NIGHT" || currentSnapshot.room.gameType === "SPLENDOR" || currentSnapshot.room.gameType === "HALLI_GALLI" || currentSnapshot.room.gameType === "ISLAND_SETTLERS") &&
-      incomingSnapshot.room.gameType === currentSnapshot.room.gameType &&
-      currentSnapshot.gameId !== undefined && incomingSnapshot.gameId !== undefined &&
-      currentSnapshot.gameId !== incomingSnapshot.gameId) {
+  // Game revisions restart per session. Room revision orders both game changes
+  // and transitions through the lobby, including missed intermediate snapshots.
+  if ((currentSnapshot.room.gameType !== incomingSnapshot.room.gameType) ||
+      (currentSnapshot.gameId !== undefined && incomingSnapshot.gameId !== undefined &&
+       currentSnapshot.gameId !== incomingSnapshot.gameId)) {
     if (incomingSnapshot.versions.roomRevision < currentSnapshot.versions.roomRevision) return "IGNORE_STALE";
     if (incomingSnapshot.versions.roomRevision > currentSnapshot.versions.roomRevision &&
         incomingSnapshot.versions.presenceVersion >= currentSnapshot.versions.presenceVersion) return "APPLY";

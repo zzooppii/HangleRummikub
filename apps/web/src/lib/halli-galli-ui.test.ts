@@ -16,7 +16,7 @@ function render(s: HalliWebSnapshot, connected = true) { return renderToStaticMa
 test("HALLI routes lobby/playing/finished through concrete V2 screen", () => {
  const p = playing(), finished = parse(HalliFinishedPlatformSnapshotV2Schema, { ...p, room: { ...p.room, phase: "FINISHED" }, game: { gameType: "HALLI_GALLI", gameId: p.game.gameId, gameRevision: 1, rulesVersion: p.game.rulesVersion, playerStates: p.game.playerStates.map((p, i) => ({ ...p, deckCount: i === 0 ? 56 : 0, eliminated: i !== 0 })), feedback: null, phase: "FINISHED", result: { reason: "LAST_PLAYER", winnerPlayerIds: ["fruit-0"], scores: p.game.playerStates.map((p, i) => ({ playerId: p.playerId, cards: i === 0 ? 56 : 0 })) } } });
  for (const s of [lobby(), p, finished]) { const d = decodeWebSnapshot(s); assert.equal(d.kind, "COMPATIBLE"); if (d.kind === "COMPATIBLE") assert.equal(resolveRoomSnapshotView(d.value).kind, "HALLI_GALLI"); }
- assert.match(render(lobby()), /카드 나누고 시작하기/); assert.match(render(p), /벨 누르기/); assert.match(render(finished), /같은 방에서 다시 하기/); assert.match(render(p, false), /연결을 복구/);
+ assert.match(render(lobby()), /카드 나누고 시작하기/); assert.match(render(p), /벨 누르기/); assert.match(render(finished), /대기실로 돌아가기/); assert.match(render(p, false), /연결을 복구/);
 });
 test("HALLI admits 2–6 connected players, requires host, no start for one", () => {
  assert.equal(getGameStartControl(lobby(1), false).canStart, false); assert.equal(getGameStartControl(lobby(2), false).canStart, true); assert.equal(getGameStartControl(lobby(6), false).canStart, true);

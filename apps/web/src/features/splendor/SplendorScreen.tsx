@@ -420,7 +420,7 @@ export function SplendorScreen(props: Props) {
                       <span>
                         {p.isHost ? "방장 · " : ""}
                         {p.connectionStatus === "CONNECTED"
-                          ? "준비 완료"
+                          ? "접속 중"
                           : "연결 기다리는 중"}
                       </span>
                     </div>
@@ -509,7 +509,7 @@ export function SplendorScreen(props: Props) {
                 })
               }
             >
-              같은 방에서 다시 하기
+              대기실로 돌아가기
             </button>
           ) : (
             <p>방장이 다음 판을 준비합니다.</p>

@@ -69,7 +69,7 @@ export class PlatformSnapshotV2Projector {
       throw new Error("Snapshot self Player is not present in the Room.");
     }
 
-    if (input.room.gameType === "HANGUL_TILE") {
+    if (input.room.gameType === "HANGUL_TILE" && input.room.phase !== "LOBBY") {
       const legacySnapshot = await this.#legacyHangulSnapshotProjector.project(
         input,
       );
@@ -86,7 +86,8 @@ export class PlatformSnapshotV2Projector {
       input.room.players,
       input.room.hostPlayerId,
       presence.connectionStatusByPlayerId,
-    );
+    ).map(player => input.room.phase === "LOBBY" && input.room.readyPlayerIds !== undefined
+      ? { ...player, isReady: input.room.readyPlayerIds.includes(player.playerId) } : player);
     const base = {
       snapshotVersion: PLATFORM_SNAPSHOT_VERSION,
       versions: {
@@ -114,6 +115,7 @@ export class PlatformSnapshotV2Projector {
       });
     }
 
+    if (input.room.gameType === "HANGUL_TILE") throw new Error("Unexpected Hangul projection route.");
     if (input.room.game === null) {
       throw new Error("A non-LOBBY Room must contain a GameState.");
     }

@@ -31,6 +31,7 @@ export type RoomSnapshotShell = Readonly<{
 
 function fromLegacySnapshot(snapshot: StateSnapshot): RoomSnapshotShell {
   return {
+    gameId: "game" in snapshot ? snapshot.game.gameId : null,
     protocolVersion: snapshot.protocolVersion,
     versions: snapshot.versions,
     serverTime: snapshot.serverTime,
@@ -63,7 +64,7 @@ export function projectRoomSnapshotShell(
 
   const snapshot = compatible.platformSnapshot;
   return {
-    ...((compatible.kind === "PLATFORM_V2_NUMBER_TILE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY" || compatible.kind === "PLATFORM_V2_SNEAKY_LUNCH" || compatible.kind === "PLATFORM_V2_WOLF_NIGHT" || compatible.kind === "PLATFORM_V2_SPLENDOR" || compatible.kind === "PLATFORM_V2_HALLI_GALLI" || compatible.kind === "PLATFORM_V2_ISLAND_SETTLERS") ? { gameId: compatible.platformSnapshot.game?.gameId ?? null } : {}),
+    gameId: snapshot.game === null ? null : "gameId" in snapshot.game ? snapshot.game.gameId : snapshot.game.publicState.gameId,
     protocolVersion: PROTOCOL_VERSION,
     versions: {
       roomRevision: snapshot.versions.roomRevision,

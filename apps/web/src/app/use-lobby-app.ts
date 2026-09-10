@@ -1,3 +1,5 @@
+import { type RoomPreparationCommand, type GameType as SelectedGameType, GameIdSchema } from "@hangul-rummikub/shared";
+import { parse as parseGameIdentity } from "valibot";
 import { SplendorCommandRejected } from "../lib/splendor-command-error.js";
 import type { CityExpansionClientCommand } from "@hangul-rummikub/shared";
 import type { IslandClientCommand } from "@hangul-rummikub/shared";
@@ -233,6 +235,8 @@ export type LobbyAppState = Readonly<{
   drawNumberTurn: () => void;
   passNumberTurn: () => void;
   rematchNumber: () => void;
+  selectRoomGame: (gameType: SelectedGameType) => void;
+  setRoomReady: (ready: boolean) => void;
   actDraw: (command: DrawClientCommand) => Promise<void>;
   actIsland: (command: IslandClientCommand) => Promise<void>;
   actSplendor: (command: SplendorClientCommand) => Promise<void>;
@@ -365,6 +369,7 @@ export function useLobbyApp(): LobbyAppState {
     useRef<SnapshotIncompatibility | null>(null);
   const clientRef = useRef<RealtimeClient | null>(null);
   const numberRematchFlightRef = useRef(false);
+  const roomPreparationFlightRef = useRef(false);
   const entryFlightRef = useRef<Promise<void> | null>(null);
   const entryActionActiveRef = useRef(false);
   const pendingRetryRequestedRef = useRef(false);
@@ -543,6 +548,29 @@ export function useLobbyApp(): LobbyAppState {
     }
     applyWireSnapshot(ack.data.snapshot, session);
   }
+
+  function prepareRoom(choice: { gameType: SelectedGameType } | { ready: boolean }): void {
+    const current = snapshotRef.current, client = clientRef.current, session = storedSessionForCurrentRoute();
+    if (!current || !client?.connected || !session || sessionReplacedRef.current || roomPreparationFlightRef.current || operationLabel !== null || current.room.phase === "PLAYING") return;
+    const identity = { protocolVersion: PROTOCOL_VERSION, requestId: createRequestId(), expectedRoomRevision: current.versions.roomRevision } as const;
+    const command: RoomPreparationCommand = "gameType" in choice
+      ? { ...identity, kind: "room:selectGame", expectedGameRevision: current.versions.gameRevision,
+          payload: { gameType: choice.gameType, gameId: current.gameId == null ? null : parseGameIdentity(GameIdSchema, current.gameId) } }
+      : { ...identity, kind: "room:ready", payload: choice };
+    roomPreparationFlightRef.current = true;
+    setOperationLabel("방 준비 상태를 변경하는 중..."); setErrorMessage(null);
+    void client.prepareRoom(command).then(ack => {
+      if (clientRef.current !== client || sessionReplacedRef.current || storedSessionForCurrentRoute()?.playerId !== session.playerId || storedSessionForCurrentRoute()?.credential.roomCode !== session.credential.roomCode) return;
+      if (!ack.ok) { setErrorMessage(ack.error.message); void requestLatestSnapshot(); return; }
+      if (applyWireSnapshot(ack.data.snapshot, session) === "REQUEST_SYNC") void requestLatestSnapshot();
+    }).catch(() => {
+      if (clientRef.current !== client || sessionReplacedRef.current || storedSessionForCurrentRoute()?.playerId !== session.playerId) return;
+      setErrorMessage("변경 결과를 확인하고 있습니다. 잠시 후 다시 시도해주세요."); void requestLatestSnapshot();
+    }).finally(() => { roomPreparationFlightRef.current = false; setOperationLabel(null); });
+  }
+
+  function selectRoomGame(gameType: SelectedGameType): void { prepareRoom({ gameType }); }
+  function setRoomReady(ready: boolean): void { prepareRoom({ ready }); }
 
   function rematchNumber(): void {
     const compatible = compatibleSnapshotRef.current, client = clientRef.current, session = storedSessionForCurrentRoute();
@@ -829,6 +857,16 @@ export function useLobbyApp(): LobbyAppState {
     }
     switch (decision) {
       case "APPLY":
+        if (snapshotRef.current !== null &&
+            (snapshotRef.current.room.gameType !== incomingSnapshot.room.gameType || snapshotRef.current.gameId !== incomingSnapshot.gameId)) {
+          clearPendingGameStartRequest();
+          clearPendingTurnSubmitRequest();
+          clearPendingTurnActionRequest(false);
+          discardGemEditor();
+          discardCityEditor();
+          clearNumberActionFeedbackState();
+          resetTurnDraftFromAuthority();
+        }
         if (
           pendingTurnSubmitCommandRef.current !== null &&
           (incomingLegacySnapshot === null ||
@@ -3013,6 +3051,8 @@ export function useLobbyApp(): LobbyAppState {
     drawNumberTurn,
     passNumberTurn,
     rematchNumber,
+    selectRoomGame,
+    setRoomReady,
     actDraw,
     actIsland,
     actSplendor,

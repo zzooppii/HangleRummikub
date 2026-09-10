@@ -1,3 +1,5 @@
+import "./features/lobby/room-game-controls.css";
+import { RoomGameControls } from "./features/lobby/RoomGameControls.js";
 import { SplendorScreen } from "./features/splendor/SplendorScreen.js";
 import "./features/splendor/splendor.css";
 import { IslandScreen } from "./features/island/IslandScreen.js";
@@ -214,6 +216,10 @@ export function App() {
     visible: app.snapshot !== null && app.reconnectNeeded && !app.sessionReplaced && app.snapshotIncompatibility === null,
     pending: app.resumePending,
     onReconnect: app.reconnect,
+    roomControls: app.snapshot && app.compatibleSnapshot && app.route.kind === "ROOM" && app.route.roomCode === app.snapshot.room.roomCode && app.snapshotIncompatibility === null
+      ? <RoomGameControls key={`${app.snapshot.room.roomId}:${app.snapshot.room.gameType}:${app.snapshot.room.phase}`} snapshot={app.snapshot}
+          disabled={app.connectionState !== "CONNECTED" || app.sessionReplaced || app.reconnectNeeded || app.resumePending || app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
+          onSelectGame={app.selectRoomGame} onReady={app.setRoomReady} /> : null,
   };
 
   if (app.snapshotIncompatibility !== null) {
@@ -316,7 +322,7 @@ export function App() {
       return (
         <ReconnectBoundary {...recovery}>
           <NumberTileFinishedScreen
-            onRematch={app.rematchNumber}
+            onRematch={() => app.selectRoomGame("NUMBER_TILE")}
             rematchPending={app.operationLabel !== null}
             snapshot={roomView.snapshot}
             connectionLabel={connectionLabel}
@@ -333,7 +339,7 @@ export function App() {
 
     if (roomView.kind === "DRAW_RELAY") {
       return <ReconnectBoundary {...recovery}><DrawRelayScreen snapshot={roomView.snapshot}
-        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced} onCommand={app.actDraw}
+        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced} onCommand={async command => { if (command.kind === "draw:rematch") app.selectRoomGame("DRAW_RELAY"); else await app.actDraw(command); }}
         onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
         pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
         error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;
@@ -341,7 +347,7 @@ export function App() {
 
     if (roomView.kind === "ISLAND_SETTLERS") {
       return <ReconnectBoundary {...recovery}><IslandScreen snapshot={roomView.snapshot}
-        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={app.actIsland}
+        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={async command => { if (command.kind === "island:rematch") app.selectRoomGame("ISLAND_SETTLERS"); else await app.actIsland(command); }}
         onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
         pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
         error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;
@@ -349,7 +355,7 @@ export function App() {
 
     if (roomView.kind === "SPLENDOR") {
       return <ReconnectBoundary {...recovery}><SplendorScreen snapshot={roomView.snapshot}
-        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={app.actSplendor}
+        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={async command => { if (command.kind === "splendor:rematch") app.selectRoomGame("SPLENDOR"); else await app.actSplendor(command); }}
         onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
         pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
         error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;
@@ -357,7 +363,7 @@ export function App() {
 
     if (roomView.kind === "HALLI_GALLI") {
       return <ReconnectBoundary {...recovery}><HalliGalliScreen snapshot={roomView.snapshot}
-        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={app.actHalli}
+        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={async command => { if (command.kind === "halli:rematch") app.selectRoomGame("HALLI_GALLI"); else await app.actHalli(command); }}
         onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
         pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
         error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;
@@ -365,7 +371,7 @@ export function App() {
 
     if (roomView.kind === "WOLF_NIGHT") {
       return <ReconnectBoundary {...recovery}><WolfNightScreen snapshot={roomView.snapshot}
-        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={app.actWolf}
+        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={async command => { if (command.kind === "wolf:rematch") app.selectRoomGame("WOLF_NIGHT"); else await app.actWolf(command); }}
         onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
         pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
         error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;
@@ -373,7 +379,7 @@ export function App() {
 
     if (roomView.kind === "SNEAKY_LUNCH") {
       return <ReconnectBoundary {...recovery}><SneakyLunchScreen snapshot={roomView.snapshot}
-        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={app.actSneaky}
+        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={async command => { if (command.kind === "sneaky:rematch") app.selectRoomGame("SNEAKY_LUNCH"); else await app.actSneaky(command); }}
         onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
         pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
         error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;

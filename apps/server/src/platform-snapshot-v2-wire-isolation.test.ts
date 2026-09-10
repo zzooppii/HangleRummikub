@@ -161,7 +161,7 @@ test("Hangul mapper와 unified V2 projector의 production ownership은 exact하�
   assert.match(selectorSource, /input\.selectedVersion\s*===\s*1/u);
   assert.match(
     projectorSource,
-    /if\s*\(input\.room\.gameType\s*===\s*"HANGUL_TILE"\)[\s\S]*?mapLegacyStateSnapshotV1ToPlatformSnapshotV2\(\{/u,
+    /if\s*\(input\.room\.gameType\s*===\s*"HANGUL_TILE"\s*&&\s*input\.room\.phase\s*!==\s*"LOBBY"\)[\s\S]*?mapLegacyStateSnapshotV1ToPlatformSnapshotV2\(\{/u,
   );
   assert.match(
     projectorSource,
@@ -233,7 +233,7 @@ test("모든 snapshot success ack와 delivery path는 socket별 negotiated proje
   );
   assert.match(
     negotiatedProjector,
-    /if\s*\(room\.gameType\s*===\s*"HANGUL_TILE"\)[\s\S]*?selectSnapshotForSocket\(/u,
+    /if\s*\(room\.gameType\s*===\s*"HANGUL_TILE"\s*&&\s*!\(room\.phase\s*===\s*"LOBBY"\s*&&\s*socket\.data\.selectedSnapshotVersion\s*===\s*2\)\)[\s\S]*?selectSnapshotForSocket\(/u,
   );
   assert.match(
     negotiatedProjector,
@@ -315,7 +315,7 @@ test("snapshot/game capability는 connection/admission metadata이며 canonical 
   assert.deepEqual(canonicalCapabilityLeaks, []);
   assert.match(
     admissionPolicySource,
-    /RoomAdmissionCapabilities\s*=\s*Readonly<\{\s*selectedSnapshotVersion:\s*SnapshotWireVersion;\s*supportedGameTypes:\s*readonly GameType\[\];\s*\}>/u,
+    /RoomAdmissionCapabilities\s*=\s*Readonly<\{\s*selectedSnapshotVersion:\s*SnapshotWireVersion;\s*supportedGameTypes:\s*readonly GameType\[\];\s*supportsRoomPreparation\?:\s*boolean;\s*\}>/u,
   );
   assert.match(
     admissionPolicySource,
@@ -323,7 +323,7 @@ test("snapshot/game capability는 connection/admission metadata이며 canonical 
   );
   assert.match(
     socketIoSource,
-    /RealtimeSocketData\s*=\s*\{\s*selectedSnapshotVersion:\s*SnapshotWireVersion;\s*supportedGameTypes:\s*readonly GameType\[\];\s*\}/u,
+    /RealtimeSocketData\s*=\s*\{\s*selectedSnapshotVersion:\s*SnapshotWireVersion;\s*supportedGameTypes:\s*readonly GameType\[\];\s*supportsRoomPreparation:\s*boolean;\s*\}/u,
   );
   assert.match(
     socketIoSource,

@@ -115,7 +115,7 @@ export class SessionResumeService {
       }
       const admissionCapabilities =
         input.admissionCapabilities ?? LEGACY_ROOM_ADMISSION_CAPABILITIES;
-      if (!isRoomAdmissionCompatible(room.gameType, admissionCapabilities)) {
+      if (!isRoomAdmissionCompatible(room.gameType, admissionCapabilities, room.readyPlayerIds !== undefined)) {
         return { ok: false, error: INCOMPATIBLE_GAME_CAPABILITY_ERROR };
       }
 

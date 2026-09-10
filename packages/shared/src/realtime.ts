@@ -536,6 +536,8 @@ export interface ServerToClientEvents {
  * remain available to compile old V1-only clients without changing their API.
  */
 export interface SnapshotWireClientToServerEvents {
+  "room:selectGame": (command: import("./room-game-selection.js").RoomSelectGameCommand, ack: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "room:ready": (command: import("./room-game-selection.js").RoomReadyCommand, ack: SocketAcknowledgement<StateSyncWireAck>) => void;
   "city:configure": (command: Extract<CityExpansionClientCommand, { kind: "city:configure" }>, ack: (result: StateSyncWireAck) => void) => void;
   "city:expansionAction": (command: Extract<CityExpansionClientCommand, { kind: "city:expansionAction" }>, ack: (result: StateSyncWireAck) => void) => void;
 
