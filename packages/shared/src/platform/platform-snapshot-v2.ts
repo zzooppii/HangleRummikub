@@ -1,3 +1,4 @@
+import { SplendorPlayingProjectionSchema, SplendorFinishedProjectionSchema } from "../games/splendor/contracts.js";
 import { IslandPlayingProjectionSchema, IslandFinishedProjectionSchema } from "../games/island/contracts.js";
 import { HalliPlayingProjectionSchema, HalliFinishedProjectionSchema } from "../games/halli-galli/contracts.js";
 import { CityExpansionSettingsSchema } from "../games/city-role/expansion-contracts.js";
@@ -288,6 +289,23 @@ export const IslandPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, Isl
 export const IslandFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, IslandFinishedPlatformSnapshotV2> = IslandFinishedRaw;
 
 
+const SplendorOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const SplendorRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("SPLENDOR") };
+const SplendorPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(4));
+const SplendorLobbyRaw = v.pipe(v.strictObject({ ...SplendorOuter, room: v.strictObject({ ...SplendorRoom, phase: v.literal("LOBBY"),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(4)) }), game: v.null() }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
+const SplendorPlayingRaw = v.pipe(v.strictObject({ ...SplendorOuter, room: v.strictObject({ ...SplendorRoom, phase: v.literal("PLAYING"), players: SplendorPlayers }), game: SplendorPlayingProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.reserved.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.reservedCount));
+const SplendorFinishedRaw = v.pipe(v.strictObject({ ...SplendorOuter, room: v.strictObject({ ...SplendorRoom, phase: v.literal("FINISHED"), players: SplendorPlayers }), game: SplendorFinishedProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.reserved.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.reservedCount));
+export type SplendorLobbyPlatformSnapshotV2 = v.InferOutput<typeof SplendorLobbyRaw>;
+export type SplendorPlayingPlatformSnapshotV2 = v.InferOutput<typeof SplendorPlayingRaw>;
+export type SplendorFinishedPlatformSnapshotV2 = v.InferOutput<typeof SplendorFinishedRaw>;
+export const SplendorLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, SplendorLobbyPlatformSnapshotV2> = SplendorLobbyRaw;
+export const SplendorPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, SplendorPlayingPlatformSnapshotV2> = SplendorPlayingRaw;
+export const SplendorFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, SplendorFinishedPlatformSnapshotV2> = SplendorFinishedRaw;
+
 const HalliOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
 const HalliRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("HALLI_GALLI") };
 const HalliPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(6));
@@ -341,6 +359,7 @@ export const SneakyFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, Sn
 
 export const LobbyPlatformSnapshotV2Schema = v.union([
   IslandLobbyPlatformSnapshotV2Schema,
+  SplendorLobbyPlatformSnapshotV2Schema,
   HalliLobbyPlatformSnapshotV2Schema,
   WolfLobbyPlatformSnapshotV2Schema,
   SneakyLobbyPlatformSnapshotV2Schema,
@@ -484,6 +503,7 @@ export type GemCardPlayingPlatformSnapshotV2 = v.InferOutput<
 
 export const PlayingPlatformSnapshotV2Schema = v.union([
   IslandPlayingPlatformSnapshotV2Schema,
+  SplendorPlayingPlatformSnapshotV2Schema,
   HalliPlayingPlatformSnapshotV2Schema,
   WolfPlayingPlatformSnapshotV2Schema,
   DrawRelayPlayingPlatformSnapshotV2Schema,
@@ -627,6 +647,7 @@ export type GemCardFinishedPlatformSnapshotV2 = v.InferOutput<
 
 export const FinishedPlatformSnapshotV2Schema = v.union([
   IslandFinishedPlatformSnapshotV2Schema,
+  SplendorFinishedPlatformSnapshotV2Schema,
   HalliFinishedPlatformSnapshotV2Schema,
   WolfFinishedPlatformSnapshotV2Schema,
   DrawRelayFinishedPlatformSnapshotV2Schema,

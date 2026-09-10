@@ -1,3 +1,4 @@
+import type { SplendorStoredGame } from "../games/splendor/compatibility/adapter.js";
 import type { IslandStoredGame } from "../games/island/compatibility/adapter.js";
 import type { HalliStoredGame } from "../games/halli-galli/compatibility/adapter.js";
 import type { WolfStoredGame } from "../games/wolf-night/compatibility/adapter.js";
@@ -73,7 +74,7 @@ export function createNextTurn(
 
 export function toScheduledTurnDeadline(
   roomId: RoomId,
-  game: PlayingGameState | PlayingNumberTileGameState | PlayingGemGameState | CityRoleStoredGame | DrawRelayStoredGame | SneakyLunchStoredGame | WolfStoredGame | HalliStoredGame | IslandStoredGame,
+  game: PlayingGameState | PlayingNumberTileGameState | PlayingGemGameState | CityRoleStoredGame | DrawRelayStoredGame | SneakyLunchStoredGame | WolfStoredGame | SplendorStoredGame | HalliStoredGame | IslandStoredGame,
 ): ScheduledTurnDeadline {
   if ("state" in game && !("windowStartedAt" in game)) {
     if ("turnId" in game.state) return { roomId, gameId: game.gameId, expectedGameRevision: game.gameRevision, turnId: game.state.turnId, deadlineAt: game.state.deadlineAt };

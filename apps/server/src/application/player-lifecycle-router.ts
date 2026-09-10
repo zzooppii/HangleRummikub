@@ -1,4 +1,5 @@
 import type { createIslandLifecycle } from "../games/island/application/lifecycle.js";
+import type { createSplendorLifecycle } from "../games/splendor/application/lifecycle.js";
 import type { createHalliLifecycle } from "../games/halli-galli/application/lifecycle.js";
 import type { createWolfLifecycle } from "../games/wolf-night/application/lifecycle.js";
 import type { createSneakyLifecycle } from "../games/sneaky-lunch/application/lifecycle.js";
@@ -62,6 +63,7 @@ export type PresenceRestoredPlan =
 
 export type PlayerLifecycleRouterDependencies = Readonly<{
   island?: ReturnType<typeof createIslandLifecycle>;
+  splendor?: ReturnType<typeof createSplendorLifecycle>;
   halli?: ReturnType<typeof createHalliLifecycle>;
   wolf?: ReturnType<typeof createWolfLifecycle>;
   sneaky?: ReturnType<typeof createSneakyLifecycle>;
@@ -87,6 +89,7 @@ export interface PlayerLifecycleActionRouting {
 /** Dispatches platform lifecycle orchestration by immutable Room gameType. */
 export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
   readonly #island: ReturnType<typeof createIslandLifecycle> | undefined;
+  readonly #splendor: ReturnType<typeof createSplendorLifecycle> | undefined;
   readonly #halli: ReturnType<typeof createHalliLifecycle> | undefined;
   readonly #wolf: ReturnType<typeof createWolfLifecycle> | undefined;
   readonly #sneaky: ReturnType<typeof createSneakyLifecycle> | undefined;
@@ -104,6 +107,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
       throw new Error("Missing NUMBER_TILE player lifecycle capability.");
     }
     this.#island = dependencies.island;
+    this.#splendor = dependencies.splendor;
     this.#halli = dependencies.halli;
     this.#wolf = dependencies.wolf;
     this.#sneaky = dependencies.sneaky;
@@ -126,6 +130,9 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
       case "ISLAND_SETTLERS":
         if (!this.#island) throw new Error("ISLAND lifecycle missing.");
         return this.#island.applyPlayingLeave(input);
+      case "SPLENDOR":
+        if (!this.#splendor) throw new Error("SPLENDOR lifecycle missing.");
+        return this.#splendor.applyPlayingLeave(input);
       case "HALLI_GALLI":
         if (!this.#halli) throw new Error("HALLI lifecycle missing.");
         return this.#halli.applyPlayingLeave(input);
@@ -155,6 +162,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
   ): PresenceRestoredPlan {
     switch (room.gameType) {
       case "ISLAND_SETTLERS": return {status:"NO_CHANGE"};
+      case "SPLENDOR": return {status:"NO_CHANGE"};
       case "HALLI_GALLI": return {status:"NO_CHANGE"};
       case "WOLF_NIGHT": return {status:"NO_CHANGE"};
       case "SNEAKY_LUNCH": return {status:"NO_CHANGE"};

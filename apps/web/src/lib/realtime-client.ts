@@ -1,3 +1,4 @@
+import { SplendorClientCommandSchema, type SplendorClientCommand } from "@hangul-rummikub/shared";
 import { CityExpansionClientCommandSchema, type CityExpansionClientCommand } from "@hangul-rummikub/shared";
 import { IslandClientCommandSchema, type IslandClientCommand } from "@hangul-rummikub/shared";
 import { HalliClientCommandSchema, type HalliClientCommand } from "@hangul-rummikub/shared";
@@ -687,6 +688,16 @@ export class RealtimeClient {
       }
     }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
   }
+  actSplendor(command: SplendorClientCommand): Promise<StateSyncWireAck> {
+    if (!parseRematch(SplendorClientCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {
+      switch (command.kind) {
+        case "splendor:act": this.#socket.emit("splendor:act", command, acknowledge); break;
+        case "splendor:rematch": this.#socket.emit("splendor:rematch", command, acknowledge); break;
+      }
+    }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
+  }
+
   actHalli(command: HalliClientCommand): Promise<StateSyncWireAck> {
     if (!parseRematch(HalliClientCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
     return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {

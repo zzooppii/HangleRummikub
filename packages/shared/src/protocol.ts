@@ -1,3 +1,4 @@
+import { SplendorActionSchema } from "./games/splendor/actions.js";
 import { IslandActionSchema } from "./games/island/actions.js";
 import { CityExpansionSettingsSchema, CityExpansionActionSchema } from "./games/city-role/expansion-contracts.js";
 import { GemCollectSelectionSchema, GemPurchaseSourceSchema, GemMarketSourceSchema } from "./games/gem-card/contracts.js";
@@ -324,6 +325,12 @@ export const DrawConfigureCommandSchema = v.strictObject({ kind: v.literal("draw
   expectedRoomRevision: RoomRevisionSchema, payload: v.strictObject({ promptMode: v.picklist(["EASY","NORMAL","MIXED"]), drawSeconds: v.optional(DrawRelayDrawSecondsSchema) }) });
 export const DrawClientCommandSchema = v.variant("kind",[DrawDraftSaveCommandSchema,DrawSubmitDrawingCommandSchema,DrawSubmitGuessCommandSchema,DrawRevealNextCommandSchema,DrawRematchCommandSchema,DrawConfigureCommandSchema]);
 export type DrawClientCommand = v.InferOutput<typeof DrawClientCommandSchema>;
+
+const SplendorIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
+export const SplendorActCommandSchema = v.strictObject({ ...SplendorIdentity, kind: v.literal("splendor:act"), turnId: TurnIdSchema, payload: SplendorActionSchema });
+export const SplendorRematchCommandSchema = v.strictObject({ ...SplendorIdentity, kind: v.literal("splendor:rematch"), expectedRoomRevision: RoomRevisionSchema, payload: v.strictObject({}) });
+export const SplendorClientCommandSchema = v.variant("kind", [SplendorActCommandSchema, SplendorRematchCommandSchema]);
+export type SplendorClientCommand = v.InferOutput<typeof SplendorClientCommandSchema>;
 
 const HalliIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 export const HalliFlipCommandSchema = v.strictObject({ ...HalliIdentity, kind: v.literal("halli:flip"), turnId: TurnIdSchema, payload: v.strictObject({}) });

@@ -79,6 +79,7 @@ export function roomLeaveConfirmationMessage(phase: RoomPhase, gameType?: GameTy
       return "방에서 나가시겠습니까?";
     case "PLAYING":
       if (gameType === "ISLAND_SETTLERS") return "나가면 모든 참가자의 이번 섬 개척 판이 취소됩니다. 잠시 자리를 비우려면 창만 닫고 같은 자리로 재접속할 수 있습니다. 방에서 나가시겠습니까?";
+      if (gameType === "SPLENDOR") return "나가면 모든 참가자의 이번 스플렌더 판이 취소됩니다. 잠시 자리를 비우려면 창만 닫고 재접속할 수 있습니다. 방에서 나가시겠습니까?";
       if (gameType === "HALLI_GALLI") return "나가면 모든 참가자의 이번 할리갈리 판이 취소됩니다. 방에서 나가시겠습니까?";
       return "게임 중 나가면 기권 처리됩니다. 방에서 나가시겠습니까?";
     case "FINISHED":

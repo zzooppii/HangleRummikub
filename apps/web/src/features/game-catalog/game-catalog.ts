@@ -32,6 +32,7 @@ export const GAME_CATALOG = Object.freeze([
   Object.freeze({ gameType: "WOLF_NIGHT", displayName: "늑대의 밤", description: "3~10명이 단 하룻밤의 비밀을 추리하는 역할 교환·비밀 투표 게임입니다." }),
   Object.freeze({ gameType: "HALLI_GALLI", displayName: "할리갈리", description: "2~6명이 같은 과일 5개를 발견하면 벨을 누르는 스피드 카드 게임입니다." }),
   Object.freeze({ gameType: "ISLAND_SETTLERS", displayName: "섬 개척", description: "3~4명이 자원을 교환하고 도로와 도시를 건설하는 섬 전략 게임입니다. 차례마다 2분!" }),
+  Object.freeze({ gameType: "SPLENDOR", displayName: "스플렌더", description: "보석을 모아 카드를 사고, 귀족의 후원을 얻는 2~4인 전략 게임입니다." }),
 ] as const satisfies readonly GameCatalogItem[]);
 
 export const DEFAULT_SELECTED_GAME_TYPE = GAME_CATALOG[0].gameType;

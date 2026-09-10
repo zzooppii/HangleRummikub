@@ -34,3 +34,6 @@ export * from "./games/city-role/expansion-contracts.js";
 export * from "./games/island/actions.js";
 export * from "./games/island/contracts.js";
 export * from "./games/island/board.js";
+
+export * from "./games/splendor/actions.js";
+export * from "./games/splendor/contracts.js";

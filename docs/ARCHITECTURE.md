@@ -8,6 +8,8 @@
 
 추가 게임 ‘늑대의 밤’의 구체 모듈과 비공개 역할/투표 경계는 [WOLF_NIGHT_ARCHITECTURE.md](./WOLF_NIGHT_ARCHITECTURE.md)를 따른다. 아래 server-authoritative 원칙과 계층 경계는 유지한다.
 
+별도 게임 스플렌더의 모듈, 원자적 행동 및 예약 카드 비공개 경계는 [SPLENDOR_ARCHITECTURE.md](./SPLENDOR_ARCHITECTURE.md)를 따른다.
+
 핵심 원칙은 다음과 같다.
 
 1. 서버가 유일한 authority다.

@@ -1,10 +1,13 @@
 import { IslandHostSuccession } from "./games/island/application/host-succession.js";
+import { SplendorHostSuccession } from "./games/splendor/application/host-succession.js";
 import { HalliHostSuccession } from "./games/halli-galli/application/host-succession.js";
 import { WolfHostSuccession } from "./games/wolf-night/application/host-succession.js";
 import { IslandService } from "./games/island/application/service.js";
+import { SplendorService } from "./games/splendor/application/service.js";
 import { HalliService } from "./games/halli-galli/application/service.js";
 import { WolfService } from "./games/wolf-night/application/service.js";
 import { createIslandLifecycle } from "./games/island/application/lifecycle.js";
+import { createSplendorLifecycle } from "./games/splendor/application/lifecycle.js";
 import { createHalliLifecycle } from "./games/halli-galli/application/lifecycle.js";
 import { createWolfLifecycle } from "./games/wolf-night/application/lifecycle.js";
 import { SneakyLunchService } from "./games/sneaky-lunch/application/service.js";
@@ -120,9 +123,11 @@ import {
 
 export type ApplicationRuntime = Readonly<{
   islandService?: IslandService;
+  splendorService?: SplendorService;
   halliService?: HalliService;
   wolfService?: WolfService;
   islandHostSuccession?: IslandHostSuccession;
+  splendorHostSuccession?: SplendorHostSuccession;
   halliHostSuccession?: HalliHostSuccession;
   wolfHostSuccession?: WolfHostSuccession;
   sneakyLunchService?: SneakyLunchService;
@@ -228,6 +233,7 @@ export function createApplicationRuntime(
       { gameType: "DRAW_RELAY" },
       { gameType: "SNEAKY_LUNCH" },
       { gameType: "ISLAND_SETTLERS" },
+      { gameType: "SPLENDOR" },
       { gameType: "HALLI_GALLI" },
       { gameType: "WOLF_NIGHT" },
     ],
@@ -259,6 +265,7 @@ export function createApplicationRuntime(
     cityRole: createCityRolePlayerLifecycleActions(idGenerator),
     drawRelay: createDrawRelayLifecycle(idGenerator),
     island: createIslandLifecycle(),
+    splendor: createSplendorLifecycle(),
     halli: createHalliLifecycle(),
     wolf: createWolfLifecycle(),
     sneaky: createSneakyLifecycle(),
@@ -529,6 +536,13 @@ export function createApplicationRuntime(
     const room = await persistence.findById(roomId);
     if (room?.gameType === "ISLAND_SETTLERS" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
   });
+  const splendorService = new SplendorService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
+    roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource, turnScheduler });
+  const splendorHostSuccession = new SplendorHostSuccession(splendorService.deps, roomId => splendorService.notify(roomId));
+  splendorService.subscribe(async roomId => {
+    const room = await persistence.findById(roomId);
+    if (room?.gameType === "SPLENDOR" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
+  });
   const halliService = new HalliService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
     roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource, turnScheduler });
   const halliHostSuccession = new HalliHostSuccession(halliService.deps, roomId => halliService.notify(roomId));
@@ -612,6 +626,7 @@ export function createApplicationRuntime(
   const gameStartRouter = new GameStartRouter({
     drawRelay: { gameType: "DRAW_RELAY", start: input => drawRelayService.start(input) },
     island: { gameType: "ISLAND_SETTLERS", start: input => islandService.start(input) },
+    splendor: { gameType: "SPLENDOR", start: input => splendorService.start(input) },
     halli: { gameType: "HALLI_GALLI", start: input => halliService.start(input) },
     wolf: { gameType: "WOLF_NIGHT", start: input => wolfService.start(input) },
     sneaky: { gameType: "SNEAKY_LUNCH", start: input => sneakyLunchService.start(input) },
@@ -730,6 +745,7 @@ export function createApplicationRuntime(
   scheduledTurnRouter = new ScheduledTurnRouter({
     drawRelay: { gameType: "DRAW_RELAY", handleTurnTimeout: input => drawRelayService.timeout(input) },
     island: { gameType: "ISLAND_SETTLERS", handleTurnTimeout: input => islandService.timeout(input) },
+    splendor: { gameType: "SPLENDOR", handleTurnTimeout: input => splendorService.timeout(input) },
     halli: { gameType: "HALLI_GALLI", handleTurnTimeout: input => halliService.timeout(input) },
     wolf: { gameType: "WOLF_NIGHT", handleTurnTimeout: input => wolfService.timeout(input) },
     sneaky: { gameType: "SNEAKY_LUNCH", handleTurnTimeout: input => sneakyLunchService.timeout(input) },
@@ -800,9 +816,11 @@ export function createApplicationRuntime(
     drawRelayService,
     drawRelayHostSuccession,
     islandService,
+    splendorService,
     halliService,
     wolfService,
     islandHostSuccession,
+    splendorHostSuccession,
     halliHostSuccession,
     wolfHostSuccession,
     sneakyLunchService,
@@ -855,6 +873,7 @@ export function createApplicationRuntime(
       drawRelayHostSuccession.start();
       sneakyLunchPresence.start();
       islandHostSuccession.start();
+      splendorHostSuccession.start();
       halliHostSuccession.start();
       wolfHostSuccession.start();
       roomPolicyScheduler.start();
@@ -875,6 +894,7 @@ export function createApplicationRuntime(
       drawRelayHostSuccession.stop();
       sneakyLunchPresence.stop();
       islandHostSuccession.stop();
+      splendorHostSuccession.stop();
       halliHostSuccession.stop();
       wolfHostSuccession.stop();
       roomPolicyScheduler.stop();

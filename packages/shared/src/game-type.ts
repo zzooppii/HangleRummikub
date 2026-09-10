@@ -10,6 +10,7 @@ export const SUPPORTED_GAME_TYPES = Object.freeze([
   "WOLF_NIGHT",
   "HALLI_GALLI",
   "ISLAND_SETTLERS",
+  "SPLENDOR",
 ] as const);
 
 export const GameTypeSchema = v.picklist(SUPPORTED_GAME_TYPES);
