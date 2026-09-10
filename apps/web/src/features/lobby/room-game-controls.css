@@ -2,6 +2,4 @@
 .room-game-controls p { margin: 6px 0; font-size: 14px; }
 .room-game-selection { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 .room-game-selection select { flex: 1; min-width: 150px; padding: 10px; border: 1px solid #8ba598; border-radius: 8px; background: white; color: #203c32; font: inherit; }
-.room-game-ready { border-top: 1px solid #d7e2dd; margin-top: 14px; padding-top: 12px; }
-.room-game-ready ul { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 0; list-style: none; font-size: 14px; }
 @media (max-width: 540px) { .room-game-controls { padding: 14px; } .room-game-selection label { width: 100%; } .room-game-selection button { width: 100%; } }

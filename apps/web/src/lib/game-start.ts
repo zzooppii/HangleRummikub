@@ -77,10 +77,6 @@ export function getGameStartControl(
     };
   }
 
-  if (snapshot.room.players.some(player => player.isReady === false)) {
-    return { isHost: true, canStart: false, guidance: "모든 참가자가 준비를 완료해야 시작할 수 있습니다." };
-  }
-
   if (commandPending) {
     return {
       isHost: true,

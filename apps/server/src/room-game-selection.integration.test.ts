@@ -58,7 +58,7 @@ async function harness(t: TestContext, count = 3) {
   return { server, host, members, lobby, connect, bootstrap, request, send, call, success, failure, sync, selection, readyAll };
 }
 
-test("same room: all ten games can be selected, all members prepare, fresh game starts", async t => {
+test("same room: all ten games can be selected, host starts without any ready commands", async t => {
   for (const gameType of SUPPORTED_GAME_TYPES) {
     await t.test(gameType, async t => {
       const h = await harness(t), before = await h.sync();
@@ -66,9 +66,8 @@ test("same room: all ten games can be selected, all members prepare, fresh game 
       assert.equal(selected.room.roomId, before.room.roomId); assert.equal(selected.room.roomCode, before.room.roomCode);
       assert.deepEqual(selected.room.players.map(p => [p.playerId, p.nickname, p.isHost]), before.room.players.map(p => [p.playerId, p.nickname, p.isHost]));
       assert.ok(selected.room.players.every(p => p.isReady === false));
-      assert.equal(h.failure(await h.call(h.host, "game:start", {}, { expectedRoomRevision: selected.versions.roomRevision })), "RULE_VIOLATION");
-      const prepared = await h.readyAll();
-      const started = h.success(await h.call(h.host, "game:start", {}, { expectedRoomRevision: prepared.versions.roomRevision }));
+      assert.equal(h.failure(await h.call(h.members[1]!.client, "game:start", {}, { expectedRoomRevision: selected.versions.roomRevision })), "HOST_ONLY");
+      const started = h.success(await h.call(h.host, "game:start", {}, { expectedRoomRevision: selected.versions.roomRevision }));
       assert.equal(started.room.gameType, gameType); assert.equal(started.room.phase, "PLAYING"); assert.ok(started.game);
       const old = await h.server.runtime.persistence.findById(started.room.roomId); assert.ok(old);
       assert.equal(h.failure(await h.send(h.host, h.selection(started, "SPLENDOR"))), "INVALID_PHASE");

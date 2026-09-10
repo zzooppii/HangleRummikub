@@ -17,7 +17,7 @@ test("Hangul V2 lobby preserves readiness in room shell while its legacy adapter
   const decoded = decodeWebSnapshot(lobby(3, false)); assert.equal(decoded.kind, "COMPATIBLE"); if (decoded.kind !== "COMPATIBLE") throw new Error();
   const shell = projectRoomSnapshotShell(decoded.value);
   assert.equal(shell.gameId, null); assert.ok(shell.room.players.every(p => p.isReady === false));
-  assert.equal(getGameStartControl(shell, false).canStart, false);
+  assert.equal(getGameStartControl(shell, false).canStart, true);
   const prepared = decodeWebSnapshot(lobby(3, true)); assert.equal(prepared.kind, "COMPATIBLE"); if (prepared.kind !== "COMPATIBLE") throw new Error();
   assert.equal(getGameStartControl(projectRoomSnapshotShell(prepared.value), false).canStart, true);
   const overcrowded = decodeWebSnapshot(lobby(6, true)); assert.equal(overcrowded.kind, "COMPATIBLE"); if (overcrowded.kind !== "COMPATIBLE") throw new Error();
@@ -36,11 +36,11 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { RoomGameControls } from "../features/lobby/RoomGameControls.js";
 
-test("room controls render host selection, per-member readiness and offline disabled actions", () => {
+test("room controls render host selection without ready buttons, retaining disabled actions", () => {
   const decoded = decodeWebSnapshot(lobby(3, false)); assert.equal(decoded.kind, "COMPATIBLE"); if (decoded.kind !== "COMPATIBLE") throw new Error();
   const snapshot = projectRoomSnapshotShell(decoded.value);
-  const render = (selfId = snapshot.self.playerId, disabled = false) => renderToStaticMarkup(createElement(RoomGameControls, { snapshot: { ...snapshot, self: { playerId: selfId } }, disabled, onSelectGame: () => {}, onReady: () => {} }));
-  assert.match(render(), /플레이할 게임/); assert.match(render(), /준비하기/); assert.match(render(), /ABC234/);
-  const guest = render(snapshot.room.players[1]!.playerId); assert.doesNotMatch(guest, /<select/); assert.match(guest, /준비하기/);
+  const render = (selfId = snapshot.self.playerId, disabled = false) => renderToStaticMarkup(createElement(RoomGameControls, { snapshot: { ...snapshot, self: { playerId: selfId } }, disabled, onSelectGame: () => {} }));
+  assert.match(render(), /플레이할 게임/); assert.doesNotMatch(render(), /준비하기|준비 대기|참가자 준비 상태/); assert.match(render(), /ABC234/);
+  const guest = render(snapshot.room.players[1]!.playerId); assert.doesNotMatch(guest, /<select/); assert.doesNotMatch(guest, /준비하기|준비 대기|참가자 준비 상태/);
   assert.match(render(undefined, true), /disabled=""/);
 });

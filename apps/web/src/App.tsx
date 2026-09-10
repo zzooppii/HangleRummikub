@@ -219,7 +219,7 @@ export function App() {
     roomControls: app.snapshot && app.compatibleSnapshot && app.route.kind === "ROOM" && app.route.roomCode === app.snapshot.room.roomCode && app.snapshotIncompatibility === null
       ? <RoomGameControls key={`${app.snapshot.room.roomId}:${app.snapshot.room.gameType}:${app.snapshot.room.phase}`} snapshot={app.snapshot}
           disabled={app.connectionState !== "CONNECTED" || app.sessionReplaced || app.reconnectNeeded || app.resumePending || app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
-          onSelectGame={app.selectRoomGame} onReady={app.setRoomReady} /> : null,
+          onSelectGame={app.selectRoomGame} /> : null,
   };
 
   if (app.snapshotIncompatibility !== null) {

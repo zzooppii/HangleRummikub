@@ -4,8 +4,8 @@
 
 - `room:selectGame`: 현재 primary 방장, 참가 자격, room revision, 이전 gameId/game revision을 검증한다. 방 단위 직렬화와 UoW로 게임 제거 및 LOBBY 전환을 한 번만 commit한다. 같은 종류를 선택해도 FINISHED에서 새 대기실로 돌아올 수 있다.
 - RoomId, roomCode, 생성 시각, 남아 있는 참가자의 playerId/nickname/joinOrder, 방장, 세션은 보존한다. 명시적으로 퇴장한 참가자는 복원하지 않는다. 기존 게임별 설정은 기본값으로 초기화한다.
-- 교체 후 `readyPlayerIds`를 비운다. `room:ready`는 자신의 준비 여부만 변경하고 room revision을 증가시킨다. V2 참가자의 선택적 `isReady`가 준비 필요 여부 및 상태를 표현한다. 기존 최초 생성 대기실의 시작 동작은 유지한다.
-- 교체된 방에서는 모든 참가자가 준비·접속해야 시작할 수 있다. 지원 인원보다 많은 기존 참가자를 강퇴하지 않고 대기실에 보존하되 시작은 막는다. 관전은 제공하지 않는다.
+- 교체 후 `readyPlayerIds`를 비운다. `room:ready`는 자신의 준비 여부만 변경하고 room revision을 증가시킨다. V2 참가자의 선택적 `isReady`와 `room:ready` 계약은 구버전 호환을 위해 유지하지만 시작 조건으로 사용하지 않는다. 현재 UI에는 준비 버튼과 준비 상태를 표시하지 않는다.
+- 2026-09-10 사용자 요청으로 준비 확인을 생략한다. 교체된 방에서도 인원 조건을 충족하고 모든 참가자가 접속하면 방장이 바로 시작할 수 있다. 지원 인원보다 많은 기존 참가자를 강퇴하지 않고 대기실에 보존하되 시작은 막는다. 관전은 제공하지 않는다.
 - 현재 접속 중인 클라이언트가 대상 게임의 V2 계약 및 `supportsRoomPreparation: true` handshake capability를 지원하는지 확인한다. 구버전 참가자가 있으면 새로고침 안내와 함께 교체를 거절한다. 오프라인 참가자는 재접속 시 현재 게임 capability를 다시 검증한다.
 - 일반 REPLACE의 gameType 불변 조건은 유지하고 전용 RESET_GAME mutation만 교체를 허용한다. PLAYING 교체는 저장 경계에서도 거절한다.
 - 새 시작은 기존 start service로 새 gameId/turn identity를 생성한다. 과거 game/timer/retention callback은 기존 identity 및 revision 검사로 무효화한다. 재전송된 성공 요청은 새 게임을 다시 지우거나 타이머를 취소하지 않는다.
@@ -15,7 +15,7 @@
 ## 변경 위치와 검증
 
 - 공유 계약: `packages/shared/src/room-game-selection.ts`, V2 참가자 준비 상태와 대기실 인원 범위.
-- 서버: `RoomGameSelectionService`, 전용 `RESET_GAME` UoW, 공통 시작 준비 확인, Socket.IO capability/admission, 퇴장 명단 보존과 방장 승계.
+- 서버: `RoomGameSelectionService`, 전용 `RESET_GAME` UoW, 준비 확인 없는 공통 시작, Socket.IO capability/admission, 퇴장 명단 보존과 방장 승계.
 - 클라이언트: `RoomGameControls`, 공통 방 명령, 모든 게임의 gameId/roomRevision 정렬과 이전 게임 편집 상태 정리, 종료 화면의 대기실 이동.
 - 게임별 실제 규칙·승패·시간 초과 정책은 유지한다. 그림 릴레이는 퇴장만으로 바로 끝나지 않으므로 실제 deadline/reveal 흐름으로 종료 후 교체를 검증했다.
 - Root `npm test`: shared 121, web 529, server 1,449, 총 **2,099 PASS**. 로컬 소켓을 허용한 실행 기준이다. 초기 sandbox 실행의 loopback EPERM은 권한이 허용된 실행으로 재검증했다.
@@ -28,3 +28,9 @@
 - 공개 사이트에서 홈 화면 아래의 방 만들기를 누르면 이전 스크롤 위치가 유지되어 공통 게임 선택 메뉴가 화면 위로 벗어나는 증상을 재현했다. 위로 스크롤하면 기존 메뉴가 나타났다.
 - `RoomGameControls`는 방·선택 게임·phase가 바뀔 때 대기실/종료 화면의 메뉴를 즉시 보이게 스크롤한다. 준비 상태·접속 상태 갱신만으로는 스크롤하지 않고 PLAYING에서도 실행하지 않는다.
 - 수정한 로컬 production build에서 그림 릴레이 방 생성 직후 메뉴가 화면에 보이는 것을 스크린샷으로 확인하고, 동일 방 코드로 할리갈리 교체 및 준비 메뉴 표시를 확인했다. 공개 배포는 별도이며 사용자의 진행 중인 방은 변경하지 않았다.
+
+## 준비 확인 생략 검증 (2026-09-10)
+
+- 10종 게임 모두 교체 직후 `isReady: false`인 상태에서 준비 명령 없이 방장이 시작하는 통합 테스트를 통과했다. 같은 상태에서 일반 참가자의 시작은 계속 거절한다.
+- Web은 준비 여부와 무관한 시작 가능 판정과 준비 버튼·명단 미표시를 검증했다. 인원수·접속·방장 권한 검증은 유지한다.
+- Root typecheck, test (shared 121 / web 531 / server 1,450, 총 2,102 PASS), build 및 diff-check 통과. 기존 Vite 500 kB 번들 경고는 남아 있다. 공개 배포는 별도다.
