@@ -10,3 +10,43 @@
 @media(max-width:760px){.city-expanded-page{padding:12px}.city-expanded-hero{padding:22px;flex-wrap:wrap;gap:12px}.city-wallet{text-align:left}.city-expanded-hero>button{margin-left:auto}.city-expansion-panel,.city-expansion-lobby{padding:16px}.city-cities{grid-template-columns:1fr;gap:0}.city-cast-settings{grid-template-columns:1fr 1fr}.city-mode-switch{grid-template-columns:1fr}.city-expanded-cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.city-role-lineup{grid-template-columns:repeat(2,minmax(0,1fr))}.city-special-lineup{grid-template-columns:repeat(3,minmax(0,1fr))}.city-expanded-page td,.city-expanded-page th{padding:10px 6px}.city-expanded-card .city-card-select{padding:9px}.city-card-select .city-landmark-effect{font-size:10px}.city-cast-settings small{min-height:70px}}
 
 .city-expanded-sound{display:flex;align-items:center;flex-wrap:wrap;gap:12px}.city-expanded-sound label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#fff9e8}.city-expanded-sound input{max-width:130px;accent-color:#e6c57e}
+
+/* Keep the original CITY tabletop and illustrated role frames in v3 games. */
+.city-shell.city-expanded-page{max-width:1480px;background:radial-gradient(ellipse at 15% 0%,#456052,transparent 65%),repeating-linear-gradient(110deg,#ffffff02 0 1px,transparent 1px 7px),#162e2c}
+.city-expanded-page .city-expanded-hero{padding:18px 4px 22px;border-radius:0;background:transparent;box-shadow:none;border-bottom:1px solid #bda77470;flex-wrap:wrap}
+.city-expanded-page .city-expanded-hero h1{font-family:Georgia,"Noto Serif KR",serif;font-size:clamp(26px,4vw,38px)}
+.city-expanded-page .city-expanded-hero>div:first-child{flex:1;min-width:180px}
+.city-expanded-page .city-expanded-sound{flex-basis:100%}
+.city-expanded-page>.city-action-row,.city-expanded-page>p[role=status]{color:#f6e8c7}
+.city-expanded-page .city-expansion-panel:not(.city-selection),.city-expanded-page .city-catalog{background:radial-gradient(ellipse at top left,#fffdf1,transparent 70%),#efe5cd;border-color:#b7a174;color:#302f27;box-shadow:0 7px 15px #091b2430,inset 0 0 0 4px #fff9e760}
+.city-expanded-page .city-cities{background:transparent;padding:0}
+.city-expanded-page .city-expanded-turn-copy{flex:1;min-width:0}
+.city-expanded-page .city-turn-hud>.city-role-emblem,.city-expanded-page .city-turn-hourglass{flex-shrink:0}
+.city-expanded-page .city-countdown progress{width:76px;height:6px;margin-top:6px;accent-color:#537e5e}
+.city-expanded-page .city-turn-hud.is-urgent progress{accent-color:#aa442e}
+.city-expanded-page .city-private-summary h2{font-size:18px;margin:8px 0}
+.city-expanded-own-roles,.city-expanded-own-role,.city-expanded-active-role{display:flex;align-items:center;gap:12px}
+.city-expanded-own-roles{flex-wrap:wrap}
+.city-expanded-own-role{padding:8px 12px;border:1px solid #b7a174;border-radius:10px;background:#fff9e680}
+.city-expanded-own-role .city-role-emblem{width:32px;height:32px;margin:0}
+.city-expanded-active-role{margin-bottom:16px}.city-expanded-active-role>.city-role-emblem{flex-shrink:0}
+.city-expanded-active-role p{margin:0;line-height:1.6}
+.city-expanded-page .city-expanded-role-catalog{margin:18px 0;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+.city-expanded-page button.city-role-card[data-role]{padding:18px 13px;background:linear-gradient(#fdf4dc,#eaddbf);border:1px solid #bb9b5c;border-radius:16px 16px 8px 8px;color:#26392f}
+.city-expanded-page button.city-role-card[data-role]:hover:not(:disabled){background:linear-gradient(#fff9e8,#efdfb7);border-color:#f1d080}
+.city-expanded-page .city-role-pick{margin-top:auto;font-weight:800;color:#285948}
+.city-expanded-page .city-draft-card-actions button[aria-pressed=true]{background:#285948;color:#fff;border-color:#285948}
+.city-expanded-page .city-draft-confirm{background:#ead5a0;color:#203c31}
+.city-expanded-page .city-role-track[data-role-count="9"] ol{grid-template-columns:repeat(9,minmax(0,1fr))}
+.city-role-card[data-role='CR-09']{--role-scene:url('/city-art/expanded-v3/cb-sp-17.webp')}
+@media(max-width:767px){
+  .city-expanded-page .city-role-track[data-role-count="9"] ol{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .city-expanded-page .city-turn-hud{position:sticky;top:env(safe-area-inset-top,0px);z-index:8;gap:8px;padding:10px}
+  .city-expanded-page .city-turn-hud>.city-role-emblem{width:38px;height:38px;margin:0}
+  .city-expanded-page .city-turn-hud h2{font-size:1rem}
+  .city-expanded-page .city-turn-hint{display:none}
+  .city-expanded-page .city-private-summary{gap:8px}
+  .city-expanded-page .city-private-summary>.city-resource-tokens{width:100%;margin:6px 0}
+  .city-expanded-page .city-expanded-role-catalog{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+}
+@media(max-width:620px){.city-expanded-page button.city-role-card[data-role]{padding:12px 8px}}
