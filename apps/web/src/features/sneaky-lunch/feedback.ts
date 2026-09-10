@@ -17,12 +17,15 @@ export function deriveLunchFeedback(previous: SneakyWebSnapshot, next: SneakyWeb
   }
   if (b.phase === "FINISHED" && a.phase !== "FINISHED") {
     push(b.result.reason === "TEACHER_WIN" ? "TEACHER_WIN" : b.result.winnerPlayerId === self ? "VICTORY" : "FINISH",
-      b.result.reason === "TEACHER_WIN" ? "전원 적발! 점심시간까지 기다리세요!" : `${next.room.players.find(p => p.playerId === b.result.winnerPlayerId)?.nickname ?? "친구"}님 완식 성공!`, true);
+      b.result.reason === "TEACHER_WIN" ? "전원 적발! 점심시간까지 기다리세요!" : `${next.room.players.find(p => p.playerId === b.result.winnerPlayerId)?.nickname ?? "친구"}님 우승!`, true);
   } else if (b.phase === "CLASSROOM" && b.teacherStateRevision !== a.teacherStateRevision) {
     if (a.phase === "COUNTDOWN") push("START", "수업 시작! 몰래 한입 해볼까요?");
     else if (b.teacherState === "SUSPICIOUS") push("SUSPICIOUS", "쉿… 선생님이 움직여요.");
     else if (b.teacherState === "WATCHING") push("WATCHING", "멈춰! 선생님이 보고 있어요.");
     else if (b.teacherState === "BOARD" && a.phase === "CLASSROOM" && a.teacherState === "SUSPICIOUS") push("FAKE", "휴, 다시 칠판을 보네요.");
+  }
+  if(b.phase!=="FINISHED") for(const [i,id] of (b.placementOrder??[]).entries()) {
+    if(!a.placementOrder?.includes(id)) push("BOX",`${next.room.players.find(p=>p.playerId===id)?.nickname??"친구"}님이 ${i+1}위를 확정했습니다!`,true);
   }
   return events;
 }

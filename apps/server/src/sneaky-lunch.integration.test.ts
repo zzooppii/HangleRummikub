@@ -63,7 +63,7 @@ async function harness(t: TestContext, count = 2, boxes = 1, difficulty: Difficu
   return { server, connect, bootstrap, call, request, send, success, sync, members, first, lobby, stored, time, tick, advance, eat };
 }
 
-for (const count of [2, 4, 8]) test(`SNEAKY raw ${count} players: countdown, hidden plans, multiple catches, teacher win and fresh same-room rematch`, async t => {
+for (const count of [2, 4, 8]) test(`SNEAKY raw ${count} players: countdown, hidden plans, multiple catches, survivor and fresh same-room rematch`, async t => {
   const h = await harness(t, count);
   assert.equal(h.first.game.phase, "COUNTDOWN"); assert.equal(parse(StateSyncWireAckSchema, await h.eat()).ok, false);
   let view = await h.advance(); assert.equal(view.game.phase, "CLASSROOM");
@@ -73,12 +73,14 @@ for (const count of [2, 4, 8]) test(`SNEAKY raw ${count} players: countdown, hid
   h.success(await h.eat()); view = await h.advance(true); assert.equal(view.game.phase === "CLASSROOM" && view.game.teacherState, "SUSPICIOUS");
   h.success(await h.eat()); view = await h.advance(); assert.equal(view.game.phase === "CLASSROOM" && view.game.teacherState, "BOARD");
   await h.advance(); view = await h.advance(); assert.equal(view.game.phase === "CLASSROOM" && view.game.teacherState, "WATCHING");
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < count - 1; i++) {
     const result = h.success(await h.eat(i));
-    assert.equal(result.room.phase, i === count - 1 ? "FINISHED" : "PLAYING");
+    assert.equal(result.room.phase, i === count - 2 ? "FINISHED" : "PLAYING");
   }
   const finished = parse(SneakyFinishedPlatformSnapshotV2Schema, await h.sync()); audit(finished);
-  assert.equal(finished.game.result.reason, "TEACHER_WIN"); assert.equal(finished.game.result.winnerPlayerId, null);
+  assert.equal(finished.game.result.reason, "LAST_PLAYER_STANDING"); assert.equal(finished.game.result.winnerPlayerId, h.members[count-1]!.playerId);
+  assert.deepEqual(finished.game.placementOrder,[h.members[count-1]!.playerId]);
+  assert.equal(parse(StateSyncWireAckSchema,await h.eat(count-1)).ok,false);
   assert.equal(h.server.runtime.turnScheduler.scheduledCount, 0);
   const command = h.request("sneaky:rematch", {}, { gameId: finished.game.gameId, expectedRoomRevision: finished.versions.roomRevision, expectedGameRevision: finished.game.gameRevision });
   assert.equal(parse(StateSyncWireAckSchema, await h.send(h.members[1]!.client, command)).ok, false);
@@ -105,7 +107,22 @@ test("SNEAKY raw rate/replay/conflict, stale fairness, current danger; recovery 
   const before = (await h.stored()).game!;
   const restored = new SneakyLunchGameStateAdapter().cloneAndValidate(JSON.parse(JSON.stringify(before))); assert.deepEqual(restored, before);
   h.success(await h.eat()); assert.equal((await h.stored()).game!.state.players[0]!.status, "CAUGHT");
-  assert.equal(h.server.runtime.turnScheduler.scheduledCount, 1);
+  assert.equal(h.server.runtime.turnScheduler.scheduledCount, 0);
+});
+test("SNEAKY raw placed rank persists, resume spectator rejects eat and replays do not duplicate", async t => {
+  const h=await harness(t,4,1,"EASY");await h.advance();
+  for(let i=0;i<29;i++){h.success(await h.eat());h.tick();}
+  const before=(await h.stored()).game!, command=h.request("sneaky:eat",{},{gameId:before.gameId,teacherStateRevision:before.state.teacherStateRevision});
+  h.success(await h.send(h.members[0]!.client,command));h.success(await h.send(h.members[0]!.client,command));
+  const state=(await h.stored()).game!;assert.equal(state.gameRevision,before.gameRevision+1);assert.equal(state.state.phase,"CLASSROOM");
+  assert.deepEqual(state.state.placementOrder,[h.members[0]!.playerId]);assert.equal(h.server.runtime.turnScheduler.scheduledCount,1);
+  assert.deepEqual(new SneakyLunchGameStateAdapter().cloneAndValidate(JSON.parse(JSON.stringify(state))),state);
+  const back=await h.connect(),host=h.members[0]!;
+  const resumed=parse(SneakyPlayingPlatformSnapshotV2Schema,h.success(await h.call(back,"session:resume",{credential:{...host.credential,roomCode:h.first.room.roomCode},lastSeenVersions:null})));
+  assert.deepEqual(resumed.game.placementOrder,[host.playerId]);assert.equal(resumed.self.playerId,host.playerId);
+  assert.equal(parse(StateSyncWireAckSchema,await h.call(back,"sneaky:eat",{},{gameId:state.gameId,teacherStateRevision:state.state.teacherStateRevision})).ok,false);
+  assert.deepEqual((await h.stored()).game,state);
+  h.success(await h.eat(1));assert.equal((await h.stored()).game!.state.players[1]!.completedBites,1);
 });
 test("SNEAKY raw final-bite race has one winner, no optimistic double completion", async t => {
   const h = await harness(t, 2, 1, "EASY"); await h.advance();
@@ -113,10 +130,11 @@ test("SNEAKY raw final-bite race has one winner, no optimistic double completion
   const responses = await Promise.all([h.eat(0), h.eat(1)]);
   assert.equal(responses.filter(r => parse(StateSyncWireAckSchema, r).ok).length, 1);
   const finished = parse(SneakyFinishedPlatformSnapshotV2Schema, await h.sync());
-  assert.equal(finished.game.result.reason, "PLAYER_FINISHED"); assert.equal(finished.game.playerStates.filter(p => p.completedBites === 30).length, 1);
+  assert.equal(finished.game.result.reason, "PLACEMENT_COMPLETE"); assert.equal(finished.game.playerStates.filter(p => p.completedBites === 30).length, 1);
+  assert.equal(finished.game.placementOrder?.length,2);
   assert.equal(h.server.runtime.turnScheduler.scheduledCount, 0);
 });
-test("SNEAKY offline 29/30s, resume identity, last survivor not winner, Finished 60s Host transfer", async t => {
+test("SNEAKY offline 29/30s, resume identity, last survivor wins, Finished 60s Host transfer", async t => {
   const h = await harness(t), runtime = h.server.runtime, policy = runtime.sneakyLunchPresence!; await h.advance(); h.success(await h.eat());
   const roomId = h.first.room.roomId, host = h.members[0]!, other = h.members[1]!;
   const disconnect = (id: typeof host.playerId) => { const binding = runtime.connectionRegistry.listActiveBindings(roomId).find(b => b.playerId === id)!;
@@ -126,10 +144,10 @@ test("SNEAKY offline 29/30s, resume identity, last survivor not winner, Finished
   const own = parse(SneakyPlayingPlatformSnapshotV2Schema, h.success(await h.call(resumed, "session:resume", { credential: { ...host.credential, roomCode: h.first.room.roomCode }, lastSeenVersions: null })));
   assert.equal(own.self.playerId, host.playerId); assert.equal(own.game.playerStates[0]!.completedBites, 1);
   start = runtime.clock.now(); disconnect(host.playerId); h.time(start + 30000);
-  assert.equal(await policy.evaluate(roomId), true); assert.equal((await h.stored()).phase, "PLAYING"); assert.equal((await h.stored()).game!.state.players[0]!.status, "FORFEITED");
+  assert.equal(await policy.evaluate(roomId), true); assert.equal((await h.stored()).phase, "FINISHED"); assert.equal((await h.stored()).game!.state.players[0]!.status, "FORFEITED");
   const room = await h.stored();
-  // Finish remaining player through the real server eat path, keeping the teacher's current safe state.
-  for (let i = 0; i < room.game!.state.requiredBites; i++) { h.success(await h.eat(1)); h.tick(); }
+  assert.equal(room.game!.state.result?.winnerPlayerId,other.playerId);
+  assert.equal(room.game!.state.players[1]!.completedBites,0);
   h.time(Math.max(runtime.clock.now(), start + 60000)); const before = (await h.stored()).game;
   assert.equal(await policy.evaluate(roomId), true); const after = await h.stored(); assert.equal(after.hostPlayerId, other.playerId); assert.deepEqual(after.game, before);
   const back = await h.connect(); const finished = parse(SneakyFinishedPlatformSnapshotV2Schema, h.success(await h.call(back, "session:resume", { credential: { ...host.credential, roomCode: h.first.room.roomCode }, lastSeenVersions: null })));
@@ -142,7 +160,8 @@ test("SNEAKY explicit leave preserves result and excludes next Lobby; new Host c
   const host = h.members[0]!, result = parse(RoomLeaveAckSchema, await h.call(host.client, "room:leave", {}, {
     expectedRoomRevision: view.versions.roomRevision, expectedGameRevision: view.game.gameRevision })); assert.ok(result.ok, !result.ok ? result.error.code : "");
   const room = await h.stored(); assert.equal(room.hostPlayerId, h.members[1]!.playerId); assert.equal(room.game!.state.players[0]!.status, "FORFEITED");
-  await h.advance(); await h.advance(); h.success(await h.eat(1)); h.success(await h.eat(2));
+  await h.advance(); await h.advance(); h.success(await h.eat(1));
+  assert.equal(parse(StateSyncWireAckSchema,await h.eat(2)).ok,false);
   const finished = parse(SneakyFinishedPlatformSnapshotV2Schema, await h.sync(h.members[1]!.client)); assert.equal(finished.game.playerStates.length, 3);
   const lobby = parse(SneakyLobbyPlatformSnapshotV2Schema, h.success(await h.call(h.members[1]!.client, "sneaky:rematch", {}, { gameId: finished.game.gameId, expectedRoomRevision: finished.versions.roomRevision, expectedGameRevision: finished.game.gameRevision })));
   assert.equal(lobby.room.players.length, 2); assert.equal(lobby.room.players.some(p => p.playerId === host.playerId), false);
@@ -245,17 +264,19 @@ for (const count of [2, 3, 4, 6, 8]) for (const difficulty of ["EASY", "NORMAL",
       if (now >= state.nextTransitionAt!) { await h.advance(transitions++ % 3 === 0); continue; }
       if (state.teacherState === "BOARD" || state.teacherState === "SUSPICIOUS") {
         // A short phase boundary does not reset the player's 150ms interval.
-        const nextBiteAt = (state.players[0]!.lastAcceptedEatAt ?? now - 150) + 150;
+        const actor=state.players.findIndex(p=>p.status==="ACTIVE"&&!state.placementOrder?.includes(p.playerId));
+        const nextBiteAt = (state.players[actor]!.lastAcceptedEatAt ?? now - 150) + 150;
         if (now < nextBiteAt) { h.time(Math.min(nextBiteAt, state.nextTransitionAt!)); continue; }
-        h.success(await h.eat()); commands++;
-        assert.equal((await h.stored()).game!.state.players[0]!.completedBites, commands);
+        h.success(await h.eat(actor)); commands++;
+        assert.equal((await h.stored()).game!.state.players.reduce((n,p)=>n+p.completedBites,0), commands);
         h.time(Math.min(now + 150, state.nextTransitionAt!));
       } else h.time(state.nextTransitionAt!);
-      assert.ok(commands <= boxes * 30 + 1 && transitions < 150, "bounded completion without stuck/extra progress");
+      assert.ok(commands <= boxes * 30 * (count-1) && transitions < 1200, "bounded completion without stuck/extra progress");
     }
     const finished = parse(SneakyFinishedPlatformSnapshotV2Schema, await h.sync());
-    assert.equal(finished.game.result.reason, "PLAYER_FINISHED"); assert.equal(finished.game.result.winnerPlayerId, h.members[0]!.playerId);
-    assert.equal(commands, boxes * 30); assert.equal(finished.game.playerStates[0]!.completedBites, boxes * 30);
+    assert.equal(finished.game.result.reason, "PLACEMENT_COMPLETE"); assert.equal(finished.game.result.winnerPlayerId, h.members[0]!.playerId);
+    assert.equal(commands, boxes * 30 * (count-1)); assert.equal(finished.game.playerStates[0]!.completedBites, boxes * 30);
+    assert.deepEqual(finished.game.placementOrder,h.members.map(m=>m.playerId));
     assert.equal(finished.game.playerStates.length, count); assert.ok(finished.game.playerStates.every(p => p.completedBites <= boxes * 30));
     assert.deepEqual(finished.game.settings, { lunchboxCount: boxes, difficulty });
     assert.equal(h.server.runtime.turnScheduler.scheduledCount, 0);
@@ -288,7 +309,8 @@ test("P22 SNEAKY rematch can change options and rejects stale old-game timer/tap
   const h = await harness(t, 8, 1, "EASY"); await h.advance();
   const old = (await h.stored()).game!;
   await h.advance(); await h.advance();
-  for (let i = 0; i < 8; i++) h.success(await h.eat(i));
+  for (let i = 0; i < 7; i++) h.success(await h.eat(i));
+  assert.equal(parse(StateSyncWireAckSchema,await h.eat(7)).ok,false);
   const finished = parse(SneakyFinishedPlatformSnapshotV2Schema, await h.sync());
   const l = parse(SneakyLobbyPlatformSnapshotV2Schema, h.success(await h.call(h.members[0]!.client, "sneaky:rematch", {}, {
     gameId: finished.game.gameId, expectedRoomRevision: finished.versions.roomRevision, expectedGameRevision: finished.game.gameRevision })));
@@ -304,7 +326,8 @@ test("P22 SNEAKY rematch can change options and rejects stale old-game timer/tap
   assert.equal((await h.stored()).game!.gameRevision, 0); assert.equal(h.server.runtime.turnScheduler.scheduledCount, 1);
 });
 test("P22 SNEAKY Finished Host transfer loses atomically to resumed offline generation", async t => {
-  const h = await harness(t); await h.advance(); await h.advance(); await h.advance(); h.success(await h.eat(0)); h.success(await h.eat(1));
+  const h = await harness(t); await h.advance(); await h.advance(); await h.advance(); h.success(await h.eat(0));
+  assert.equal(parse(StateSyncWireAckSchema,await h.eat(1)).ok,false);
   const r = h.server.runtime, policy = r.sneakyLunchPresence!, roomId = h.first.room.roomId, host = h.members[0]!;
   const binding = r.connectionRegistry.listActiveBindings(roomId).find(b => b.playerId === host.playerId)!;
   const since = r.clock.now(); r.connectionRegistry.disconnect(binding.socketId, binding.connectionGeneration); policy.disconnected(roomId, host.playerId, since);

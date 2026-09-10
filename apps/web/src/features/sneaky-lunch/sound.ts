@@ -6,7 +6,24 @@ export type LunchCue = keyof typeof LUNCH_CUES;
 export class LunchAudio {
   private context: AudioContext | null = null;
   private lastBite = -1;
-  enabled = false;
+  private soundEnabled = false;
+  private shout: SpeechSynthesisUtterance | null = null;
+  get enabled() { return this.soundEnabled; }
+  set enabled(value: boolean) { this.soundEnabled=value; if(!value)this.stopShout(); }
+  private stopShout() {
+    if(this.shout&&typeof window!=="undefined"&&window.speechSynthesis)window.speechSynthesis.cancel();
+    this.shout=null;
+  }
+  private shoutHey() {
+    if(typeof window==="undefined"||!window.speechSynthesis||!window.SpeechSynthesisUtterance)return;
+    // Prefer a device-local Korean voice. No downloaded voice, external service or recording.
+    const voice=window.speechSynthesis.getVoices().find(v=>v.localService&&v.lang.toLowerCase().startsWith("ko"));
+    if(!voice)return; // Original impact cue and text still work where Korean speech is unavailable.
+    this.stopShout();
+    const shout=new SpeechSynthesisUtterance("야!");shout.voice=voice;shout.lang="ko-KR";shout.rate=1.05;shout.pitch=.55;shout.volume=.8;
+    this.shout=shout;shout.onend=()=>{if(this.shout===shout)this.shout=null;};
+    window.speechSynthesis.speak(shout);
+  }
   unlock() {
     if (!this.enabled || typeof window === "undefined" || !window.AudioContext) return;
     try { this.context ??= new AudioContext(); void this.context.resume().catch(() => undefined); } catch { /* Audio is optional; visual feedback remains. */ }
@@ -14,6 +31,7 @@ export class LunchAudio {
   play(cue: LunchCue) {
     const ctx = this.context;
     if (!this.enabled || ctx?.state !== "running") return;
+    if(cue==="CAUGHT")this.shoutHey();
     if (cue === "BITE" && ctx.currentTime - this.lastBite < .16) return;
     if (cue === "BITE") this.lastBite = ctx.currentTime;
     // Original short foley: a tiny chopstick/crunch, stopped chalk, or desk tap.
@@ -37,5 +55,5 @@ export class LunchAudio {
       osc.onended = () => { osc.disconnect(); gain.disconnect(); };
     }
   }
-  close() { void this.context?.close().catch(() => undefined); this.context = null; }
+  close() { this.stopShout();void this.context?.close().catch(() => undefined); this.context = null; }
 }

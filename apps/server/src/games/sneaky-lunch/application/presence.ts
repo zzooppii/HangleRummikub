@@ -1,7 +1,7 @@
 import { RequestIdSchema, RoomRevisionSchema, TurnIdSchema, type PlayerId, type RoomId, type ServerTime } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 import type { SneakyLunchRoomRecord } from "../../../model/persistence.js";
-import { forfeitLunch } from "../domain/game.js";
+import { forfeitLunchBatch } from "../domain/game.js";
 import { transitionSneaky, type SneakyLunchService } from "./service.js";
 
 /** Process-local continuous offline intervals; same lifetime as connection authority. */
@@ -40,9 +40,10 @@ export class SneakyLunchPresence {
         for (const p of room.players) {
           const since = intervals.get(p.playerId);
           if (since === undefined || now - since < 30000 || room.departedPlayerIds?.includes(p.playerId) || lease.connectionStatusByPlayerId.get(p.playerId) === "CONNECTED" ||
-            !state.players.some(g => g.playerId === p.playerId && g.status === "ACTIVE")) continue;
-          guarded.set(p.playerId, since); state = forfeitLunch(state, p.playerId, now);
+            state.placementOrder?.includes(p.playerId) || !state.players.some(g => g.playerId === p.playerId && g.status === "ACTIVE")) continue;
+          guarded.set(p.playerId, since);
         }
+        state = forfeitLunchBatch(state, [...guarded.keys()], now);
         if (state.revision !== room.game.gameRevision) candidate = transitionSneaky(room, state, now);
       } else if (room.phase === "FINISHED" && room.hostPlayerId) {
         const host = room.hostPlayerId, since = intervals.get(host);

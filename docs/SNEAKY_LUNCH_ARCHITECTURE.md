@@ -1,5 +1,13 @@
 # SNEAKY_LUNCH architecture
 
+## Placement upgrade (rules v2)
+
+New games create `sneaky-lunch-rules-v2` with canonical `placementOrder`; explicit v1 creation/decoding remains for legacy saved games and regression coverage. Strict domain and shared projection checks reject version/placement mismatch, duplicate/unknown ranks, uncompleted nonterminal placements and incoherent winners. Projection adds only the public ordered IDs; existing eat/rematch commands and hidden teacher plan remain unchanged.
+
+Eligibility is ACTIVE minus placementOrder. Appending a completed player and deciding terminal/survivor rank happens within the existing accepted-bite revision and UoW. Presence batches all expired eligible players before resolving a survivor, guarded by the existing lease; placed players are excluded. Adapter validation preserves order on recovery. Native result dialog renders ranks above the unchanged classroom; a transient caught-viewer-only fullscreen comic precedes it. No new dependency, generic event mechanism or teacher timing exposure.
+
+Local verification: server suite 1,335 PASS; SNEAKY Web 30 PASS; root typecheck/build/diff-check PASS. Four-person production browser + real raw peers verified first-place continuation, canonical eating, caught-viewer fullscreen, unchanged first rank with last-survivor second rank, same-room rematch reset and refresh without scare replay. 390/320 layouts had no horizontal overflow; console warning/error log empty. A subsequent root test run is blocked by the concurrently edited CITY test `city-expanded-tabletop.test.ts` (HUD responder fixture violates CITY private-state/window contract); no unrelated code was altered to bypass it. Earlier combined run passed 1,924 tests before that new CITY test appeared. No commit/push/deploy in this change.
+
 P21A COMPLETE / DOMAIN READY. Starting clean HEAD `057fce8`.
 
 P21B: concrete `games/sneaky-lunch/domain/game.ts` implements detached validation and deterministic transitions. 21 additive domain tests cover 2–8 players, all box counts, timing bounds, fake cap, safe/danger/stale/rate semantics, terminal order and recovered plans. No GameType, Room, protocol or Web registration in P21B. Already-caught/forfeited progress remains frozen when presence changes; explicit departure is separate Room metadata.

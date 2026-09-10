@@ -8,6 +8,7 @@ import { ClassroomArt, LunchboxArt, StudentArt } from "./art.js";
 import { LunchAudio } from "./sound.js";
 import { LunchFeedbackTracker, type LunchFeedback } from "./feedback.js";
 import { ClassroomPlaying, type SeatPulse } from "./ClassroomPlaying.js";
+import { CaughtImpact } from "./CaughtImpact.js";
 export { remainingFood } from "./ClassroomPlaying.js";
 
 export type SneakyScreenProps = Readonly<{ snapshot: SneakyWebSnapshot; connected: boolean; pending: boolean; error: string | null; connectionLabel: string;
@@ -21,11 +22,11 @@ const LESSONS = [
   ["쉿… 움직인다!", "분필이 멈추면 조심하세요. 아직 먹을 수 있지만, 곧 돌아볼지도 몰라요."],
   ["눈이 마주치면 멈춰!", "선생님이 보고 있거나 돌아가는 중에 누르면 들켜요. 칠판을 볼 때까지 기다려요."],
   ["앗, 페이크였네", "수상한 움직임 뒤 다시 판서를 할 수도 있어요. 미리 알 수는 없어요!"],
-  ["가장 먼저 빈 도시락!", "모든 도시락을 먼저 비우면 승리! 들켰다면 친구들을 구경해요."],
+  ["빈 도시락 순서대로!", "완식하면 순위가 확정되고 친구들의 경기는 계속돼요. 마지막 생존자는 남은 순위를 받아요. 들켰다면 관전!"],
 ] as const;
 const envelope = () => ({ protocolVersion: 1 as const, requestId: createRequestId() });
 export function canEat(snapshot: SneakyWebSnapshot, connected: boolean, pending = false) {
-  return connected && !pending && snapshot.game?.phase === "CLASSROOM" && snapshot.game.playerStates.some(p => p.playerId === snapshot.self.playerId && p.status === "ACTIVE");
+  return connected && !pending && snapshot.game?.phase === "CLASSROOM" && !snapshot.game.placementOrder?.includes(snapshot.self.playerId) && snapshot.game.playerStates.some(p => p.playerId === snapshot.self.playerId && p.status === "ACTIVE");
 }
 
 export function SneakyLunchScreen(props: SneakyScreenProps) {
@@ -37,6 +38,7 @@ export function SneakyLunchScreen(props: SneakyScreenProps) {
   const [sound, setSound] = useState(false), audio = useRef(new LunchAudio()), tracker = useRef(new LunchFeedbackTracker());
   const [notices, setNotices] = useState<LunchFeedback[]>([]), [pulses, setPulses] = useState<Record<string,SeatPulse>>({});
   const [caughtSpeech,setCaughtSpeech]=useState<string|null>(null), pulseTimers=useRef(new Set<ReturnType<typeof setTimeout>>());
+  const [dismissedCatch,setDismissedCatch]=useState<string|null>(null);
   const speechTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
   const [help, setHelp] = useState(false), [step, setStep] = useState(0), dialog = useRef<HTMLDialogElement>(null);
   const [clock, setClock] = useState(0), received = useRef({ serverTime: s.serverTime, local: Date.now() });
@@ -79,6 +81,7 @@ export function SneakyLunchScreen(props: SneakyScreenProps) {
     }
   }, [s, props.connected]);
   const currentNotice = notices[0];
+  const caughtImpact=currentNotice?.cue==="CAUGHT"&&currentNotice.id!==dismissedCatch;
   useEffect(() => {
     if (!currentNotice) return;
     audio.current.play(currentNotice.cue);
@@ -104,6 +107,9 @@ export function SneakyLunchScreen(props: SneakyScreenProps) {
   const seconds = game?.phase === "COUNTDOWN" ? Math.max(0, Math.ceil((game.countdownEndsAt - (received.current.serverTime + Date.now() - received.current.local)) / 1000)) : 0;
   void clock;
   const ready = getGameStartControl(s, busy || props.pending || !props.connected);
+  const currentLesson=step===4&&game?.rulesVersion==="sneaky-lunch-rules-v1"
+    ? ["가장 먼저 빈 도시락!", "이 저장판은 이전 규칙입니다. 먼저 완식하면 즉시 승리하고, 모두 탈락하면 선생님이 승리해요."]
+    : LESSONS[step]!;
   const title = game?.phase === "COUNTDOWN" ? "수업이 곧 시작돼요" : game?.phase === "FINISHED" ? "오늘의 몰래 한입" : teacher === "WATCHING" ? "멈춰! 선생님이 보고 있어요" : teacher === "RETURNING" ? "아직 안 돼요, 조금만 더!" : teacher === "SUSPICIOUS" ? "쉿… 무슨 소리지?" : "칠판 볼 때, 몰래 한입!";
   return <main className={`lunch-shell${game?" lunch-playing":""} difficulty-${settings.difficulty.toLowerCase()}${danger ? " is-danger" : ""}`} onPointerDown={() => audio.current.unlock()}>
     <header className="lunch-header"><div><span className="lunch-eyebrow">THE SECRET LUNCH CLUB</span><h1>몰래 한입<span aria-hidden="true">!</span></h1></div><nav aria-label="교실 도구">
@@ -117,9 +123,10 @@ export function SneakyLunchScreen(props: SneakyScreenProps) {
           <label htmlFor="lunch-difficulty">오늘의 선생님<select id="lunch-difficulty" value={settings.difficulty} onChange={e => { const value = safeParse(SneakyDifficultySchema, e.target.value); if (value.success) configure({ ...settings, difficulty: value.output }); }}>{Object.entries(DIFFICULTY_COPY).map(([id, copy]) => <option key={id} value={id}>{copy[0]}</option>)}</select></label><p className="lunch-difficulty-hint">{DIFFICULTY_COPY[settings.difficulty][1]}</p>
         </fieldset><p>{ready.guidance}</p>{host ? <button className="lunch-primary" disabled={!ready.canStart} onClick={props.onStart}>쉿! 수업 시작</button> : <p className="lunch-wait-note">방장이 수업을 준비하고 있어요.</p>}
       </section></div> : <>
-      <ClassroomPlaying snapshot={s} title={title} seconds={seconds} allowed={allowed} danger={danger} pulses={pulses} caughtSpeech={caughtSpeech} onEat={()=>void eat()} resultControls={game.phase==="FINISHED" ? host ? <button className="lunch-primary" disabled={!props.connected||props.pending||busy} onClick={()=>void command({...envelope(),kind:"sneaky:rematch",gameId:game.gameId,expectedGameRevision:game.gameRevision,expectedRoomRevision:s.versions.roomRevision,payload:{}})}>같은 방에서 다시 하기</button> : <p>방장이 다음 수업을 준비할 때까지 기다려주세요.</p> : null}/>
+      <ClassroomPlaying snapshot={s} title={title} seconds={seconds} allowed={allowed} danger={danger} pulses={pulses} caughtSpeech={caughtSpeech} suppressResult={Boolean(caughtImpact||pulses[self]?.cue==="CAUGHT")} onEat={()=>void eat()} resultControls={game.phase==="FINISHED" ? host ? <button className="lunch-primary" disabled={!props.connected||props.pending||busy} onClick={()=>void command({...envelope(),kind:"sneaky:rematch",gameId:game.gameId,expectedGameRevision:game.gameRevision,expectedRoomRevision:s.versions.roomRevision,payload:{}})}>같은 방에서 다시 하기</button> : <p>방장이 다음 수업을 준비할 때까지 기다려주세요.</p> : null}/>
     </>}
-    {currentNotice && <aside key={currentNotice.id} className={`lunch-impact${currentNotice.prominent ? " prominent" : ""}`} role="status"><span aria-hidden="true">{currentNotice.cue === "CAUGHT" ? "!" : "✦"}</span>{currentNotice.text}</aside>}
-    {help && <dialog ref={dialog} className="lunch-guide" aria-labelledby="lunch-guide-title" onCancel={closeHelp}><button className="lunch-guide-close" onClick={closeHelp} aria-label="게임 방법 닫기">닫기</button><span className="lunch-eyebrow">비밀 작전 수첩 · {step + 1} / 5</span><div className="lunch-guide-art">{step === 0 || step === 4 ? <LunchboxArt closed={step === 4}/> : <ClassroomArt state={step === 2 ? "WATCHING" : "SUSPICIOUS"}/>}</div><h2 id="lunch-guide-title">{LESSONS[step]![0]}</h2><p>{LESSONS[step]![1]}</p><div className="lunch-guide-controls"><button disabled={step === 0} onClick={() => setStep(n => n - 1)}>이전</button><button className="lunch-primary" onClick={() => step === 4 ? closeHelp() : setStep(n => n + 1)}>{step === 4 ? "작전 준비 완료" : "다음"}</button></div></dialog>}
+    {caughtImpact&&currentNotice&&<CaughtImpact key={currentNotice.id} onClose={()=>setDismissedCatch(currentNotice.id)}/>}
+    {currentNotice && !caughtImpact && <aside key={currentNotice.id} className={`lunch-impact${currentNotice.prominent ? " prominent" : ""}`} role="status"><span aria-hidden="true">{currentNotice.cue === "CAUGHT" ? "!" : "✦"}</span>{currentNotice.text}</aside>}
+    {help && <dialog ref={dialog} className="lunch-guide" aria-labelledby="lunch-guide-title" onCancel={closeHelp}><button className="lunch-guide-close" onClick={closeHelp} aria-label="게임 방법 닫기">닫기</button><span className="lunch-eyebrow">비밀 작전 수첩 · {step + 1} / 5</span><div className="lunch-guide-art">{step === 0 || step === 4 ? <LunchboxArt closed={step === 4}/> : <ClassroomArt state={step === 2 ? "WATCHING" : "SUSPICIOUS"}/>}</div><h2 id="lunch-guide-title">{currentLesson[0]}</h2><p>{currentLesson[1]}</p><div className="lunch-guide-controls"><button disabled={step === 0} onClick={() => setStep(n => n - 1)}>이전</button><button className="lunch-primary" onClick={() => step === 4 ? closeHelp() : setStep(n => n + 1)}>{step === 4 ? "작전 준비 완료" : "다음"}</button></div></dialog>}
   </main>;
 }

@@ -9,13 +9,20 @@ export function LunchboxArt({ remaining = 1, closed = false, small = false }: { 
     <rect x="22" y="25" width="206" height="89" rx="16" fill="#f1c26f" stroke="#203d39" strokeWidth="3"/>
     {closed ? <g><rect x="20" y="23" width="210" height="96" rx="16" fill="#e99574" stroke="#203d39" strokeWidth="3"/><path d="M108 24V118M142 24V118" stroke="#f6dfaa" strokeWidth="13"/><circle cx="125" cy="70" r="16" fill="#fff6df"/><path d="M117 71l6 6 12-14" fill="none" stroke="#286957" strokeWidth="4"/></g> : <>
       <rect x="29" y="32" width="113" height="73" rx="11" fill="#ca964e"/><rect x="151" y="32" width="68" height="32" rx="9" fill="#ca964e"/><rect x="151" y="71" width="68" height="34" rx="9" fill="#ca964e"/>
-      <g style={{ transformOrigin: "86px 76px", transform: `scale(${Math.sqrt(food)})` }} className="lunch-food"><path d="M39 57Q42 33 78 39Q117 31 132 53L130 94Q92 103 41 93Z" fill="#fff5d9"/>{[0, 1, 2, 3, 4, 5].map(i => <path key={i} d={`M${49 + i * 14} 56l3-4m-3 25l4 1`} stroke="#dfcfa8" strokeWidth="2"/>)}<ellipse cx="85" cy="69" rx="15" ry="12" fill="#d76655"/><path d="M77 65q6-7 13-2" fill="none" stroke="#f7997a" strokeWidth="3"/></g>
-      <g style={{ opacity: food, transformOrigin: "185px 69px", transform: `scale(${.3 + .7 * food})` }} className="lunch-food"><path d="M161 42q12-10 18 6q8-13 18-1l11 10h-49Z" fill="#56805d"/>{[0, 1, 2].map(i => <g key={i} transform={`translate(${160 + i * 17} 78)`}><rect width="16" height="19" rx="5" fill="#f4da64" stroke="#a97c30" strokeWidth="1.5"/><path d="M4 7l8 2" stroke="#fff1a4" strokeWidth="3"/></g>)}</g>
+      {/* Fixed-size portions disappear one at a time. Neither tray nor food scales. */}
+      {Array.from({length:30},(_,i)=>i).filter(i=>i<Math.round(food*30)).map(i=>{
+        const rice=i<24, x=39+(i%6)*16, y=40+Math.floor(i/6)*15;
+        return rice ? <g key={i} className="lunch-food-portion" data-portion={i}>
+          <rect x={x} y={y} width="18" height="17" rx="5" fill="#fff5d9"/>
+          <path d={`M${x+4} ${y+5}l3-1m2 7 3-2`} stroke="#dccba5" strokeWidth="1.5"/>
+          {i===9&&<circle cx={x+8} cy={y+8} r="6" fill="#d76655"/>}
+        </g> : i<27 ? <g key={i} className="lunch-food-portion" data-portion={i} transform={`translate(${157+(i-24)*19} 78)`}>
+          <rect width="17" height="20" rx="5" fill="#f4da64" stroke="#a97c30" strokeWidth="1.5"/><path d="M4 7l9 3" stroke="#fff1a4" strokeWidth="3"/>
+        </g> : <g key={i} className="lunch-food-portion" data-portion={i} transform={`translate(${160+(i-27)*20} 46)`}>
+          {i===29?<><rect x="-7" y="-9" width="15" height="23" rx="7" fill="#c36a47" stroke="#975438"/><path d="M-4-3l9 3m-9 3 9 3" stroke="#ed9c69" strokeWidth="2"/></>:<g fill="#528454" stroke="#416545"><circle cx="-3" r="7"/><circle cy="-4" r="7"/><circle cx="4" cy="4" r="7"/></g>}
+        </g>;
+      })}
     </>}
-    {!closed && food>0 && <g className="lunch-food" opacity={food}>
-      <g fill="#528454" stroke="#416545" strokeWidth="1"><circle cx="165" cy="48" r="8"/><circle cx="176" cy="44" r="8"/><circle cx="182" cy="51" r="7"/></g>
-      <g transform="rotate(-17 204 47)"><rect x="193" y="37" width="17" height="24" rx="8" fill="#c36a47" stroke="#975438" strokeWidth="1.5"/><path d="M197 43l9 3m-9 3 9 3" stroke="#ed9c69" strokeWidth="2"/></g>
-    </g>}
     {!small && !closed && <g className="lunch-chopsticks" stroke="#664b36" strokeWidth="5" strokeLinecap="round"><path d="M197 7L96 92"/><path d="M214 10L106 96"/></g>}
   </svg>;
 }

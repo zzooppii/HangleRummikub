@@ -8,7 +8,8 @@ import { SneakyLobbyPlatformSnapshotV2Schema, SneakyPlayingPlatformSnapshotV2Sch
 import { SneakyLunchScreen, canEat, remainingFood } from "../features/sneaky-lunch/SneakyLunchScreen.js";
 import { LunchAudio, LUNCH_CUES } from "../features/sneaky-lunch/sound.js";
 import { LunchFeedbackTracker, deriveLunchFeedback } from "../features/sneaky-lunch/feedback.js";
-import { StudentArt } from "../features/sneaky-lunch/art.js";
+import { StudentArt, LunchboxArt } from "../features/sneaky-lunch/art.js";
+import { CaughtImpact } from "../features/sneaky-lunch/CaughtImpact.js";
 import { ClassroomPlaying, lunchFoodStage } from "../features/sneaky-lunch/ClassroomPlaying.js";
 import { TeacherArt } from "../features/sneaky-lunch/classroom-art.js";
 import { decodeWebSnapshot, type SneakyWebSnapshot } from "./snapshot-wire-decoder.js";
@@ -156,4 +157,29 @@ test("SNEAKY classroom styling scopes teacher focus, caught posture and reduced-
   const css=readFileSync(new URL("../../src/features/sneaky-lunch/classroom.css",import.meta.url),"utf8");
   for(const rule of ["max-width:768px","max-width:430px","max-width:340px","safe-area-inset-bottom","prefers-reduced-motion","lunch-empty-exit{display:none}",".lunch-classroom-result::backdrop",".lunch-student.caught .lunch-student-head","touch-action:manipulation"])assert.ok(css.includes(rule),rule);
   assert.doesNotMatch(css,/animation-duration:.*deadline|\.gem-|\.city-|\.number-/);
+});
+
+test("SNEAKY fixed-size food portions disappear exactly one per accepted bite",()=>{
+  for(let eaten=0;eaten<=30;eaten++) {
+    const output=renderToStaticMarkup(createElement(LunchboxArt,{remaining:1-eaten/30}));
+    assert.equal((output.match(/data-portion=/g)??[]).length,30-eaten);
+    assert.doesNotMatch(output,/scale\(|opacity=/);
+  }
+});
+test("SNEAKY v2 placed spectator, live rank and no premature final dialog",()=>{
+  const p=classroom(4), next=parse(SneakyPlayingPlatformSnapshotV2Schema,{...p,game:{...p.game,rulesVersion:"sneaky-lunch-rules-v2",placementOrder:[p.self.playerId],gameRevision:2,playerStates:p.game.playerStates.map((v,i)=>({...v,completedBites:i===0?90:0}))}});
+  assert.equal(canEat(next,true),false);assert.match(html(next),/1위를 확정했습니다/);assert.doesNotMatch(html(next),/lunch-classroom-result/);
+  const previous=parse(SneakyPlayingPlatformSnapshotV2Schema,{...p,game:{...p.game,rulesVersion:"sneaky-lunch-rules-v2",placementOrder:[]}});
+  assert.ok(deriveLunchFeedback(previous,next).some(e=>e.text.includes("1위를 확정")));
+  assert.deepEqual(new LunchFeedbackTracker().update(next,true),[]);
+  assert.equal(safeParse(SneakyPlayingPlatformSnapshotV2Schema,{...next,game:{...next.game,placementOrder:[p.self.playerId,p.self.playerId]}}).success,false);
+});
+test("SNEAKY scare uses accessible full-screen original art; only own catch cue; no replay",()=>{
+  const output=renderToStaticMarkup(createElement(CaughtImpact,{onClose(){}}));
+  assert.match(output,/lunch-caught-closeup/);assert.match(output,/야!!/);assert.match(output,/aria-labelledby="lunch-shout"/);assert.match(output,/닫기/);
+  const a=classroom(4),b=parse(SneakyPlayingPlatformSnapshotV2Schema,{...a,game:{...a.game,gameRevision:2,playerStates:a.game.playerStates.map((p,i)=>i===1?{...p,status:"CAUGHT"}:p)}});
+  assert.equal(deriveLunchFeedback(a,b).some(e=>e.cue==="CAUGHT"),false);
+  const target=a.room.players[1]!.playerId;
+  assert.equal(deriveLunchFeedback({...a,self:{playerId:target}},{...b,self:{playerId:target}}).filter(e=>e.cue==="CAUGHT").length,1);
+  assert.deepEqual(new LunchFeedbackTracker().update({...b,self:{playerId:target}},true),[]);
 });

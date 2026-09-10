@@ -1,13 +1,19 @@
 # 몰래 한입 — SNEAKY_LUNCH
 
-P21A: USER-APPROVED / CONFIRMED / DOMAIN READY. Version `sneaky-lunch-rules-v1`.
+P21A: USER-APPROVED / CONFIRMED / DOMAIN READY. New games: `sneaky-lunch-rules-v2` (placement upgrade). Stored `sneaky-lunch-rules-v1` keeps its original semantics.
 Source: user's sixth-game unattended development request, 2026-09-10. No existing game rules change.
 
 ## Setup and victory
 
 2–8 participants; Host configures 1–5 lunchboxes (default 3) and EASY/NORMAL/HARD/NIGHTMARE (default NORMAL). All participants must be connected to start. Settings freeze at start. Each box is exactly 30 accepted bites; 3-second server countdown precedes play. Repeated click/tap, never hold-to-eat.
 
-The first active player to complete all boxes wins immediately (`PLAYER_FINISHED`). No scores, subsequent placements, or last-survivor automatic victory. All participants caught/forfeited means `TEACHER_WIN`, no player winner. Room-lane ordering decides simultaneous final bites.
+User-approved placement upgrade: the first player to finish all boxes locks rank 1, the next rank 2, and so on. `placementOrder` is canonical and immutable once appended; placed players remain Room participants/spectators, cannot eat or be caught/forfeited, and do not receive offline gameplay penalties. Their historical `ACTIVE` status is retained; eligibility also excludes placementOrder. No score/tie-break system is introduced. Room-lane ordering decides concurrent final bites.
+
+When exactly one unplaced ACTIVE player remains, append that survivor at the next rank without requiring more bites and finish. Normal completion reason is `PLACEMENT_COMPLETE`; elimination-driven termination is `LAST_PLAYER_STANDING`. The first entry remains the winner even if someone else survives last. Caught/forfeited participants are shown separately as eliminated, not assigned artificial placement ranks.
+
+If nobody remains eligible, finish immediately: preserve any confirmed winner, otherwise `TEACHER_WIN`. A presence sweep applies simultaneously expired offline forfeits atomically before deciding a survivor; it must not award an offline player a fictitious win due to iteration order. Sequential catches stop as soon as one survivor remains, so a later catch cannot turn that already finished game into an all-caught result. Teacher timing and catch/rate-limit ordering are unchanged.
+
+Legacy v1 stored games still use first-completion `PLAYER_FINISHED` and all-eliminated `TEACHER_WIN`, with no automatic survivor victory. The validator requires placementOrder in v2 and forbids it in v1; old saves are never silently reinterpreted. Rematch/new start creates v2 with empty placements.
 
 ## Teacher and input
 
@@ -38,6 +44,12 @@ Host rematch: FINISHED → same Room LOBBY; explicitly departed participants exc
 ## Presentation interpretation
 
 Exact progress is public canonical data. Display diminishing food and completed boxes rather than running bite counts/percentage numerals. The subsequent classroom redesign request explicitly approves a brief `+1` after an accepted bite (or the exact accepted delta if several updates arrive together); it supersedes the original ban on that transient label, not the rules or privacy contract. This is presentation, not secrecy or anti-cheat. Teacher next-transition countdowns remain forbidden. Danger retains the tap button for active connected participants. Original classroom SVG/CSS and Web Audio, Sound toggle, five-step visual guide, reduced motion, 1280/768/390/320 layouts. Classroom seats remain in place when caught and behind a dismissible Finished overlay.
+
+## Caught impact and food presentation
+
+A newly confirmed catch shows only that viewer an original fullscreen stern teacher / “야!!” comic close-up for two seconds, dismissible sooner. No strobe or repeated flash; reduced-motion removes the entry zoom. Sound OFF cancels speech and prevents cues. A device-local Korean speech voice says “야!” when available; other devices retain the original synthesized impact and equivalent text, without downloading audio. Reconnect/refresh establishes a silent feedback baseline rather than replaying the scare. Final results wait for this presentation, not for the canonical game transition.
+
+Each lunchbox displays thirty fixed-size food portions. One accepted bite removes one portion; the tray and remaining portions do not shrink. The next box refills only on a canonical thirty-bite boundary; final completion remains empty.
 
 ## Scope/status
 

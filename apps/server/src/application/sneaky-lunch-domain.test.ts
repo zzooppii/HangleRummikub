@@ -4,7 +4,8 @@ import { createSneakyLunch, parseSneakyLunchState, planTeacher, nextTeacherState
   eatLunch, forfeitLunch, DIFFICULTY_TIMING, type Difficulty, type SneakyLunchState } from "../games/sneaky-lunch/domain/game.js";
 
 function initial(n = 2, boxes = 3, difficulty: Difficulty = "NORMAL") {
-  return createSneakyLunch({ gameId: "lunch", playerIds: Array.from({ length: n }, (_, i) => `p${i}`),
+  // Persisted v1 retains its original terminal semantics; v2 has separate regression coverage.
+  return createSneakyLunch({ rulesVersion: "sneaky-lunch-rules-v1", gameId: "lunch", playerIds: Array.from({ length: n }, (_, i) => `p${i}`),
     settings: { lunchboxCount: boxes, difficulty }, now: 0, transitionId: "countdown" });
 }
 function advance(s: SneakyLunchState, fake = false) {

@@ -18,9 +18,9 @@ function Progress({nickname,bites,required}: {nickname:string;bites:number;requi
   return <div className="lunch-seat-progress" role="progressbar" aria-label={`${nickname}님의 완식 진행`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(bites/required*100)}><span style={{width:`${bites/required*100}%`}}/></div>;
 }
 
-export function ClassroomPlaying({snapshot:s, title, seconds, allowed, danger, pulses, caughtSpeech, onEat, resultControls}: {
+export function ClassroomPlaying({snapshot:s, title, seconds, allowed, danger, pulses, caughtSpeech, onEat, resultControls, suppressResult=false}: {
   snapshot:SneakyWebSnapshot;title:string;seconds:number;allowed:boolean;danger:boolean;pulses:Readonly<Record<string,SeatPulse>>;
-  caughtSpeech:string|null;onEat():void;resultControls:ReactNode;
+  caughtSpeech:string|null;onEat():void;resultControls:ReactNode;suppressResult?:boolean;
 }) {
   const game=s.game;
   const [resultClosed,setResultClosed]=useState(false);
@@ -34,10 +34,13 @@ export function ClassroomPlaying({snapshot:s, title, seconds, allowed, danger, p
   const finished=game.phase==="FINISHED", teacherWin=finished&&game.result.reason==="TEACHER_WIN";
   const ownCaught=own?.status==="CAUGHT", ownWinner=finished&&game.result.winnerPlayerId===self;
   const food=remainingFood(own?.completedBites??0,game.requiredBites);
+  const ownRank=(game.placementOrder?.indexOf(self)??-1)+1;
+  const placements=game.placementOrder??(finished&&game.result.winnerPlayerId?[game.result.winnerPlayerId]:[]);
   const speech=caughtSpeech ?? (teacherWin ? "전원 적발! 도시락은 점심시간에!" : teacher==="WATCHING" ? "거기, 뭘 먹고 있는 건 아니지?" : teacher==="SUSPICIOUS" ? "…무슨 소리지?" : null);
   return <section className={`lunch-classroom teacher-${teacher.toLowerCase()}${finished?" lesson-finished":""}`} aria-label="함께 앉아 있는 교실" data-player-count={s.room.players.length}>
     <div className="lunch-room-stage">
       <ClassroomBackdrop/>
+      {!!placements.length&&<ol className="lunch-live-placements" aria-label="확정된 순위">{placements.map((id,i)=><li key={id}><b>{i+1}위</b> {s.room.players.find(p=>p.playerId===id)?.nickname??"참가자"}</li>)}</ol>}
       <div className="lunch-teacher-zone" aria-label="선생님과 교실">
         <div className="lunch-lesson-caption"><span>점심시간까지는 비밀</span><h2 role="status">{title}</h2></div>
         <TeacherArt state={teacher}/>
@@ -56,7 +59,7 @@ export function ClassroomPlaying({snapshot:s, title, seconds, allowed, danger, p
               <div className="lunch-seat-table"><DeskItem seat={seat}/><LunchboxArt remaining={remainingFood(state.completedBites,game.requiredBites)} closed={state.status!=="ACTIVE"} small/></div>
               {caught&&<span className="lunch-caught-stamp">들킴</span>}
             </div>
-            <div className="lunch-seat-label"><strong title={p.nickname}>{p.nickname}</strong><span>{winner?"완식!":caught?"CAUGHT":state.status==="FORFEITED"||p.connectionStatus==="OFFLINE"?"OFFLINE":"ACTIVE"}</span><Progress nickname={p.nickname} bites={state.completedBites} required={game.requiredBites}/></div>
+            <div className="lunch-seat-label"><strong title={p.nickname}>{p.nickname}</strong><span>{placements.includes(p.playerId)?`${placements.indexOf(p.playerId)+1}위 확정`:winner?"완식!":caught?"CAUGHT":state.status==="FORFEITED"||p.connectionStatus==="OFFLINE"?"OFFLINE":"ACTIVE"}</span><Progress nickname={p.nickname} bites={state.completedBites} required={game.requiredBites}/></div>
           </div>;
         })}
       </div>
@@ -74,12 +77,16 @@ export function ClassroomPlaying({snapshot:s, title, seconds, allowed, danger, p
         <div className="lunch-own-progress"><Progress nickname={me?.nickname??"나"} bites={own?.completedBites??0} required={game.requiredBites}/></div>
         <span className="lunch-sr-only" role="status">{ownPulse?.biteDelta ? ownPulse.cue==="BOX" ? "도시락 하나를 비웠어요!" : "냠! 한입 성공" : ""}</span>
       </div>
-      <div className="lunch-own-action"><span className="lunch-eyebrow">MY SECRET LUNCH</span><strong>{ownCaught?"들켰습니다!":own?.status==="FORFEITED"?"이번 수업은 관전 중":finished?"오늘의 작전 완료!":danger?"눈 마주치면, 딱 걸려요!":teacher==="SUSPICIOUS"?"한입 더? …조심해요!":"지금이야, 몰래 한입!"}</strong>
-        <small>{own?.status!=="ACTIVE"?"같은 자리에서 친구들을 응원해요.":danger?"돌아가는 중에도 먹으면 들켜요.":"선생님을 보면서 톡, 톡!"}</small>
-        {finished?<button ref={resultButton} className="lunch-primary" onClick={()=>setResultClosed(false)}>게임 결과 보기</button>:<button className={`lunch-eat-button${danger&&own?.status==="ACTIVE"?" danger":""}`} disabled={!allowed} onClick={onEat} aria-label={own?.status!=="ACTIVE"?"관전 중":danger?"멈춰! 누르면 들켜요":"먹기!"}><span aria-hidden="true">{own?.status!=="ACTIVE"?"쉿":danger?"!":"냠"}</span>{own?.status!=="ACTIVE"?"관전 중":game.phase==="COUNTDOWN"?"준비…":"먹기!"}<small>{own?.status!=="ACTIVE"?"친구들을 응원해요":danger?"누르면 들켜요":"한 번에 한입"}</small></button>}
+      <div className="lunch-own-action"><span className="lunch-eyebrow">MY SECRET LUNCH</span><strong>{ownRank?"내 순위 확정 · 관전 중":ownCaught?"들켰습니다!":own?.status==="FORFEITED"?"이번 수업은 관전 중":finished?"오늘의 작전 완료!":danger?"눈 마주치면, 딱 걸려요!":teacher==="SUSPICIOUS"?"한입 더? …조심해요!":"지금이야, 몰래 한입!"}</strong>
+        {!!ownRank&&<p className="lunch-placement-message">{ownRank}위를 확정했습니다!{!finished&&<small>친구들의 순위 결정이 진행 중입니다.</small>}</p>}
+        <small>{ownRank||own?.status!=="ACTIVE"?"같은 자리에서 친구들을 응원해요.":danger?"돌아가는 중에도 먹으면 들켜요.":"선생님을 보면서 톡, 톡!"}</small>
+        {finished?<button ref={resultButton} className="lunch-primary" onClick={()=>setResultClosed(false)}>게임 결과 보기</button>:ownRank?<button className="lunch-eat-button" disabled>순위 확정 · 관전 중</button>:<button className={`lunch-eat-button${danger&&own?.status==="ACTIVE"?" danger":""}`} disabled={!allowed} onClick={onEat} aria-label={own?.status!=="ACTIVE"?"관전 중":danger?"멈춰! 누르면 들켜요":"먹기!"}><span aria-hidden="true">{own?.status!=="ACTIVE"?"쉿":danger?"!":"냠"}</span>{own?.status!=="ACTIVE"?"관전 중":game.phase==="COUNTDOWN"?"준비…":"먹기!"}<small>{own?.status!=="ACTIVE"?"친구들을 응원해요":danger?"누르면 들켜요":"한 번에 한입"}</small></button>}
       </div>
     </section>
-    {finished&&!resultClosed&&<ClassroomResult teacherWin={teacherWin} winnerName={s.room.players.find(p=>p.playerId===game.result.winnerPlayerId)?.nickname??"친구"} onClose={()=>setResultClosed(true)}>{resultControls}</ClassroomResult>}
+    {finished&&!resultClosed&&!suppressResult&&<ClassroomResult teacherWin={teacherWin} winnerName={s.room.players.find(p=>p.playerId===game.result.winnerPlayerId)?.nickname??"친구"} onClose={()=>setResultClosed(true)}>
+      <ol className="lunch-final-ranks">{placements.map((id,i)=><li key={id}><b>{i+1}위</b><span>{s.room.players.find(p=>p.playerId===id)?.nickname??"참가자"}</span><small>{game.playerStates.find(p=>p.playerId===id)?.completedBites===game.requiredBites?"완식":"마지막 생존"}</small></li>)}</ol>
+      {game.playerStates.filter(p=>p.status!=="ACTIVE").map(p=><p key={p.playerId} className="lunch-eliminated-result">{s.room.players.find(v=>v.playerId===p.playerId)?.nickname??"참가자"} · {p.status==="CAUGHT"?"들킴":"탈락"}</p>)}
+      {resultControls}</ClassroomResult>}
   </section>;
 }
 
@@ -89,7 +96,7 @@ function ClassroomResult({teacherWin,winnerName,onClose,children}: {teacherWin:b
   function closeResult(){dialog.current?.close();onClose();}
   return <dialog ref={dialog} className={`lunch-classroom-result${teacherWin?" teacher-victory":""}`} aria-labelledby="lunch-result-title" onCancel={event=>{event.preventDefault();closeResult();}}>
     <button className="lunch-result-close" onClick={closeResult} aria-label="결과 닫고 교실 보기">닫기</button><span className="lunch-sticker">오늘의 비밀 작전</span>
-    <div className="lunch-result-art">{teacherWin?<TeacherArt state="WATCHING"/>:<LunchboxArt remaining={0}/>}</div><h2 id="lunch-result-title">{teacherWin?"전원 적발!":`${winnerName}님 완식 성공!`}</h2>
-    <p>{teacherWin?"도시락은 점심시간에 먹으라니까!":"선생님 몰래, 빈 도시락만 남겼어요."}</p>{children}
+    <div className="lunch-result-art">{teacherWin?<TeacherArt state="WATCHING"/>:<LunchboxArt remaining={0}/>}</div><h2 id="lunch-result-title">{teacherWin?"전원 적발!":`${winnerName}님 우승!`}</h2>
+    <p>{teacherWin?"도시락은 점심시간에 먹으라니까!":"오늘의 몰래 한입 · 최종 순위"}</p>{children}
   </dialog>;
 }
