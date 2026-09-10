@@ -88,7 +88,7 @@ export function cityDestroyPreview(game: CityRolePlayingProjectionV2, actorId: P
 export function cityCurrentHint(game: CityRolePlayingProjectionV2, selfId: PlayerId): string {
   if (game.playerStates.find(player => player.playerId === selfId)?.forfeited) return "기권 처리되었습니다. 공개된 진행 상황을 볼 수 있습니다.";
   if (game.window.activePlayerId !== selfId) return game.phase === "ROLE_SELECTION" ? "다른 참가자가 비밀 역할을 선택하고 있습니다." : "다른 참가자의 역할 차례입니다. 공개 도시와 내 손패를 살펴보세요.";
-  if (game.phase === "ROLE_SELECTION") return game.secretPairDraft ? "가져갈 역할과 비공개로 버릴 역할을 고르세요." : "역할을 하나 고르세요. 선택한 역할은 나에게만 보입니다.";
+  if (game.phase === "ROLE_SELECTION") return game.secretPairDraft ? game.draftDiscardRequired === false ? "첫 선택에서는 가져갈 역할 하나만 고르세요." : "가져갈 역할과 비공개로 버릴 역할을 고르세요." : "역할을 하나 고르세요. 선택한 역할은 나에게만 보입니다.";
   if (game.window.waitingFor === "DRAW_BUILDING_CHOICE") return "카드 1장을 선택하세요. 선택을 마쳐야 다음 행동을 할 수 있습니다.";
   if (game.privateState.action?.acquisition === "NOT_TAKEN") return "금화 2 받기 또는 건물 카드 보기를 선택하세요.";
   return "원한다면 건설하거나 역할 능력을 쓰고, 차례를 마치세요.";

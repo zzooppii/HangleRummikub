@@ -66,7 +66,7 @@ export class CityRoleStartService {
     const shuffledCards = shuffleFrozen(cards.map(card => card.cardId), random);
     const gameId = this.#deps.idGenerator.generateGameId();
     const actionId = parseCityActionId(this.#deps.idGenerator.generateTurnId());
-    const state = createInitialCityGameState({ rulesVersion: "city-rules-v3", expansionSettings: settings, specialIds, roleDraftVersion: "city-draft-v2", gameId: parseCityGameId(gameId), playerIds, seatOrder, cards,
+    const state = createInitialCityGameState({ rulesVersion: "city-rules-v3", expansionSettings: settings, specialIds, roleDraftVersion: "city-draft-v3", gameId: parseCityGameId(gameId), playerIds, seatOrder, cards,
       initialHands: playerIds.map((playerId, index) => ({ playerId, cardIds: shuffledCards.slice(index * 4, index * 4 + 4) })),
       deck: shuffledCards.slice(playerIds.length * 4), actionId, roleOrder: shuffleFrozen(CITY_ALL_ROLE_IDS.slice(0, settings.roles.length), random) });
     const game: CityRoleStoredGame = Object.freeze({ gameId, state, gameRevision: parse(GameRevisionSchema, 0),

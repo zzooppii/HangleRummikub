@@ -32,7 +32,7 @@ const Result = v.strictObject({ reason: v.picklist(["CITY_COMPLETION_ROUND_END",
     forfeited: v.boolean(), winner: v.boolean() })) });
 const Base = {
   gameId: CityGameIdSchema, rulesVersion: v.picklist(["city-rules-v1", "city-rules-v2", "city-rules-v3"]), cardSetVersion: v.picklist(["city-cardset-v1", "city-cardset-v2", "city-cardset-v3"]), roleSetVersion: v.picklist(["city-roles-v1", "city-roles-v2"]), expansion: v.exactOptional(CityExpansionStateSchema),
-  roleDraftVersion: v.exactOptional(v.literal("city-draft-v2")),
+  roleDraftVersion: v.exactOptional(v.picklist(["city-draft-v2", "city-draft-v3"])),
   landmarkHistory: v.exactOptional(v.array(v.strictObject({ playerId: CityPlayerIdSchema,
     gardenUsed: v.boolean(), sundialUsed: v.boolean(), staircaseInitialized: v.boolean(),
     staircaseRemaining: v.pipe(Natural, v.maxValue(3)), staircaseSpent: v.pipe(Natural, v.maxValue(3)),
@@ -118,9 +118,9 @@ export function assertCityGameState(state: unknown): asserts state is CityGameSt
   requireCity(sameSequence(round.pickQueue, expectedQueue) && round.selectionCursor <= expectedQueue.length, "draft queue and cursor");
   const roles = [...round.available, ...round.publicRemoved, ...round.hiddenRemoved, ...round.unselected, ...round.assignments.map(item => item.roleId)];
   requireCity(roles.length === 8 && new Set(roles).size === 8 && CITY_ROLE_IDS.every(role => roles.includes(role)), "eight-role partition");
-  const secretPairDraft = game.roleDraftVersion === "city-draft-v2" && round.eligibleAtSetup.length === 2;
+  const secretPairDraft = game.roleDraftVersion !== undefined && round.eligibleAtSetup.length === 2;
   requireCity(secretPairDraft
-    ? round.publicRemoved.length === 0 && round.hiddenRemoved.length === 1 + Math.min(3, round.assignments.length)
+    ? round.publicRemoved.length === 0 && round.hiddenRemoved.length === 1 + (game.roleDraftVersion === "city-draft-v3" ? Math.max(0, round.assignments.length - 1) : Math.min(3, round.assignments.length))
     : round.hiddenRemoved.length === 1 && round.publicRemoved.length === Math.max(0, 8 - expectedQueue.length - 2), "approved role removal counts");
   for (const id of round.eligibleAtSetup) {
     const assigned = round.assignments.filter(item => item.playerId === id).length;

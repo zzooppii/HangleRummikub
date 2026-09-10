@@ -2,7 +2,7 @@
 
 `city-rules-v2` / `city-cardset-v2` / `city-roles-v1` · 사용자 최종 승인
 
-2026-09-09 추가 승인: 새 게임의 `city-draft-v2` 2인 비공개 선택·버리기 규칙은 [별도 승인 명세](./CITY_ROLE_SECRET_DRAFT_AND_FEEDBACK.md)를 따른다. 이 변경은 아래 명소 능력을 바꾸지 않으며 draft 버전이 없는 기존 저장판에는 적용하지 않는다.
+2026-09-09 추가 승인: 당시 새 게임의 `city-draft-v2` 2인 비공개 선택·버리기 규칙은 [별도 승인 명세](./CITY_ROLE_SECRET_DRAFT_AND_FEEDBACK.md)를 따른다. 이 변경은 아래 명소 능력을 바꾸지 않으며 draft 버전이 없는 기존 저장판에는 적용하지 않는다.
 
 2026-09-09 공개 제거 정정: **CR-04 길잡이는 공개 버림 불가, 비공개 버림은 가능**하다. 모든 이후 round setup에 적용하며 현재 저장된 round는 변경하지 않는다. 공개 제거 장수·인원별 선택 방식·역할 능력·명소 버전·wire 형식은 유지한다. 과거 문서의 ‘CR-04 공개 제거 가능’ 결정보다 이번 사용자 승인이 우선한다.
 
@@ -61,3 +61,5 @@ V2 `landmarkHistory[]`: playerId, gardenUsed, sundialUsed, staircaseInitialized,
 이력은 공개된 건설의 이력이므로 참가자에게 공개한다. Deck, discard 순서, RNG, 다른 hand/role/mark, credentials, offline streak는 추가 공개하지 않는다. 기존 저장 inventory와 공개 card shape는 유지하고, rules/cardset 버전이 능력 해석을 구분한다.
 
 기존 7개 concrete CITY events와 protocolVersion, Snapshot V2 shell은 유지한다. CITY projection branch만 v1/v2 version correlation + public history + v2 결과 landmarkBonus를 확장한다. 기존 배포 Web은 v2 literal/schema를 지원하지 않으므로 디코드 실패 시 행동할 수 없으며 refresh가 필요하다. 같은 GameType 광고가 rules-v2 이해를 증명한다는 가정은 하지 않는다. 서버/웹 동시 배포 필요; 이번 작업에서는 Railway 배포하지 않는다.
+
+2026-09-10 정정 승인: 현재 신규 게임은 같은 명세의 `city-draft-v3` 선택 순서를 사용하며, 기존 v2 저장판의 규칙은 유지한다.

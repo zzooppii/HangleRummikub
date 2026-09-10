@@ -28,7 +28,7 @@ function ReferenceDialog({ mode, snapshot, onDismiss }: Readonly<{ mode: Referen
     <header className="city-help-header"><h2 id={headingId} ref={headingRef} tabIndex={-1}>{title}</h2><button type="button" aria-label={`${title} 닫기`} onClick={onDismiss}>닫기 ×</button></header>
     <div className="city-help-scroll">
       {snapshot.game.phase !== 'FINISHED' && <p className="city-help-timer">설명을 보는 동안에도 게임 시간은 계속 흐릅니다.</p>}
-      {mode === 'RULES' ? <CityExpandedHelp selectionSeconds={snapshot.game.expansion?.settings.selectionSeconds ?? 45} /> : <CityExpandedCatalog snapshot={snapshot} />}
+      {mode === 'RULES' ? <CityExpandedHelp correctedDraft={snapshot.game.roleDraftVersion === "city-draft-v3"} selectionSeconds={snapshot.game.expansion?.settings.selectionSeconds ?? 45} /> : <CityExpandedCatalog snapshot={snapshot} />}
     </div>
   </dialog>;
 }

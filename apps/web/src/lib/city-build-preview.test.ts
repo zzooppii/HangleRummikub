@@ -32,6 +32,15 @@ test('ordinary construction limits allow stables and trader trade cards but neve
   assert.equal(cityBuildPreview(base, { ...context, job: 'WITCH' }).reason, '홀린 직업 차례에 건설');
 });
 
+test('wizard immediate construction bypasses the used normal allowance but keeps cost and special restrictions', () => {
+  const wizard = { ...context, job: 'WIZARD' as const, buildingsBuilt: 1, buildings: [base], wizardImmediate: true };
+  assert.equal(cityBuildPreview(base, wizard).reason, null);
+  assert.equal(cityBuildPreview(base, { ...wizard, wizardImmediate: false }).reason, '이번 차례 건설 횟수 소진');
+  assert.equal(cityBuildPreview(special('CB-SP-10', 6), wizard).reason, '금화 1개 부족');
+  assert.match(cityBuildPreview(special('CB-SP-24', 0), wizard).reason!, /손에 보관/);
+  assert.match(cityBuildPreview(special('CB-SP-16'), { ...wizard, buildings: Array(5).fill(base) }).reason!, /5채 이상/);
+});
+
 test('duplicate, monument and secret vault restrictions remain visible without blocking alternative payment hints', () => {
   assert.equal(cityBuildPreview(base, { ...context, buildings: [base] }).reason, '이미 지은 건물');
   assert.equal(cityBuildPreview(base, { ...context, buildings: [base, special('CB-SP-22')] }).reason, null);

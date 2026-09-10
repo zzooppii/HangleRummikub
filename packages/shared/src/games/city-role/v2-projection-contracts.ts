@@ -27,8 +27,9 @@ const Common = {
     vaultOwners: v.array(PlayerIdSchema),
   })),
   gameType: v.literal("CITY_ROLE"), gameId: GameIdSchema, gameRevision: GameRevisionSchema,
-  roleDraftVersion: v.optional(v.literal("city-draft-v2")),
+  roleDraftVersion: v.optional(v.picklist(["city-draft-v2", "city-draft-v3"])),
   secretPairDraft: v.optional(v.boolean()),
+  draftDiscardRequired: v.optional(v.boolean()),
   rulesVersion: v.picklist(["city-rules-v1", "city-rules-v2", "city-rules-v3"]), cardSetVersion: v.picklist(["city-cardset-v1", "city-cardset-v2", "city-cardset-v3"]), roleSetVersion: v.picklist(["city-roles-v1", "city-roles-v2"]),
   landmarkHistory: v.optional(v.pipe(v.array(v.strictObject({ playerId: PlayerIdSchema,
     gardenUsed: v.boolean(), sundialUsed: v.boolean(), staircaseInitialized: v.boolean(),
@@ -66,6 +67,10 @@ const FinishedObject = v.strictObject({ ...Common, phase: v.literal("FINISHED"),
 
 type VisibleCity = v.InferOutput<typeof SelectionObject> | v.InferOutput<typeof ActionObject> | v.InferOutput<typeof FinishedObject>;
 function coherent(game: VisibleCity): boolean {
+  if ((game.roleDraftVersion !== undefined) !== (game.secretPairDraft !== undefined)) return false;
+  if (game.secretPairDraft && (game.rolesPerPlayer !== 2 || game.publicRemovedRoleIds.length !== 0)) return false;
+  if ((game.roleDraftVersion === "city-draft-v3") !== (game.draftDiscardRequired !== undefined)) return false;
+  if (game.draftDiscardRequired && (!game.secretPairDraft || game.phase !== "ROLE_SELECTION")) return false;
   if (game.rulesVersion === 'city-rules-v3') {
     if (!game.expansion || !game.privateState.expansion || game.cardSetVersion !== 'city-cardset-v3' || game.roleSetVersion !== 'city-roles-v2' || game.landmarkHistory !== undefined) return false;
     const ids = game.playerStates.map(p => p.playerId);
@@ -76,8 +81,6 @@ function coherent(game: VisibleCity): boolean {
     return game.phase === 'FINISHED' || game.playerStates.some(p => p.playerId === game.window.activePlayerId && !p.forfeited) && game.window.deadlineAt - game.window.startedAt === (game.phase === 'ROLE_SELECTION' ? (game.expansion.settings.selectionSeconds ?? 45) * 1000 : 90000);
   }
   if (game.expansion !== undefined || game.privateState.expansion !== undefined || game.roleSetVersion !== 'city-roles-v1' || game.privateState.hand.some(c => c.cost < 1 || c.cost > 6 || c.templateId.startsWith('CB-SP-'))) return false;
-  if ((game.roleDraftVersion !== undefined) !== (game.secretPairDraft !== undefined)) return false;
-  if (game.secretPairDraft && (game.rolesPerPlayer !== 2 || game.publicRemovedRoleIds.length !== 0)) return false;
   const v2 = game.rulesVersion === "city-rules-v2";
   if (game.cardSetVersion !== (v2 ? "city-cardset-v2" : "city-cardset-v1") || (game.landmarkHistory !== undefined) !== v2) return false;
   if (game.landmarkHistory !== undefined) {

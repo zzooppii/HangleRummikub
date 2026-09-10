@@ -188,7 +188,7 @@ test("CR02 investigation: two real socket clients resume unresolved v2 mark and 
   const h = await harness(t), group = await h.group("CITY_ROLE", 2);
   let view = h.city(await h.start(group));
   const owners = new Map<string, typeof group.members[number]>();
-  for (const requested of ["CR-02", "CR-06", null] as const) {
+  for (const requested of ["CR-02", "CR-06", null, null] as const) {
     const actor = group.members.find(m => m.playerId === view.game.window.activePlayerId)!;
     view = h.city(await h.sync(actor.client));
     assert.ok(view.game.phase === "ROLE_SELECTION");
@@ -196,7 +196,7 @@ test("CR02 investigation: two real socket clients resume unresolved v2 mark and 
     owners.set(roleId, actor);
     assert.ok(view.game.phase === "ROLE_SELECTION" && view.game.privateState.availableRoleIds?.includes(roleId), JSON.stringify({ roleId, available: view.game.privateState }));
     const discardRoleId = view.game.privateState.availableRoleIds!.find(id => id === "CR-01") ?? view.game.privateState.availableRoleIds!.find(id => id !== roleId && id !== "CR-06")!;
-    view = await h.action(actor.client, "city:selectRole", { roleId, discardRoleId }, view);
+    view = await h.action(actor.client, "city:selectRole", { roleId, ...(view.game.draftDiscardRequired ? { discardRoleId } : {}) }, view);
   }
   const source = owners.get("CR-02")!, target = owners.get("CR-06")!;
   assert.notEqual(source.playerId, target.playerId);

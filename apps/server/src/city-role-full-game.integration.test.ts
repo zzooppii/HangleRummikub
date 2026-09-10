@@ -121,17 +121,20 @@ async function fullGameHarness(count: 2 | 4 | 6) {
     commits: () => commits, callbackFailures: () => callbackFailures, finishNotifications: () => finishNotifications };
 }
 
-test("CITY new two-player timeout service atomically picks/discards at 45s and ignores replay", async t => {
+test("CITY corrected two-player timeout service handles all four selection windows and ignores replay", async t => {
   const h = await fullGameHarness(2); t.after(() => h.scheduler.stop());
-  for (let step = 0; step < 3; step++) {
+  for (let step = 0; step < 4; step++) {
     const before = await h.read(); const deadline = (await h.persistence.listActiveTurnDeadlines())[0]!;
-    assert.equal(before.game.state.round.available.length, 7 - step * 2);
+    assert.equal(before.game.state.round.available.length, [7, 6, 4, 2][step]);
+    assert.equal(before.game.deadlineAt! - before.game.windowStartedAt!, 20_000);
+    const projected = await h.viewer(before, parse(PlayerIdSchema, before.game.state.window!.activePlayerId));
+    assert.equal(projected.game.draftDiscardRequired, step > 0);
     h.clock.set(deadline.deadlineAt);
     assert.equal((await h.timeout.timeout(deadline)).status, "APPLIED");
     const after = await h.read();
     assert.equal(after.game.gameRevision, before.game.gameRevision + 1);
-    assert.equal(after.game.state.round.hiddenRemoved.length, step + 2);
-    assert.equal(new Set([...after.game.state.round.hiddenRemoved, ...after.game.state.round.assignments.map(a => a.roleId)]).size, step === 2 ? 8 : (step + 1) * 2 + 1);
+    assert.equal(after.game.state.round.hiddenRemoved.length, step + 1);
+    assert.equal(new Set([...after.game.state.round.hiddenRemoved, ...after.game.state.round.assignments.map(a => a.roleId)]).size, (step + 1) * 2);
     assert.equal((await h.timeout.timeout(deadline)).status, "NO_OP");
     assert.deepEqual(await h.read(), after);
     assert.deepEqual(new CityRoleGameStateAdapter().cloneAndValidate(JSON.parse(JSON.stringify(after.game))), after.game);
@@ -152,7 +155,7 @@ function chooseMove(snapshot: CityRolePlayingPlatformSnapshotV2, hasDrawn: boole
     const preference: readonly CityRoleId[] = ["CR-07", "CR-06", "CR-04", "CR-05", "CR-08", "CR-03", "CR-02", "CR-01"];
     const roleId = preference.find(role => available.includes(role));
     assert.ok(roleId);
-    return { kind: "SELECT", roleId, ...(game.secretPairDraft ? { discardRoleId: available.find(role => role !== roleId)! } : {}) };
+    return { kind: "SELECT", roleId, ...(game.draftDiscardRequired ? { discardRoleId: available.find(role => role !== roleId)! } : {}) };
   }
   const action = game.privateState.action;
   assert.ok(action);

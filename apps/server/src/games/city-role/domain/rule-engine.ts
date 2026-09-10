@@ -1,3 +1,4 @@
+import { cityDraftRequiresDiscard } from "./role-draft.js";
 import { expandedBuild, expandedAction, expandedAfterResources, expandedEnter, expandedEnd, expandedBeforeResolution, expandedCloseRound, initialExpansion, expandedValidateAbility, expandedTimeout, expandedForfeit, expandedFinishPending } from "./expansion-engine.js";
 import type { CityExpansionAction } from "./expansion-state.js";
 import type { CityExpansionSettings, CitySpecialId } from "./expansion-catalog.js";
@@ -92,10 +93,10 @@ function makeRound(s: CityWorkingState, roleOrder: readonly CityRoleId[] | undef
   const ordered = [...seats.slice(start), ...seats.slice(0, start)];
   const rolesPerPlayer = seats.length <= 3 ? 2 : 1;
   const pickQueue = rolesPerPlayer === 2 ? [...ordered, ...ordered] : ordered;
-  const publicCount = s.roleDraftVersion === "city-draft-v2" && seats.length === 2 ? 0 : Math.max(0, (s.expansion?.settings.roles.length ?? 8) - pickQueue.length - 2);
+  const publicCount = s.roleDraftVersion !== undefined && seats.length === 2 ? 0 : Math.max(0, (s.expansion?.settings.roles.length ?? 8) - pickQueue.length - 2);
   // CR-04 may be hidden, but must never be removed face-up. Keep the
   // injected shuffle order and exact removal count without drawing new entropy.
-  const hiddenCount = s.expansion && seats.length === 2 && s.roleDraftVersion === "city-draft-v2" ? roleOrder.length - 7 : 1;
+  const hiddenCount = s.expansion && seats.length === 2 && s.roleDraftVersion !== undefined ? roleOrder.length - 7 : 1;
   const remaining = roleOrder.slice(hiddenCount);
   const publicRemoved: readonly CityRoleId[] = remaining.filter(id => id !== "CR-04").slice(0, publicCount);
   return {
@@ -355,8 +356,7 @@ function selectRole(s: CityWorkingState, roleId: CityRoleId, discardRoleId?: Cit
   requireRule(s.window?.kind === "ROLE_SELECTION", "INVALID_PHASE");
   requireRule(s.round.available.includes(roleId), "INVALID_ROLE");
   const id = s.window.activePlayerId;
-  const secretPairDraft = s.roleDraftVersion === "city-draft-v2" && s.round.eligibleAtSetup.length === 2;
-  requireRule(secretPairDraft
+  requireRule(cityDraftRequiresDiscard(s)
     ? discardRoleId !== undefined && discardRoleId !== roleId && s.round.available.includes(discardRoleId)
     : discardRoleId === undefined, "INVALID_ROLE");
   requireRule(s.round.assignments.filter(a => a.playerId === id).length < s.round.rolesPerPlayer, "INVALID_ROLE");
@@ -364,7 +364,7 @@ function selectRole(s: CityWorkingState, roleId: CityRoleId, discardRoleId?: Cit
     hiddenRemoved: discardRoleId === undefined ? s.round.hiddenRemoved : [...s.round.hiddenRemoved, discardRoleId],
     assignments: [...s.round.assignments, { roleId, playerId: id, status: "SELECTED", revealed: false }],
     selectionCursor: s.round.selectionCursor + 1 };
-  if (secretPairDraft && s.round.selectionCursor === 3) {
+  if (s.roleDraftVersion === "city-draft-v2" && s.round.eligibleAtSetup.length === 2 && s.round.selectionCursor === 3) {
     const lastRole = s.round.available[0], lastPlayer = s.round.pickQueue[3];
     requireRule(lastRole !== undefined && s.round.available.length === 1 && lastPlayer !== undefined, "INVALID_STATE");
     s.round = { ...s.round, available: [], selectionCursor: 4,
@@ -412,7 +412,7 @@ export function createInitialCityGameState(input: Readonly<{
   actionId: CityActionId; roleOrder: readonly CityRoleId[];
   rulesVersion?: "city-rules-v1" | "city-rules-v2" | "city-rules-v3";
   expansionSettings?: CityExpansionSettings; specialIds?: readonly CitySpecialId[];
-  roleDraftVersion?: "city-draft-v2";
+  roleDraftVersion?: "city-draft-v2" | "city-draft-v3";
 }>): CityGameState {
   try {
     requireRule(input.rulesVersion === undefined || input.rulesVersion === "city-rules-v1" || input.rulesVersion === CITY_RULES_V2 || input.rulesVersion === "city-rules-v3", "INVALID_SETUP");

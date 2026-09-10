@@ -32,3 +32,23 @@ test("CITY role environments cover all eight identities and retain mobile touch 
   assert.match(css, /city-draft-card-actions button[^}]*min-height:44px/);
   assert.match(css, /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
 });
+
+
+test("CITY corrected first draft shows keep-only controls and the current selection timer", () => {
+  const html = renderToStaticMarkup(createElement(CitySecretDraft, { roles: ["CR-02", "CR-03", "CR-04"], locked: false,
+    discardRequired: false, automaticLast: false, selectionSeconds: 10, onAction() {} }));
+  assert.match(html, /첫 선택에서는 가져갈 역할 1장만/);
+  assert.match(html, /10초가 지나면 서버가 한 장을/);
+  assert.match(html, /직업 선택 확정/);
+  assert.equal((html.match(/<button/g) ?? []).length, 4);
+  assert.doesNotMatch(html, /비공개 버리기<\/button>|자동 배정|버릴 역할 선택/);
+});
+
+test("CITY corrected final draft offers both choices with no automatic assignment notice", () => {
+  const html = renderToStaticMarkup(createElement(CitySecretDraft, { roles: ["CR-04", "CR-08"], locked: false,
+    discardRequired: true, automaticLast: false, selectionSeconds: 30, onAction() {} }));
+  assert.equal((html.match(/class="city-role-card/g) ?? []).length, 2);
+  assert.equal((html.match(/비공개 버리기<\/button>/g) ?? []).length, 2);
+  assert.match(html, /30초가 지나면 서버가 두 장을/);
+  assert.doesNotMatch(html, /자동 배정/);
+});

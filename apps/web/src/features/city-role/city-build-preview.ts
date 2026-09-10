@@ -7,13 +7,14 @@ export function cityBuildPreview(card: CityPublicBuilding, context: Readonly<{
   job: CityJobId | undefined;
   buildingsBuilt: number;
   taxCollector: boolean;
+  wizardImmediate?: boolean;
 }>) {
   const { buildings, gold, job, buildingsBuilt } = context;
   const has = (id: string) => buildings.some(b => b.templateId === id);
   const discount = Number(card.category === 'LANDMARK' && has('CB-SP-05'));
   const cost = Math.max(0, card.cost - discount);
   const tax = Number(context.taxCollector && job !== 'TAX_COLLECTOR' && gold > cost);
-  const freeBuild = card.templateId === 'CB-SP-26' || job === 'TRADER' && card.category === 'TRADE';
+  const freeBuild = job === 'WIZARD' && context.wizardImmediate === true || card.templateId === 'CB-SP-26' || job === 'TRADER' && card.category === 'TRADE';
   const limit = job === 'ARCHITECT' ? 3 : job === 'SCHOLAR' || job === 'SEER' ? 2 : 1;
   const restriction = card.templateId === 'CB-SP-24' ? '손에 보관 · 종료 +3점'
     : job === 'NAVIGATOR' ? '항해사는 건설 불가'

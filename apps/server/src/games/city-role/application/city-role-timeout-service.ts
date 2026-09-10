@@ -1,3 +1,4 @@
+import { cityDraftRequiresDiscard } from "../domain/role-draft.js";
 import { CITY_ALL_ROLE_IDS } from "../domain/role.js";
 import { PlayerIdSchema, RequestIdSchema, type PlayerId } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
@@ -66,7 +67,7 @@ export class CityRoleTimeoutService {
       ? [...game.state.discard, ...actor.hand, ...pendingKept] : game.state.discard;
     const role = window.kind === "ROLE_SELECTION" ? game.state.round.available[random.nextInt(game.state.round.available.length)] : undefined;
     const remaining = game.state.round.available.filter(candidate => candidate !== role);
-    const discardRoleId = role !== undefined && game.state.roleDraftVersion === "city-draft-v2" && game.state.round.eligibleAtSetup.length === 2
+    const discardRoleId = role !== undefined && cityDraftRequiresDiscard(game.state)
       ? remaining[random.nextInt(remaining.length)] : undefined;
     const state = timeoutCityWindow(game.state, { gameId: game.state.gameId, actionId: window.actionId, playerId: window.activePlayerId },
       { offline, ...(role === undefined ? {} : { selectedRoleId: role }), ...(discardRoleId === undefined ? {} : { discardRoleId }) }, cityDomainEntropy(this.#deps.idGenerator, random, discard, CITY_ALL_ROLE_IDS.slice(0, game.state.expansion?.settings.roles.length ?? 8)));

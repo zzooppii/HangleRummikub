@@ -1,3 +1,4 @@
+import { cityDraftRequiresDiscard } from "../domain/role-draft.js";
 import { CityRolePlayingProjectionV2Schema, CityRoleFinishedProjectionV2Schema, type PlayerId } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 import { getCityTemplate } from "../domain/cardset-v1.js";
@@ -52,6 +53,7 @@ export function projectCityRoleV2Game(input: {
     roundNumber: state.round.roundNumber, seatOrder: [...state.seatOrder], leaderPlayerId: state.leaderPlayerId,
     rolesPerPlayer: state.round.rolesPerPlayer, publicRemovedRoleIds: [...state.round.publicRemoved],
     ...(state.roleDraftVersion === undefined ? {} : { roleDraftVersion: state.roleDraftVersion, secretPairDraft: state.round.eligibleAtSetup.length === 2 }),
+    ...(state.roleDraftVersion === "city-draft-v3" ? { draftDiscardRequired: cityDraftRequiresDiscard(state) } : {}),
     revealedRoles: state.revealedRoles.map(role => ({ roundNumber: role.roundNumber, roleId: role.roleId, playerId: role.playerId, kind: role.kind })),
     protectedPlayerIds: [...state.round.protectedPlayerIds],
     firstCompletion: state.firstCompletion === null ? null : { playerId: state.firstCompletion.playerId, roundNumber: state.firstCompletion.roundNumber },

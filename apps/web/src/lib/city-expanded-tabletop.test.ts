@@ -42,6 +42,30 @@ test('turn flow offers resources before acquisition and condenses them after ser
   assert.doesNotMatch(pending, /is-buildable/);
 });
 
+test('wizard has dedicated opponent cards and only exposes choice cards to the responding viewer', () => {
+  const roles = [...CITY_DEFAULT_SETTINGS.roles]; roles[2] = 'WIZARD';
+  const base = expanded(cityActionFixture(), roles);
+  const html = screen(base);
+  assert.match(html, /마법사의 상대 선택/);
+  assert.match(html, /도시1/); assert.match(html, /도시2/);
+  assert.doesNotMatch(html, /<select|마법사 능력 사용|카드를 사용하는 능력은 아래 손패/);
+  const pending = parse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: { ...base.game,
+    expansion: { ...base.game.expansion, pending: 'WIZARD' },
+    privateState: { ...base.game.privateState, action: { acquisition: 'COMPLETE', abilityUsed: true, buildingsBuilt: 1 }, expansion: { ...base.game.privateState.expansion, choiceCards: [{ ...base.game.privateState.hand[0], cardId: 'wizard-visible', name: '확인 전용 건물' }] } },
+  } });
+  const choosing = screen(pending);
+  assert.match(choosing, /마법사가 확인한 손패/); assert.match(choosing, /확인 전용 건물/);
+  assert.match(choosing, /건설 횟수를 쓰지 않습니다/);
+  assert.match(choosing, /disabled="">손패로 가져오기/);
+  assert.doesNotMatch(choosing.slice(choosing.indexOf('aria-label="마법사가 확인한 손패"'), choosing.indexOf('city-construction-progress')), /이번 차례 건설 횟수 소진/);
+  const observer = parse(CityRolePlayingPlatformSnapshotV2Schema, { ...pending, game: { ...pending.game,
+    window: { ...pending.game.window, activePlayerId: 'P1' },
+    privateState: { hand: base.game.privateState.hand, selectedRoleIds: base.game.privateState.selectedRoleIds, marks: [], expansion: { ...base.game.privateState.expansion, choiceCards: [] } },
+  } });
+  assert.doesNotMatch(screen(observer), /마법사가 확인한 손패|확인 전용 건물/);
+  assert.match(screen(observer), /마법사가 카드를 선택하고 있습니다/);
+});
+
 test('mobile status shows the viewer resources while another player is acting', () => {
   const base = expanded(cityActionFixture());
   const snapshot = parse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: { ...base.game,
@@ -219,4 +243,20 @@ test('HUD follows the server responder during interruptions and keeps the same a
   assert.match(expired, /class="city-turn-hud is-urgent"/);
   assert.match(expired, /남은 시간 0초">00:00/);
   assert.match(expired, /서버의 자동 진행/);
+});
+
+
+test('corrected two-player screen follows the server discard flag and rejects missing version metadata', () => {
+  const base = expanded(citySelectionFixture(2));
+  const make = (draftDiscardRequired: boolean) => parse(CityRolePlayingPlatformSnapshotV2Schema, { ...base,
+    game: { ...base.game, roleDraftVersion: 'city-draft-v3', secretPairDraft: true, draftDiscardRequired } });
+  const first = screen(make(false));
+  assert.match(first, /aria-label="1 · 암살자 가져오기"/);
+  assert.doesNotMatch(first, /aria-label="1 · 암살자 비공개 버리기"/);
+  assert.match(first, /직업 선택 확정/);
+  const later = screen(make(true));
+  assert.match(later, /aria-label="1 · 암살자 비공개 버리기"/);
+  assert.doesNotMatch(first + later, /자동 배정/);
+  assert.throws(() => parse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: { ...base.game, roleDraftVersion: 'city-draft-v3', secretPairDraft: true } }));
+  assert.throws(() => parse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: { ...base.game, roleDraftVersion: 'city-draft-v3', secretPairDraft: false, draftDiscardRequired: true } }));
 });

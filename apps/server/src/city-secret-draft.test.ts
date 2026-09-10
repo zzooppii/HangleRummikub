@@ -5,11 +5,11 @@ import { cloneCityGameState } from "./games/city-role/domain/game-state.js";
 import { assertCityGameState } from "./games/city-role/domain/state-validator.js";
 import { actCity, createCityFixture, cityContext, cityEntropy, CITY_TEST_ROLE_ORDER } from "./testing/city-role-fixtures.test.js";
 
-function draft(count = 2, roleOrder = CITY_TEST_ROLE_ORDER) {
+function draft(count = 2, roleOrder = CITY_TEST_ROLE_ORDER, roleDraftVersion: "city-draft-v2" | "city-draft-v3" = "city-draft-v2") {
   const old = createCityFixture(count);
   return createInitialCityGameState({ gameId: old.gameId, playerIds: old.seatOrder, seatOrder: old.seatOrder,
     cards: old.cards, deck: old.deck, initialHands: old.players.map(p => ({ playerId: p.playerId, cardIds: p.hand })),
-    actionId: cityContext(old).actionId, roleOrder, rulesVersion: "city-rules-v2", roleDraftVersion: "city-draft-v2" });
+    actionId: cityContext(old).actionId, roleOrder, rulesVersion: "city-rules-v2", roleDraftVersion });
 }
 test("CITY CR-04 never publicly discarded: every shuffled position, 2–6 players, exact partition", () => {
   for (const count of [2, 3, 4, 5, 6]) for (let position = 0; position < 8; position++) {
@@ -115,4 +115,79 @@ test("CITY legacy persisted draft stays unchanged; new draft leaves 3–6 player
     assert.deepEqual(current.round, old.round);
     assert.doesNotThrow(() => actCity(current, { kind: "SELECT_ROLE", roleId: current.round.available[0]! }));
   }
+});
+
+
+test("CITY corrected two-player draft is A keep, B pair, A pair, B pair with no automatic last role", () => {
+  let s = draft(2, CITY_TEST_ROLE_ORDER, "city-draft-v3");
+  const seats = [...s.seatOrder];
+  for (const [step, size] of [7, 6, 4, 2].entries()) {
+    assert.equal(s.window?.kind, "ROLE_SELECTION");
+    assert.equal(s.window?.activePlayerId, seats[step % 2]);
+    assert.equal(s.round.available.length, size);
+    assert.equal(s.round.assignments.length, step);
+    const [discardRoleId, roleId] = s.round.available;
+    assert.ok(roleId && discardRoleId);
+    const before = JSON.stringify(s);
+    if (step === 0) {
+      assert.throws(() => actCity(s, { kind: "SELECT_ROLE", roleId, discardRoleId }));
+    } else {
+      for (const discard of [undefined, roleId, s.round.hiddenRemoved[0]!]) {
+        assert.throws(() => actCity(s, { kind: "SELECT_ROLE", roleId, ...(discard === undefined ? {} : { discardRoleId: discard }) }));
+      }
+    }
+    assert.equal(JSON.stringify(s), before);
+    const context = cityContext(s);
+    s = actCity(s, { kind: "SELECT_ROLE", roleId, ...(step > 0 ? { discardRoleId } : {}) });
+    assert.equal(s.round.assignments.at(-1)?.roleId, roleId);
+    assert.equal(s.round.hiddenRemoved.length, step + 1);
+    const restored: unknown = JSON.parse(JSON.stringify(s));
+    assertCityGameState(restored);
+    assert.deepEqual(cloneCityGameState(restored), s);
+    assert.throws(() => timeoutCityWindow(restored, context, { offline: false, selectedRoleId: roleId }, cityEntropy(s)));
+  }
+  assert.equal(s.window?.kind, "ROLE_ACTION");
+  assert.deepEqual(s.round.available, []);
+  assert.deepEqual(s.round.unselected, []);
+  assert.deepEqual(s.round.publicRemoved, []);
+  for (const id of seats) assert.equal(s.round.assignments.filter(a => a.playerId === id).length, 2);
+});
+
+test("CITY corrected draft timeout follows the same four choices and leaves one hidden after first pick", () => {
+  let s = draft(2, CITY_TEST_ROLE_ORDER, "city-draft-v3");
+  for (let step = 0; step < 4; step++) {
+    assert.equal(s.window?.kind, "ROLE_SELECTION");
+    s = timeoutCityWindow(s, cityContext(s), { offline: false, selectedRoleId: s.round.available[0]!,
+      ...(step > 0 ? { discardRoleId: s.round.available[1]! } : {}) }, cityEntropy(s));
+    assert.equal(s.round.assignments.length, step + 1);
+    assert.equal(s.round.hiddenRemoved.length, step + 1);
+    assertCityGameState(s);
+  }
+  assert.equal(s.window?.kind, "ROLE_ACTION");
+});
+
+test("CITY corrected draft preserves forfeit precedence at each of the four selection windows", () => {
+  let s = draft(2, CITY_TEST_ROLE_ORDER, "city-draft-v3");
+  for (let step = 0; step < 4; step++) {
+    const actor = s.window!.activePlayerId;
+    const left = forfeitCityPlayers(s, [actor], cityEntropy(s));
+    assert.equal(left.result?.reason, "LAST_PLAYER_STANDING");
+    assertCityGameState(left);
+    const offline = { ...s, players: s.players.map(p => p.playerId === actor ? { ...p, offlineTimeoutStreak: 2 } : p) };
+    const selection = { selectedRoleId: s.round.available[0]!, ...(step > 0 ? { discardRoleId: s.round.available[1]! } : {}) };
+    const ended = timeoutCityWindow(offline, cityContext(offline), { offline: true, ...selection }, cityEntropy(offline));
+    assert.equal(ended.result?.reason, "LAST_PLAYER_STANDING");
+    assertCityGameState(ended);
+    s = actCity(s, { kind: "SELECT_ROLE", roleId: selection.selectedRoleId, ...(selection.discardRoleId === undefined ? {} : { discardRoleId: selection.discardRoleId }) });
+  }
+});
+
+test("CITY corrected draft leaves 3–6 players unchanged and cannot reinterpret a saved v2 draft", () => {
+  for (const count of [3, 4, 5, 6]) {
+    assert.deepEqual(draft(count, CITY_TEST_ROLE_ORDER, "city-draft-v3").round, draft(count).round);
+  }
+  const old = draft();
+  const picked = actCity(old, { kind: "SELECT_ROLE", roleId: old.round.available[0]!, discardRoleId: old.round.available[1]! });
+  assertCityGameState(picked);
+  assert.throws(() => assertCityGameState({ ...picked, roleDraftVersion: "city-draft-v3" }));
 });

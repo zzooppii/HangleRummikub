@@ -32,6 +32,12 @@ export function assertExpandedCanonical(s: CityGameState): void {
   check(r.rolesPerPlayer === (rotated.length <= 3 ? 2 : 1) && JSON.stringify(r.pickQueue) === JSON.stringify(queue) && r.selectionCursor <= queue.length);
   const roles = [...r.available, ...r.publicRemoved, ...r.hiddenRemoved, ...r.unselected, ...r.assignments.map(a => a.roleId)];
   check(roles.length === roleIds.length && new Set(roles).size === roles.length && roleIds.every(id => roles.includes(id)) && !r.publicRemoved.includes('CR-04'));
+  if (s.roleDraftVersion === 'city-draft-v3' && r.eligibleAtSetup.length === 2) {
+    check(r.publicRemoved.length === 0 && r.unselected.length === 0 &&
+      r.hiddenRemoved.length === roleIds.length - 7 + Math.max(0, r.assignments.length - 1));
+    check(r.assignments.length === r.selectionCursor);
+    if (s.window?.kind === 'ROLE_SELECTION') check(r.assignments.every((a, i) => a.playerId === r.pickQueue[i]));
+  }
   for (const a of r.assignments) {
     check(r.eligibleAtSetup.includes(a.playerId) && s.players.some(p => p.playerId === a.playerId && p.forfeited === (a.status === 'TOMBSTONED')));
     check(a.status !== 'SELECTED' || !a.revealed && cityRoleOrder(a.roleId) > r.resolutionCursor);

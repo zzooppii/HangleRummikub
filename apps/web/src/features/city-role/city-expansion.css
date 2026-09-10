@@ -49,6 +49,24 @@
   .city-expanded-page .city-expanded-role-catalog{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 }
 .city-mobile-resources{display:none}
+.city-wizard{min-width:0;margin-top:12px}
+.city-wizard-intro{margin:0 0 14px;font-size:13px;line-height:1.6;color:#655f4c}
+.city-wizard-players{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.city-expanded-page .city-wizard-player{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 10px;background:linear-gradient(145deg,#fff9e6,#e7ead8);border-color:#c6b48b;min-width:0}
+.city-wizard-player>.city-icon{width:32px;height:32px;color:#597964}.city-wizard-player>strong{font-size:16px;overflow-wrap:anywhere}
+.city-wizard-player>span{font-size:12px}.city-wizard-player b{font-size:20px;margin:0 3px}.city-wizard-player small{font-size:11px}
+.city-expanded-page .city-wizard-player[aria-pressed=true]{border-color:#315d4e;box-shadow:inset 0 0 0 1px #315d4e;background:#dce8d5}
+.city-wizard-confirm{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px}
+.city-wizard-confirm p{font-size:12px;color:#6c6651;line-height:1.5;margin:0;flex:1}
+.city-expanded-page .city-wizard-confirm>button{max-width:100%;background:#315d4e;border-color:#315d4e;color:#fff9e6;min-height:44px}
+.city-wizard-cards{display:flex;gap:14px;overflow-x:auto;padding:4px 4px 14px;scrollbar-width:thin}
+.city-wizard-cards>.city-expanded-card{flex:0 0 180px}
+.city-wizard-decision{padding:14px;border:1px solid #c7b28e;border-radius:12px;background:#fff6df;margin-top:8px}
+.city-wizard-decision>strong{font-size:14px;overflow-wrap:anywhere}.city-wizard-decision>p{font-size:12px;color:#886443;line-height:1.5}
+.city-wizard-decision>div{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.city-expanded-page .city-wizard-decision button:last-child{background:#315d4e;border-color:#315d4e;color:#fff9e6}
+.city-expanded-page .city-wizard-confirm>button:hover:not(:disabled),.city-expanded-page .city-wizard-decision button:last-child:hover:not(:disabled){background:#254b3e;color:#fff9e6}
+@media(max-width:620px){.city-wizard-players{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.city-wizard-confirm{flex-direction:column;align-items:stretch}.city-wizard-cards>.city-expanded-card{flex-basis:155px}.city-wizard-decision>div{flex-direction:column}.city-expanded-page .city-wizard-panel{padding:12px}}
 .city-turn-steps ol{list-style:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0;padding:0}
 .city-turn-steps li{display:flex;align-items:center;gap:7px;padding:10px 8px;border-bottom:2px solid #c8bda450;color:#887e69;font-size:12px;font-weight:700}
 .city-turn-steps li>b{display:grid;place-items:center;width:24px;height:24px;flex-shrink:0;border:1px solid #c6b58e;border-radius:50%;font-size:12px}
