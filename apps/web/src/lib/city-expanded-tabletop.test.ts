@@ -139,8 +139,8 @@ test('only constructed active specials expose building actions, independently of
   assert.doesNotMatch(screen(thiefWithBuildings([], ['CB-SP-14'])), /특수 건물 사용|대체 건설/);
 });
 
-test('alternative construction appears for hand payment, built framework, necropolis with a city, or cardinal', () => {
-  for (const snapshot of [thiefWithBuildings(['CB-SP-29']), thiefWithBuildings([], ['CB-SP-06']), thiefWithBuildings(['CB-SP-18'], ['CB-SP-14']), thiefWithBuildings([], [], true)]) {
+test('alternative construction appears for hand payment, built framework, or necropolis with a city', () => {
+  for (const snapshot of [thiefWithBuildings(['CB-SP-29']), thiefWithBuildings([], ['CB-SP-06']), thiefWithBuildings(['CB-SP-18'], ['CB-SP-14'])]) {
     assert.match(screen(snapshot), /건설할 카드/);
     assert.match(screen(snapshot), /대체 건설/);
     assert.doesNotMatch(screen(snapshot), /<summary>특수 건물 사용/);
@@ -329,4 +329,44 @@ test('nickname draft order shows both passes, highlights the exact current pick 
   assert.doesNotMatch(screen(expanded(cityActionFixture())),/aria-label="직업 선택 순서"/);
   assert.throws(()=>parse(CityRolePlayingPlatformSnapshotV2Schema,{...base,game:{...base.game,selectionOrder:{playerIds:['P0','P1','P2','P0','P1','P2'],currentIndex:1}}}));
   assert.throws(()=>parse(CityRolePlayingPlatformSnapshotV2Schema,{...base,game:{...base.game,selectionOrder:{playerIds:['P0','unknown'],currentIndex:0}}}));
+});
+
+
+test('cardinal separates construction and multi-card payment from generic role and special controls', () => {
+  const html = screen(thiefWithBuildings([], [], true));
+  assert.match(html, /aria-label="추기경 교환 건설"/);
+  assert.match(html, /지을 건물 한 장/);
+  assert.match(html, /부족한 금화 1개마다 손패 1장/);
+  assert.match(html, /건설 대상으로 선택/);
+  assert.match(html, /disabled="">카드 0장 교환하고 건설/);
+  assert.doesNotMatch(html, /<select|<summary>직업 능력 사용|대체 건설/);
+  const armory = screen(thiefWithBuildings([], ['CB-SP-01'], true));
+  assert.match(armory, /병기고 대상 도시/);
+  assert.match(armory, /병기고 대상 건물/);
+  assert.match(armory, /<summary>특수 건물 사용/);
+  assert.match(screen(thiefWithBuildings(['CB-SP-29'], [], true)), /대체 건설/);
+});
+
+test('every public city shows eight compact slots with its own count and accessible nickname', () => {
+  const base = expanded(cityActionFixture());
+  const card = base.game.privateState.hand[0]!;
+  const snapshot = parse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: { ...base.game,
+    playerStates: base.game.playerStates.map((p, i) => ({ ...p,
+      builtBuildings: Array.from({length:[5,4,0][i]!}, (_,n)=>({...card,cardId:`public-${i}-${n}`})),
+      scorePreview: [5,4,0][i]!,
+    })),
+  }});
+  const html = screen(snapshot);
+  const cities = html.slice(html.indexOf('<section class="city-cities">'));
+  for (const [i, count] of [5,4,0].entries()) {
+    const section = cities.slice(cities.indexOf(`aria-label="도시${i}의 도시 건설 현황"`)).split('</article>')[0]!;
+    assert.match(section, new RegExp(`aria-label="도시${i}의 도시 완성"[^>]*aria-valuenow="${count}"`));
+    assert.equal((section.match(/class="city-construction-slot(?: is-built)?"/g) ?? []).length, 8);
+    assert.equal((section.match(/class="city-construction-slot is-built"/g) ?? []).length, count);
+    assert.doesNotMatch(section, /8칸을 완성하면/);
+  }
+  const monument = {...card,templateId:'CB-SP-16' as const,category:'LANDMARK' as const};
+  const publicMonument = renderToStaticMarkup(createElement(CityConstructionProgress, { buildings:[monument], ending:false, finished:false, variant:'public', cityName:'라미의 도시' }));
+  assert.match(publicMonument, /aria-valuenow="2"/);
+  assert.match(publicMonument, /건물 1채, 완성 2 \/ 8칸, 기념비는 2칸/);
 });

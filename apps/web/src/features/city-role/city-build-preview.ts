@@ -26,7 +26,7 @@ export function cityBuildPreview(card: CityPublicBuilding, context: Readonly<{
   const alternative = restriction !== null ? null : has('CB-SP-06') ? '골조 희생으로도 건설 가능'
     : card.templateId === 'CB-SP-18' && buildings.length > 0 ? '내 건물 희생으로도 건설 가능'
     : card.templateId === 'CB-SP-29' ? '대체 건설에서 손패로도 지불 가능'
-    : job === 'CARDINAL' && shortfall > 0 ? '대체 건설에서 추기경 교환 가능' : null;
+    : job === 'CARDINAL' && shortfall > 0 ? '추기경 교환 건설에서 지급 카드 여러 장 선택' : null;
   return { cost, discount, tax, freeBuild, limit, restriction, shortfall, alternative,
     reason: restriction ?? (shortfall > 0 ? `금화 ${shortfall}개 부족` : null) };
 }

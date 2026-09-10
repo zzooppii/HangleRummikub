@@ -283,3 +283,31 @@ test('abbot culture income allocation and tribute are independent and cannot exc
   }
   const before=structuredClone(s);assert.throws(()=>extra(s,{command:'INCOME',goldCount:3}));assert.deepEqual(s,before);
 });
+
+
+test('cardinal transfers four distinct payment cards for a six-gold building and rejects invalid exchanges atomically', () => {
+  const base = zones(setup('CARDINAL'), [], ['CB-CIV-06','CB-CIV-01','CB-CIV-01','CB-CIV-02','CB-CIV-03']);
+  const s = {...base, players:base.players.map(p=>({...p,gold:p.playerId===me?2:10}))};
+  assertCityGameState(s);
+  const [building, ...payment] = ownPlayer(s).hand;
+  assert.ok(building); assert.equal(payment.length,4);
+  const before=structuredClone(s);
+  for (const action of [
+    {command:'BUILD',cardId:building,cardIds:payment.slice(0,1),targetPlayerId:them},
+    {command:'BUILD',cardId:building,cardIds:[building,...payment.slice(0,3)],targetPlayerId:them},
+  ] satisfies CityExpansionAction[]) {
+    assert.throws(()=>extra(s,action)); assert.deepEqual(s,before);
+  }
+  const poor={...s,players:s.players.map(p=>p.playerId===them?{...p,gold:3}:p)};
+  const poorBefore=structuredClone(poor);
+  assert.throws(()=>extra(poor,{command:'BUILD',cardId:building,cardIds:payment,targetPlayerId:them}));
+  assert.deepEqual(poor,poorBefore);
+  const next=extra(s,{command:'BUILD',cardId:building,cardIds:payment,targetPlayerId:them});
+  assert.deepEqual(ownPlayer(next).city,[building]);
+  assert.deepEqual(ownPlayer(next).hand,[]);
+  assert.equal(ownPlayer(next).gold,0);
+  const recipient=next.players.find(p=>p.playerId===them)!;
+  assert.equal(recipient.gold,6); assert.deepEqual(recipient.hand,payment);
+  assert.deepEqual(next.deck,s.deck); assert.deepEqual(next.discard,s.discard);
+  assert.deepEqual(s,before);
+});
