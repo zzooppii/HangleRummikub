@@ -208,3 +208,48 @@ test('public and server catalogs agree on all 27 jobs and all 30 approved specia
  assert.equal(CITY_EXPANDED_ROLES.length,27);assert.equal(CITY_SPECIAL_BUILDINGS.length,30);
  assert.deepEqual(CITY_SPECIAL_BUILDINGS.map(b=>b.cost),[3,4,5,6,5,3,6,6,2,5,5,3,5,6,5,4,4,5,4,6,4,5,6,0,5,2,3,6,6,5]);
 });
+
+
+test('all role marks are projected to every viewer and survive restoration and turn advance', () => {
+  for (const job of ['ASSASSIN','THIEF','WITCH','MAGISTRATE','BLACKMAILER'] as const) {
+    let s = setup(job);
+    s = job === 'ASSASSIN' ? act(s,{kind:'USE_ROLE_ABILITY',ability:{kind:'MARK_ROLE_DISABLED',targetRoleId:'CR-04'}})
+      : job === 'THIEF' ? act(s,{kind:'USE_ROLE_ABILITY',ability:{kind:'MARK_ROLE_GOLD_TRANSFER',targetRoleId:'CR-04'}})
+      : extra(s,{command:'ROLE',roleIds: job === 'WITCH' ? ['CR-04'] : job === 'MAGISTRATE' ? ['CR-06','CR-04','CR-05'] : ['CR-06','CR-04']});
+    for (let turn = 0; turn < 2; turn++) {
+      const restored: unknown = JSON.parse(JSON.stringify(s)); assertCityGameState(restored);
+      for (const viewer of people) {
+        const view = visible(restored,viewer), e = view.expansion;
+        assert.ok(e);
+        if (job === 'ASSASSIN') assert.equal(e.disabledRole,'CR-04');
+        if (job === 'THIEF') assert.equal(e.robbedRole,'CR-04');
+        if (job === 'WITCH') assert.equal(e.witchTarget,'CR-04');
+        if (job === 'MAGISTRATE') {
+          assert.deepEqual(e.warrants,['CR-04','CR-05','CR-06']);
+          assert.equal(view.privateState.expansion?.realWarrant,viewer === me ? 'CR-06' : undefined);
+        }
+        if (job === 'BLACKMAILER') {
+          assert.deepEqual(e.threats,['CR-04','CR-06']);
+          assert.equal(view.privateState.expansion?.realThreat,viewer === me ? 'CR-06' : undefined);
+        }
+      }
+      if (turn === 0) {
+        // Witch marking already advances to the next role; acquire its resources before ending it.
+        if (s.window?.kind === 'ROLE_ACTION' && s.window.acquisition === 'NOT_TAKEN') s = act(s,{kind:'TAKE_INCOME'});
+        s = act(s,{kind:'END_TURN'});
+      }
+    }
+  }
+});
+
+test('public warrant and threat order cannot identify the real mark', () => {
+  for (const job of ['MAGISTRATE','BLACKMAILER'] as const) {
+    const before = setup(job);
+    const roles: CityRoleId[] = job === 'MAGISTRATE' ? ['CR-06','CR-04','CR-05'] : ['CR-06','CR-04'];
+    const a = extra(before,{command:'ROLE',roleIds:roles});
+    const b = extra(before,{command:'ROLE',roleIds:[...roles].reverse()});
+    assert.deepEqual(visible(a,them),visible(b,them));
+    assert.notDeepEqual(visible(a,me).privateState.expansion,visible(b,me).privateState.expansion);
+    assert.deepEqual(job === 'MAGISTRATE' ? a.expansion?.warrants?.roles : a.expansion?.threats?.roles,roles);
+  }
+});

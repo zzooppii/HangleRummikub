@@ -260,3 +260,18 @@ test('corrected two-player screen follows the server discard flag and rejects mi
   assert.throws(() => parse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: { ...base.game, roleDraftVersion: 'city-draft-v3', secretPairDraft: true } }));
   assert.throws(() => parse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: { ...base.game, roleDraftVersion: 'city-draft-v3', secretPairDraft: false, draftDiscardRequired: true } }));
 });
+
+
+test('public role target summary renders every mark and only server-provided private real marks', () => {
+  const base = expanded(cityActionFixture());
+  const game = { ...base.game, expansion: { ...base.game.expansion, disabledRole:'CR-04', robbedRole:'CR-05', witchTarget:'CR-06', warrants:['CR-04','CR-05','CR-07'], threats:['CR-04','CR-08'] } };
+  const view = parse(CityRolePlayingPlatformSnapshotV2Schema,{...base,game});
+  const summary = screen(view).match(/aria-label="공개된 지목">([\s\S]*?)<\/div>/)?.[1] ?? '';
+  for (const text of ['암살 대상 · 왕','도둑 대상 · 주교','홀린 직업 · 상인','영장 · 왕, 주교, 건축가','협박 · 왕, 장군']) assert.ok(summary.includes(text),text);
+  assert.doesNotMatch(summary,/나의 진짜/);
+  const owner = parse(CityRolePlayingPlatformSnapshotV2Schema,{...base,game:{...game,privateState:{...game.privateState,expansion:{...game.privateState.expansion,realWarrant:'CR-07',realThreat:'CR-08'}}}});
+  assert.match(screen(owner),/나의 진짜 영장 · 건축가/);
+  assert.match(screen(owner),/나의 진짜 협박 · 장군/);
+  const empty = screen(base).match(/aria-label="공개된 지목">([\s\S]*?)<\/div>/)?.[1] ?? '';
+  assert.doesNotMatch(empty,/협박 ·|영장 ·|암살 대상|도둑 대상|홀린 직업/);
+});
