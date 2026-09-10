@@ -33,7 +33,7 @@ test("HALLI insufficient penalty pays clockwise and eliminates empty deck", () =
  assert.equal(ringHalli(result, ids[0]!, 4000, "bad"), null);
 });
 test("HALLI rejects early/late/wrong actor flips and advances with fresh token", () => {
- const s = game(); assert.equal(flipHalli(s, ids[0]!, 1999, "next"), null); assert.equal(flipHalli(s, ids[1]!, 2000, "next"), null); assert.equal(flipHalli(s, ids[0]!, 11000, "next"), null);
+ const s = game(); assert.equal(flipHalli(s, ids[0]!, 999, "next"), null); assert.equal(flipHalli(s, ids[1]!, 2000, "next"), null); assert.equal(flipHalli(s, ids[0]!, 11000, "next"), null);
  const next = flipHalli(s, ids[0]!, 2000, "next"); assert.ok(next); assert.equal(next.activePlayerId, ids[1]); assert.equal(next.nextTransitionAt, 12000); assert.equal(next.transitionId, "next"); assert.equal(s.revision, 0);
 });
 test("HALLI final-card flip eliminates player but leaves top for counting", () => {
@@ -96,4 +96,23 @@ test("HALLI two players can win successive piles without ending the game", () =>
   const flipped = flipHalli(next, actor, 3500 + i * 2000, `flip-${i}`); assert.ok(flipped); assert.equal(flipped.phase, "PLAYING"); s = flipped;
  }
  assert.equal(new Set(s.players.flatMap(p => [...p.deck, ...p.discard]).map(c => c.id)).size, 56);
+});
+
+
+test("HALLI fast play: first flip and alternating turns need no artificial wait", () => {
+ let s = game(2);
+ for (let i = 0; i < 8; i++) {
+  const at = 1000 + i * 20, actor = s.activePlayerId;
+  const next = flipHalli(s, actor, at, `fast-${i}`);
+  assert.ok(next, `turn ${i} must accept an immediate flip`);
+  assert.equal(next.flipAvailableAt, at); assert.equal(next.nextTransitionAt, at + 10000);
+  assert.equal(next.revision, i + 1); assert.notEqual(next.activePlayerId, actor); s = next;
+ }
+ assert.equal(s.players.flatMap(p => p.discard).length, 8);
+});
+for (const correct of [true, false]) test(`HALLI fast play: flip immediately after ${correct ? "correct" : "wrong"} bell`, () => {
+ const s = game(2); reveal(s, "BANANA", correct ? 5 : 4, 0);
+ const rung = ringHalli(s, ids[0]!, 2500, "bell"); assert.ok(rung);
+ const flipped = flipHalli(rung, rung.activePlayerId, 2500, "immediate-flip");
+ assert.ok(flipped); assert.equal(flipped.revision, rung.revision + 1); assert.equal(flipped.phase, "PLAYING");
 });

@@ -41,3 +41,12 @@ Halli 전용 state/projection의 `gameDeadlineAt`과 result의 `FINAL_BELL`/`TIM
 - 최초 전체 검증은 동시에 진행 중인 CITY 변경의 `rule-engine.ts` 타입 오류로 서버 단계가 막혔다. 해당 코드는 수정하지 않았다. 마지막 커밋 `c54dffb`에 할리갈리 수정만 복사한 임시 사본에서 typecheck/test/build가 통과했고(1,972개), 이후 현재 작업 폴더에서도 위 전체 검증이 통과했다.
 - 빌드의 기존 500KB 초과 경고는 유지한다(JS 806.15KB / gzip 230.11KB). dependency와 lockfile 변경 없음.
 - `git diff --check`: PASS. 이번 정정은 도메인·실제 Socket.IO·화면 렌더 테스트로 검증했으며 브라우저 수동 재검증과 운영 배포는 수행하지 않았다.
+
+
+## 뒤집기 대기 제거 (2026-09-10)
+
+사용자가 내 차례인데 뒤집기 버튼을 바로 누르지 못하는 지연을 확인했다. 서버가 시작·뒤집기·벨 판정마다 `flipAvailableAt`을 1초 뒤로 설정하고 화면이 그 시각까지 버튼을 잠그던 것이 원인이었다. 이제 `flipAvailableAt`은 해당 전환의 서버 현재 시각이며, 화면은 내 차례의 snapshot을 받으면 별도 타이머 대기 없이 버튼을 활성화한다. DTO 형식과 v2 규칙 버전은 유지한다. 차례 소유권·revision·마감·중복 요청 검증, 서버 공개 카드 수신, 10초 자동 뒤집기와 벨 연타 제한은 유지한다.
+
+수정 전 즉시 시작·정답 벨 직후·오답 벨 직후 뒤집기의 회귀 테스트 3개가 실패함을 확인했다. 수정 후 두 클라이언트가 서버 Clock을 전진시키지 않고 여덟 번 번갈아 뒤집으며 카드 보존과 중복 요청 방지를 확인하는 Socket.IO 테스트와 버튼 활성화 렌더 테스트를 추가했다.
+
+검증: root `npm run typecheck`, `npm test`, `npm run build` PASS. 테스트 1,986개(shared 121 / Web 507 / server 1,358), 실패·skip 없음. `git diff --check` PASS. 기존 500KB 초과 번들 경고는 유지한다(JS 806.09KB / gzip 230.07KB). 이번 수정의 브라우저 수동 테스트와 운영 배포는 수행하지 않았다.

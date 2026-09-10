@@ -134,3 +134,22 @@ test("HALLI finished offline host transfers after 60 seconds without changing re
  h.time(at + 60000); assert.equal(await runtime.halliHostSuccession!.evaluate(h.lobby.room.roomId), true);
  const after = await h.stored(); assert.equal(after.hostPlayerId, h.members[1]!.playerId); assert.deepEqual(after.game, before);
 });
+
+
+test("HALLI fast play: two clients alternate immediately with no Clock advance", async t => {
+ const h = await harness(t, 2);
+ let current = parse(HalliPlayingPlatformSnapshotV2Schema, await h.sync());
+ const at = current.serverTime;
+ for (let i = 0; i < 8; i++) {
+  const actor = h.members.find(m => m.playerId === current.game.activePlayerId)!;
+  const command = h.request("halli:flip", {}, { gameId: current.game.gameId, expectedGameRevision: current.game.gameRevision, turnId: current.game.turnId });
+  current = parse(HalliPlayingPlatformSnapshotV2Schema, h.success(await h.send(actor.client, command)));
+  assert.equal(current.serverTime, at); assert.equal(current.game.flipAvailableAt, at);
+  assert.equal(current.game.gameRevision, i + 1);
+  assert.equal(current.game.playerStates.reduce((n, p) => n + p.discardCount, 0), i + 1);
+  h.success(await h.send(actor.client, command)); assert.equal((await h.stored()).game!.gameRevision, i + 1);
+ }
+ const end = (await h.stored()).game!;
+ assert.equal(new Set(end.state.players.flatMap(p => [...p.deck, ...p.discard]).map(c => c.id)).size, 56);
+ assert.equal(h.server.runtime.turnScheduler.scheduledCount, 1);
+});

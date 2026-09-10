@@ -35,7 +35,7 @@ function finish(s: HalliState, now: number, reason: NonNullable<HalliState["resu
  s.phase = "FINISHED"; s.finishedAt = v.parse(ServerTimeSchema, now); s.nextTransitionAt = null; s.result = resultFor(s, reason);
 }
 function resetTurn(s: HalliState, now: number, token: string): void {
- s.transitionId = v.parse(TurnIdSchema, token); s.flipAvailableAt = v.parse(ServerTimeSchema, now + 1000);
+ s.transitionId = v.parse(TurnIdSchema, token); s.flipAvailableAt = v.parse(ServerTimeSchema, now);
  s.nextTransitionAt = v.parse(ServerTimeSchema, now + 10_000);
 }
 function nextPlayer(s: HalliState, after: PlayerId): PlayerId {
@@ -57,7 +57,7 @@ export function createHalliGame(input: { gameId: string; playerIds: readonly Pla
  if (players.length < 2 || players.length > 6) throw new Error("HALLI requires 2–6 players.");
  input.deck.forEach((c, i) => players[i % players.length]!.deck.push({ ...c }));
  return parseHalliState({ gameId: input.gameId, rulesVersion: "halli-galli-v2", revision: 0, phase: "PLAYING", startedAt: input.now, finishedAt: null,
- transitionId: input.transitionId, nextTransitionAt: input.now + 10_000, flipAvailableAt: input.now + 1000,
+ transitionId: input.transitionId, nextTransitionAt: input.now + 10_000, flipAvailableAt: input.now,
  activePlayerId: players[0]!.playerId, players, feedback: null, result: null });
 }
 export function hasFive(s: HalliState): boolean {

@@ -11,7 +11,7 @@ import { resolveRoomSnapshotView } from "./room-snapshot-view.js";
 import { getGameStartControl } from "./game-start.js";
 const players = Array.from({ length: 6 }, (_, i) => ({ playerId: `fruit-${i}`, nickname: `친구${i}`, isHost: i === 0, connectionStatus: "CONNECTED" }));
 function lobby(n = 3) { return parse(HalliLobbyPlatformSnapshotV2Schema, { snapshotVersion: 2, versions: { roomRevision: 0, presenceVersion: 0 }, serverTime: 1000, self: { playerId: "fruit-0" }, room: { roomId: "fruit-room", roomCode: "BCDFGH", gameType: "HALLI_GALLI", phase: "LOBBY", players: players.slice(0, n) }, game: null }); }
-function playing() { const l = lobby(); return parse(HalliPlayingPlatformSnapshotV2Schema, { ...l, room: { ...l.room, phase: "PLAYING" }, game: { gameType: "HALLI_GALLI", gameId: "fruit-game", gameRevision: 0, rulesVersion: "halli-galli-v2", phase: "PLAYING", playerStates: l.room.players.map((p, i) => ({ playerId: p.playerId, deckCount: i === 2 ? 18 : 19, discardCount: 0, eliminated: false, topCard: null })), feedback: null, turnId: "fruit-turn", activePlayerId: "fruit-0", flipAvailableAt: 2000, deadlineAt: 11000 } }); }
+function playing() { const l = lobby(); return parse(HalliPlayingPlatformSnapshotV2Schema, { ...l, room: { ...l.room, phase: "PLAYING" }, game: { gameType: "HALLI_GALLI", gameId: "fruit-game", gameRevision: 0, rulesVersion: "halli-galli-v2", phase: "PLAYING", playerStates: l.room.players.map((p, i) => ({ playerId: p.playerId, deckCount: i === 2 ? 18 : 19, discardCount: 0, eliminated: false, topCard: null })), feedback: null, turnId: "fruit-turn", activePlayerId: "fruit-0", flipAvailableAt: 1000, deadlineAt: 11000 } }); }
 function render(s: HalliWebSnapshot, connected = true) { return renderToStaticMarkup(createElement(HalliGalliScreen, { snapshot: s, connected, pending: false, error: null, connectionLabel: "연결됨", onCommand: async () => undefined, onStart() {}, onLeave() {}, onCopy() {} })); }
 test("HALLI routes lobby/playing/finished through concrete V2 screen", () => {
  const p = playing(), finished = parse(HalliFinishedPlatformSnapshotV2Schema, { ...p, room: { ...p.room, phase: "FINISHED" }, game: { gameType: "HALLI_GALLI", gameId: p.game.gameId, gameRevision: 1, rulesVersion: p.game.rulesVersion, playerStates: p.game.playerStates.map((p, i) => ({ ...p, deckCount: i === 0 ? 56 : 0, eliminated: i !== 0 })), feedback: null, phase: "FINISHED", result: { reason: "LAST_PLAYER", winnerPlayerIds: ["fruit-0"], scores: p.game.playerStates.map((p, i) => ({ playerId: p.playerId, cards: i === 0 ? 56 : 0 })) } } });
@@ -35,4 +35,19 @@ test("HALLI UI teaches continuous play without final-bell or time-limit messagin
  const p = playing(), two = parse(HalliPlayingPlatformSnapshotV2Schema, { ...p, room: { ...p.room, players: p.room.players.slice(0, 2) }, game: { ...p.game, playerStates: p.game.playerStates.slice(0, 2) } });
  for (const html of [render(lobby()), render(two)]) { assert.doesNotMatch(html, /다음 벨로 종료|최대 15분|동점은 공동 승리/); assert.match(html, /카드가 소진될 때까지/); }
  assert.match(render(two), /두 명이 남아도 계속/);
+});
+
+
+test("HALLI flip is enabled on arrival of my turn without a waiting prompt", () => {
+ const p = playing();
+ const flipButton = (s: HalliWebSnapshot, connected = true) => {
+  const button = render(s, connected).match(/<button[^>]*>카드 뒤집기<kbd>F<\/kbd><\/button>/)?.[0];
+  assert.ok(button); return button;
+ };
+ assert.doesNotMatch(flipButton(p), /disabled/);
+ assert.match(flipButton(p, false), /disabled/);
+ const other = parse(HalliPlayingPlatformSnapshotV2Schema, { ...p, game: { ...p.game, activePlayerId: "fruit-1" } });
+ assert.match(render(other), /<button[^>]*disabled[^>]*>다른 사람 차례/);
+ assert.doesNotMatch(render(p), /카드를 살펴보세요|최소 1초/);
+ assert.match(render(p), /내 차례가 오면 바로 뒤집기/);
 });
