@@ -1,3 +1,4 @@
+import { projectWolf } from "../games/wolf-night/compatibility/projector.js";
 import type { GemCardV2GameProjector } from "../games/gem-card/compatibility/gem-card-v2-game-projector.js";
 import { projectCityRoleV2Game, type CityRoleV2GameProjector } from "../games/city-role/compatibility/city-role-v2-game-projector.js";
 import {
@@ -104,7 +105,7 @@ export class PlatformSnapshotV2Projector {
       }
       return v.parse(PlatformSnapshotV2Schema, {
         ...base,
-        room: { ...base.room, phase: "LOBBY", ...(input.room.gameType === "SNEAKY_LUNCH" ? { settings: input.room.settings ?? { lunchboxCount: 3, difficulty: "NORMAL" } } : {}), ...(input.room.gameType === "DRAW_RELAY" ? {promptMode:input.room.promptMode ?? "MIXED",drawSeconds:input.room.drawSeconds ?? 90} : {}) },
+        room: { ...base.room, phase: "LOBBY", ...(input.room.gameType === "WOLF_NIGHT" ? { settings: input.room.settings ?? { roles: null, discussionSeconds: 180 } } : {}), ...(input.room.gameType === "SNEAKY_LUNCH" ? { settings: input.room.settings ?? { lunchboxCount: 3, difficulty: "NORMAL" } } : {}), ...(input.room.gameType === "DRAW_RELAY" ? {promptMode:input.room.promptMode ?? "MIXED",drawSeconds:input.room.drawSeconds ?? 90} : {}) },
         game: null,
       });
     }
@@ -113,6 +114,7 @@ export class PlatformSnapshotV2Projector {
       throw new Error("A non-LOBBY Room must contain a GameState.");
     }
     const playerIds = input.room.players.map((player) => player.playerId);
+    if(input.room.gameType === "WOLF_NIGHT") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectWolf(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "SNEAKY_LUNCH") return v.parse(PlatformSnapshotV2Schema, {...base, room:{...base.room,phase:input.room.phase},game:projectSneakyLunch(input.room.game)});
     if(input.room.gameType === "DRAW_RELAY") return v.parse(PlatformSnapshotV2Schema,{...base,room:{...base.room,phase:input.room.phase},game:projectDrawRelay(input.room.game,input.selfPlayerId)});
     if (input.room.gameType === "CITY_ROLE") {

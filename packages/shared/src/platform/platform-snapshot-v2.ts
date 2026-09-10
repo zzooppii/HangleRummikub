@@ -267,6 +267,23 @@ export const DrawRelayPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown,D
 export type DrawRelayFinishedPlatformSnapshotV2 = v.InferOutput<typeof DrawRelayFinishedPlatformSnapshotV2Raw>;
 export const DrawRelayFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown,DrawRelayFinishedPlatformSnapshotV2> = DrawRelayFinishedPlatformSnapshotV2Raw;
 
+const WolfOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const WolfRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("WOLF_NIGHT") };
+const WolfPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(3), v.maxLength(10));
+const WolfLobbyRaw = v.pipe(v.strictObject({ ...WolfOuter, room: v.strictObject({ ...WolfRoom, phase: v.literal("LOBBY"),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)), settings: WolfSettingsSchema }), game: v.null() }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
+const WolfPlayingRaw = v.pipe(v.strictObject({ ...WolfOuter, room: v.strictObject({ ...WolfRoom, phase: v.literal("PLAYING"), players: WolfPlayers }), game: WolfPlayingProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateView.playerId === s.self.playerId));
+const WolfFinishedRaw = v.pipe(v.strictObject({ ...WolfOuter, room: v.strictObject({ ...WolfRoom, phase: v.literal("FINISHED"), players: WolfPlayers }), game: WolfFinishedProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)));
+export type WolfLobbyPlatformSnapshotV2 = v.InferOutput<typeof WolfLobbyRaw>;
+export type WolfPlayingPlatformSnapshotV2 = v.InferOutput<typeof WolfPlayingRaw>;
+export type WolfFinishedPlatformSnapshotV2 = v.InferOutput<typeof WolfFinishedRaw>;
+export const WolfLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, WolfLobbyPlatformSnapshotV2> = WolfLobbyRaw;
+export const WolfPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, WolfPlayingPlatformSnapshotV2> = WolfPlayingRaw;
+export const WolfFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, WolfFinishedPlatformSnapshotV2> = WolfFinishedRaw;
+
 const SneakyOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
 const SneakyRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("SNEAKY_LUNCH") };
 const SneakyPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(8));
@@ -285,6 +302,7 @@ export const SneakyPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, Sne
 export const SneakyFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, SneakyFinishedPlatformSnapshotV2> = SneakyFinishedRaw;
 
 export const LobbyPlatformSnapshotV2Schema = v.union([
+  WolfLobbyPlatformSnapshotV2Schema,
   SneakyLobbyPlatformSnapshotV2Schema,
   DrawRelayLobbyPlatformSnapshotV2Schema,
   HangulTileLobbyPlatformSnapshotV2Schema,
@@ -425,6 +443,7 @@ export type GemCardPlayingPlatformSnapshotV2 = v.InferOutput<
 >;
 
 export const PlayingPlatformSnapshotV2Schema = v.union([
+  WolfPlayingPlatformSnapshotV2Schema,
   DrawRelayPlayingPlatformSnapshotV2Schema,
   SneakyPlayingPlatformSnapshotV2Schema,
   HangulTilePlayingPlatformSnapshotV2Schema,
@@ -565,6 +584,7 @@ export type GemCardFinishedPlatformSnapshotV2 = v.InferOutput<
 >;
 
 export const FinishedPlatformSnapshotV2Schema = v.union([
+  WolfFinishedPlatformSnapshotV2Schema,
   DrawRelayFinishedPlatformSnapshotV2Schema,
   SneakyFinishedPlatformSnapshotV2Schema,
   HangulTileFinishedPlatformSnapshotV2Schema,
@@ -588,3 +608,6 @@ import { DrawRelayPlayingProjectionSchema, DrawRelayFinishedProjectionSchema } f
 import { DrawRelayDrawSecondsSchema } from "../games/draw-relay/settings.js";
 import { SneakySettingsSchema } from "../games/sneaky-lunch/contracts.js";
 import { SneakyPlayingProjectionSchema, SneakyFinishedProjectionSchema } from "../games/sneaky-lunch/v2-projection-contracts.js";
+
+import { WolfSettingsSchema } from "../games/wolf-night/contracts.js";
+import { WolfPlayingProjectionSchema, WolfFinishedProjectionSchema } from "../games/wolf-night/v2-projection-contracts.js";

@@ -538,6 +538,11 @@ export interface SnapshotWireClientToServerEvents {
   "draw:revealNext": (command: Extract<DrawClientCommand,{kind:"draw:revealNext"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "draw:rematch": (command: Extract<DrawClientCommand,{kind:"draw:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "draw:configure": (command: Extract<DrawClientCommand,{kind:"draw:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "wolf:configure": (command: Extract<WolfClientCommand,{kind:"wolf:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "wolf:act": (command: Extract<WolfClientCommand,{kind:"wolf:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "wolf:vote": (command: Extract<WolfClientCommand,{kind:"wolf:vote"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "wolf:say": (command: Extract<WolfClientCommand,{kind:"wolf:say"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "wolf:rematch": (command: Extract<WolfClientCommand,{kind:"wolf:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "sneaky:configure": (command: Extract<SneakyClientCommand,{kind:"sneaky:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "sneaky:eat": (command: Extract<SneakyClientCommand,{kind:"sneaky:eat"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "sneaky:rematch": (command: Extract<SneakyClientCommand,{kind:"sneaky:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
@@ -615,3 +620,5 @@ export type SnapshotWireServerToClientEvents = Omit<
 };
 import type { DrawClientCommand } from "./protocol.js";
 import type { SneakyClientCommand } from "./protocol.js";
+
+import type { WolfClientCommand } from "./protocol.js";

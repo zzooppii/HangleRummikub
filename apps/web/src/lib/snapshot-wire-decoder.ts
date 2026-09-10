@@ -1,3 +1,4 @@
+import type { WolfLobbyPlatformSnapshotV2, WolfPlayingPlatformSnapshotV2, WolfFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import type { DrawRelayLobbyPlatformSnapshotV2, DrawRelayPlayingPlatformSnapshotV2, DrawRelayFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import type { SneakyLobbyPlatformSnapshotV2, SneakyPlayingPlatformSnapshotV2, SneakyFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import {
@@ -27,6 +28,7 @@ export const WEB_SUPPORTED_GAME_TYPES = Object.freeze([
   "CITY_ROLE",
   "DRAW_RELAY",
   "SNEAKY_LUNCH",
+  "WOLF_NIGHT",
 ] as const);
 
 export type CityRolePlatformSnapshotV2 =
@@ -45,8 +47,10 @@ export type NumberTilePlatformSnapshotV2 =
   | NumberTileFinishedPlatformSnapshotV2;
 
 export type DrawRelayWebSnapshot = DrawRelayLobbyPlatformSnapshotV2 | DrawRelayPlayingPlatformSnapshotV2 | DrawRelayFinishedPlatformSnapshotV2;
+export type WolfWebSnapshot = WolfLobbyPlatformSnapshotV2 | WolfPlayingPlatformSnapshotV2 | WolfFinishedPlatformSnapshotV2;
 export type SneakyWebSnapshot = SneakyLobbyPlatformSnapshotV2 | SneakyPlayingPlatformSnapshotV2 | SneakyFinishedPlatformSnapshotV2;
 export type CompatibleWebSnapshot =
+  | Readonly<{kind: "PLATFORM_V2_WOLF_NIGHT"; snapshotVersion: 2; gameType: "WOLF_NIGHT"; platformSnapshot: WolfWebSnapshot }>
   | Readonly<{kind: "PLATFORM_V2_SNEAKY_LUNCH"; snapshotVersion: 2; gameType: "SNEAKY_LUNCH"; platformSnapshot: SneakyWebSnapshot }>
   | Readonly<{kind: "PLATFORM_V2_DRAW_RELAY"; snapshotVersion: 2; gameType: "DRAW_RELAY"; platformSnapshot: DrawRelayWebSnapshot }>
   | Readonly<{
@@ -149,7 +153,7 @@ function decodePlatformSnapshotV2(
     input.room.gameType !== "HANGUL_TILE" &&
     input.room.gameType !== "NUMBER_TILE" &&
     input.room.gameType !== "GEM_CARD" &&
-    input.room.gameType !== "CITY_ROLE" && input.room.gameType !== "DRAW_RELAY" && input.room.gameType !== "SNEAKY_LUNCH"
+    input.room.gameType !== "CITY_ROLE" && input.room.gameType !== "DRAW_RELAY" && input.room.gameType !== "SNEAKY_LUNCH" && input.room.gameType !== "WOLF_NIGHT"
   ) {
     return typeof input.room.gameType === "string"
       ? { kind: "INCOMPATIBLE", reason: "UNSUPPORTED_GAME_TYPE" }
@@ -164,6 +168,11 @@ function decodePlatformSnapshotV2(
     const snapshot = validation.value;
     if (!isDrawSnapshot(snapshot)) return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
     return { kind: "COMPATIBLE", value: { kind: "PLATFORM_V2_DRAW_RELAY", snapshotVersion: 2, gameType: "DRAW_RELAY", platformSnapshot: snapshot } };
+  }
+  if (input.room.gameType === "WOLF_NIGHT") {
+    const snapshot = validation.value;
+    if (!isWolfSnapshot(snapshot)) return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
+    return { kind: "COMPATIBLE", value: { kind: "PLATFORM_V2_WOLF_NIGHT", snapshotVersion: 2, gameType: "WOLF_NIGHT", platformSnapshot: snapshot } };
   }
   if (input.room.gameType === "SNEAKY_LUNCH") {
     const snapshot = validation.value;
@@ -259,3 +268,5 @@ export function decodeWebSnapshot(input: unknown): WebSnapshotDecodeResult {
 
 function isDrawSnapshot(s: PlatformSnapshotV2): s is DrawRelayWebSnapshot { return s.room.gameType === "DRAW_RELAY" && (s.game === null || s.game.gameType === "DRAW_RELAY"); }
 function isSneakySnapshot(s: PlatformSnapshotV2): s is SneakyWebSnapshot { return s.room.gameType === "SNEAKY_LUNCH" && (s.game === null || s.game.gameType === "SNEAKY_LUNCH"); }
+
+function isWolfSnapshot(s: PlatformSnapshotV2): s is WolfWebSnapshot { return s.room.gameType === "WOLF_NIGHT" && (s.game === null || s.game.gameType === "WOLF_NIGHT"); }

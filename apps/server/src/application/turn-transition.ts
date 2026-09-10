@@ -1,3 +1,4 @@
+import type { WolfStoredGame } from "../games/wolf-night/compatibility/adapter.js";
 import type { SneakyLunchStoredGame } from "../games/sneaky-lunch/compatibility/adapter.js";
 import type { DrawRelayStoredGame } from "../games/draw-relay/compatibility/adapter.js";
 import type { PlayingGemGameState } from "../games/gem-card/domain/game-state.js";
@@ -70,7 +71,7 @@ export function createNextTurn(
 
 export function toScheduledTurnDeadline(
   roomId: RoomId,
-  game: PlayingGameState | PlayingNumberTileGameState | PlayingGemGameState | CityRoleStoredGame | DrawRelayStoredGame | SneakyLunchStoredGame,
+  game: PlayingGameState | PlayingNumberTileGameState | PlayingGemGameState | CityRoleStoredGame | DrawRelayStoredGame | SneakyLunchStoredGame | WolfStoredGame,
 ): ScheduledTurnDeadline {
   if ("state" in game && !("windowStartedAt" in game)) {
     if ("nextTransitionAt" in game.state) return {roomId,gameId:game.gameId,expectedGameRevision:game.gameRevision,turnId:parse(TurnIdSchema,game.state.transitionId),deadlineAt:parse(ServerTimeSchema,game.state.nextTransitionAt)};

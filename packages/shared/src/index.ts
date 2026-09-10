@@ -22,3 +22,6 @@ export * from "./games/draw-relay/v2-projection-contracts.js";
 export * from "./games/draw-relay/settings.js";
 export * from "./games/sneaky-lunch/contracts.js";
 export * from "./games/sneaky-lunch/v2-projection-contracts.js";
+
+export * from "./games/wolf-night/contracts.js";
+export * from "./games/wolf-night/v2-projection-contracts.js";

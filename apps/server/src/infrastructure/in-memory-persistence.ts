@@ -1,3 +1,5 @@
+import { WolfGameStateAdapter, type WolfLifecycle } from "../games/wolf-night/compatibility/adapter.js";
+import { WolfSettingsSchema } from "@hangul-rummikub/shared";
 import { GemCardGameStateAdapter, type GemCardGameStateStorage, type GemCardGameLifecycleInspection } from "../games/gem-card/compatibility/gem-card-game-state-adapter.js";
 import { CityRoleGameStateAdapter, type CityRoleGameStateStorage, type CityRoleGameLifecycleInspection } from "../games/city-role/compatibility/city-role-game-state-adapter.js";
 import type {
@@ -103,6 +105,7 @@ type GameStateStorageAdapters = Readonly<{
 }>;
 
 type RoomGameLifecycleInspection =
+  | Readonly<{gameType:"WOLF_NIGHT";inspection:WolfLifecycle}>
   | Readonly<{gameType:"SNEAKY_LUNCH";inspection:SneakyLunchLifecycle}>
   | Readonly<{gameType:"DRAW_RELAY";inspection:DrawRelayLifecycle}>
   | Readonly<{ gameType: "CITY_ROLE"; inspection: CityRoleGameLifecycleInspection }>
@@ -217,6 +220,15 @@ function cloneRoomWriteCandidate(
   } as const;
 
   switch (candidate.gameType) {
+    case "WOLF_NIGHT": {
+      const adapter = new WolfGameStateAdapter(), game = candidate.game === null ? null : adapter.cloneAndValidate(candidate.game);
+      validateRoomGameCoherence(shell.phase, shell.players, game, () => game === null ? null : adapter.inspectLifecycle(game));
+      const departedPlayerIds = Object.freeze([...(candidate.departedPlayerIds ?? [])]);
+      if (new Set(departedPlayerIds).size !== departedPlayerIds.length || departedPlayerIds.some(id => !shell.players.some(p => p.playerId === id)) || shell.phase === "LOBBY" && departedPlayerIds.length > 0) throw new Error("Invalid departed WOLF roster.");
+      const settings = v.parse(WolfSettingsSchema, candidate.settings ?? { roles: null, discussionSeconds: 180 });
+      if (game && JSON.stringify(settings) !== JSON.stringify(game.state.settings)) throw new Error("WOLF settings changed during game.");
+      return Object.freeze({...shell, gameType:"WOLF_NIGHT", game, departedPlayerIds, settings});
+    }
     case "SNEAKY_LUNCH": {
       const adapter = new SneakyLunchGameStateAdapter(), game = candidate.game === null ? null : adapter.cloneAndValidate(candidate.game);
       validateRoomGameCoherence(shell.phase, shell.players, game, () => game === null ? null : adapter.inspectLifecycle(game));
@@ -299,6 +311,7 @@ function validateRoomGameCoherence(
     | GemCardGameLifecycleInspection
     | CityRoleGameLifecycleInspection
     | DrawRelayLifecycle
+    | WolfLifecycle
     | SneakyLunchLifecycle
     | NumberTileGameLifecycleInspection
     | null,
@@ -347,6 +360,7 @@ function persistRoom(
     case "GEM_CARD":
     case "CITY_ROLE":
     case "DRAW_RELAY":
+    case "WOLF_NIGHT":
     case "SNEAKY_LUNCH":
       return Object.freeze({ ...detached, storageRevision: revision });
   }
@@ -367,6 +381,7 @@ function inspectRoomGame(
     return null;
   }
   switch (room.gameType) {
+    case "WOLF_NIGHT": return {gameType:"WOLF_NIGHT",inspection:new WolfGameStateAdapter().inspectLifecycle(room.game)};
     case "SNEAKY_LUNCH": return {gameType:"SNEAKY_LUNCH",inspection:new SneakyLunchGameStateAdapter().inspectLifecycle(room.game)};
     case "DRAW_RELAY": return {gameType:"DRAW_RELAY",inspection:new DrawRelayGameStateAdapter().inspectLifecycle(room.game)};
     case "HANGUL_TILE":

@@ -1,3 +1,4 @@
+import { WolfClientCommandSchema, type WolfClientCommand } from "@hangul-rummikub/shared";
 import { DrawClientCommandSchema, type DrawClientCommand } from "@hangul-rummikub/shared";
 import { SneakyClientCommandSchema, type SneakyClientCommand } from "@hangul-rummikub/shared";
 import { safeParse as parseRematch } from "valibot";
@@ -674,6 +675,18 @@ export class RealtimeClient {
     }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
   }
 
+  actWolf(command: WolfClientCommand): Promise<StateSyncWireAck> {
+    if (!parseRematch(WolfClientCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {
+      switch (command.kind) {
+        case "wolf:configure": this.#socket.emit("wolf:configure", command, acknowledge); break;
+                case "wolf:act": this.#socket.emit("wolf:act", command, acknowledge); break;
+        case "wolf:vote": this.#socket.emit("wolf:vote", command, acknowledge); break;
+        case "wolf:say": this.#socket.emit("wolf:say", command, acknowledge); break;
+        case "wolf:rematch": this.#socket.emit("wolf:rematch", command, acknowledge); break;
+      }
+    }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
+  }
   actSneaky(command: SneakyClientCommand): Promise<StateSyncWireAck> {
     if (!parseRematch(SneakyClientCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
     return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {

@@ -31,8 +31,8 @@ export function getGameStartControl(
   snapshot: GameStartSnapshot,
   commandPending: boolean,
 ): GameStartControl {
-  const minPlayers = snapshot.room.gameType === "DRAW_RELAY" ? 3 : MIN_GAME_PLAYERS;
-  const maxPlayers = snapshot.room.gameType === "DRAW_RELAY" || snapshot.room.gameType === "SNEAKY_LUNCH" ? 8 : snapshot.room.gameType === "CITY_ROLE" ? 6 : 4;
+  const minPlayers = snapshot.room.gameType === "DRAW_RELAY" || snapshot.room.gameType === "WOLF_NIGHT" ? 3 : MIN_GAME_PLAYERS;
+  const maxPlayers = snapshot.room.gameType === "WOLF_NIGHT" ? 10 : snapshot.room.gameType === "DRAW_RELAY" || snapshot.room.gameType === "SNEAKY_LUNCH" ? 8 : snapshot.room.gameType === "CITY_ROLE" ? 6 : 4;
   const self = snapshot.room.players.find(
     (player) => player.playerId === snapshot.self.playerId,
   );

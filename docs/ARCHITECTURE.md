@@ -6,6 +6,8 @@
 
 이 문서는 production 한글 게임의 v1 architecture 기준선으로 유지한다. 향후 멀티게임 전환의 current-state 분류와 target boundary는 [MULTI_GAME_PLATFORM_SPEC.md](./MULTI_GAME_PLATFORM_SPEC.md)와 [MULTI_GAME_ARCHITECTURE.md](./MULTI_GAME_ARCHITECTURE.md)를 따른다.
 
+추가 게임 ‘늑대의 밤’의 구체 모듈과 비공개 역할/투표 경계는 [WOLF_NIGHT_ARCHITECTURE.md](./WOLF_NIGHT_ARCHITECTURE.md)를 따른다. 아래 server-authoritative 원칙과 계층 경계는 유지한다.
+
 핵심 원칙은 다음과 같다.
 
 1. 서버가 유일한 authority다.

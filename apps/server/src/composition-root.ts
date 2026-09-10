@@ -1,3 +1,6 @@
+import { WolfHostSuccession } from "./games/wolf-night/application/host-succession.js";
+import { WolfService } from "./games/wolf-night/application/service.js";
+import { createWolfLifecycle } from "./games/wolf-night/application/lifecycle.js";
 import { SneakyLunchService } from "./games/sneaky-lunch/application/service.js";
 import { SneakyLunchPresence } from "./games/sneaky-lunch/application/presence.js";
 import { createSneakyLifecycle } from "./games/sneaky-lunch/application/lifecycle.js";
@@ -110,6 +113,8 @@ import {
 } from "./infrastructure/system.js";
 
 export type ApplicationRuntime = Readonly<{
+  wolfService?: WolfService;
+  wolfHostSuccession?: WolfHostSuccession;
   sneakyLunchService?: SneakyLunchService;
   sneakyLunchPresence?: SneakyLunchPresence;
   drawRelayService?: DrawRelayService;
@@ -211,6 +216,7 @@ export function createApplicationRuntime(
       createCityRoleRegistration(),
       { gameType: "DRAW_RELAY" },
       { gameType: "SNEAKY_LUNCH" },
+      { gameType: "WOLF_NIGHT" },
     ],
   );
   gameRegistry.getRequired(LEGACY_V1_DEFAULT_GAME_TYPE);
@@ -239,6 +245,7 @@ export function createApplicationRuntime(
     gemCard: createGemCardPlayerLifecycleActions(idGenerator),
     cityRole: createCityRolePlayerLifecycleActions(idGenerator),
     drawRelay: createDrawRelayLifecycle(idGenerator),
+    wolf: createWolfLifecycle(),
     sneaky: createSneakyLifecycle(),
   });
   const roomCodeGenerator = new RandomRoomCodeGenerator(randomSource);
@@ -500,6 +507,13 @@ export function createApplicationRuntime(
     turnScheduler,
     onTurnSchedulingFailure: reportTurnSchedulingFailure,
   });
+  const wolfService = new WolfService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
+    roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource, turnScheduler });
+  const wolfHostSuccession = new WolfHostSuccession(wolfService.deps, roomId => wolfService.notify(roomId));
+  wolfService.subscribe(async roomId => {
+    const room = await persistence.findById(roomId);
+    if (room?.gameType === "WOLF_NIGHT" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
+  });
   const sneakyLunchService = new SneakyLunchService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
     roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource, turnScheduler });
   const sneakyLunchPresence = new SneakyLunchPresence(sneakyLunchService);
@@ -568,6 +582,7 @@ export function createApplicationRuntime(
   });
   const gameStartRouter = new GameStartRouter({
     drawRelay: { gameType: "DRAW_RELAY", start: input => drawRelayService.start(input) },
+    wolf: { gameType: "WOLF_NIGHT", start: input => wolfService.start(input) },
     sneaky: { gameType: "SNEAKY_LUNCH", start: input => sneakyLunchService.start(input) },
     cityRole: { gameType: "CITY_ROLE", start: input => cityRoleStartService.start(input) },
     gemCard: { gameType: "GEM_CARD", start: input => gemCardStartService.start(input) },
@@ -683,6 +698,7 @@ export function createApplicationRuntime(
   });
   scheduledTurnRouter = new ScheduledTurnRouter({
     drawRelay: { gameType: "DRAW_RELAY", handleTurnTimeout: input => drawRelayService.timeout(input) },
+    wolf: { gameType: "WOLF_NIGHT", handleTurnTimeout: input => wolfService.timeout(input) },
     sneaky: { gameType: "SNEAKY_LUNCH", handleTurnTimeout: input => sneakyLunchService.timeout(input) },
     cityRole: { gameType: "CITY_ROLE", handleTurnTimeout: input => cityRoleTimeoutService.timeout(input) },
     gemCard: { gameType: "GEM_CARD", handleTurnTimeout: input => gemCardTimeoutService.timeout(input) },
@@ -749,6 +765,8 @@ export function createApplicationRuntime(
     cityRoleCommandRouter,
     drawRelayService,
     drawRelayHostSuccession,
+    wolfService,
+    wolfHostSuccession,
     sneakyLunchService,
     sneakyLunchPresence,
     subscribeCityRoleTimeoutApplied(listener) { return cityRoleTimeoutService.subscribeApplied(listener); },
@@ -798,6 +816,7 @@ export function createApplicationRuntime(
       acceptsRoomPolicyWork = true;
       drawRelayHostSuccession.start();
       sneakyLunchPresence.start();
+      wolfHostSuccession.start();
       roomPolicyScheduler.start();
       turnScheduler.start();
       gameDeadlineScheduler.start();
@@ -815,6 +834,7 @@ export function createApplicationRuntime(
       acceptsRoomPolicyWork = false;
       drawRelayHostSuccession.stop();
       sneakyLunchPresence.stop();
+      wolfHostSuccession.stop();
       roomPolicyScheduler.stop();
       overdueTurnSweeper.stop();
       overdueGameDeadlineSweeper.stop();

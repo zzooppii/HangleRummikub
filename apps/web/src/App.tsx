@@ -1,3 +1,5 @@
+import { WolfNightScreen } from "./features/wolf-night/WolfNightScreen.js";
+import "./features/wolf-night/wolf-night.css";
 import { DrawRelayScreen } from "./features/draw-relay/DrawRelayScreen.js";
 import { SneakyLunchScreen } from "./features/sneaky-lunch/SneakyLunchScreen.js";
 import "./features/sneaky-lunch/sneaky-lunch.css";
@@ -323,6 +325,14 @@ export function App() {
     if (roomView.kind === "DRAW_RELAY") {
       return <ReconnectBoundary {...recovery}><DrawRelayScreen snapshot={roomView.snapshot}
         connected={app.connectionState === "CONNECTED" && !app.sessionReplaced} onCommand={app.actDraw}
+        onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
+        pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
+        error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;
+    }
+
+    if (roomView.kind === "WOLF_NIGHT") {
+      return <ReconnectBoundary {...recovery}><WolfNightScreen snapshot={roomView.snapshot}
+        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={app.actWolf}
         onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
         pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
         error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;

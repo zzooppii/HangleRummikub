@@ -294,7 +294,7 @@ test("new Web은 snapshot capability 2와 legacy 1을 내림차순으로 adverti
 });
 
 test("new Web은 실제 renderer가 있는 Hangul/Number/GEM game capability를 advertise한다", () => {
-  assert.deepEqual(WEB_SUPPORTED_GAME_TYPES, ["HANGUL_TILE", "NUMBER_TILE", "GEM_CARD", "CITY_ROLE", "DRAW_RELAY", "SNEAKY_LUNCH"]);
+  assert.deepEqual(WEB_SUPPORTED_GAME_TYPES, ["HANGUL_TILE", "NUMBER_TILE", "GEM_CARD", "CITY_ROLE", "DRAW_RELAY", "SNEAKY_LUNCH", "WOLF_NIGHT"]);
   assert.equal(Object.isFrozen(WEB_SUPPORTED_GAME_TYPES), true);
 });
 

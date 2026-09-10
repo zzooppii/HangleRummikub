@@ -14,6 +14,10 @@
 
 [THREE_GAME_POST_RELEASE_ABSTRACTION_REVIEW.md](./THREE_GAME_POST_RELEASE_ABSTRACTION_REVIEW.md)는 실제 H/N/G source를 비교한 P13 분석 history와 이후 승인된 P13B 구현을 구분한다. 현재 `three-game-platform-v1` local/remote tag는 verified runtime `db0e6c6`을 가리킨다. 위 P12 closure의 tag 미생성/P13 미시작 문장은 당시 기록이다. Identity-only Registry, exact three-game Room union, concrete policies/projectors/renderers를 유지한다. 사용자가 승인한 P13-001 공개 참가자 whitelist mapper, P13-002 caller-owned feedback RequestId mark, P13-003 MM:SS formatter만 P13B에서 구현했다. 기존 IO/권한/Set lifetime/timer/audio와 wire는 그대로이며 1225 tests 연속2회, typecheck/build 및 production-serving6/6 PASS다. 최종 위치·API·call sites는 review §13을 따른다. 다른 후보/registry/framework와 네 번째 게임은 구현하지 않았다. P13B를 위한 Railway 배포나 release tag 이동은 없다.
 
+## WOLF_NIGHT addition (2026-09-10)
+
+사용자 요청으로 일곱 번째 게임 **늑대의 밤**을 추가했다. 도플갱어를 포함한 기본판 12종 역할, 3–10인 admission, 서버의 비공개 역할/투표/시간 판정, concrete Room/projection/renderer를 기존 경계에 연결한다. 상세 변경과 검증은 [WOLF_NIGHT_ARCHITECTURE.md](./WOLF_NIGHT_ARCHITECTURE.md), 규칙과 온라인 진행 정책은 [WOLF_NIGHT_GAME_RULES.md](./WOLF_NIGHT_GAME_RULES.md)를 따른다. 위의 과거 checkpoint별 게임 수는 당시 기록이며 현재 지원 수는 7개다.
+
 ## 1. 분석 범위와 방법
 
 다음 영역의 실제 import, state 접근, validation, command path, projection을 확인했다.

@@ -323,6 +323,16 @@ export const DrawConfigureCommandSchema = v.strictObject({ kind: v.literal("draw
 export const DrawClientCommandSchema = v.variant("kind",[DrawDraftSaveCommandSchema,DrawSubmitDrawingCommandSchema,DrawSubmitGuessCommandSchema,DrawRevealNextCommandSchema,DrawRematchCommandSchema,DrawConfigureCommandSchema]);
 export type DrawClientCommand = v.InferOutput<typeof DrawClientCommandSchema>;
 
+const WolfIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema };
+const WolfGameIdentity = { ...WolfIdentity, gameId: GameIdSchema, phaseId: TurnIdSchema };
+export const WolfConfigureCommandSchema = v.strictObject({ ...WolfIdentity, kind: v.literal("wolf:configure"), expectedRoomRevision: RoomRevisionSchema, payload: WolfSettingsSchema });
+export const WolfActCommandSchema = v.strictObject({ ...WolfGameIdentity, kind: v.literal("wolf:act"), expectedActionRevision: v.pipe(v.number(), v.safeInteger(), v.minValue(0)), payload: WolfActionSchema });
+export const WolfVoteCommandSchema = v.strictObject({ ...WolfGameIdentity, kind: v.literal("wolf:vote"), payload: v.strictObject({ playerId: PlayerIdSchema }) });
+export const WolfSayCommandSchema = v.strictObject({ ...WolfGameIdentity, kind: v.literal("wolf:say"), payload: v.strictObject({ text: WolfTextSchema }) });
+export const WolfRematchCommandSchema = v.strictObject({ ...WolfIdentity, kind: v.literal("wolf:rematch"), gameId: GameIdSchema, expectedRoomRevision: RoomRevisionSchema, expectedGameRevision: GameRevisionSchema, payload: v.strictObject({}) });
+export const WolfClientCommandSchema = v.variant("kind", [WolfConfigureCommandSchema, WolfActCommandSchema, WolfVoteCommandSchema, WolfSayCommandSchema, WolfRematchCommandSchema]);
+export type WolfClientCommand = v.InferOutput<typeof WolfClientCommandSchema>;
+
 const SneakyIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema };
 export const SneakyConfigureCommandSchema = v.strictObject({ ...SneakyIdentity, kind: v.literal("sneaky:configure"), expectedRoomRevision: RoomRevisionSchema, payload: SneakySettingsSchema });
 export const SneakyEatCommandSchema = v.strictObject({ ...SneakyIdentity, kind: v.literal("sneaky:eat"), gameId: GameIdSchema,
@@ -466,6 +476,7 @@ export type Phase2ClientCommand = v.InferOutput<
 >;
 
 export const ClientCommandSchema = v.variant("kind", [
+  WolfConfigureCommandSchema, WolfActCommandSchema, WolfVoteCommandSchema, WolfSayCommandSchema, WolfRematchCommandSchema,
   SneakyConfigureCommandSchema, SneakyEatCommandSchema, SneakyRematchCommandSchema,
   DrawDraftSaveCommandSchema, DrawSubmitDrawingCommandSchema, DrawSubmitGuessCommandSchema, DrawRevealNextCommandSchema, DrawRematchCommandSchema, DrawConfigureCommandSchema,
   SessionBootstrapCommandSchema,
@@ -605,3 +616,5 @@ export type SessionReplacedNotification = v.InferOutput<
 >;
 import { DrawingSchema, GuessSchema } from "./games/draw-relay/drawing-contracts.js";
 import { SneakySettingsSchema } from "./games/sneaky-lunch/contracts.js";
+
+import { WolfSettingsSchema, WolfActionSchema, WolfTextSchema } from "./games/wolf-night/contracts.js";

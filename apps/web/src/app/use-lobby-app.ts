@@ -1,3 +1,4 @@
+import type { WolfClientCommand } from "@hangul-rummikub/shared";
 import type { DrawClientCommand } from "@hangul-rummikub/shared";
 import type { SneakyClientCommand } from "@hangul-rummikub/shared";
 import {
@@ -228,6 +229,7 @@ export type LobbyAppState = Readonly<{
   passNumberTurn: () => void;
   rematchNumber: () => void;
   actDraw: (command: DrawClientCommand) => Promise<void>;
+  actWolf: (command: WolfClientCommand) => Promise<void>;
   actSneaky: (command: SneakyClientCommand) => Promise<void>;
   collectGemResources: (selection: GemCollectSelectionDto) => void;
   purchaseGemCard: (source: GemPurchaseSourceDto) => void;
@@ -436,7 +438,7 @@ export function useLobbyApp(): LobbyAppState {
   function currentLegacyHangulSnapshot(): StateSnapshot | null {
     const compatible = compatibleSnapshotRef.current;
     return compatible === null || compatible.kind === "PLATFORM_V2_NUMBER_TILE" ||
-      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY" || compatible.kind === "PLATFORM_V2_SNEAKY_LUNCH"
+      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY" || compatible.kind === "PLATFORM_V2_SNEAKY_LUNCH" || compatible.kind === "PLATFORM_V2_WOLF_NIGHT"
       ? null
       : compatible.legacySnapshot;
   }
@@ -448,6 +450,19 @@ export function useLobbyApp(): LobbyAppState {
     if (clientRef.current !== client || sessionReplacedRef.current || storedSessionForCurrentRoute()?.playerId !== session.playerId ||
       storedSessionForCurrentRoute()?.credential.roomCode !== session.credential.roomCode) throw new Error("게임 연결이 변경되었습니다.");
     if (!ack.ok) { void requestLatestSnapshot(); throw new Error(getUserErrorMessage(ack.error.code)); }
+    applyWireSnapshot(ack.data.snapshot, session);
+  }
+
+  async function actWolf(command: WolfClientCommand): Promise<void> {
+    const client = clientRef.current, session = storedSessionForCurrentRoute();
+    if (!client?.connected || session === null || sessionReplacedRef.current || compatibleSnapshotRef.current?.kind !== "PLATFORM_V2_WOLF_NIGHT") throw new Error("연결을 확인하고 다시 시도해주세요.");
+    const ack = await client.actWolf(command);
+    if (clientRef.current !== client || sessionReplacedRef.current || storedSessionForCurrentRoute()?.playerId !== session.playerId ||
+      storedSessionForCurrentRoute()?.credential.roomCode !== session.credential.roomCode) throw new Error("게임 연결이 변경되었습니다.");
+    if (!ack.ok) {
+      void requestLatestSnapshot();
+      throw new Error(getUserErrorMessage(ack.error.code));
+    }
     applyWireSnapshot(ack.data.snapshot, session);
   }
 
@@ -716,7 +731,7 @@ export function useLobbyApp(): LobbyAppState {
     const incomingSnapshot = projectRoomSnapshotShell(compatible);
     const incomingLegacySnapshot =
       compatible.kind === "PLATFORM_V2_NUMBER_TILE" ||
-      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY" || compatible.kind === "PLATFORM_V2_SNEAKY_LUNCH"
+      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY" || compatible.kind === "PLATFORM_V2_SNEAKY_LUNCH" || compatible.kind === "PLATFORM_V2_WOLF_NIGHT"
         ? null
         : compatible.legacySnapshot;
     const incomingNumberSnapshot =
@@ -2936,6 +2951,7 @@ export function useLobbyApp(): LobbyAppState {
     passNumberTurn,
     rematchNumber,
     actDraw,
+    actWolf,
     actSneaky,
     collectGemResources,
     purchaseGemCard,

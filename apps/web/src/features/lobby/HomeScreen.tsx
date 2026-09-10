@@ -1,3 +1,4 @@
+import { WolfEmblem } from "../wolf-night/art.js";
 import { RelayDoodle } from "../draw-relay/RelayHelp.js";
 import { LunchboxArt } from "../sneaky-lunch/art.js";
 import {
@@ -172,6 +173,7 @@ export function HomeScreen(props: HomeScreenProps) {
                             onClick={() => setSelectedGameType(game.gameType)}
                           >
                             {game.gameType === "DRAW_RELAY" ? <RelayDoodle/> : null}
+                            {game.gameType === "WOLF_NIGHT" ? <WolfEmblem/> : null}
                             {game.gameType === "SNEAKY_LUNCH" ? <LunchboxArt small/> : null}
                             <span className="game-option-heading">
                               <strong>{game.displayName}</strong>
