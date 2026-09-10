@@ -1,3 +1,4 @@
+import { IslandEmblem } from "../island/art.js";
 import { HalliBellArt } from "../halli-galli/art.js";
 import { WolfEmblem } from "../wolf-night/art.js";
 import { RelayDoodle } from "../draw-relay/RelayHelp.js";
@@ -174,6 +175,7 @@ export function HomeScreen(props: HomeScreenProps) {
                             onClick={() => setSelectedGameType(game.gameType)}
                           >
                             {game.gameType === "DRAW_RELAY" ? <RelayDoodle/> : null}
+                            {game.gameType === "ISLAND_SETTLERS" ? <span style={{ display: "block", width: 110 }}><IslandEmblem/></span> : null}
                             {game.gameType === "HALLI_GALLI" ? <span style={{ display: "block", width: 90 }}><HalliBellArt/></span> : null}
                             {game.gameType === "WOLF_NIGHT" ? <WolfEmblem/> : null}
                             {game.gameType === "SNEAKY_LUNCH" ? <LunchboxArt small/> : null}

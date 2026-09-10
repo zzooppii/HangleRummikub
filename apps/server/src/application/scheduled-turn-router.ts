@@ -7,7 +7,7 @@ export type ScheduledTurnDispatchResult =
   | Readonly<{ status: "FAILED" }>;
 
 type ScheduledTurnCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "HALLI_GALLI",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "HALLI_GALLI" | "ISLAND_SETTLERS",
 > = Readonly<{
   gameType: TGameType;
   handleTurnTimeout(
@@ -28,6 +28,7 @@ export type ScheduledTurnRouterDependencies = Readonly<{
   numberTile: NumberTileScheduledTurnCapability;
   gemCard: GemCardScheduledTurnCapability;
   cityRole: CityRoleScheduledTurnCapability;
+  island?: ScheduledTurnCapability<"ISLAND_SETTLERS">;
   halli?: ScheduledTurnCapability<"HALLI_GALLI">;
   wolf?: ScheduledTurnCapability<"WOLF_NIGHT">;
   sneaky?: ScheduledTurnCapability<"SNEAKY_LUNCH">;
@@ -39,7 +40,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function isCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "HALLI_GALLI",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "HALLI_GALLI" | "ISLAND_SETTLERS",
 >(
   value: unknown,
   gameType: TGameType,
@@ -52,7 +53,7 @@ function isCapability<
 }
 
 function requireCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "HALLI_GALLI",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "HALLI_GALLI" | "ISLAND_SETTLERS",
 >(
   value: unknown,
   gameType: TGameType,
@@ -73,6 +74,7 @@ export class ScheduledTurnRouter {
   readonly #numberTile: NumberTileScheduledTurnCapability;
   readonly #gemCard: GemCardScheduledTurnCapability;
   readonly #cityRole: CityRoleScheduledTurnCapability;
+  readonly #island: ScheduledTurnCapability<"ISLAND_SETTLERS"> | undefined;
   readonly #halli: ScheduledTurnCapability<"HALLI_GALLI"> | undefined;
   readonly #wolf: ScheduledTurnCapability<"WOLF_NIGHT"> | undefined;
   readonly #sneaky: ScheduledTurnCapability<"SNEAKY_LUNCH"> | undefined;
@@ -80,6 +82,7 @@ export class ScheduledTurnRouter {
 
   constructor(dependencies: ScheduledTurnRouterDependencies) {
     this.#roomRepository = dependencies.roomRepository;
+    this.#island = dependencies.island;
     this.#halli = dependencies.halli;
     this.#wolf = dependencies.wolf;
     this.#sneaky = dependencies.sneaky;
@@ -107,6 +110,7 @@ export class ScheduledTurnRouter {
           return await this.#hangul.handleTurnTimeout(input);
         case "GEM_CARD":
           return await this.#gemCard.handleTurnTimeout(input);
+        case "ISLAND_SETTLERS": return this.#island ? await this.#island.handleTurnTimeout(input) : {status:"FAILED"};
         case "HALLI_GALLI": return this.#halli ? await this.#halli.handleTurnTimeout(input) : {status:"FAILED"};
         case "WOLF_NIGHT": return this.#wolf ? await this.#wolf.handleTurnTimeout(input) : {status:"FAILED"};
         case "SNEAKY_LUNCH": return this.#sneaky ? await this.#sneaky.handleTurnTimeout(input) : {status:"FAILED"};

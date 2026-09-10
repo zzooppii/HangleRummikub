@@ -1,3 +1,4 @@
+import type { IslandClientCommand } from "./protocol.js";
 import type { HalliClientCommand } from "./protocol.js";
 import type { CityExpansionClientCommand } from "./protocol.js";
 import { GemCardPlayingPlatformSnapshotV2Schema, GemCardFinishedPlatformSnapshotV2Schema } from "./platform/platform-snapshot-v2.js";
@@ -543,6 +544,8 @@ export interface SnapshotWireClientToServerEvents {
   "draw:revealNext": (command: Extract<DrawClientCommand,{kind:"draw:revealNext"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "draw:rematch": (command: Extract<DrawClientCommand,{kind:"draw:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "draw:configure": (command: Extract<DrawClientCommand,{kind:"draw:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "island:act": (command: Extract<IslandClientCommand,{kind:"island:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "island:rematch": (command: Extract<IslandClientCommand,{kind:"island:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "halli:flip": (command: Extract<HalliClientCommand,{kind:"halli:flip"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "halli:bell": (command: Extract<HalliClientCommand,{kind:"halli:bell"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "halli:rematch": (command: Extract<HalliClientCommand,{kind:"halli:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;

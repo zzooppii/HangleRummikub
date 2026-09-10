@@ -8,8 +8,8 @@ import { cityActionFixture, cityFinishedFixture, cityLobbyFixture, citySelection
 import { resolveRoomSnapshotView } from "./room-snapshot-view.js";
 import { projectRoomSnapshotShell } from "./room-snapshot-shell.js";
 
-test("P21D preserves CITY admission and activates exactly eight-game capability and Home", () => {
-  assert.deepEqual([...WEB_SUPPORTED_GAME_TYPES], ["HANGUL_TILE", "NUMBER_TILE", "GEM_CARD", "CITY_ROLE", "DRAW_RELAY", "SNEAKY_LUNCH", "WOLF_NIGHT", "HALLI_GALLI"]);
+test("P21D preserves CITY admission and activates exactly nine-game capability and Home", () => {
+  assert.deepEqual([...WEB_SUPPORTED_GAME_TYPES], ["HANGUL_TILE", "NUMBER_TILE", "GEM_CARD", "CITY_ROLE", "DRAW_RELAY", "SNEAKY_LUNCH", "WOLF_NIGHT", "HALLI_GALLI", "ISLAND_SETTLERS"]);
   assert.deepEqual(GAME_CATALOG.map(item => item.gameType), [...WEB_SUPPORTED_GAME_TYPES]);
 });
 

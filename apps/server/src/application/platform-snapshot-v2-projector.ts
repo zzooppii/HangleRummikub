@@ -1,4 +1,5 @@
 import { CITY_DEFAULT_SETTINGS } from "@hangul-rummikub/shared";
+import { projectIsland } from "../games/island/compatibility/projector.js";
 import { projectHalli } from "../games/halli-galli/compatibility/projector.js";
 import { projectWolf } from "../games/wolf-night/compatibility/projector.js";
 import type { GemCardV2GameProjector } from "../games/gem-card/compatibility/gem-card-v2-game-projector.js";
@@ -116,6 +117,7 @@ export class PlatformSnapshotV2Projector {
       throw new Error("A non-LOBBY Room must contain a GameState.");
     }
     const playerIds = input.room.players.map((player) => player.playerId);
+    if(input.room.gameType === "ISLAND_SETTLERS") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectIsland(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "HALLI_GALLI") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectHalli(input.room.game)});
     if(input.room.gameType === "WOLF_NIGHT") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectWolf(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "SNEAKY_LUNCH") return v.parse(PlatformSnapshotV2Schema, {...base, room:{...base.room,phase:input.room.phase},game:projectSneakyLunch(input.room.game)});

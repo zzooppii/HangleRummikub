@@ -1,4 +1,5 @@
 import type { CityExpansionClientCommand } from "@hangul-rummikub/shared";
+import type { IslandClientCommand } from "@hangul-rummikub/shared";
 import type { HalliClientCommand } from "@hangul-rummikub/shared";
 import type { WolfClientCommand } from "@hangul-rummikub/shared";
 import type { DrawClientCommand } from "@hangul-rummikub/shared";
@@ -231,6 +232,7 @@ export type LobbyAppState = Readonly<{
   passNumberTurn: () => void;
   rematchNumber: () => void;
   actDraw: (command: DrawClientCommand) => Promise<void>;
+  actIsland: (command: IslandClientCommand) => Promise<void>;
   actHalli: (command: HalliClientCommand) => Promise<void>;
   actWolf: (command: WolfClientCommand) => Promise<void>;
   actCityExpansion: (command: CityExpansionClientCommand) => Promise<void>;
@@ -442,7 +444,7 @@ export function useLobbyApp(): LobbyAppState {
   function currentLegacyHangulSnapshot(): StateSnapshot | null {
     const compatible = compatibleSnapshotRef.current;
     return compatible === null || compatible.kind === "PLATFORM_V2_NUMBER_TILE" ||
-      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY" || compatible.kind === "PLATFORM_V2_SNEAKY_LUNCH" || compatible.kind === "PLATFORM_V2_WOLF_NIGHT" || compatible.kind === "PLATFORM_V2_HALLI_GALLI"
+      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY" || compatible.kind === "PLATFORM_V2_SNEAKY_LUNCH" || compatible.kind === "PLATFORM_V2_WOLF_NIGHT" || compatible.kind === "PLATFORM_V2_HALLI_GALLI" || compatible.kind === "PLATFORM_V2_ISLAND_SETTLERS"
       ? null
       : compatible.legacySnapshot;
   }
@@ -454,6 +456,19 @@ export function useLobbyApp(): LobbyAppState {
     if (clientRef.current !== client || sessionReplacedRef.current || storedSessionForCurrentRoute()?.playerId !== session.playerId ||
       storedSessionForCurrentRoute()?.credential.roomCode !== session.credential.roomCode) throw new Error("게임 연결이 변경되었습니다.");
     if (!ack.ok) { void requestLatestSnapshot(); throw new Error(getUserErrorMessage(ack.error.code)); }
+    applyWireSnapshot(ack.data.snapshot, session);
+  }
+
+  async function actIsland(command: IslandClientCommand): Promise<void> {
+    const client = clientRef.current, session = storedSessionForCurrentRoute();
+    if (!client?.connected || session === null || sessionReplacedRef.current || compatibleSnapshotRef.current?.kind !== "PLATFORM_V2_ISLAND_SETTLERS") throw new Error("연결을 확인하고 다시 시도해주세요.");
+    const ack = await client.actIsland(command).catch((error: unknown) => { void requestLatestSnapshot(); throw error; });
+    if (clientRef.current !== client || sessionReplacedRef.current || storedSessionForCurrentRoute()?.playerId !== session.playerId ||
+      storedSessionForCurrentRoute()?.credential.roomCode !== session.credential.roomCode) throw new Error("게임 연결이 변경되었습니다.");
+    if (!ack.ok) {
+      void requestLatestSnapshot();
+      throw new Error(getUserErrorMessage(ack.error.code));
+    }
     applyWireSnapshot(ack.data.snapshot, session);
   }
 
@@ -763,7 +778,7 @@ export function useLobbyApp(): LobbyAppState {
     const incomingSnapshot = projectRoomSnapshotShell(compatible);
     const incomingLegacySnapshot =
       compatible.kind === "PLATFORM_V2_NUMBER_TILE" ||
-      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY" || compatible.kind === "PLATFORM_V2_SNEAKY_LUNCH" || compatible.kind === "PLATFORM_V2_WOLF_NIGHT" || compatible.kind === "PLATFORM_V2_HALLI_GALLI"
+      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY" || compatible.kind === "PLATFORM_V2_SNEAKY_LUNCH" || compatible.kind === "PLATFORM_V2_WOLF_NIGHT" || compatible.kind === "PLATFORM_V2_HALLI_GALLI" || compatible.kind === "PLATFORM_V2_ISLAND_SETTLERS"
         ? null
         : compatible.legacySnapshot;
     const incomingNumberSnapshot =
@@ -2983,6 +2998,7 @@ export function useLobbyApp(): LobbyAppState {
     passNumberTurn,
     rematchNumber,
     actDraw,
+    actIsland,
     actHalli,
     actWolf,
     actSneaky,

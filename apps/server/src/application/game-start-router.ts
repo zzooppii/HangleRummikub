@@ -6,7 +6,7 @@ import type {
   StartGameInput,
 } from "./game-start-service.js";
 
-type StartCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "HALLI_GALLI"> =
+type StartCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "HALLI_GALLI" | "ISLAND_SETTLERS"> =
   Readonly<{
     gameType: TGameType;
     start(input: StartGameInput): Promise<GameStartResult>;
@@ -23,6 +23,7 @@ export type GameStartRouterDependencies = Readonly<{
   numberTile: NumberTileGameStartCapability;
   gemCard: GemCardGameStartCapability;
   cityRole: CityRoleGameStartCapability;
+  island?: StartCapability<"ISLAND_SETTLERS">;
   halli?: StartCapability<"HALLI_GALLI">;
   wolf?: StartCapability<"WOLF_NIGHT">;
   sneaky?: StartCapability<"SNEAKY_LUNCH">;
@@ -50,7 +51,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function isStartCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "HALLI_GALLI",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "HALLI_GALLI" | "ISLAND_SETTLERS",
 >(
   value: unknown,
   gameType: TGameType,
@@ -62,7 +63,7 @@ function isStartCapability<
   );
 }
 
-function requireCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "HALLI_GALLI">(
+function requireCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "HALLI_GALLI" | "ISLAND_SETTLERS">(
   value: unknown,
   gameType: TGameType,
 ): StartCapability<TGameType> {
@@ -83,6 +84,7 @@ export class GameStartRouter implements GameStartRouting {
   readonly #numberTile: NumberTileGameStartCapability;
   readonly #gemCard: GemCardGameStartCapability;
   readonly #cityRole: CityRoleGameStartCapability;
+  readonly #island: StartCapability<"ISLAND_SETTLERS"> | undefined;
   readonly #halli: StartCapability<"HALLI_GALLI"> | undefined;
   readonly #wolf: StartCapability<"WOLF_NIGHT"> | undefined;
   readonly #sneaky: StartCapability<"SNEAKY_LUNCH"> | undefined;
@@ -90,6 +92,7 @@ export class GameStartRouter implements GameStartRouting {
 
   constructor(dependencies: GameStartRouterDependencies) {
     this.#roomRepository = dependencies.roomRepository;
+    this.#island = dependencies.island;
     this.#halli = dependencies.halli;
     this.#wolf = dependencies.wolf;
     this.#sneaky = dependencies.sneaky;
@@ -116,6 +119,7 @@ export class GameStartRouter implements GameStartRouting {
           return await this.#hangul.start(input);
         case "GEM_CARD":
           return await this.#gemCard.start(input);
+        case "ISLAND_SETTLERS": return this.#island ? await this.#island.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "HALLI_GALLI": return this.#halli ? await this.#halli.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "WOLF_NIGHT": return this.#wolf ? await this.#wolf.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "SNEAKY_LUNCH": return this.#sneaky ? await this.#sneaky.start(input) : {ok:false,error:INTERNAL_ERROR};

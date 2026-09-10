@@ -1,6 +1,6 @@
 # 보드게임 서버
 
-친구들과 브라우저에서 함께 즐기는 실시간 온라인 보드게임 플랫폼이다. 한글 타일 게임으로 시작해 숫자 타일, 보석 카드, 비밀 도시, 그림 릴레이, 몰래 한입까지 지원한다.
+친구들과 브라우저에서 함께 즐기는 실시간 온라인 보드게임 플랫폼이다. 한글 타일 게임으로 시작해 여러 타일·카드·파티게임과 섬 개척을 지원한다.
 
 하나의 Room/초대 코드 체계에서 게임을 선택하고 참가할 수 있다. 서버가 게임 규칙·차례·시간·결과를 판정하며, 세션 기반 재접속과 플레이어별 비공개 정보 보호를 제공한다. Web과 Socket.IO 서버는 production에서 하나의 origin으로 제공한다.
 
@@ -14,6 +14,7 @@
 | 비밀 도시 게임 (`CITY_ROLE`) | 비밀 역할 선택과 도시 건설, 명소 6종의 특수 능력 | [도시 규칙](./docs/CITY_ROLE_GAME_RULES.md) · [명소 V2](./docs/CITY_ROLE_GAME_RULES_V2.md) |
 | 그림 릴레이 (`DRAW_RELAY`) | 3~8명이 그림과 추측을 전달하고 함께 공개하는 파티게임 | [그림 릴레이 규칙](./docs/DRAW_RELAY_GAME_RULES.md) |
 | 몰래 한입 (`SNEAKY_LUNCH`) | 2~8명이 선생님 눈을 피해 도시락을 비우는 교실 파티게임 | [몰래 한입 규칙](./docs/SNEAKY_LUNCH_GAME_RULES.md) · [로컬 검증](./docs/SNEAKY_LUNCH_LOCAL_RELEASE_GATE.md) |
+| 섬 개척 (`ISLAND_SETTLERS`) | 3~4명이 자원을 생산·거래하고 마을과 도시를 건설하는 섬 전략 게임. 차례당 2분, 시간 초과 자동 처리 | [섬 개척 규칙](./docs/ISLAND_GAME_RULES.md) · [구현과 검증](./docs/ISLAND_ARCHITECTURE.md) |
 
 현재 소스의 기능과 실제 public 배포 상태는 구분한다. 기존 3게임의 공개 검증 이력은 [release gate](./docs/THREE_GAME_PLATFORM_RELEASE_GATE.md), CITY의 로컬 검증 이력은 [CITY local gate](./docs/CITY_ROLE_LOCAL_RELEASE_GATE.md)에 기록되어 있다. 이후 변경이 모두 Railway에 배포되었다는 의미는 아니다.
 

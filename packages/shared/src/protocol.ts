@@ -1,3 +1,4 @@
+import { IslandActionSchema } from "./games/island/actions.js";
 import { CityExpansionSettingsSchema, CityExpansionActionSchema } from "./games/city-role/expansion-contracts.js";
 import { GemCollectSelectionSchema, GemPurchaseSourceSchema, GemMarketSourceSchema } from "./games/gem-card/contracts.js";
 import { DrawRelayDrawSecondsSchema } from "./games/draw-relay/settings.js";
@@ -630,3 +631,9 @@ import { DrawingSchema, GuessSchema } from "./games/draw-relay/drawing-contracts
 import { SneakySettingsSchema } from "./games/sneaky-lunch/contracts.js";
 
 import { WolfSettingsSchema, WolfActionSchema, WolfTextSchema } from "./games/wolf-night/contracts.js";
+
+const IslandIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
+export const IslandActCommandSchema = v.strictObject({ ...IslandIdentity, kind: v.literal("island:act"), turnId: TurnIdSchema, payload: IslandActionSchema });
+export const IslandRematchCommandSchema = v.strictObject({ ...IslandIdentity, kind: v.literal("island:rematch"), expectedRoomRevision: RoomRevisionSchema, payload: v.strictObject({}) });
+export const IslandClientCommandSchema = v.variant("kind", [IslandActCommandSchema, IslandRematchCommandSchema]);
+export type IslandClientCommand = v.InferOutput<typeof IslandClientCommandSchema>;

@@ -30,3 +30,7 @@ export * from "./games/wolf-night/v2-projection-contracts.js";
 
 export * from "./games/city-role/expansion-catalog.js";
 export * from "./games/city-role/expansion-contracts.js";
+
+export * from "./games/island/actions.js";
+export * from "./games/island/contracts.js";
+export * from "./games/island/board.js";

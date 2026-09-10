@@ -1332,6 +1332,7 @@ function registerResumeHandler(
           return;
         }
         runtime.drawRelayHostSuccession?.resumed(result.data.roomId, result.data.playerId);
+        runtime.islandHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.halliHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.wolfHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.sneakyLunchPresence?.resumed(result.data.roomId, result.data.playerId);
@@ -2686,6 +2687,27 @@ function registerNumberPassHandler(
 }
 
 
+import { IslandClientCommandSchema } from "@hangul-rummikub/shared";
+function registerIslandHandlers(socket: RealtimeSocket, runtime: ApplicationRuntime): void {
+  for (const event of ["island:act", "island:rematch"] as const) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
+    const receivedAt = runtime.clock.now(), command = parseNumberRematch(IslandClientCommandSchema, raw);
+    if (!command.success || command.output.kind !== event) { acknowledgeIfPresent(acknowledge, failureAck(raw, INVALID_PAYLOAD_ERROR, receivedAt)); return; }
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(createSocketId(socket.id));
+      if (!binding) { acknowledgeIfPresent(acknowledge, failureAck(raw, UNAUTHENTICATED_ERROR, receivedAt)); return; }
+      if (!isRoomAdmissionCompatible("ISLAND_SETTLERS", socketAdmissionCapabilities(socket))) {
+        acknowledgeIfPresent(acknowledge, failureAck(raw, {code:"INCOMPATIBLE_GAME_CAPABILITY",message:"ISLAND requires V2 capability.",recoverable:false}, receivedAt)); return;
+      }
+      if (!runtime.islandService) { acknowledgeIfPresent(acknowledge, failureAck(raw, INTERNAL_ERROR, receivedAt)); return; }
+      const result = await runtime.islandService.command({roomId:binding.roomId,actorPlayerId:binding.playerId,command:command.output,receivedAt,
+        authorization:{isCurrent:()=>socket.connected && isCurrentBinding(runtime,binding)}});
+      if (!result.ok) { acknowledgeIfPresent(acknowledge, failureAck(raw,result.error,receivedAt)); return; }
+      const loaded = await loadSnapshotForSocket(runtime,socket,binding.roomId,binding.playerId);
+      if (loaded && socket.connected && isCurrentBinding(runtime,binding)) acknowledgeIfPresent(acknowledge,snapshotSuccessAck(command.output.requestId,loaded.metadata,loaded.wireSnapshot));
+    })().catch(()=>acknowledgeIfPresent(acknowledge,failureAck(raw,INTERNAL_ERROR,receivedAt)));
+  });
+}
+
 import { HalliClientCommandSchema } from "@hangul-rummikub/shared";
 function registerHalliHandlers(socket: RealtimeSocket, runtime: ApplicationRuntime): void {
   for (const event of ["halli:flip", "halli:bell", "halli:rematch"] as const) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
@@ -2994,6 +3016,7 @@ function registerDisconnectHandler(
     }
 
     runtime.drawRelayHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
+    runtime.islandHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.halliHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.wolfHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.sneakyLunchPresence?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
@@ -3073,6 +3096,7 @@ export function registerSocketIoHandlers(
         reportSnapshotFanOutFailure();
       }
     });
+  const unsubscribeIsland = runtime.islandService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeHalli = runtime.halliService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeWolf = runtime.wolfService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeSneaky = runtime.sneakyLunchService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
@@ -3124,6 +3148,7 @@ export function registerSocketIoHandlers(
     registerGemYieldHandler(io, socket, runtime);
     registerCityHandlers(io, socket, runtime);
     registerDrawRelayHandlers(socket, runtime);
+    registerIslandHandlers(socket, runtime);
     registerHalliHandlers(socket, runtime);
     registerWolfHandlers(socket, runtime);
     registerSneakyHandlers(socket, runtime);
@@ -3143,6 +3168,7 @@ export function registerSocketIoHandlers(
     unsubscribeGemCardTimeoutApplied();
     unsubscribeCityRoleTimeoutApplied();
     unsubscribeDrawRelay?.();
+    unsubscribeIsland?.();
     unsubscribeHalli?.();
     unsubscribeWolf?.();
     unsubscribeSneaky?.();

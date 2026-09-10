@@ -1011,3 +1011,7 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 1. Phase 7 gate부터 Phase 17 통합 E2E·안정화까지 구현을 완료했다.
 2. 다섯 종료 reason, 점수·competition ranking, deadline 우선순위와 stalemate/forfeit 의미는 C-17을 따른다.
 3. 다음 구현 단계는 Roadmap Phase 18 Railway single-origin 배포다.
+
+## ISLAND_SETTLERS 별도 확정 규칙 (2026-09-10)
+
+섬 개척의 3–4인 기본판과 차례당 2분·시간 초과 자동 처리는 사용자의 개발 승인 및 시간 정책 선택에 따라 확정했다. 세부 내용은 [ISLAND_GAME_RULES.md](./ISLAND_GAME_RULES.md)의 `CONFIRMED`와 `DIGITAL_MVP_POLICY`를 따른다. 이 결정은 한글 타일 게임의 미확정 항목을 확정하거나 변경하지 않는다.

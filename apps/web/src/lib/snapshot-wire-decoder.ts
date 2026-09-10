@@ -1,3 +1,4 @@
+import type { IslandLobbyPlatformSnapshotV2, IslandPlayingPlatformSnapshotV2, IslandFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import type { HalliLobbyPlatformSnapshotV2, HalliPlayingPlatformSnapshotV2, HalliFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import type { WolfLobbyPlatformSnapshotV2, WolfPlayingPlatformSnapshotV2, WolfFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import type { DrawRelayLobbyPlatformSnapshotV2, DrawRelayPlayingPlatformSnapshotV2, DrawRelayFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
@@ -31,6 +32,7 @@ export const WEB_SUPPORTED_GAME_TYPES = Object.freeze([
   "SNEAKY_LUNCH",
   "WOLF_NIGHT",
   "HALLI_GALLI",
+  "ISLAND_SETTLERS",
 ] as const);
 
 export type CityRolePlatformSnapshotV2 =
@@ -49,10 +51,12 @@ export type NumberTilePlatformSnapshotV2 =
   | NumberTileFinishedPlatformSnapshotV2;
 
 export type DrawRelayWebSnapshot = DrawRelayLobbyPlatformSnapshotV2 | DrawRelayPlayingPlatformSnapshotV2 | DrawRelayFinishedPlatformSnapshotV2;
+export type IslandWebSnapshot = IslandLobbyPlatformSnapshotV2 | IslandPlayingPlatformSnapshotV2 | IslandFinishedPlatformSnapshotV2;
 export type HalliWebSnapshot = HalliLobbyPlatformSnapshotV2 | HalliPlayingPlatformSnapshotV2 | HalliFinishedPlatformSnapshotV2;
 export type WolfWebSnapshot = WolfLobbyPlatformSnapshotV2 | WolfPlayingPlatformSnapshotV2 | WolfFinishedPlatformSnapshotV2;
 export type SneakyWebSnapshot = SneakyLobbyPlatformSnapshotV2 | SneakyPlayingPlatformSnapshotV2 | SneakyFinishedPlatformSnapshotV2;
 export type CompatibleWebSnapshot =
+  | Readonly<{kind: "PLATFORM_V2_ISLAND_SETTLERS"; snapshotVersion: 2; gameType: "ISLAND_SETTLERS"; platformSnapshot: IslandWebSnapshot }>
   | Readonly<{kind: "PLATFORM_V2_HALLI_GALLI"; snapshotVersion: 2; gameType: "HALLI_GALLI"; platformSnapshot: HalliWebSnapshot }>
   | Readonly<{kind: "PLATFORM_V2_WOLF_NIGHT"; snapshotVersion: 2; gameType: "WOLF_NIGHT"; platformSnapshot: WolfWebSnapshot }>
   | Readonly<{kind: "PLATFORM_V2_SNEAKY_LUNCH"; snapshotVersion: 2; gameType: "SNEAKY_LUNCH"; platformSnapshot: SneakyWebSnapshot }>
@@ -157,7 +161,7 @@ function decodePlatformSnapshotV2(
     input.room.gameType !== "HANGUL_TILE" &&
     input.room.gameType !== "NUMBER_TILE" &&
     input.room.gameType !== "GEM_CARD" &&
-    input.room.gameType !== "CITY_ROLE" && input.room.gameType !== "DRAW_RELAY" && input.room.gameType !== "SNEAKY_LUNCH" && input.room.gameType !== "WOLF_NIGHT" && input.room.gameType !== "HALLI_GALLI"
+    input.room.gameType !== "CITY_ROLE" && input.room.gameType !== "DRAW_RELAY" && input.room.gameType !== "SNEAKY_LUNCH" && input.room.gameType !== "WOLF_NIGHT" && input.room.gameType !== "HALLI_GALLI" && input.room.gameType !== "ISLAND_SETTLERS"
   ) {
     return typeof input.room.gameType === "string"
       ? { kind: "INCOMPATIBLE", reason: "UNSUPPORTED_GAME_TYPE" }
@@ -172,6 +176,11 @@ function decodePlatformSnapshotV2(
     const snapshot = validation.value;
     if (!isDrawSnapshot(snapshot)) return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
     return { kind: "COMPATIBLE", value: { kind: "PLATFORM_V2_DRAW_RELAY", snapshotVersion: 2, gameType: "DRAW_RELAY", platformSnapshot: snapshot } };
+  }
+  if (input.room.gameType === "ISLAND_SETTLERS") {
+    const snapshot = validation.value;
+    if (!isIslandSnapshot(snapshot)) return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
+    return { kind: "COMPATIBLE", value: { kind: "PLATFORM_V2_ISLAND_SETTLERS", snapshotVersion: 2, gameType: "ISLAND_SETTLERS", platformSnapshot: snapshot } };
   }
   if (input.room.gameType === "HALLI_GALLI") {
     const snapshot = validation.value;
@@ -278,5 +287,6 @@ export function decodeWebSnapshot(input: unknown): WebSnapshotDecodeResult {
 function isDrawSnapshot(s: PlatformSnapshotV2): s is DrawRelayWebSnapshot { return s.room.gameType === "DRAW_RELAY" && (s.game === null || s.game.gameType === "DRAW_RELAY"); }
 function isSneakySnapshot(s: PlatformSnapshotV2): s is SneakyWebSnapshot { return s.room.gameType === "SNEAKY_LUNCH" && (s.game === null || s.game.gameType === "SNEAKY_LUNCH"); }
 
+function isIslandSnapshot(s: PlatformSnapshotV2): s is IslandWebSnapshot { return s.room.gameType === "ISLAND_SETTLERS" && (s.game === null || s.game.gameType === "ISLAND_SETTLERS"); }
 function isHalliSnapshot(s: PlatformSnapshotV2): s is HalliWebSnapshot { return s.room.gameType === "HALLI_GALLI" && (s.game === null || s.game.gameType === "HALLI_GALLI"); }
 function isWolfSnapshot(s: PlatformSnapshotV2): s is WolfWebSnapshot { return s.room.gameType === "WOLF_NIGHT" && (s.game === null || s.game.gameType === "WOLF_NIGHT"); }

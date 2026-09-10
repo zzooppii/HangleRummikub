@@ -1,4 +1,5 @@
 import { CityExpansionSettingsSchema } from "@hangul-rummikub/shared";
+import { IslandGameStateAdapter, type IslandLifecycle } from "../games/island/compatibility/adapter.js";
 import { HalliGameStateAdapter, type HalliLifecycle } from "../games/halli-galli/compatibility/adapter.js";
 import { WolfGameStateAdapter, type WolfLifecycle } from "../games/wolf-night/compatibility/adapter.js";
 import { WolfSettingsSchema } from "@hangul-rummikub/shared";
@@ -107,6 +108,7 @@ type GameStateStorageAdapters = Readonly<{
 }>;
 
 type RoomGameLifecycleInspection =
+  | Readonly<{gameType:"ISLAND_SETTLERS";inspection:IslandLifecycle}>
   | Readonly<{gameType:"HALLI_GALLI";inspection:HalliLifecycle}>
   | Readonly<{gameType:"WOLF_NIGHT";inspection:WolfLifecycle}>
   | Readonly<{gameType:"SNEAKY_LUNCH";inspection:SneakyLunchLifecycle}>
@@ -223,6 +225,13 @@ function cloneRoomWriteCandidate(
   } as const;
 
   switch (candidate.gameType) {
+    case "ISLAND_SETTLERS": {
+      const adapter = new IslandGameStateAdapter(), game = candidate.game === null ? null : adapter.cloneAndValidate(candidate.game);
+      validateRoomGameCoherence(shell.phase, shell.players, game, () => game === null ? null : adapter.inspectLifecycle(game));
+      const departedPlayerIds = Object.freeze([...(candidate.departedPlayerIds ?? [])]);
+      if (new Set(departedPlayerIds).size !== departedPlayerIds.length || departedPlayerIds.some(id => !shell.players.some(p => p.playerId === id)) || shell.phase === "LOBBY" && departedPlayerIds.length > 0) throw new Error("Invalid departed ISLAND roster.");
+      return Object.freeze({...shell, gameType:"ISLAND_SETTLERS", game, departedPlayerIds});
+    }
     case "HALLI_GALLI": {
       const adapter = new HalliGameStateAdapter(), game = candidate.game === null ? null : adapter.cloneAndValidate(candidate.game);
       validateRoomGameCoherence(shell.phase, shell.players, game, () => game === null ? null : adapter.inspectLifecycle(game));
@@ -323,6 +332,7 @@ function validateRoomGameCoherence(
     | GemCardGameLifecycleInspection
     | CityRoleGameLifecycleInspection
     | DrawRelayLifecycle
+    | IslandLifecycle
     | HalliLifecycle
     | WolfLifecycle
     | SneakyLunchLifecycle
@@ -373,6 +383,7 @@ function persistRoom(
     case "GEM_CARD":
     case "CITY_ROLE":
     case "DRAW_RELAY":
+    case "ISLAND_SETTLERS":
     case "HALLI_GALLI":
     case "WOLF_NIGHT":
     case "SNEAKY_LUNCH":
@@ -395,6 +406,7 @@ function inspectRoomGame(
     return null;
   }
   switch (room.gameType) {
+    case "ISLAND_SETTLERS": return {gameType:"ISLAND_SETTLERS",inspection:new IslandGameStateAdapter().inspectLifecycle(room.game)};
     case "HALLI_GALLI": return {gameType:"HALLI_GALLI",inspection:new HalliGameStateAdapter().inspectLifecycle(room.game)};
     case "WOLF_NIGHT": return {gameType:"WOLF_NIGHT",inspection:new WolfGameStateAdapter().inspectLifecycle(room.game)};
     case "SNEAKY_LUNCH": return {gameType:"SNEAKY_LUNCH",inspection:new SneakyLunchGameStateAdapter().inspectLifecycle(room.game)};

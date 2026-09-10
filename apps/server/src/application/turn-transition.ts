@@ -1,3 +1,4 @@
+import type { IslandStoredGame } from "../games/island/compatibility/adapter.js";
 import type { HalliStoredGame } from "../games/halli-galli/compatibility/adapter.js";
 import type { WolfStoredGame } from "../games/wolf-night/compatibility/adapter.js";
 import type { SneakyLunchStoredGame } from "../games/sneaky-lunch/compatibility/adapter.js";
@@ -72,9 +73,10 @@ export function createNextTurn(
 
 export function toScheduledTurnDeadline(
   roomId: RoomId,
-  game: PlayingGameState | PlayingNumberTileGameState | PlayingGemGameState | CityRoleStoredGame | DrawRelayStoredGame | SneakyLunchStoredGame | WolfStoredGame | HalliStoredGame,
+  game: PlayingGameState | PlayingNumberTileGameState | PlayingGemGameState | CityRoleStoredGame | DrawRelayStoredGame | SneakyLunchStoredGame | WolfStoredGame | HalliStoredGame | IslandStoredGame,
 ): ScheduledTurnDeadline {
   if ("state" in game && !("windowStartedAt" in game)) {
+    if ("turnId" in game.state) return { roomId, gameId: game.gameId, expectedGameRevision: game.gameRevision, turnId: game.state.turnId, deadlineAt: game.state.deadlineAt };
     if ("nextTransitionAt" in game.state) return {roomId,gameId:game.gameId,expectedGameRevision:game.gameRevision,turnId:parse(TurnIdSchema,game.state.transitionId),deadlineAt:parse(ServerTimeSchema,game.state.nextTransitionAt)};
     if(game.state.deadlineAt===null)throw new Error("DRAW has no deadline.");
     return {roomId,gameId:game.gameId,expectedGameRevision:game.gameRevision,turnId:parse(TurnIdSchema,game.state.stageToken),deadlineAt:parse(ServerTimeSchema,game.state.deadlineAt)};
@@ -152,7 +154,9 @@ export async function scheduleCurrentTurnBestEffort(
     }
 
     if ("state" in game && !("windowStartedAt" in game)) {
-      if ("nextTransitionAt" in game.state) {
+      if ("turnId" in game.state) {
+        if (game.state.turnId !== identity.turnId) return false;
+      } else if ("nextTransitionAt" in game.state) {
         if (game.state.nextTransitionAt === null || game.state.transitionId !== identity.turnId) return false;
       } else if(game.state.deadlineAt===null||game.state.stageToken!==identity.turnId)return false;
     } else if ("windowStartedAt" in game) {

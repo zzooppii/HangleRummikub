@@ -1,3 +1,4 @@
+import { IslandPlayingProjectionSchema, IslandFinishedProjectionSchema } from "../games/island/contracts.js";
 import { HalliPlayingProjectionSchema, HalliFinishedProjectionSchema } from "../games/halli-galli/contracts.js";
 import { CityExpansionSettingsSchema } from "../games/city-role/expansion-contracts.js";
 import { GemCardPlayingProjectionV2Schema, GemCardFinishedProjectionV2Schema } from "../games/gem-card/v2-projection-contracts.js";
@@ -269,6 +270,24 @@ export const DrawRelayPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown,D
 export type DrawRelayFinishedPlatformSnapshotV2 = v.InferOutput<typeof DrawRelayFinishedPlatformSnapshotV2Raw>;
 export const DrawRelayFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown,DrawRelayFinishedPlatformSnapshotV2> = DrawRelayFinishedPlatformSnapshotV2Raw;
 
+const IslandOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const IslandRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("ISLAND_SETTLERS") };
+const IslandPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(3), v.maxLength(4));
+const IslandLobbyRaw = v.pipe(v.strictObject({ ...IslandOuter, room: v.strictObject({ ...IslandRoom, phase: v.literal("LOBBY"),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(4)) }), game: v.null() }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
+const IslandPlayingRaw = v.pipe(v.strictObject({ ...IslandOuter, room: v.strictObject({ ...IslandRoom, phase: v.literal("PLAYING"), players: IslandPlayers }), game: IslandPlayingProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.cards.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.developmentCount), v.check(s => Object.values(s.game.privateState.resources).reduce((n, count) => n + count, 0) === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.resourceCount));
+const IslandFinishedRaw = v.pipe(v.strictObject({ ...IslandOuter, room: v.strictObject({ ...IslandRoom, phase: v.literal("FINISHED"), players: IslandPlayers }), game: IslandFinishedProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.cards.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.developmentCount), v.check(s => Object.values(s.game.privateState.resources).reduce((n, count) => n + count, 0) === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.resourceCount));
+export type IslandLobbyPlatformSnapshotV2 = v.InferOutput<typeof IslandLobbyRaw>;
+export type IslandPlayingPlatformSnapshotV2 = v.InferOutput<typeof IslandPlayingRaw>;
+export type IslandFinishedPlatformSnapshotV2 = v.InferOutput<typeof IslandFinishedRaw>;
+export const IslandLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, IslandLobbyPlatformSnapshotV2> = IslandLobbyRaw;
+export const IslandPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, IslandPlayingPlatformSnapshotV2> = IslandPlayingRaw;
+export const IslandFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, IslandFinishedPlatformSnapshotV2> = IslandFinishedRaw;
+
+
 const HalliOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
 const HalliRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("HALLI_GALLI") };
 const HalliPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(6));
@@ -321,6 +340,7 @@ export const SneakyPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, Sne
 export const SneakyFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, SneakyFinishedPlatformSnapshotV2> = SneakyFinishedRaw;
 
 export const LobbyPlatformSnapshotV2Schema = v.union([
+  IslandLobbyPlatformSnapshotV2Schema,
   HalliLobbyPlatformSnapshotV2Schema,
   WolfLobbyPlatformSnapshotV2Schema,
   SneakyLobbyPlatformSnapshotV2Schema,
@@ -463,6 +483,7 @@ export type GemCardPlayingPlatformSnapshotV2 = v.InferOutput<
 >;
 
 export const PlayingPlatformSnapshotV2Schema = v.union([
+  IslandPlayingPlatformSnapshotV2Schema,
   HalliPlayingPlatformSnapshotV2Schema,
   WolfPlayingPlatformSnapshotV2Schema,
   DrawRelayPlayingPlatformSnapshotV2Schema,
@@ -605,6 +626,7 @@ export type GemCardFinishedPlatformSnapshotV2 = v.InferOutput<
 >;
 
 export const FinishedPlatformSnapshotV2Schema = v.union([
+  IslandFinishedPlatformSnapshotV2Schema,
   HalliFinishedPlatformSnapshotV2Schema,
   WolfFinishedPlatformSnapshotV2Schema,
   DrawRelayFinishedPlatformSnapshotV2Schema,
