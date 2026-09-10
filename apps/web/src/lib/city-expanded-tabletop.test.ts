@@ -1,3 +1,4 @@
+import { CityExpandedCatalog } from '../features/city-role/CityExpandedCatalog.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createElement } from 'react';
@@ -40,7 +41,7 @@ test('every configured job retains its illustrated rank card and its own rules t
     roles[job.rank - 1] = job.id;
     const base = citySelectionFixture(5);
     const snapshot = expanded(parse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: { ...base.game, privateState: { ...base.game.privateState, availableRoleIds: [...CITY_ALL_ROLE_IDS.slice(0, 8)] } } }), roles);
-    const html = screen(snapshot);
+    const html = renderToStaticMarkup(createElement(CityExpandedCatalog, { snapshot }));
     assert.ok(html.includes(`<strong>${job.name}</strong><p>${job.text}</p>`), job.id);
     assert.ok(html.includes(`data-role="CR-0${job.rank}"`), job.id);
     const track = renderToStaticMarkup(createElement(CityRoleTrack, { game: snapshot.game }));
@@ -77,6 +78,10 @@ test('HUD follows the server responder during interruptions and keeps the same a
   assert.match(html, /마술사 · 응답 선택/);
   assert.match(html, /role="timer" aria-label="남은 시간 90초">01:30/);
   assert.match(html, /aria-current="step"/);
+  assert.match(html, /aria-label="직업 행동"/);
+  const waiting = parse(CityRolePlayingPlatformSnapshotV2Schema, { ...snapshot, game: { ...snapshot.game, expansion: { ...snapshot.game.expansion, pending: null } } });
+  assert.doesNotMatch(screen(waiting), /aria-label="직업 행동"|city-expanded-active-role/);
+
   const expired = renderToStaticMarkup(createElement(CityExpandedTurnHud, { game: snapshot.game, viewerId: snapshot.self.playerId, actor: '도시1', remainingSeconds: 0, roleName: '마술사' }));
   assert.match(expired, /class="city-turn-hud is-urgent"/);
   assert.match(expired, /남은 시간 0초">00:00/);

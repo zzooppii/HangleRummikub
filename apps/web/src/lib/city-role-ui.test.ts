@@ -1,3 +1,4 @@
+import { CityExpandedCatalog } from '../features/city-role/CityExpandedCatalog.js';
 import { CityExpandedScreen } from "../features/city-role/CityExpandedScreen.js";
 import { CityExpansionLobby } from "../features/city-role/CityExpansionLobby.js";
 import { CityExpandedHelp } from "../features/city-role/CityExpandedHelp.js";
@@ -623,7 +624,7 @@ test("all 30 special cards render their approved cost, ability and optimized art
   }
 });
 
-test('expanded CITY UI shows the chosen jobs, guide and 14 district illustrations', () => {
+test('expanded CITY UI keeps actions and compact reference buttons, with 14 district illustrations in the catalog', () => {
   const base = cityActionFixture(true);
   const snapshot = parse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: { ...base.game, rulesVersion: 'city-rules-v3', cardSetVersion: 'city-cardset-v3', roleSetVersion: 'city-roles-v2',
     expansion: { settings: CITY_DEFAULT_SETTINGS, specialIds: CITY_STANDARD_SPECIALS, tax: 0, decorated: [], museum: [], disabledRole: null, robbedRole: null, warrants: [], threats: [], witchTarget: null, pending: null, vaultOwners: [] },
@@ -631,8 +632,12 @@ test('expanded CITY UI shows the chosen jobs, guide and 14 district illustration
   } });
   const html = renderToStaticMarkup(createElement(CityExpandedScreen, { snapshot, connected: true, pending: false, errorMessage: null, onCommand: async () => {}, onAction: () => {}, onLeave: () => {} }));
   assert.match(html, /사운드 켜짐/);assert.match(html, /aria-label="효과음 볼륨"/);
-  assert.match(html, /마술사의 차례/);assert.match(html, /게임 방법 보기/);assert.match(html, /특수 건물 14종/);
-  assert.equal((html.match(/src="\/city-art\/expanded-v3\//gu) ?? []).length, 14);
+  assert.match(html, /1라운드 · 마술사/);assert.match(html, /게임 방법 보기/);assert.match(html, /특수 건물 14종/);
+  assert.equal((html.match(/aria-haspopup="dialog"/gu) ?? []).length, 2);
+  assert.doesNotMatch(html, /city-expanded-active-role|<details class="city-catalog"/);
+  assert.match(html, /금화 2개 받기/);assert.match(html, /건물 카드 뽑기/);assert.match(html, /차례 마치기/);
+  const catalog = renderToStaticMarkup(createElement(CityExpandedCatalog, { snapshot }));
+  assert.equal((catalog.match(/src="\/city-art\/expanded-v3\//gu) ?? []).length, 14);
   assert.equal((html.match(/이 카드 받기/gu) ?? []).length, 2);
   assert.doesNotMatch(html, /여섯 가지 특수 능력|바람계단 할인/);
 });

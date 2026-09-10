@@ -1,12 +1,10 @@
 /** Shared rules for new CITY games; saved v1/v2 games keep their existing guide. */
 export function CityExpandedHelp({ selectionSeconds = 20 }: Readonly<{ selectionSeconds?: number }>) {
-  return <details className="city-catalog city-expanded-help"><summary>게임 방법 보기</summary>
-    <div className="city-guide-sections">
+  return <div className="city-guide-sections">
       <section><h3>직업을 고르고 도시를 건설하세요</h3><p>매 라운드 왕관을 가진 사람부터 비밀리에 직업을 고릅니다. 2·3인은 두 직업, 4–6인은 한 직업을 갖습니다. 2인전은 가질 직업과 버릴 직업을 함께 고르고 마지막 한 장은 자동 배분합니다. 선택이 끝나면 직업 번호 순서대로 행동합니다.</p></section>
       <section><h3>금화 또는 카드를 받고 행동하세요</h3><p>차례마다 금화 2개를 받거나 건물 카드 2장을 보고 1장을 갖습니다. 그 뒤 직업 능력을 사용하고 건물을 지을 수 있습니다. 기본 건설 한도는 1채이며 건축가는 3채입니다. 종류별 수입은 차례 중 한 번 직접 받으므로 건물을 지은 뒤 받아도 됩니다.</p></section>
       <section><h3>특수 건물 14종이 함께합니다</h3><p>교역 20 · 시정 12 · 수비 11 · 문화 11장과 특수 건물 14장, 총 68장으로 시작합니다. 일반판은 추천 14종, 확장판은 30종 중 무작위 14종입니다. 카드의 ★ 특수 능력을 확인하세요. 연구소·대장간·박물관·병기고는 직접 사용하며, 대체 건설에서 카드 지불과 건물 희생을 선택할 수 있습니다.</p></section>
       <section><h3>8채 완성 후 라운드가 끝나면 점수를 셉니다</h3><p>건물 점수에 다섯 종류를 모은 보너스 3점, 첫 도시 완성 4점 또는 이후 완성 2점, 특수 건물의 보너스를 더합니다. 기념비는 완성 판정에서 2채로 셉니다. 같은 점수는 공동 순위이며 기권자는 승리할 수 없습니다.</p></section>
       <section><h3>응답이 필요한 능력</h3><p>몰수·협박·역할 교환 등의 선택은 화면에 안내됩니다. 선택한 카드와 진짜 표식은 허용된 사람에게만 보입니다. 선택 시간은 {selectionSeconds}초, 행동 시간은 90초이며 응답 중에도 시간이 흐릅니다. 시간 초과 시 서버가 기본 선택으로 진행합니다.</p></section>
-    </div>
-  </details>;
+    </div>;
 }

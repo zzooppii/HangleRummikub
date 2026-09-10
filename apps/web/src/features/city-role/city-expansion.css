@@ -25,12 +25,10 @@
 .city-expanded-page .city-countdown progress{width:76px;height:6px;margin-top:6px;accent-color:#537e5e}
 .city-expanded-page .city-turn-hud.is-urgent progress{accent-color:#aa442e}
 .city-expanded-page .city-private-summary h2{font-size:18px;margin:8px 0}
-.city-expanded-own-roles,.city-expanded-own-role,.city-expanded-active-role{display:flex;align-items:center;gap:12px}
+.city-expanded-own-roles,.city-expanded-own-role{display:flex;align-items:center;gap:12px}
 .city-expanded-own-roles{flex-wrap:wrap}
 .city-expanded-own-role{padding:8px 12px;border:1px solid #b7a174;border-radius:10px;background:#fff9e680}
 .city-expanded-own-role .city-role-emblem{width:32px;height:32px;margin:0}
-.city-expanded-active-role{margin-bottom:16px}.city-expanded-active-role>.city-role-emblem{flex-shrink:0}
-.city-expanded-active-role p{margin:0;line-height:1.6}
 .city-expanded-page .city-expanded-role-catalog{margin:18px 0;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
 .city-expanded-page button.city-role-card[data-role]{padding:18px 13px;background:linear-gradient(#fdf4dc,#eaddbf);border:1px solid #bb9b5c;border-radius:16px 16px 8px 8px;color:#26392f}
 .city-expanded-page button.city-role-card[data-role]:hover:not(:disabled){background:linear-gradient(#fff9e8,#efdfb7);border-color:#f1d080}
@@ -52,3 +50,14 @@
 @media(max-width:620px){.city-expanded-page button.city-role-card[data-role]{padding:12px 8px}}
 
 .city-selection-time{margin-bottom:18px}.city-selection-time small{min-height:0}
+
+.city-expanded-reference{display:flex;flex-wrap:wrap;gap:8px}
+.city-expanded-page .city-expanded-reference>button{font-size:13px;padding:8px 12px}
+.city-expanded-page .city-reference-dialog{width:min(860px,calc(100vw - 24px));color:#302f27}
+.city-reference-dialog .city-help-header h2{margin:0;font-size:16px;line-height:1.4;color:#fff0cc}
+.city-reference-dialog .city-help-timer{font-size:12px}
+.city-reference-dialog .city-role-card>small{margin-top:auto}
+@media(max-width:620px){
+  .city-expanded-page .city-reference-dialog .city-special-lineup{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .city-reference-dialog .city-help-header h2{font-size:14px}
+}
