@@ -1,8 +1,9 @@
+import { deriveExpandedCityImpacts } from "./city-expanded-impact.js";
 import type { CityRolePlayingPlatformSnapshotV2, CityRoleFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import type { CityActionFeedback } from "./city-role-actions.js";
 
 export type CityImpactSnapshot = CityRolePlayingPlatformSnapshotV2 | CityRoleFinishedPlatformSnapshotV2;
-export type CityImpactCue = "STRIKE" | "COIN_GAIN" | "COIN_LOSS" | "SHUFFLE" | "DRAW" | "BUILD" | "BREAK" | "SHIELD" | "LEADER" | "WATER" | "TICK" | "WIND" | "MOON" | "BELL" | "VICTORY";
+export type CityImpactCue = "STRIKE" | "STEAL" | "COIN_GAIN" | "COIN_LOSS" | "SHUFFLE" | "DRAW" | "BUILD" | "BREAK" | "SHIELD" | "LEADER" | "WATER" | "TICK" | "WIND" | "MOON" | "BELL" | "VICTORY";
 export type CityImpact = Readonly<{ id: string; cue: CityImpactCue; message: string; intensity: "small" | "medium" | "large"; cardId?: string;
   departingBuilding?: Readonly<Pick<CityImpactSnapshot["game"]["playerStates"][number]["builtBuildings"][number], "templateId" | "category" | "name">> }>;
 
@@ -10,6 +11,7 @@ export type CityImpact = Readonly<{ id: string; cue: CityImpactCue; message: str
 export function deriveCityImpacts(before: CityImpactSnapshot, after: CityImpactSnapshot): CityImpact[] {
   const a = before.game, b = after.game, self = after.self.playerId;
   if (a.gameId !== b.gameId || before.self.playerId !== self || b.gameRevision !== a.gameRevision + 1) return [];
+  if (b.expansion) return deriveExpandedCityImpacts(before, after);
   const events: CityImpact[] = [];
   const name = (id: string) => after.room.players.find(p => p.playerId === id)?.nickname ?? "참가자";
   const emit = (key: string, cue: CityImpactCue, message: string, intensity: CityImpact["intensity"] = "medium", cardId?: string) => {
@@ -115,7 +117,7 @@ export function createCityImpactTracker() {
       previous = snapshot;
       if (!continuous) baselineRevision = snapshot.game.gameRevision;
       const candidates = continuous ? deriveCityImpacts(old, snapshot) : [];
-      if (continuous && feedback?.impact && feedback.impact.gameId === snapshot.game.gameId && feedback.impact.revision === snapshot.game.gameRevision &&
+      if (!snapshot.game.expansion && continuous && feedback?.impact && feedback.impact.gameId === snapshot.game.gameId && feedback.impact.revision === snapshot.game.gameRevision &&
         (feedback.impact.revision > baselineRevision || feedback.impact.event.id.includes(":reject:"))) candidates.push(feedback.impact.event);
       if (!continuous && feedback?.impact) seen.add(feedback.impact.event.id);
       const fresh = candidates.filter(event => { if (seen.has(event.id)) return false; seen.add(event.id); return true; });

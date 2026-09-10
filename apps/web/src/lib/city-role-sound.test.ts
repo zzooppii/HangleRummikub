@@ -5,10 +5,12 @@ import { RequestIdSchema } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 import { CITY_SOUND_CUES, CITY_SOUND_PREFERENCE, cityFeedbackCue, disposeCityAudio, playCitySound, readCitySoundStorage, shouldAnnounceCityRound, shouldAnnounceCityWindow, unlockCityAudio, writeCitySoundStorage } from "../features/city-role/city-role-sound.js";
 import { markRequestFeedbackSeen } from "./request-feedback.js";
-import { playCityImpactSound } from "../features/city-role/city-role-sound.js";
+import { cityImpactSoundEvent, CITY_SOUND_VOLUME, readCitySoundVolume, playCityImpactSound } from "../features/city-role/city-role-sound.js";
 
 class FakeAudioContext {
   static instances: FakeAudioContext[] = [];
+  sampleRate = 44100;
+  noiseSources = 0;
   state = "suspended";
   currentTime = 10;
   destination = {};
@@ -23,6 +25,9 @@ class FakeAudioContext {
   async resume() { this.resumeCalls++; if (this.blocked) throw new Error("blocked"); this.state = "running"; }
   async close() { this.closeCalls++; this.state = "closed"; }
   createOscillator() { return { type: "sine", frequency: { setValueAtTime: (value: number) => this.frequencies.push(value) }, connect() {}, disconnect: () => { this.disconnected++; }, addEventListener: (_event: string, callback: () => void) => { this.ended.push(callback); }, start() {}, stop() {} }; }
+  createBuffer(_channels: number, length: number) { return { getChannelData: () => new Float32Array(length) }; }
+  createBufferSource() { this.noiseSources++; return { buffer: null, onended: null, connect() {}, disconnect() {}, start() {}, stop() {} }; }
+  createBiquadFilter() { return { type: 'bandpass', frequency: { value: 0 }, connect() {}, disconnect() {} }; }
   createGain() { return { gain: { setValueAtTime() {}, exponentialRampToValueAtTime: (value: number) => { if (value > .0001) this.gains.push(value); } }, connect() {}, disconnect: () => { this.disconnected++; } }; }
 }
 test("CITY impact mute drops sound immediately without delayed replay", async () => {
@@ -119,7 +124,7 @@ test("CITY Playing to Finished handoff preserves unlocked context for the immedi
 });
 test("CITY four original sine cues are short, distinct and disconnect finished notes", async () => {
   assert.equal(new Set(["SELECTION_START", "ROLE_START", "BUILD_SUCCESS", "ROUND_END"].map(cue => Object.entries(CITY_SOUND_CUES).find(([key]) => key === cue)?.[1].frequencies.join(","))).size, 4);
-  assert.equal(new Set(Object.values(CITY_SOUND_CUES).map(cue => cue.frequencies.join(","))).size, 19);
+  assert.equal(new Set(Object.values(CITY_SOUND_CUES).map(cue => cue.frequencies.join(","))).size, 20);
   for (const cue of ["SELECTION_START", "ROLE_START", "BUILD_SUCCESS", "ROUND_END"] as const) await withWindow({ AudioContext: FakeAudioContext }, () => {
     unlockCityAudio();
     const audio = FakeAudioContext.instances[0]!;
@@ -157,4 +162,24 @@ test("CITY mute preference and per-game same-browser cue markers never contain c
   assert.match(source, /seenWindows.current.has/);
   assert.match(source, /city-feedback-cue:/);
   assert.doesNotMatch(source, /sessionToken|credential|\.emit\(|fetch\(|deadlineAt\s*=/);
+});
+
+test("CITY coin, card, construction and theft voices schedule distinct sound with physical textures", async () => {
+ for (const cue of ['COIN_GAIN','DRAW','BUILD','STEAL'] as const) await withWindow({AudioContext:FakeAudioContext},()=>{
+  unlockCityAudio();const audio=FakeAudioContext.instances[0]!;playCityImpactSound(cue);
+  assert.deepEqual(audio.frequencies,CITY_SOUND_CUES[cue].frequencies);
+  assert.equal(audio.noiseSources,cue==='COIN_GAIN'?0:1);
+ });
+});
+test("CITY volume clamps stored input, scales bystanders and zero volume drops notes",async()=>{
+ let volume='100';await withWindow({AudioContext:FakeAudioContext,localStorage:{getItem:(key:string)=>key===CITY_SOUND_VOLUME?volume:'true'}},()=>{
+  unlockCityAudio();const audio=FakeAudioContext.instances[0]!;playCityImpactSound('COIN_GAIN',.45);
+  assert.ok(audio.gains.every(g=>Math.abs(g-CITY_SOUND_CUES.COIN_GAIN.gain*.45)<1e-10));
+  const count=audio.frequencies.length;volume='0';playCityImpactSound('DRAW');assert.equal(audio.frequencies.length,count);
+  volume='200';assert.equal(readCitySoundVolume(),100);volume='NaN';assert.equal(readCitySoundVolume(),80);
+ });
+});
+test("CITY combined resource events use the immediate action sound instead of a delayed banner queue",()=>{
+ const events=[{id:'gold',cue:'COIN_GAIN' as const,intensity:'medium' as const,message:'gold'},{id:'build',cue:'BUILD' as const,intensity:'medium' as const,message:'build'},{id:'steal',cue:'STEAL' as const,intensity:'medium' as const,message:'steal'}];
+ assert.equal(cityImpactSoundEvent(events)?.cue,'STEAL');assert.equal(cityImpactSoundEvent(events.slice(0,2))?.cue,'BUILD');assert.equal(cityImpactSoundEvent([]),undefined);
 });

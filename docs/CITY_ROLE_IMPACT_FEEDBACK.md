@@ -65,3 +65,13 @@ Parchment top banner, original SVG strike/icon visuals, card settle, hand shake,
 - Final root typecheck, full tests and build pass; `git diff --check` passes. **1557/1557** tests (shared 110 / Web 382 / server 1065), **22 additive tests**, no skips/deletions. JS 591.45 kB (gzip 168.87), versus starting 577.32 kB (gzip 164.49); existing >500 kB warning remains.
 
 Railway NOT DEPLOYED. No subsequent phase is started automatically.
+
+## V3 audio correction — 2026-09-10
+
+The expanded Playing/Finished routes now retain `CityImpactLayer` and `useCitySound`. `city-expanded-impact.ts` derives v3 resources, card movement, construction, destruction and correlated theft from consecutive viewer projections, without assuming legacy role abilities. V3 ignores legacy success-receipt sound events to avoid duplicated or incorrect amounts (for example Gold Mine).
+
+Audio now plays once when a fresh state event batch arrives, rather than waiting behind the two-second visual banner queue. One meaningful cue wins within the batch; other players' public actions use 45% amplitude. Text banners retain their queue. Muted events are consumed silently and never replayed after enabling sound. The new STEAL voice combines descending coin notes with a short paper/swish texture. A stored 0–100 volume control applies to tonal and noise layers. Existing autoplay blocking, cleanup, snapshot-gap and reconnect protections remain.
+
+V3 correction verification: committed project plus only CITY audio changes passes root typecheck, **1,882 tests** (118 shared / 464 Web / 1,300 server), and build. The existing >500 kB JavaScript bundle warning remains (754.65 kB). The live shared working directory's root commands were also attempted; concurrent HALLI_GALLI contract/renderer changes caused unrelated type failures, so those results are not reported as passing. CITY source files and the two App route changes were compared byte-for-byte against the isolated verification copy.
+
+An ephemeral browser harness mounted the actual CityExpandedScreen and CityImpactLayer with projected test states. A native running AudioContext scheduled 3 coin notes, 2 card notes plus noise, 3 construction notes plus noise, and 3 theft notes plus noise. Muting and volume zero scheduled no further nodes, and re-enabling did not replay missed effects. This verifies browser audio routing; it is not a claim of a new end-to-end server gameplay run or a physical-speaker loudness review. Harness files, browser tab and test server were removed/stopped.

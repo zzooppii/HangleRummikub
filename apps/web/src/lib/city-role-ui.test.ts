@@ -630,6 +630,7 @@ test('expanded CITY UI shows the chosen jobs, guide and 14 district illustration
     privateState: { ...base.game.privateState, expansion: { incomeUsed: false, usedSpecials: [], inspectedCards: [], choiceCards: [], recipients: [] } },
   } });
   const html = renderToStaticMarkup(createElement(CityExpandedScreen, { snapshot, connected: true, pending: false, errorMessage: null, onCommand: async () => {}, onAction: () => {}, onLeave: () => {} }));
+  assert.match(html, /사운드 켜짐/);assert.match(html, /aria-label="효과음 볼륨"/);
   assert.match(html, /마술사의 차례/);assert.match(html, /게임 방법 보기/);assert.match(html, /특수 건물 14종/);
   assert.equal((html.match(/src="\/city-art\/expanded-v3\//gu) ?? []).length, 14);
   assert.equal((html.match(/이 카드 받기/gu) ?? []).length, 2);

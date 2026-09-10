@@ -351,7 +351,7 @@ export function App() {
 
     if (roomView.kind === "CITY_ROLE_PLAYING") {
       const current = roomView.snapshot;
-      if (current.game.expansion) return <ReconnectBoundary {...recovery}><CityExpandedScreen snapshot={current} connected={app.connectionState === "CONNECTED" && !app.sessionReplaced} pending={app.cityActionPending} errorMessage={app.errorMessage} onCommand={app.actCityExpansion} onAction={app.actCity} onLeave={app.leaveRoom}/></ReconnectBoundary>;
+      if (current.game.expansion) return <ReconnectBoundary {...recovery}><CityImpactLayer snapshot={current} connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} feedback={null}><CityExpandedScreen snapshot={current} connected={app.connectionState === "CONNECTED" && !app.sessionReplaced} pending={app.cityActionPending} errorMessage={app.errorMessage} onCommand={app.actCityExpansion} onAction={app.actCity} onLeave={app.leaveRoom}/></CityImpactLayer></ReconnectBoundary>;
       const canAct = app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.roomLeavePending &&
         app.operationLabel === null && current.game.window.activePlayerId === current.self.playerId &&
         current.game.playerStates.some(player => player.playerId === current.self.playerId && !player.forfeited);
@@ -363,7 +363,7 @@ export function App() {
         onLeaveRoom={app.leaveRoom} onGoHome={app.goHome} /></CityImpactLayer></ReconnectBoundary>;
     }
     if (roomView.kind === "CITY_ROLE_FINISHED") {
-      if (roomView.snapshot.game.expansion) return <ReconnectBoundary {...recovery}><CityExpandedScreen snapshot={roomView.snapshot} connected={app.connectionState === "CONNECTED" && !app.sessionReplaced} pending={false} errorMessage={app.errorMessage} onCommand={app.actCityExpansion} onAction={app.actCity} onLeave={app.leaveRoom}/></ReconnectBoundary>;
+      if (roomView.snapshot.game.expansion) return <ReconnectBoundary {...recovery}><CityImpactLayer snapshot={roomView.snapshot} connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} feedback={null}><CityExpandedScreen snapshot={roomView.snapshot} connected={app.connectionState === "CONNECTED" && !app.sessionReplaced} pending={false} errorMessage={app.errorMessage} onCommand={app.actCityExpansion} onAction={app.actCity} onLeave={app.leaveRoom}/></CityImpactLayer></ReconnectBoundary>;
       return <ReconnectBoundary {...recovery}><CityImpactLayer snapshot={roomView.snapshot} connected={connection.tone === "connected" && !app.sessionReplaced} feedback={app.cityActionFeedback}><CityRoleFinishedScreen snapshot={roomView.snapshot}
         connectionLabel={connectionLabel} connectionTone={connection.tone} errorMessage={app.errorMessage}
         sessionReplaced={app.sessionReplaced} actionFeedback={app.cityActionFeedback}

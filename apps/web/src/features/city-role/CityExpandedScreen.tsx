@@ -1,3 +1,4 @@
+import { useCitySound } from "./city-role-sound.js";
 import { useEffect, useState } from 'react';
 import { CITY_ALL_ROLE_IDS, CITY_EXPANDED_ROLES, CITY_SPECIAL_BUILDINGS, type CityExpansionAction, type CityExpansionClientCommand, type CityRolePlayingPlatformSnapshotV2, type CityRoleFinishedPlatformSnapshotV2, type CityRoleId, type CityPublicBuilding } from '@hangul-rummikub/shared';
 import { createRequestId } from '../../lib/request-id.js';
@@ -8,6 +9,7 @@ import { CITY_CATEGORY_LABELS } from './city-role-ui.js';
 
 type Snapshot = CityRolePlayingPlatformSnapshotV2 | CityRoleFinishedPlatformSnapshotV2;
 export function CityExpandedScreen({ snapshot: s, connected, pending, errorMessage, onCommand, onAction, onLeave }: { snapshot: Snapshot; connected: boolean; pending: boolean; errorMessage: string | null; onCommand(command: CityExpansionClientCommand): Promise<void>; onAction(intent: CityActionIntent): void; onLeave(): void }) {
+  const sound = useCitySound(s, null, !connected, true);
   const game = s.game, e = game.expansion!, me = game.playerStates.find(p => p.playerId === s.self.playerId)!;
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [selected, setSelected] = useState<string[]>([]);
   const [roles, setRoles] = useState<CityRoleId[]>([]), [target, setTarget] = useState(''), [targetCard, setTargetCard] = useState(''), [own, setOwn] = useState(''), [buildCard, setBuildCard] = useState('');
@@ -40,7 +42,7 @@ export function CityExpandedScreen({ snapshot: s, connected, pending, errorMessa
     </div>)}</div>;
   }
   return <main className="city-expanded-page">
-    <header className="city-expanded-hero"><div><span className="city-eyebrow">CITY · {e.settings.enabled ? 'EXPANDED' : 'CLASSIC'}</span><h1>도시의 다음 장</h1><p>{game.roundNumber}라운드 · 왕관 {nickname(game.leaderPlayerId)} · {game.phase === 'FINISHED' ? '게임 종료' : `${nickname(game.window.activePlayerId)}님의 ${game.phase === 'ROLE_SELECTION' ? '직업 선택' : role?.name ?? '차례'}`}</p></div><div className="city-wallet"><b>{me.gold}</b> 금화<span>{me.handCount}장 보유 · {me.builtBuildings.length}채 건설</span></div><button onClick={onLeave}>나가기</button></header>
+    <header className="city-expanded-hero"><div><span className="city-eyebrow">CITY · {e.settings.enabled ? 'EXPANDED' : 'CLASSIC'}</span><h1>도시의 다음 장</h1><p>{game.roundNumber}라운드 · 왕관 {nickname(game.leaderPlayerId)} · {game.phase === 'FINISHED' ? '게임 종료' : `${nickname(game.window.activePlayerId)}님의 ${game.phase === 'ROLE_SELECTION' ? '직업 선택' : role?.name ?? '차례'}`}</p></div><div className="city-wallet"><b>{me.gold}</b> 금화<span>{me.handCount}장 보유 · {me.builtBuildings.length}채 건설</span></div><div className="city-expanded-sound"><button aria-pressed={sound.enabled} onClick={sound.toggle}>사운드 {sound.enabled ? "켜짐" : "꺼짐"}</button><label>효과음 볼륨<input aria-label="효과음 볼륨" type="range" min="0" max="100" value={sound.volume} onChange={event => sound.changeVolume(Number(event.target.value))}/></label><button onClick={onLeave}>나가기</button></div></header>
     {game.phase !== "FINISHED" && <p className="city-muted" role="status">남은 시간 {Math.max(0, Math.ceil((game.window.deadlineAt - displayTime) / 1000))}초 · 시간이 끝나면 기본 행동이 자동 진행됩니다.</p>}
     {!connected && <p role="status">연결을 복구하고 있습니다. 행동은 연결 후 가능합니다.</p>}
     {(error || errorMessage) && <p className="city-expanded-error" role="alert">{error || errorMessage}</p>}

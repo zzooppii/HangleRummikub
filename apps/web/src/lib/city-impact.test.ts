@@ -158,10 +158,10 @@ test("impact banner has text/live semantics and does not require sound", () => {
 test("short synthesized families, mute gate, reduced motion and top mobile placement", () => {
   for (const cue of Object.values(CITY_SOUND_CUES)) { assert.ok(cue.duration >= .15 && cue.duration <= .8); assert.ok(cue.gain <= .065); }
   const layer = readFileSync(new URL("../../src/features/city-role/CityImpactLayer.tsx", import.meta.url), "utf8");
-  assert.match(layer, /playCityImpactSound\(event.cue\)/u); assert.match(layer, /slice\(-8\)/u);
+  assert.match(layer, /playCityImpactSound\(sound.cue, sound.intensity === "small" \? .45 : 1\)/u); assert.match(layer, /slice\(-8\)/u);
   assert.match(layer, /setBatch\(prior => \[\.\.\.prior, \.\.\.events\]\)/u);
   assert.match(layer, /setTimeout\(\(\) => setBatch\(prior => prior.slice\(1\)\), 2000\)/u);
-  assert.match(layer, /played.current !== event.id/u);
+  assert.ok(layer.indexOf("playCityImpactSound(sound.cue") < layer.indexOf("const event = batch[0]"));
   const css = readFileSync(new URL("../../src/features/city-role/city-role.css", import.meta.url), "utf8");
   assert.match(css, /city-impact-banner[^}]*top: max\(12px,env\(safe-area-inset-top\)\)/u);
   assert.match(css, /prefers-reduced-motion: reduce[^}]*city-impact-root[^}]*animation: none/u);

@@ -1,12 +1,14 @@
 import type { CityClientCommand, CityRoleFinishedPlatformSnapshotV2, CityRolePlayingPlatformSnapshotV2, RequestId } from "@hangul-rummikub/shared";
 import { useEffect, useRef, useState } from "react";
 import { markRequestFeedbackSeen } from "../../lib/request-feedback.js";
-import type { CityImpactCue } from "./city-impact.js";
+import type { CityImpact, CityImpactCue } from "./city-impact.js";
 
 export type CitySoundCue = "SELECTION_START" | "ROLE_START" | "BUILD_SUCCESS" | "ROUND_END" | CityImpactCue;
 export type CitySoundFeedback = Readonly<{ requestId: RequestId; kind: CityClientCommand["kind"]; message: string }>;
+export const CITY_SOUND_VOLUME = "hangul-rummikub:preferences:city-sound-volume";
 export const CITY_SOUND_PREFERENCE = "hangul-rummikub:preferences:city-sound-enabled";
 export const CITY_SOUND_CUES: Readonly<Record<CitySoundCue, Readonly<{ frequencies: readonly number[]; duration: number; gain: number; wave?: OscillatorType }>>> = Object.freeze({
+  STEAL: { frequencies: [1760, 1175, 587], duration: .38, gain: .06, wave: "triangle" },
   STRIKE: { frequencies: [280, 90], duration: .24, gain: .065, wave: "sawtooth" },
   COIN_GAIN: { frequencies: [1320, 1760, 2093], duration: .32, gain: .055, wave: "triangle" },
   COIN_LOSS: { frequencies: [1100, 640, 220], duration: .3, gain: .055, wave: "triangle" },
@@ -65,12 +67,14 @@ export function unlockCityAudio(): void {
   catch { resuming = null; }
 }
 /** Short original sine notes. A blocked or absent device drops this cue now. */
-export function playCitySound(cue: CitySoundCue): void {
+export function playCitySound(cue: CitySoundCue, scale = 1): void {
   const audio = context;
   if (audio === null || audio.state !== "running") return;
   if (disposalTimer !== null) { clearTimeout(disposalTimer); disposalTimer = null; }
   try {
     const config = CITY_SOUND_CUES[cue], start = audio.currentTime;
+    const level = readCitySoundVolume() / 100 * Math.max(0, Math.min(1, scale));
+    if (level === 0) return;
     const noteLength = config.duration / config.frequencies.length;
     for (const [index, frequency] of config.frequencies.entries()) {
       const oscillator = audio.createOscillator(), gain = audio.createGain();
@@ -78,31 +82,43 @@ export function playCitySound(cue: CitySoundCue): void {
       oscillator.type = config.wave ?? "sine";
       oscillator.frequency.setValueAtTime(frequency, at);
       gain.gain.setValueAtTime(0.0001, at);
-      gain.gain.exponentialRampToValueAtTime(config.gain, at + 0.012);
+      gain.gain.exponentialRampToValueAtTime(Math.max(.0001, config.gain * level), at + 0.012);
       gain.gain.exponentialRampToValueAtTime(0.0001, at + noteLength);
       oscillator.connect(gain); gain.connect(audio.destination);
       oscillator.addEventListener("ended", () => { oscillator.disconnect(); gain.disconnect(); }, { once: true });
       oscillator.start(at); oscillator.stop(at + noteLength);
     }
-    latestEnd = start + config.duration;
-    if (cue === "DRAW" || cue === "SHUFFLE" || cue === "BUILD" || cue === "BREAK") {
+    latestEnd = Math.max(latestEnd, start + config.duration);
+    if (cue === "DRAW" || cue === "SHUFFLE" || cue === "BUILD" || cue === "BREAK" || cue === "STEAL") {
       // Original filtered noise: paper flutter / wooden or stone contact, not a recording.
       const length = Math.ceil(audio.sampleRate * .16), buffer = audio.createBuffer(1, length, audio.sampleRate);
       const samples = buffer.getChannelData(0);
       let seed = 17;
       for (let i = 0; i < length; i++) { seed = (seed * 16807) % 2147483647; samples[i] = (seed / 2147483647 * 2 - 1); }
       const source = audio.createBufferSource(), filter = audio.createBiquadFilter(), envelope = audio.createGain();
-      source.buffer = buffer; filter.type = "bandpass"; filter.frequency.value = cue === "DRAW" || cue === "SHUFFLE" ? 2200 : 450;
-      envelope.gain.setValueAtTime(.12, start); envelope.gain.exponentialRampToValueAtTime(.0001, start + .16);
+      source.buffer = buffer; filter.type = "bandpass"; filter.frequency.value = cue === "DRAW" || cue === "SHUFFLE" || cue === "STEAL" ? 2200 : 450;
+      envelope.gain.setValueAtTime(Math.max(.0001, .12 * level), start); envelope.gain.exponentialRampToValueAtTime(.0001, start + .16);
       source.connect(filter); filter.connect(envelope); envelope.connect(audio.destination);
       source.onended = () => { source.disconnect(); filter.disconnect(); envelope.disconnect(); };
       source.start(start); source.stop(start + .16);
     }
   } catch { /* Device/audio failures must not interrupt the UI. */ }
 }
-export function playCityImpactSound(cue: CityImpactCue): void {
-  if (readCitySoundStorage("localStorage", CITY_SOUND_PREFERENCE) !== "false") playCitySound(cue);
+export function readCitySoundVolume(): number {
+  const stored = readCitySoundStorage("localStorage", CITY_SOUND_VOLUME);
+  const value = stored === null ? 80 : Number(stored);
+  return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 80;
 }
+export function playCityImpactSound(cue: CityImpactCue, scale = 1): void {
+  if (readCitySoundStorage("localStorage", CITY_SOUND_PREFERENCE) !== "false") playCitySound(cue, scale);
+}
+/** Play the most meaningful confirmed effect now, independent of the text banner queue. */
+export function cityImpactSoundEvent(events: readonly CityImpact[]): CityImpact | undefined {
+  const priorities: Partial<Record<CityImpactCue, number>> = { STEAL: 8, VICTORY: 7, BREAK: 6, BUILD: 5, COIN_GAIN: 4, COIN_LOSS: 4, DRAW: 3, SHUFFLE: 3 };
+  const priority = (event: CityImpact) => (priorities[event.cue] ?? 1) + (event.intensity === "small" ? 0 : 10);
+  return events.reduce<CityImpact | undefined>((best, event) => !best || priority(event) > priority(best) ? event : best, undefined);
+}
+
 export function disposeCityAudio(screenChanging = false): void {
   const audio = context;
   if (audio === null) return;
@@ -121,6 +137,7 @@ export function disposeCityAudio(screenChanging = false): void {
 
 export function useCitySound(snapshot: CityRolePlayingPlatformSnapshotV2 | CityRoleFinishedPlatformSnapshotV2, feedback: CitySoundFeedback | null, sessionReplaced: boolean, presentationOwnsCues = false) {
   const [enabled, setEnabled] = useState(() => readCitySoundStorage("localStorage", CITY_SOUND_PREFERENCE) !== "false");
+  const [volume, setVolume] = useState(readCitySoundVolume);
   const seenFeedback = useRef(new Set<RequestId>());
   const seenWindows = useRef(new Set<string>());
   const seenRounds = useRef(new Map<string, number>());
@@ -167,7 +184,11 @@ export function useCitySound(snapshot: CityRolePlayingPlatformSnapshotV2 | CityR
     const cue = cityFeedbackCue(feedback);
     if (cue !== null && enabled) playCitySound(cue);
   }, [feedback, scope, enabled, sessionReplaced, presentationOwnsCues]);
-  return { enabled, toggle() {
+  return { enabled, volume, changeVolume(value: number) {
+    const next = Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 80;
+    writeCitySoundStorage("localStorage", CITY_SOUND_VOLUME, String(next)); setVolume(next);
+    if (enabled && !sessionReplaced && next > 0) unlockCityAudio();
+  }, toggle() {
     const next = !enabled;
     writeCitySoundStorage("localStorage", CITY_SOUND_PREFERENCE, String(next));
     setEnabled(next);
