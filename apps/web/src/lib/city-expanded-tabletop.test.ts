@@ -370,3 +370,55 @@ test('every public city shows eight compact slots with its own count and accessi
   assert.match(publicMonument, /aria-valuenow="2"/);
   assert.match(publicMonument, /건물 1채, 완성 2 \/ 8칸, 기념비는 2칸/);
 });
+
+test('witch receives blackmailer targeting after the bewitched player gathers resources', () => {
+  const roles=[...CITY_DEFAULT_SETTINGS.roles]; roles[0]='WITCH'; roles[1]='BLACKMAILER';
+  const base=expanded(cityActionFixture(),roles);
+  const snapshot=parse(CityRolePlayingPlatformSnapshotV2Schema,{...base,game:{...base.game,
+    window:{...base.game.window,activeRoleId:'CR-02'},
+    revealedRoles:[{roundNumber:1,roleId:'CR-01',playerId:'P0',kind:'NORMAL'},{roundNumber:1,roleId:'CR-02',playerId:'P1',kind:'NORMAL'}],
+    expansion:{...base.game.expansion,witchTarget:'CR-02'},
+    privateState:{...base.game.privateState,selectedRoleIds:['CR-01']},
+  }});
+  const html=screen(snapshot);
+  assert.match(html, /<details open=""><summary>직업 능력 사용/);
+  assert.match(html, /aria-label="협박 대상 직업"/);
+  assert.match(html, /2개를 선택하세요/);
+  assert.match(html, /aria-label="마술사 지목" aria-pressed="false">/);
+  assert.match(html, /협박 지목 확정/);
+  assert.doesNotMatch(html, /홀림 대상 직업|능력 사용 완료/);
+  const waiting=parse(CityRolePlayingPlatformSnapshotV2Schema,{...snapshot,game:{...snapshot.game,
+    window:{...snapshot.game.window,activePlayerId:'P1'},
+    privateState:{hand:snapshot.game.privateState.hand,selectedRoleIds:['CR-01'],marks:[],expansion:snapshot.game.privateState.expansion},
+  }});
+  assert.doesNotMatch(screen(waiting), /aria-label="협박 대상 직업"/);
+});
+
+for (const job of CITY_EXPANDED_ROLES.filter(r=>r.rank>1)) {
+  test(`witch can see ${job.id} controls while retaining her private witch role`, () => {
+    const cast=[...CITY_DEFAULT_SETTINGS.roles];cast[0]='WITCH';cast[job.rank-1]=job.id;
+    const base=expanded(cityActionFixture(),cast), roster=citySelectionFixture(5);
+    const snapshot=parse(CityRolePlayingPlatformSnapshotV2Schema,{...base,room:roster.room,game:{...base.game,
+      playerStates:roster.game.playerStates,seatOrder:roster.game.seatOrder,rolesPerPlayer:1,
+      window:{...base.game.window,activeRoleId:CITY_ALL_ROLE_IDS[job.rank-1]},
+      revealedRoles:[{roundNumber:1,roleId:'CR-01',playerId:'P0',kind:'NORMAL'},{roundNumber:1,roleId:CITY_ALL_ROLE_IDS[job.rank-1],playerId:'P1',kind:'NORMAL'}],
+      expansion:{...base.game.expansion,witchTarget:CITY_ALL_ROLE_IDS[job.rank-1]},
+      privateState:{...base.game.privateState,selectedRoleIds:['CR-01']},
+    }});
+    const html=screen(snapshot);
+    assert.match(html, /자원 받기 완료/);
+    assert.match(html, /<strong>마녀<\/strong>/);
+    assert.doesNotMatch(html, /홀림 대상 직업|홀린 직업 차례에 건설/);
+    const controls:Partial<Record<typeof job.id,string>>={
+      THIEF:'도둑질 지목 확정',SPY:'지목할 종류',BLACKMAILER:'협박 지목 확정',
+      MAGICIAN:'손패 전체 교환',WIZARD:'마법사의 상대 선택',SEER:'예언자 능력 사용',
+      EMPEROR:'금화로 받기',ABBOT:'수도원장',CARDINAL:'추기경 교환 건설',
+      NAVIGATOR:'카드로 받기',SCHOLAR:'학자 능력 사용',WARLORD:'장군',
+      DIPLOMAT:'내 건물',MARSHAL:'상대 건물',ARTIST:'예술가 능력 사용',
+    };
+    const control=controls[job.id];if(control) assert.ok(html.includes(control),job.id);
+    if(['KING','PATRICIAN','BISHOP','MERCHANT','TRADER'].includes(job.id)) assert.match(html,/건물 종류별 수입 받기/);
+    if(job.id==='NAVIGATOR') assert.match(html,/항해사는 건설 불가/);
+    else assert.match(html,/is-buildable/);
+  });
+}

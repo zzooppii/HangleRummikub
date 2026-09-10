@@ -20,18 +20,19 @@ let counter = 0;
 const people = Array.from({ length: 4 }, (_, i) => parseCityPlayerId(`expanded-player-${i}`));
 const me = people[0]!, them = people[1]!;
 function entropy(s: CityGameState): CityEntropy { return { nextActionId: parseCityActionId(`expanded-action-${++counter}`), nextRoleOrder: CITY_ALL_ROLE_IDS.slice(0, s.expansion?.settings.roles.length ?? 8), discardOrder: s.discard, shuffleCards: cards => [...cards].reverse(), randomIndex: () => 0 }; }
-function setup(job: CityJobId = 'KING', specialIds: readonly CitySpecialId[] = [], tax = false): CityGameState {
+function setup(job: CityJobId = 'KING', specialIds: readonly CitySpecialId[] = [], tax = false, playerCount = 4): CityGameState {
+  const roster = Array.from({length:playerCount}, (_,i)=>parseCityPlayerId(`expanded-player-${i}`));
   const roleRank: Record<CityJobId, number> = { ASSASSIN:1,WITCH:1,MAGISTRATE:1,THIEF:2,SPY:2,BLACKMAILER:2,MAGICIAN:3,WIZARD:3,SEER:3,KING:4,EMPEROR:4,PATRICIAN:4,BISHOP:5,ABBOT:5,CARDINAL:5,MERCHANT:6,ALCHEMIST:6,TRADER:6,ARCHITECT:7,NAVIGATOR:7,SCHOLAR:7,WARLORD:8,DIPLOMAT:8,MARSHAL:8,QUEEN:9,ARTIST:9,TAX_COLLECTOR:9 };
   const rank = roleRank[job], cast = [...CITY_STANDARD_CAST]; if (rank === 9) cast.push(job); else cast[rank-1] = job;
   if (tax && cast.length === 8) cast.push('TAX_COLLECTOR');
   const specials = [...specialIds, ...CITY_SPECIAL_BUILDINGS.map(b => b.templateId).filter(id => !specialIds.includes(id))].slice(0,14);
   const templates = [...CITY_BUILDING_TEMPLATES_V2.filter(t => t.category !== 'LANDMARK'), ...specials.map(id => getCityTemplate(id))];
   const cards = createCityCards(Array.from({ length:68 }, (_, i) => parseBuildingCardId(`expanded-card-${i}`)), templates);
-  const initial = createInitialCityGameState({ gameId:parseCityGameId('expanded-game'), rulesVersion:'city-rules-v3', expansionSettings:{ enabled:true, roles:cast }, specialIds:specials, playerIds:people, seatOrder:people, cards, deck:cards.slice(16).map(c=>c.cardId), initialHands:people.map((playerId,i)=>({playerId,cardIds:cards.slice(i*4,i*4+4).map(c=>c.cardId)})), actionId:parseCityActionId(`expanded-action-${++counter}`), roleOrder:CITY_ALL_ROLE_IDS.slice(0,cast.length) });
-  const roleId = CITY_ALL_ROLE_IDS[rank-1]!, assignedIds = [roleId, ...CITY_ALL_ROLE_IDS.slice(0,cast.length).filter(r=>r!==roleId).slice(0,3)];
-  const assignments: CityRoleAssignment[] = assignedIds.map((id,i)=>({roleId:id,playerId:people[i]!, status:id===roleId?'ACTIVE':Number(id.slice(-2))<rank?'RESOLVED':'SELECTED',revealed:Number(id.slice(-2))<=rank}));
+  const initial = createInitialCityGameState({ gameId:parseCityGameId('expanded-game'), rulesVersion:'city-rules-v3', expansionSettings:{ enabled:true, roles:cast }, specialIds:specials, playerIds:roster, seatOrder:roster, cards, deck:cards.slice(roster.length*4).map(c=>c.cardId), initialHands:roster.map((playerId,i)=>({playerId,cardIds:cards.slice(i*4,i*4+4).map(c=>c.cardId)})), actionId:parseCityActionId(`expanded-action-${++counter}`), roleOrder:CITY_ALL_ROLE_IDS.slice(0,cast.length) });
+  const roleId = CITY_ALL_ROLE_IDS[rank-1]!, assignedIds = [roleId, ...CITY_ALL_ROLE_IDS.slice(0,cast.length).filter(r=>r!==roleId).slice(0,roster.length-1)];
+  const assignments: CityRoleAssignment[] = assignedIds.map((id,i)=>({roleId:id,playerId:roster[i]!, status:id===roleId?'ACTIVE':Number(id.slice(-2))<rank?'RESOLVED':'SELECTED',revealed:Number(id.slice(-2))<=rank}));
   const unassigned = CITY_ALL_ROLE_IDS.slice(0,cast.length).filter(r=>!assignedIds.includes(r));
-  const s: CityGameState = { ...initial, players:initial.players.map(p=>({...p,gold:30})), round:{...initial.round,selectionCursor:4,pickQueue:people,rolesPerPlayer:1,available:[],publicRemoved:[],hiddenRemoved:unassigned.slice(0,1),unselected:unassigned.slice(1),assignments,resolutionCursor:rank}, revealedRoles:assignments.filter(a=>a.revealed).map(a=>({roundNumber:1,roleId:a.roleId,playerId:a.playerId,kind:'NORMAL'})), window:{kind:'ROLE_ACTION',actionId:parseCityActionId(`expanded-action-${++counter}`),activePlayerId:me,activeRoleId:roleId,acquisition:'COMPLETE',abilityUsed:false,buildingsBuilt:0},result:null };
+  const s: CityGameState = { ...initial, players:initial.players.map(p=>({...p,gold:30})), round:{...initial.round,selectionCursor:roster.length,pickQueue:roster,rolesPerPlayer:1,available:[],publicRemoved:[],hiddenRemoved:unassigned.slice(0,1),unselected:unassigned.slice(1),assignments,resolutionCursor:rank}, revealedRoles:assignments.filter(a=>a.revealed).map(a=>({roundNumber:1,roleId:a.roleId,playerId:a.playerId,kind:'NORMAL'})), window:{kind:'ROLE_ACTION',actionId:parseCityActionId(`expanded-action-${++counter}`),activePlayerId:me,activeRoleId:roleId,acquisition:'COMPLETE',abilityUsed:false,buildingsBuilt:0},result:null };
   assertCityGameState(s); return s;
 }
 function zones(s: CityGameState, city: readonly BuildingTemplateId[] = [], hand: readonly BuildingTemplateId[] = [], otherCity: readonly BuildingTemplateId[] = [], otherHand: readonly BuildingTemplateId[] = []): CityGameState {
@@ -310,4 +311,137 @@ test('cardinal transfers four distinct payment cards for a six-gold building and
   assert.equal(recipient.gold,6); assert.deepEqual(recipient.hand,payment);
   assert.deepEqual(next.deck,s.deck); assert.deepEqual(next.discard,s.discard);
   assert.deepEqual(s,before);
+});
+
+test('witch controls a bewitched blackmailer including threats, bribes and revealing the real mark', () => {
+  for (const bribe of [true, false]) {
+    let s = setup('WITCH');
+    assert.ok(s.expansion);
+    const roles = [...s.expansion.settings.roles]; roles[1] = 'BLACKMAILER';
+    s = {...s, expansion:{...s.expansion,settings:{...s.expansion.settings,roles}}};
+    s = extra(s,{command:'ROLE',roleIds:['CR-02']});
+    assert.equal(s.window?.activePlayerId,them);
+    const waiting = visible(s,me); assert.ok(waiting.phase==='ROLE_ACTION');
+    assert.equal(waiting.privateState.action,undefined);
+    s = act(s,{kind:'TAKE_INCOME'});
+    assert.equal(s.window?.activePlayerId,me);
+    const witch = visible(s,me), victim = visible(s,them);
+    assert.equal(witch.phase,'ROLE_ACTION');
+    assert.ok(witch.phase==='ROLE_ACTION');
+    assert.equal(witch.window.activeRoleId,'CR-02');
+    assert.deepEqual(witch.privateState.action,{acquisition:'COMPLETE',abilityUsed:false,buildingsBuilt:0});
+    assert.ok(victim.phase==='ROLE_ACTION');
+    assert.equal(victim.privateState.action,undefined);
+    s = extra(s,{command:'ROLE',roleIds:['CR-03','CR-04']});
+    assert.equal(s.expansion?.threats?.sourcePlayerId,me);
+    assert.equal(visible(s,me).privateState.expansion?.realThreat,'CR-03');
+    assert.equal(visible(s,them).privateState.expansion?.realThreat,undefined);
+    s = act(s,{kind:'END_TURN'});
+    const target = s.window!.activePlayerId;
+    s = act(s,{kind:'TAKE_INCOME'});
+    assert.equal(s.expansion?.pending?.kind,'BRIBE');
+    s = extra(s,{command:'DECIDE',choice:bribe?'YES':'NO'});
+    if (!bribe) {
+      assert.equal(s.window?.activePlayerId,me);
+      assert.equal(s.expansion?.pending?.kind,'BLACKMAIL');
+      s = extra(s,{command:'DECIDE',choice:'YES'});
+    }
+    assert.equal(s.window?.activePlayerId,target);
+    assert.equal(ownPlayer(s).gold,bribe?46:62);
+    assert.equal(s.players.find(p=>p.playerId===them)?.gold,32);
+  }
+});
+
+
+for (const job of CITY_EXPANDED_ROLES.filter(r=>r.rank>1).map(r=>r.id)) {
+  test(`witch inherits ${job} resources, abilities and construction using her own assets`, () => {
+    let s=zones(setup(job,[],false,job==='QUEEN'?5:4),['CB-CIV-01'],['CB-CIV-06'],['CB-CIV-02','CB-CUL-02','CB-GUA-02','CB-TRA-02'],['CB-CIV-03','CB-CIV-04','CB-CIV-05']);
+    assert.ok(s.expansion && s.window?.kind==='ROLE_ACTION');
+    const roleId=s.window.activeRoleId, roles=[...s.expansion.settings.roles];roles[0]='WITCH';
+    s={...s,expansion:{...s.expansion,settings:{...s.expansion.settings,roles},witch:{sourcePlayerId:them,targetRoleId:roleId,controlling:false},tax:job==='TAX_COLLECTOR'?5:0},window:{...s.window,acquisition:'NOT_TAKEN'},result:null};
+    if(job==='QUEEN') s={...s,seatOrder:[me,them,s.players[4]!.playerId,people[2]!,people[3]!]};
+    assertCityGameState(s);
+    s=act(s,{kind:'TAKE_INCOME'});
+    const witch=()=>s.players.find(p=>p.playerId===them)!;
+    assert.equal(s.window?.activePlayerId,them);
+    assert.equal(ownPlayer(s).gold,32);
+    assert.equal(ownPlayer(s).hand.length,1);
+    assert.equal(witch().gold,30+(job==='MERCHANT'?1:job==='TAX_COLLECTOR'?5:job==='QUEEN'?3:0));
+    assert.equal(witch().hand.length,3+(job==='ARCHITECT'?2:0));
+    const projection=visible(s,them);assert.ok(projection.phase==='ROLE_ACTION');
+    assert.equal(projection.window.activeRoleId,roleId);
+    assert.deepEqual(projection.privateState.selectedRoleIds,['CR-01']);
+    assert.equal(projection.privateState.action?.abilityUsed,false);
+    const original=structuredClone(s);
+    assert.throws(()=>applyCityAction(s,{gameId:s.gameId,actionId:s.window!.actionId,playerId:me},{kind:'END_TURN'},entropy(s)));
+    assert.deepEqual(s,original);
+    if(['KING','EMPEROR','PATRICIAN','BISHOP','ABBOT','CARDINAL','MERCHANT','TRADER','WARLORD','DIPLOMAT','MARSHAL'].includes(job)) {
+      const gold=witch().gold, hand=witch().hand.length;
+      s=extra(s,{command:'INCOME',goldCount:0});
+      const draws=['PATRICIAN','CARDINAL','ABBOT'].includes(job);
+      assert.equal(witch().gold,gold+Number(!draws));assert.equal(witch().hand.length,hand+Number(draws));
+    }
+    switch(job) {
+      case 'THIEF': {
+        s=act(s,{kind:'USE_ROLE_ABILITY',ability:{kind:'MARK_ROLE_GOLD_TRANSFER',targetRoleId:'CR-03'}});
+        assert.equal(s.marks[0]?.sourcePlayerId,them);
+        const gold=witch().gold, target=s.round.assignments.find(a=>a.roleId==='CR-03')!.playerId;
+        const stolen=s.players.find(p=>p.playerId===target)!.gold;
+        s=act(s,{kind:'END_TURN'});
+        assert.equal(witch().gold,gold+stolen);assert.equal(s.players.find(p=>p.playerId===target)!.gold,0);
+        return;
+      }
+      case 'BLACKMAILER': s=extra(s,{command:'ROLE',roleIds:['CR-03','CR-04']});assert.equal(s.expansion?.threats?.sourcePlayerId,them);break;
+      case 'SPY': s=extra(s,{command:'ROLE',targetPlayerId:me,category:'CIVIC'});assert.equal(witch().gold,31);assert.equal(witch().hand.length,4);assert.equal(visible(s,them).privateState.expansion?.inspectedCards.length,1);assert.equal(visible(s,me).privateState.expansion?.inspectedCards.length,0);break;
+      case 'MAGICIAN': {
+        const hand=[...witch().hand];s=act(s,{kind:'USE_ROLE_ABILITY',ability:{kind:'EXCHANGE_HANDS',targetPlayerId:me}});
+        assert.deepEqual(ownPlayer(s).hand,hand);assert.deepEqual(witch().hand,[card(s,'CB-CIV-06')]);break;
+      }
+      case 'WIZARD': s=extra(s,{command:'ROLE',targetPlayerId:me});assert.equal(s.expansion?.pending?.actorId,them);s=extra(s,{command:'DECIDE',choice:'KEEP',cardId:card(s,'CB-CIV-06')});assert.equal(witch().hand.length,4);assert.equal(ownPlayer(s).hand.length,0);break;
+      case 'SEER': s=extra(s,{command:'ROLE'});assert.equal(s.expansion?.pending?.actorId,them);s=extra(s,{command:'DECIDE',cardIds:[witch().hand[0]!]});assert.equal(witch().hand.length,3);assert.equal(ownPlayer(s).hand.length,1);break;
+      case 'EMPEROR': s=extra(s,{command:'ROLE',targetPlayerId:people[2]!,choice:'GOLD'});assert.equal(s.leaderPlayerId,people[2]);assert.equal(s.players[2]!.gold,29);break;
+      case 'ABBOT': {const gold=witch().gold;s=extra(s,{command:'ROLE',targetPlayerId:me});assert.equal(witch().gold,gold+1);assert.equal(ownPlayer(s).gold,31);break;}
+      case 'NAVIGATOR': s=extra(s,{command:'ROLE',choice:'CARDS'});assert.equal(witch().hand.length,7);assert.throws(()=>extra(s,{command:'BUILD',cardId:witch().hand[0]!}));break;
+      case 'SCHOLAR': s=extra(s,{command:'ROLE'});assert.equal(s.expansion?.pending?.actorId,them);s=extra(s,{command:'DECIDE',cardId:s.expansion!.pending!.cards[0]!});assert.equal(witch().hand.length,4);break;
+      case 'WARLORD': s=extra(s,{command:'ROLE',targetPlayerId:me,cardId:card(s,'CB-CIV-01')});assert.equal(ownPlayer(s).city.length,0);break;
+      case 'DIPLOMAT': s=extra(s,{command:'ROLE',targetPlayerId:me,cardId:card(s,'CB-CIV-01'),ownCardId:card(s,'CB-CIV-02')});assert.ok(witch().city.includes(card(s,'CB-CIV-01')));assert.deepEqual(ownPlayer(s).city,[card(s,'CB-CIV-02')]);break;
+      case 'MARSHAL': s=extra(s,{command:'ROLE',targetPlayerId:me,cardId:card(s,'CB-CIV-01')});assert.equal(ownPlayer(s).city.length,0);assert.ok(witch().city.includes(card(s,'CB-CIV-01')));break;
+      case 'ARTIST': s=extra(s,{command:'ROLE',cardIds:witch().city.slice(0,2)});assert.equal(s.expansion?.decorated.length,2);assert.equal(witch().gold,28);break;
+      case 'BISHOP': assert.deepEqual(s.round.protectedPlayerIds,[them]);break;
+      case 'KING': case 'PATRICIAN': assert.equal(s.leaderPlayerId,me);break;
+    }
+    if(job!=='NAVIGATOR') {
+      const id=witch().hand.find(id=>!witch().city.some(c=>s.cards.find(x=>x.cardId===c)?.templateId===s.cards.find(x=>x.cardId===id)?.templateId));assert.ok(id);
+      const before=witch().city.length, gold=witch().gold;
+      s=extra(s,{command:'BUILD',cardId:id});assert.equal(witch().city.length,before+1);
+      if(job==='ALCHEMIST') {s=act(s,{kind:'END_TURN'});assert.equal(witch().gold,gold);return;}
+      if(['ARCHITECT','SCHOLAR','SEER'].includes(job)) {
+        const limit=job==='ARCHITECT'?3:2;
+        const candidate=()=>witch().hand.find(id=>!witch().city.some(c=>s.cards.find(x=>x.cardId===c)?.templateId===s.cards.find(x=>x.cardId===id)?.templateId));
+        for(let n=1;n<limit;n++){const next=candidate();assert.ok(next);s=extra(s,{command:'BUILD',cardId:next});}
+        assert.equal(witch().city.length,before+limit);
+        const overLimit=candidate();assert.ok(overLimit);
+        assert.throws(()=>extra(s,{command:'BUILD',cardId:overLimit}));
+      }
+    }
+    s=act(s,{kind:'END_TURN'});
+    if(Number(roleId.slice(-2))<4) assert.equal(s.round.assignments.find(a=>a.roleId===roleId)?.status,'RESOLVED');
+    else {assert.equal(s.window?.kind,'ROLE_SELECTION');assert.equal(s.round.roundNumber,2);}
+  });
+}
+
+
+test('witch waits for the bewitched thief to finish choosing a resource card', () => {
+  let s=setup('THIEF');assert.ok(s.expansion && s.window?.kind==='ROLE_ACTION');
+  const roles=[...s.expansion.settings.roles];roles[0]='WITCH';
+  s={...s,result:null,expansion:{...s.expansion,settings:{...s.expansion.settings,roles},witch:{sourcePlayerId:them,targetRoleId:'CR-02',controlling:false}},window:{...s.window,acquisition:'NOT_TAKEN'}};
+  const victimHand=[...ownPlayer(s).hand], witchHand=[...s.players[1]!.hand];
+  s=act(s,{kind:'DRAW_BUILDING_CARDS'});
+  assert.equal(s.window?.activePlayerId,me);assert.ok(s.pendingChoice);
+  const selected=s.pendingChoice.cards[0]!;
+  s=act(s,{kind:'CHOOSE_BUILDING_CARD',cardId:selected});
+  assert.equal(s.window?.activePlayerId,them);assert.equal(s.pendingChoice,null);
+  assert.deepEqual(ownPlayer(s).hand,[...victimHand,selected]);assert.deepEqual(s.players[1]!.hand,witchHand);
+  s=act(s,{kind:'USE_ROLE_ABILITY',ability:{kind:'MARK_ROLE_GOLD_TRANSFER',targetRoleId:'CR-03'}});
+  assert.equal(s.marks[0]?.sourcePlayerId,them);
 });
