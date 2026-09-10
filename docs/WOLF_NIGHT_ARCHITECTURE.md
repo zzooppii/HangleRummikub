@@ -56,3 +56,9 @@ Socket.IO 통합 검증은 3/6/10인 게임, 11번째 참가 거부, Host/primar
 - Root `typecheck`, `test`, `build`: PASS. 1,840개(shared 118 / Web 451 / server 1,271), 실패·skip 없음.
 - `git diff --check`: PASS. 기존 번들 경고 유지(JS 709.98KB, gzip 202.83KB).
 - 미확정 UI 대상 선택의 새로고침 복원과 전체 밤 이동 이력 표시는 미구현이다. 실제 서버 응답 및 연결 복구 테스트를 실행했으며 이번에는 브라우저 수동 점검을 실행하지 않았다.
+
+### 일반 밤 단계 시간 단축
+
+사용자 요청에 따라 일반 밤 단계(도플갱어-불면증환자 마지막 확인 포함)를 25초에서 10초로 줄였다. 최초 역할 확인 15초, 도플갱어 복사 45초, 토론 설정과 투표 45초는 유지한다. 모든 역할을 포함한 한 판을 진행하면서 단계별 시간을 검증하는 도메인 테스트와 Web 시간 fixture를 갱신했다.
+
+늑대 도메인 테스트 36개 및 Socket.IO 통합 테스트는 통과했다. 서버 테스트 TypeScript 컴파일과 `git diff --check`도 통과했다. Root typecheck/test/build는 별도 작업 중인 `packages/shared/src/games/sneaky-lunch/v2-projection-contracts.ts`의 `placementOrder` optional 타입 TS2379 오류로 shared 빌드 단계에서 실패했다. 해당 게임의 변경은 수정하지 않았다.

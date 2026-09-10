@@ -151,3 +151,16 @@ test("WOLF checklist: no-wolf Minion cannot win by own death or no deaths",()=>{
   assert.equal(s.result!.villageWins,choices[1]===2);
  }
 });
+
+test("WOLF ordinary night stages last ten seconds while reveal, Doppelganger, discussion and vote retain their durations",()=>{
+ let s=create(["DOPPELGANGER","WEREWOLF","MINION","MASON","MASON","SEER","ROBBER","TROUBLEMAKER","DRUNK","INSOMNIAC","VILLAGER","HUNTER","TANNER"]);
+ assert.equal(s.nextTransitionAt!-s.phaseStartedAt,15_000);
+ const seen:WolfStage[]=[];
+ while(s.phase!=="FINISHED"){
+  s=advance(s);
+  if(s.phase==="FINISHED")break;
+  seen.push(s.stage);
+  assert.equal(s.nextTransitionAt!-s.phaseStartedAt,s.stage==="DOPPELGANGER"||s.stage==="VOTE"?45_000:s.stage==="DISCUSSION"?120_000:10_000,s.stage);
+ }
+ assert.deepEqual(seen,["DOPPELGANGER","WEREWOLF","MINION","MASON","SEER","ROBBER","TROUBLEMAKER","DRUNK","INSOMNIAC","DOPPEL_INSOMNIAC","DISCUSSION","VOTE"]);
+});

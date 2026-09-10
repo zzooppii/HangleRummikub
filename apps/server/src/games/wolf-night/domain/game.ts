@@ -125,7 +125,7 @@ export function advanceWolf(previous: WolfState, now: number, nextToken: WolfSta
   if (s.stage === "VOTE") return finish(s, now, "VOTED");
   const order = stages(s), next = order[order.indexOf(s.stage) + 1]; invariant(next !== undefined);
   s.stage = next; s.phaseStartedAt = now; s.transitionId = nextToken;
-  s.nextTransitionAt = now + (next === "DISCUSSION" ? s.settings.discussionSeconds * 1000 : next === "VOTE" || next === "DOPPELGANGER" ? 45_000 : 25_000);
+  s.nextTransitionAt = now + (next === "DISCUSSION" ? s.settings.discussionSeconds * 1000 : next === "VOTE" || next === "DOPPELGANGER" ? 45_000 : 10_000);
   enterStage(s); s.revision++; return parseWolfState(s);
 }
 function resultFor(s: WolfState, reason: "VOTED" | "CANCELLED"): v.InferOutput<typeof WolfResultSchema> {
