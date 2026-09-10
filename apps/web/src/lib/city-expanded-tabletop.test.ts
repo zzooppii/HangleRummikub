@@ -4,7 +4,7 @@ import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { parse } from 'valibot';
-import { CITY_ALL_ROLE_IDS, CITY_DEFAULT_SETTINGS, CITY_EXPANDED_ROLES, CITY_STANDARD_SPECIALS, CityRolePlayingPlatformSnapshotV2Schema, type CityRolePlayingPlatformSnapshotV2 } from '@hangul-rummikub/shared';
+import { CITY_ALL_ROLE_IDS, CITY_DEFAULT_SETTINGS, CITY_EXPANDED_ROLES, CITY_SPECIAL_BUILDINGS, CITY_STANDARD_SPECIALS, CityRolePlayingPlatformSnapshotV2Schema, type CityRolePlayingPlatformSnapshotV2 } from '@hangul-rummikub/shared';
 import { CityExpandedScreen } from '../features/city-role/CityExpandedScreen.js';
 import { CityExpandedTurnHud } from '../features/city-role/CityExpandedTurnHud.js';
 import { CityRoleTrack } from '../features/city-role/CityTabletop.js';
@@ -21,6 +21,58 @@ function expanded(base: CityRolePlayingPlatformSnapshotV2, roles = [...CITY_DEFA
 function screen(snapshot: CityRolePlayingPlatformSnapshotV2) {
   return renderToStaticMarkup(createElement(CityExpandedScreen, { snapshot, connected: true, pending: false, errorMessage: null, onCommand: async () => {}, onAction: () => {}, onLeave: () => {} }));
 }
+
+function thiefWithBuildings(handIds: string[] = [], builtIds: string[] = [], cardinal = false) {
+  const base = expanded(cityActionFixture());
+  const card = (templateId: string) => {
+    const definition = CITY_SPECIAL_BUILDINGS.find(b => b.templateId === templateId);
+    assert.ok(definition);
+    return { cardId: templateId, templateId, name: definition.name, category: 'LANDMARK', cost: definition.cost, victoryPoints: definition.cost };
+  };
+  const roles = [...CITY_DEFAULT_SETTINGS.roles];
+  if (cardinal) roles[4] = 'CARDINAL';
+  return parse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: { ...base.game,
+    window: { ...base.game.window, activeRoleId: cardinal ? 'CR-05' : 'CR-02' },
+    expansion: { ...base.game.expansion, settings: { enabled: true, roles } },
+    playerStates: base.game.playerStates.map(p => p.playerId === base.self.playerId ? { ...p, builtBuildings: builtIds.map(card), scorePreview: builtIds.map(card).reduce((sum, b) => sum + b.victoryPoints, 0), handCount: base.game.privateState.hand.length + handIds.length } : p),
+    privateState: { ...base.game.privateState, hand: [...base.game.privateState.hand, ...handIds.map(card)] },
+  } });
+}
+
+test('thief without relevant buildings keeps role targeting and normal construction without special controls', () => {
+  const html = screen(thiefWithBuildings());
+  assert.match(html, /직업 지목/);
+  assert.match(html, /class="city-inline-build">건설/);
+  assert.doesNotMatch(html, /특수 건물 사용|대체 건설|희생할 내 건물/);
+});
+
+test('only constructed active specials expose building actions, independently of thief ability use', () => {
+  for (const id of ['CB-SP-01', 'CB-SP-13', 'CB-SP-17', 'CB-SP-25']) {
+    assert.doesNotMatch(screen(thiefWithBuildings([id])), /<summary>특수 건물 사용/);
+    const base = thiefWithBuildings([], [id]);
+    assert.equal(base.game.phase, 'ROLE_ACTION');
+    const usedRole = parse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: { ...base.game, privateState: { ...base.game.privateState, action: { ...base.game.privateState.action, abilityUsed: true } } } });
+    const html = screen(usedRole);
+    assert.match(html, /<summary>특수 건물 사용/);
+    assert.doesNotMatch(html, /건설할 카드|희생할 내 건물/);
+    const special = CITY_SPECIAL_BUILDINGS.find(b => b.templateId === id);
+    assert.ok(special);
+    assert.ok(html.includes(`<button>${special.name} 사용</button>`));
+    const usedSpecial = parse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: { ...base.game, privateState: { ...base.game.privateState, expansion: { ...base.game.privateState.expansion, usedSpecials: [special.effect] } } } });
+    assert.ok(screen(usedSpecial).includes(`<button disabled="">${special.name} 사용</button>`));
+  }
+  assert.doesNotMatch(screen(thiefWithBuildings([], ['CB-SP-14'])), /특수 건물 사용|대체 건설/);
+});
+
+test('alternative construction appears for hand payment, built framework, necropolis with a city, or cardinal', () => {
+  for (const snapshot of [thiefWithBuildings(['CB-SP-29']), thiefWithBuildings([], ['CB-SP-06']), thiefWithBuildings(['CB-SP-18'], ['CB-SP-14']), thiefWithBuildings([], [], true)]) {
+    assert.match(screen(snapshot), /건설할 카드/);
+    assert.match(screen(snapshot), /대체 건설/);
+  }
+  for (const snapshot of [thiefWithBuildings(['CB-SP-06']), thiefWithBuildings(['CB-SP-18']), thiefWithBuildings([], ['CB-SP-29'])]) {
+    assert.doesNotMatch(screen(snapshot), /대체 건설|희생할 내 건물/);
+  }
+});
 
 test('v3 selection restores illustrated selectable roles, private summary, public track and timed HUD', () => {
   const snapshot = expanded(citySelectionFixture());
