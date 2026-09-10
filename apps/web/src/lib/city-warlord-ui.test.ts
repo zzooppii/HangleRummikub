@@ -66,6 +66,6 @@ test('full expanded screen replaces warlord dropdowns while keeping income, hand
   assert.match(html, /aria-label="장군의 건물 파괴"/);
   assert.match(html, /건물 종류별 수입 받기/);
   assert.match(html, /차례 마치기/);
-  assert.match(html, /class="city-inline-build">건설/);
+  assert.match(html, /class="city-inline-build"[^>]*>건설/);
   assert.doesNotMatch(html, /<select|장군 능력 사용/);
 });

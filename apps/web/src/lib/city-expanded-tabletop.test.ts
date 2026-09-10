@@ -24,6 +24,24 @@ function screen(snapshot: CityRolePlayingPlatformSnapshotV2) {
   return renderToStaticMarkup(createElement(CityExpandedScreen, { snapshot, connected: true, pending: false, errorMessage: null, onCommand: async () => {}, onAction: () => {}, onLeave: () => {} }));
 }
 
+test('turn flow offers resources before acquisition and condenses them after server completion', () => {
+  const base = expanded(cityActionFixture());
+  const before = parse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: { ...base.game, privateState: { ...base.game.privateState, action: { acquisition: 'NOT_TAKEN', abilityUsed: false, buildingsBuilt: 0 } } } });
+  const starting = screen(before);
+  assert.match(starting, /금화 2개 받기/); assert.match(starting, /건물 카드 뽑기/);
+  assert.doesNotMatch(starting, /is-buildable|자원 받기 완료/);
+  const completed = screen(base);
+  assert.match(completed, /자원 받기 완료/);
+  assert.doesNotMatch(completed, /금화 2개 받기|건물 카드 뽑기/);
+  assert.match(completed, /원하는 순서/); assert.match(completed, /is-buildable/);
+  assert.ok(completed.indexOf('city-turn-finish') > completed.indexOf('city-inline-build'));
+  assert.match(completed, /<button>차례 마치기 →<\/button>/);
+  const pending = screen(expanded(cityActionFixture(true)));
+  assert.match(pending, /뽑은 카드 중 받을 카드를 선택하세요/);
+  assert.match(pending, /<button disabled="">차례 마치기 →/);
+  assert.doesNotMatch(pending, /is-buildable/);
+});
+
 test('mobile status shows the viewer resources while another player is acting', () => {
   const base = expanded(cityActionFixture());
   const snapshot = parse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: { ...base.game,
@@ -74,7 +92,7 @@ function thiefWithBuildings(handIds: string[] = [], builtIds: string[] = [], car
 test('thief without relevant buildings keeps role targeting and normal construction without special controls', () => {
   const html = screen(thiefWithBuildings());
   assert.match(html, /도둑질 지목 확정/);
-  assert.match(html, /class="city-inline-build">건설/);
+  assert.match(html, /class="city-inline-build"[^>]*>건설/);
   assert.doesNotMatch(html, /특수 건물 사용|대체 건설|희생할 내 건물/);
 });
 

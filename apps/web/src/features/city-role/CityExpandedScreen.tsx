@@ -1,14 +1,16 @@
 import { useCitySound } from "./city-role-sound.js";
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { CITY_ALL_ROLE_IDS, CITY_EXPANDED_ROLES, CITY_SPECIAL_BUILDINGS, type CityExpansionAction, type CityExpansionClientCommand, type CityRolePlayingPlatformSnapshotV2, type CityRoleFinishedPlatformSnapshotV2, type CityRoleId, type CityPublicBuilding } from '@hangul-rummikub/shared';
 import { createRequestId } from '../../lib/request-id.js';
 import { CityBuildingFace } from './CityBuildingFace.js';
 import { CityExpandedTurnHud } from './CityExpandedTurnHud.js';
 import { CitySecretDraft } from './CitySecretDraft.js';
 import { CityResourceTokens, CityRoleTrack } from './CityTabletop.js';
-import { CityRoleEmblem } from './CityVisuals.js';
+import { CityIcon, CityRoleEmblem } from './CityVisuals.js';
 import { CityRoleTargets } from './CityRoleTargets.js';
 import { CityWarlordTargets } from './CityWarlordTargets.js';
+import { cityBuildPreview } from './city-build-preview.js';
+import { CityTurnSteps } from './CityTurnSteps.js';
 import { CityConstructionProgress } from './CityConstructionProgress.js';
 import { CityExpandedResults } from './CityExpandedResults.js';
 import { CityExpandedReference } from './CityExpandedReference.js';
@@ -17,6 +19,7 @@ import { CITY_CATEGORY_LABELS } from './city-role-ui.js';
 
 type Snapshot = CityRolePlayingPlatformSnapshotV2 | CityRoleFinishedPlatformSnapshotV2;
 export function CityExpandedScreen({ snapshot: s, connected, pending, errorMessage, onCommand, onAction, onLeave }: { snapshot: Snapshot; connected: boolean; pending: boolean; errorMessage: string | null; onCommand(command: CityExpansionClientCommand): Promise<void>; onAction(intent: CityActionIntent): void; onLeave(): void }) {
+  const handId = useId();
   const sound = useCitySound(s, null, !connected, true);
   const game = s.game, e = game.expansion!, me = game.playerStates.find(p => p.playerId === s.self.playerId)!;
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [selected, setSelected] = useState<string[]>([]);
@@ -32,6 +35,9 @@ export function CityExpandedScreen({ snapshot: s, connected, pending, errorMessa
   const budget = game.phase === 'ROLE_ACTION' ? game.privateState.action : undefined;
   const ready = !disabled && budget?.acquisition === 'COMPLETE' && e.pending === null;
   const role = game.phase === 'ROLE_ACTION' ? CITY_EXPANDED_ROLES.find(r => r.id === e.settings.roles[Number(game.window.activeRoleId.slice(-2)) - 1]) : undefined;
+  const mustUseAbility = role?.id === 'WITCH' || role?.id === 'EMPEROR' && game.playerStates.some(p => !p.forfeited && p.playerId !== me.playerId && p.playerId !== game.leaderPlayerId);
+  const canEnd = ready && (!mustUseAbility || Boolean(budget?.abilityUsed));
+  const previewBuild = (card: CityPublicBuilding) => cityBuildPreview(card, { buildings: me.builtBuildings, gold: me.gold, job: active ? role?.id : undefined, buildingsBuilt: budget?.buildingsBuilt ?? 0, taxCollector: active && e.settings.roles.includes('TAX_COLLECTOR') });
   const activeSpecials = CITY_SPECIAL_BUILDINGS.filter(b => role?.id !== 'WITCH' && ['LABORATORY','SMITHY','MUSEUM','ARMORY'].includes(b.effect) && me.builtBuildings.some(card => card.templateId === b.templateId));
   const roleTargeting = role && ['ASSASSIN','THIEF','WITCH','MAGISTRATE','BLACKMAILER'].includes(role.id);
   const targetCount = role?.id === 'MAGISTRATE' ? 3 : role?.id === 'BLACKMAILER' ? 2 : 1;
@@ -54,12 +60,17 @@ export function CityExpandedScreen({ snapshot: s, connected, pending, errorMessa
   }
   const rolePayload = (): CityExpansionAction => ({ command: 'ROLE', ...(target ? { targetPlayerId: target } : {}), ...(targetCard ? { cardId: targetCard } : {}), ...(own ? { ownCardId: own } : {}), cardIds: selected, roleIds: roles, category, goldCount });
   function cardsView(cards: readonly CityPublicBuilding[], mode: 'hand' | 'city' | 'choice', owner?: string) {
-    return <div className={`city-expanded-cards city-expanded-cards-${mode}`}>{cards.map(card => <div key={card.cardId} className={`city-expanded-card ${selected.includes(card.cardId) || targetCard === card.cardId ? 'is-selected' : ''}`}>
+    return <div className={`city-expanded-cards city-expanded-cards-${mode}`}>{cards.map(card => { const build = previewBuild(card); return <div key={card.cardId} className={`city-expanded-card${mode === 'hand' && ready && !build.reason ? ' is-buildable' : ''} ${selected.includes(card.cardId) || targetCard === card.cardId ? 'is-selected' : ''}`}>
       <button className="city-card-select" aria-label={`${card.name} 선택`} aria-pressed={selected.includes(card.cardId) || targetCard === card.cardId} onClick={() => { if (mode === 'city') { setTarget(owner ?? ''); setTargetCard(card.cardId); if (owner === s.self.playerId) toggle(card.cardId); } else toggle(card.cardId); }}><CityBuildingFace card={card} rulesVersion="city-rules-v3" /></button>
-      {mode === 'hand' && <button className="city-inline-build" disabled={!ready || card.cost === 0} onClick={() => void send({ command: 'BUILD', cardId: card.cardId })}>{card.cost === 0 ? '손에 보관 · 종료 +3점' : '건설'}</button>}
+      {mode === 'hand' && <div className="city-build-offer">
+        {card.templateId !== 'CB-SP-24' && <div className="city-build-price"><span><CityIcon name="coin" />건설 <b>{build.cost}</b> 금화</span>{build.discount > 0 && <small>공장 −{build.discount}</small>}{build.tax > 0 && <small>건설 후 세금 +{build.tax}</small>}</div>}
+        <p className={ready && !build.reason ? 'city-build-ready' : ''}>{build.reason ?? (game.phase === 'FINISHED' ? '게임 종료' : !active || game.phase === 'ROLE_SELECTION' ? '내 행동 차례에 건설' : e.pending ? '진행 중인 선택을 마치세요' : budget?.acquisition !== 'COMPLETE' ? '자원을 받은 뒤 건설' : !connected ? '연결 복구 중' : remainingSeconds === 0 ? '행동 시간 종료' : busy || pending ? '처리 중' : '건설 가능')}{build.freeBuild && !build.restriction && <span> · 건설 횟수 제외</span>}</p>
+        {build.alternative && <p className="city-build-alternative">{build.alternative}</p>}
+        <button className="city-inline-build" aria-label={`${card.name} · ${build.cost}금화로 건설`} disabled={!ready || Boolean(build.reason)} onClick={() => void send({ command: 'BUILD', cardId: card.cardId })}>건설</button>
+      </div>}
       {e.decorated.includes(card.cardId) && <span className="city-card-ribbon">장식 +1</span>}
       {e.museum.some(row => row.buildingId === card.cardId) && <small>보관 {e.museum.find(row => row.buildingId === card.cardId)?.count}장</small>}
-    </div>)}</div>;
+    </div>; })}</div>;
   }
   return <main className="city-shell city-expanded-page">
     <header className="city-expanded-hero"><div><span className="city-eyebrow">CITY · {e.settings.enabled ? 'EXPANDED' : 'CLASSIC'}</span><h1>도시의 다음 장</h1><p>{game.roundNumber}라운드 · 왕관 {nickname(game.leaderPlayerId)} · {game.phase === 'FINISHED' ? '게임 종료' : `${nickname(game.window.activePlayerId)}님의 ${game.phase === 'ROLE_SELECTION' ? '직업 선택' : role?.name ?? '차례'}`}</p></div><div className="city-wallet"><b>{me.gold}</b> 금화<span>{me.handCount}장 보유 · {me.builtBuildings.length}채 건설</span></div><div className="city-expanded-sound"><CityExpandedReference snapshot={s} /><button aria-pressed={sound.enabled} onClick={sound.toggle}>사운드 {sound.enabled ? "켜짐" : "꺼짐"}</button><label>효과음 볼륨<input aria-label="효과음 볼륨" type="range" min="0" max="100" value={sound.volume} onChange={event => sound.changeVolume(Number(event.target.value))}/></label><button onClick={onLeave}>나가기</button></div></header>
@@ -76,7 +87,7 @@ export function CityExpandedScreen({ snapshot: s, connected, pending, errorMessa
             {(e.pending === 'THEATER' || e.pending === 'EMPEROR') && <><select aria-label="교환할 상대" value={target} onChange={ev => setTarget(ev.target.value)}><option value="">상대 선택</option>{game.playerStates.filter(p => !p.forfeited && p.playerId !== me.playerId).map(p => <option key={p.playerId} value={p.playerId}>{nickname(p.playerId)}</option>)}</select>{e.pending === 'THEATER' && <select aria-label="내 역할" value={roles[0] ?? ''} onChange={ev => { const id = CITY_ALL_ROLE_IDS.find(id => id === ev.target.value); setRoles(id ? [id] : []); }}><option value="">교환할 내 역할</option>{game.privateState.selectedRoleIds.map(id => <option key={id} value={id}>{roleName(id)}</option>)}</select>}</>}
             <div className="city-action-row">{e.pending === 'WIZARD' ? <><button disabled={disabled || selected.length !== 1} onClick={() => void send({ command: 'DECIDE', cardId: selected[0]!, choice: 'KEEP' })}>손패로 가져오기</button><button disabled={disabled || selected.length !== 1} onClick={() => void send({ command: 'DECIDE', cardId: selected[0]!, choice: 'BUILD' })}>즉시 건설</button></> : e.pending === 'SCHOLAR' || e.pending === 'SEER' ? <button disabled={disabled || (e.pending === 'SCHOLAR' ? selected.length !== 1 : selected.length !== game.privateState.expansion?.recipients.length)} onClick={() => void send({ command: 'DECIDE', ...(e.pending === 'SCHOLAR' ? { cardId: selected[0]! } : { cardIds: selected }) })}>카드 선택 확정</button> : <><button disabled={disabled || (e.pending === 'THEATER' && (!target || roles.length !== 1)) || (e.pending === 'EMPEROR' && !target)} onClick={() => void send({ command: 'DECIDE', choice: 'YES', ...(target ? { targetPlayerId: target } : {}), roleIds: roles })}>{e.pending === 'EMPEROR' ? '왕관 전달' : '예'}</button>{e.pending !== 'EMPEROR' && <button disabled={disabled} onClick={() => void send({ command: 'DECIDE', choice: 'NO' })}>아니요</button>}</>}</div></>}
         </div>}
-        {active && <><div className="city-action-row"><button disabled={disabled || budget?.acquisition !== 'NOT_TAKEN'} onClick={() => onAction({ kind: 'city:takeIncome', payload: {} })}>금화 {me.builtBuildings.some(b => b.templateId === 'CB-SP-07') ? 3 : 2}개 받기</button><button disabled={disabled || budget?.acquisition !== 'NOT_TAKEN'} onClick={() => onAction({ kind: 'city:drawBuildingCards', payload: {} })}>건물 카드 뽑기</button><button disabled={!ready} onClick={() => onAction({ kind: 'city:endTurn', payload: {} })}>차례 마치기</button></div>
+        {active && <>{budget && !e.pending && <CityTurnSteps acquisition={budget.acquisition} handId={handId} />}{budget?.acquisition === 'NOT_TAKEN' && !e.pending && <div className="city-acquire-options"><button disabled={disabled} onClick={() => onAction({ kind: 'city:takeIncome', payload: {} })}><CityIcon name="coin" /><span>금화 {me.builtBuildings.some(b => b.templateId === 'CB-SP-07') ? 3 : 2}개 받기<small>건설에 쓸 금화를 확보합니다</small></span></button><button disabled={disabled} onClick={() => onAction({ kind: 'city:drawBuildingCards', payload: {} })}><CityIcon name="cards" /><span>건물 카드 뽑기<small>새로운 건물을 손패에 추가합니다</small></span></button></div>}
         {game.privateState.pendingCards && <div className="city-expanded-cards">{game.privateState.pendingCards.map(card => <div className="city-expanded-card" key={card.cardId}><button className="city-card-select" disabled={disabled} onClick={() => onAction({ kind: 'city:chooseBuildingCard', payload: { cardId: card.cardId } })}><CityBuildingFace card={card} rulesVersion="city-rules-v3"/><b>이 카드 받기</b></button></div>)}</div>}
         {budget?.acquisition === 'COMPLETE' && !e.pending && <div className="city-ability-controls"><div className="city-action-row">{role && ['KING','EMPEROR','PATRICIAN','BISHOP','ABBOT','CARDINAL','MERCHANT','TRADER','WARLORD','DIPLOMAT','MARSHAL'].includes(role.id) && <button disabled={!ready || game.privateState.expansion?.incomeUsed} onClick={() => void send({ command: 'INCOME', goldCount })}>건물 종류별 수입 받기</button>}</div>
           {(role && !['KING','PATRICIAN','BISHOP','MERCHANT','ALCHEMIST','TRADER','ARCHITECT','QUEEN','TAX_COLLECTOR'].includes(role.id) || me.builtBuildings.some(b => b.templateId === 'CB-SP-01')) && <details open><summary>직업 능력 사용</summary>{role?.id === 'WARLORD' ? <CityWarlordTargets game={game} viewerId={me.playerId} gold={me.gold} ready={ready} used={budget.abilityUsed} targetPlayerId={target} targetCardId={targetCard} nickname={nickname} onSelect={(playerId, cardId) => { setTarget(playerId); setTargetCard(cardId); }} onDestroy={(playerId, cardId) => void send({ command: 'ROLE', targetPlayerId: playerId, cardId })}/> : <><div className="city-ability-inputs">
@@ -100,7 +111,7 @@ export function CityExpandedScreen({ snapshot: s, connected, pending, errorMessa
       </>}
     </section>}
     {(game.privateState.expansion?.inspectedCards.length ?? 0) > 0 && <section className="city-expansion-panel"><h2>확인한 상대 손패</h2>{cardsView(game.privateState.expansion!.inspectedCards, 'choice')}</section>}
-    <section className="city-expansion-panel city-hand"><CityConstructionProgress buildings={me.builtBuildings} ending={game.firstCompletion !== null} finished={game.phase === 'FINISHED'} /><h2>나의 손패 <span>{me.handCount}</span></h2><p className="city-muted">카드를 누르면 능력에 사용할 카드로 선택됩니다.</p>{cardsView(game.privateState.hand, 'hand')}</section>
+    <section id={handId} className="city-expansion-panel city-hand"><CityConstructionProgress buildings={me.builtBuildings} ending={game.firstCompletion !== null} finished={game.phase === 'FINISHED'} /><h2>나의 손패 <span>{me.handCount}</span></h2><p className="city-muted">카드를 누르면 능력에 사용할 카드로 선택됩니다.</p>{cardsView(game.privateState.hand, 'hand')}{active && game.phase === 'ROLE_ACTION' && <footer className="city-turn-finish"><div><strong>3 · 차례 마치기</strong><p>{e.pending ? '진행 중인 선택을 먼저 마치세요.' : budget?.acquisition !== 'COMPLETE' ? '자원을 먼저 받으세요.' : mustUseAbility && !budget.abilityUsed ? '직업의 필수 능력을 먼저 사용하세요.' : '능력과 건설을 마쳤다면 다음 차례로 넘어가세요.'}</p></div><button disabled={!canEnd} onClick={() => onAction({ kind: 'city:endTurn', payload: {} })}>차례 마치기 →</button></footer>}</section>
     <section className="city-cities">{game.playerStates.map(p => <article className={`city-expansion-panel city-public-city${p.playerId === me.playerId ? ' is-mine' : ''}${game.phase !== 'FINISHED' && p.playerId === game.window.activePlayerId ? ' is-active' : ''}`} key={p.playerId}><h2>{nickname(p.playerId)}의 도시 {p.playerId === game.leaderPlayerId ? '♛' : ''}</h2><p>건물 {p.builtBuildings.length}채{p.forfeited ? ' · 기권' : ''}</p><CityResourceTokens gold={p.gold} handCount={p.handCount} score={p.scorePreview} />{cardsView(p.builtBuildings, 'city', p.playerId)}</article>)}</section>
   </main>;
 }
