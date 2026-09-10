@@ -1,16 +1,19 @@
 import { IslandHostSuccession } from "./games/island/application/host-succession.js";
 import { SplendorHostSuccession } from "./games/splendor/application/host-succession.js";
 import { JaipurHostSuccession } from "./games/jaipur/application/host-succession.js";
+import { LostCitiesHostSuccession } from "./games/lost-cities/application/host-succession.js";
 import { HalliHostSuccession } from "./games/halli-galli/application/host-succession.js";
 import { WolfHostSuccession } from "./games/wolf-night/application/host-succession.js";
 import { IslandService } from "./games/island/application/service.js";
 import { SplendorService } from "./games/splendor/application/service.js";
 import { JaipurService } from "./games/jaipur/application/service.js";
+import { LostCitiesService } from "./games/lost-cities/application/service.js";
 import { HalliService } from "./games/halli-galli/application/service.js";
 import { WolfService } from "./games/wolf-night/application/service.js";
 import { createIslandLifecycle } from "./games/island/application/lifecycle.js";
 import { createSplendorLifecycle } from "./games/splendor/application/lifecycle.js";
 import { createJaipurLifecycle } from "./games/jaipur/application/lifecycle.js";
+import { createLostCitiesLifecycle } from "./games/lost-cities/application/lifecycle.js";
 import { createHalliLifecycle } from "./games/halli-galli/application/lifecycle.js";
 import { createWolfLifecycle } from "./games/wolf-night/application/lifecycle.js";
 import { SneakyLunchService } from "./games/sneaky-lunch/application/service.js";
@@ -129,11 +132,13 @@ export type ApplicationRuntime = Readonly<{
   islandService?: IslandService;
   splendorService?: SplendorService;
   jaipurService?: JaipurService;
+  lostCitiesService?: LostCitiesService;
   halliService?: HalliService;
   wolfService?: WolfService;
   islandHostSuccession?: IslandHostSuccession;
   splendorHostSuccession?: SplendorHostSuccession;
   jaipurHostSuccession?: JaipurHostSuccession;
+  lostCitiesHostSuccession?: LostCitiesHostSuccession;
   halliHostSuccession?: HalliHostSuccession;
   wolfHostSuccession?: WolfHostSuccession;
   sneakyLunchService?: SneakyLunchService;
@@ -242,6 +247,7 @@ export function createApplicationRuntime(
       { gameType: "ISLAND_SETTLERS" },
       { gameType: "SPLENDOR" },
       { gameType: "JAIPUR" },
+      { gameType: "LOST_CITIES" },
       { gameType: "HALLI_GALLI" },
       { gameType: "WOLF_NIGHT" },
     ],
@@ -275,6 +281,7 @@ export function createApplicationRuntime(
     island: createIslandLifecycle(),
     splendor: createSplendorLifecycle(),
     jaipur: createJaipurLifecycle(),
+    lostCities: createLostCitiesLifecycle(),
     halli: createHalliLifecycle(),
     wolf: createWolfLifecycle(),
     sneaky: createSneakyLifecycle(),
@@ -559,6 +566,13 @@ export function createApplicationRuntime(
     const room = await persistence.findById(roomId);
     if (room?.gameType === "JAIPUR" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
   });
+  const lostCitiesService = new LostCitiesService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
+    roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource });
+  const lostCitiesHostSuccession = new LostCitiesHostSuccession(lostCitiesService.deps, roomId => lostCitiesService.notify(roomId));
+  lostCitiesService.subscribe(async roomId => {
+    const room = await persistence.findById(roomId);
+    if (room?.gameType === "LOST_CITIES" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
+  });
   const halliService = new HalliService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
     roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource, turnScheduler });
   const halliHostSuccession = new HalliHostSuccession(halliService.deps, roomId => halliService.notify(roomId));
@@ -644,6 +658,7 @@ export function createApplicationRuntime(
     island: { gameType: "ISLAND_SETTLERS", start: input => islandService.start(input) },
     splendor: { gameType: "SPLENDOR", start: input => splendorService.start(input) },
     jaipur: { gameType: "JAIPUR", start: input => jaipurService.start(input) },
+    lostCities: { gameType: "LOST_CITIES", start: input => lostCitiesService.start(input) },
     halli: { gameType: "HALLI_GALLI", start: input => halliService.start(input) },
     wolf: { gameType: "WOLF_NIGHT", start: input => wolfService.start(input) },
     sneaky: { gameType: "SNEAKY_LUNCH", start: input => sneakyLunchService.start(input) },
@@ -836,11 +851,13 @@ export function createApplicationRuntime(
     islandService,
     splendorService,
     jaipurService,
+    lostCitiesService,
     halliService,
     wolfService,
     islandHostSuccession,
     splendorHostSuccession,
     jaipurHostSuccession,
+    lostCitiesHostSuccession,
     halliHostSuccession,
     wolfHostSuccession,
     sneakyLunchService,
@@ -895,6 +912,7 @@ export function createApplicationRuntime(
       islandHostSuccession.start();
       splendorHostSuccession.start();
       jaipurHostSuccession.start();
+      lostCitiesHostSuccession.start();
       halliHostSuccession.start();
       wolfHostSuccession.start();
       roomPolicyScheduler.start();
@@ -917,6 +935,7 @@ export function createApplicationRuntime(
       islandHostSuccession.stop();
       splendorHostSuccession.stop();
       jaipurHostSuccession.stop();
+      lostCitiesHostSuccession.stop();
       halliHostSuccession.stop();
       wolfHostSuccession.stop();
       roomPolicyScheduler.stop();

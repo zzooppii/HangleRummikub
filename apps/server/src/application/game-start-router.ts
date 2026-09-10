@@ -6,7 +6,7 @@ import type {
   StartGameInput,
 } from "./game-start-service.js";
 
-type StartCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "SPLENDOR" | "JAIPUR" | "HALLI_GALLI" | "ISLAND_SETTLERS"> =
+type StartCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "SPLENDOR" | "JAIPUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS"> =
   Readonly<{
     gameType: TGameType;
     start(input: StartGameInput): Promise<GameStartResult>;
@@ -26,6 +26,7 @@ export type GameStartRouterDependencies = Readonly<{
   island?: StartCapability<"ISLAND_SETTLERS">;
   splendor?: StartCapability<"SPLENDOR">;
   jaipur?: StartCapability<"JAIPUR">;
+  lostCities?: StartCapability<"LOST_CITIES">;
   halli?: StartCapability<"HALLI_GALLI">;
   wolf?: StartCapability<"WOLF_NIGHT">;
   sneaky?: StartCapability<"SNEAKY_LUNCH">;
@@ -53,7 +54,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function isStartCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "SPLENDOR" | "JAIPUR" | "HALLI_GALLI" | "ISLAND_SETTLERS",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "SPLENDOR" | "JAIPUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS",
 >(
   value: unknown,
   gameType: TGameType,
@@ -65,7 +66,7 @@ function isStartCapability<
   );
 }
 
-function requireCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "SPLENDOR" | "JAIPUR" | "HALLI_GALLI" | "ISLAND_SETTLERS">(
+function requireCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "SPLENDOR" | "JAIPUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS">(
   value: unknown,
   gameType: TGameType,
 ): StartCapability<TGameType> {
@@ -89,6 +90,7 @@ export class GameStartRouter implements GameStartRouting {
   readonly #island: StartCapability<"ISLAND_SETTLERS"> | undefined;
   readonly #splendor: StartCapability<"SPLENDOR"> | undefined;
   readonly #jaipur: StartCapability<"JAIPUR"> | undefined;
+  readonly #lostCities: StartCapability<"LOST_CITIES"> | undefined;
   readonly #halli: StartCapability<"HALLI_GALLI"> | undefined;
   readonly #wolf: StartCapability<"WOLF_NIGHT"> | undefined;
   readonly #sneaky: StartCapability<"SNEAKY_LUNCH"> | undefined;
@@ -99,6 +101,7 @@ export class GameStartRouter implements GameStartRouting {
     this.#island = dependencies.island;
     this.#splendor = dependencies.splendor;
     this.#jaipur = dependencies.jaipur;
+    this.#lostCities = dependencies.lostCities;
     this.#halli = dependencies.halli;
     this.#wolf = dependencies.wolf;
     this.#sneaky = dependencies.sneaky;
@@ -128,6 +131,7 @@ export class GameStartRouter implements GameStartRouting {
         case "ISLAND_SETTLERS": return this.#island ? await this.#island.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "SPLENDOR": return this.#splendor ? await this.#splendor.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "JAIPUR": return this.#jaipur ? await this.#jaipur.start(input) : {ok:false,error:INTERNAL_ERROR};
+        case "LOST_CITIES": return this.#lostCities ? await this.#lostCities.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "HALLI_GALLI": return this.#halli ? await this.#halli.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "WOLF_NIGHT": return this.#wolf ? await this.#wolf.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "SNEAKY_LUNCH": return this.#sneaky ? await this.#sneaky.start(input) : {ok:false,error:INTERNAL_ERROR};

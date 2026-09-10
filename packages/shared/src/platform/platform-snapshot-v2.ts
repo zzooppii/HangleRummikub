@@ -1,6 +1,7 @@
 import { ISLAND_RESOURCES } from "../games/island/actions.js";
 import { SplendorPlayingProjectionSchema, SplendorFinishedProjectionSchema } from "../games/splendor/contracts.js";
 import { JaipurPlayingProjectionSchema, JaipurFinishedProjectionSchema, jaipurProjectionIsConsistent } from "../games/jaipur/contracts.js";
+import { LostCitiesPlayingProjectionSchema, LostCitiesFinishedProjectionSchema, lostCitiesProjectionIsConsistent } from "../games/lost-cities/contracts.js";
 import { IslandPlayingProjectionSchema, IslandFinishedProjectionSchema } from "../games/island/contracts.js";
 import { HalliPlayingProjectionSchema, HalliFinishedProjectionSchema } from "../games/halli-galli/contracts.js";
 import { CityExpansionSettingsSchema } from "../games/city-role/expansion-contracts.js";
@@ -326,6 +327,23 @@ export const JaipurLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, Jaipu
 export const JaipurPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, JaipurPlayingPlatformSnapshotV2> = JaipurPlayingRaw;
 export const JaipurFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, JaipurFinishedPlatformSnapshotV2> = JaipurFinishedRaw;
 
+const LostCitiesOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const LostCitiesRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("LOST_CITIES") };
+const LostCitiesPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.length(2));
+const LostCitiesLobbyRaw = v.pipe(v.strictObject({ ...LostCitiesOuter, room: v.strictObject({ ...LostCitiesRoom, phase: v.literal("LOBBY"),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)) }), game: v.null() }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
+const LostCitiesPlayingRaw = v.pipe(v.strictObject({ ...LostCitiesOuter, room: v.strictObject({ ...LostCitiesRoom, phase: v.literal("PLAYING"), players: LostCitiesPlayers }), game: LostCitiesPlayingProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.hand.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.handCount), v.check(s => lostCitiesProjectionIsConsistent(s.game)));
+const LostCitiesFinishedRaw = v.pipe(v.strictObject({ ...LostCitiesOuter, room: v.strictObject({ ...LostCitiesRoom, phase: v.literal("FINISHED"), players: LostCitiesPlayers }), game: LostCitiesFinishedProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.hand.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.handCount), v.check(s => lostCitiesProjectionIsConsistent(s.game)));
+export type LostCitiesLobbyPlatformSnapshotV2 = v.InferOutput<typeof LostCitiesLobbyRaw>;
+export type LostCitiesPlayingPlatformSnapshotV2 = v.InferOutput<typeof LostCitiesPlayingRaw>;
+export type LostCitiesFinishedPlatformSnapshotV2 = v.InferOutput<typeof LostCitiesFinishedRaw>;
+export const LostCitiesLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, LostCitiesLobbyPlatformSnapshotV2> = LostCitiesLobbyRaw;
+export const LostCitiesPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, LostCitiesPlayingPlatformSnapshotV2> = LostCitiesPlayingRaw;
+export const LostCitiesFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, LostCitiesFinishedPlatformSnapshotV2> = LostCitiesFinishedRaw;
+
 const HalliOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
 const HalliRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("HALLI_GALLI") };
 const HalliPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(6));
@@ -381,6 +399,7 @@ export const LobbyPlatformSnapshotV2Schema = v.union([
   IslandLobbyPlatformSnapshotV2Schema,
   SplendorLobbyPlatformSnapshotV2Schema,
   JaipurLobbyPlatformSnapshotV2Schema,
+  LostCitiesLobbyPlatformSnapshotV2Schema,
   HalliLobbyPlatformSnapshotV2Schema,
   WolfLobbyPlatformSnapshotV2Schema,
   SneakyLobbyPlatformSnapshotV2Schema,
@@ -526,6 +545,7 @@ export const PlayingPlatformSnapshotV2Schema = v.union([
   IslandPlayingPlatformSnapshotV2Schema,
   SplendorPlayingPlatformSnapshotV2Schema,
   JaipurPlayingPlatformSnapshotV2Schema,
+  LostCitiesPlayingPlatformSnapshotV2Schema,
   HalliPlayingPlatformSnapshotV2Schema,
   WolfPlayingPlatformSnapshotV2Schema,
   DrawRelayPlayingPlatformSnapshotV2Schema,
@@ -671,6 +691,7 @@ export const FinishedPlatformSnapshotV2Schema = v.union([
   IslandFinishedPlatformSnapshotV2Schema,
   SplendorFinishedPlatformSnapshotV2Schema,
   JaipurFinishedPlatformSnapshotV2Schema,
+  LostCitiesFinishedPlatformSnapshotV2Schema,
   HalliFinishedPlatformSnapshotV2Schema,
   WolfFinishedPlatformSnapshotV2Schema,
   DrawRelayFinishedPlatformSnapshotV2Schema,

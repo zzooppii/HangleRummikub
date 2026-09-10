@@ -1,6 +1,7 @@
 import { RoomPreparationCommandSchema, type RoomPreparationCommand } from "@hangul-rummikub/shared";
 import { SplendorClientCommandSchema, type SplendorClientCommand } from "@hangul-rummikub/shared";
 import { JaipurClientCommandSchema, type JaipurClientCommand } from "@hangul-rummikub/shared";
+import { LostCitiesClientCommandSchema, type LostCitiesClientCommand } from "@hangul-rummikub/shared";
 import { CityExpansionClientCommandSchema, type CityExpansionClientCommand } from "@hangul-rummikub/shared";
 import { IslandClientCommandSchema, type IslandClientCommand } from "@hangul-rummikub/shared";
 import { HalliClientCommandSchema, type HalliClientCommand } from "@hangul-rummikub/shared";
@@ -706,6 +707,16 @@ export class RealtimeClient {
       switch (command.kind) {
         case "jaipur:act": this.#socket.emit("jaipur:act", command, acknowledge); break;
         case "jaipur:nextRound": this.#socket.emit("jaipur:nextRound", command, acknowledge); break;
+      }
+    }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
+  }
+
+  actLostCities(command: LostCitiesClientCommand): Promise<StateSyncWireAck> {
+    if (!parseRematch(LostCitiesClientCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {
+      switch (command.kind) {
+        case "lostCities:act": this.#socket.emit("lostCities:act", command, acknowledge); break;
+        case "lostCities:nextRound": this.#socket.emit("lostCities:nextRound", command, acknowledge); break;
       }
     }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
   }

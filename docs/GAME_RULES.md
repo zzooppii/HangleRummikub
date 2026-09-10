@@ -52,6 +52,10 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 
 # CONFIRMED
 
+### 로스트시티 추가 — 2026-09-11
+
+사용자의 개발안 승인에 따라 2인 5색 기본판과 일러스트 중심 화면을 추가한다. [LOST_CITIES_GAME_RULES.md](./LOST_CITIES_GAME_RULES.md)에 규칙과 온라인 기본값을 확정한다. 기존 미확정 규칙은 유지한다.
+
 ### 자이푸르 추가 — 2026-09-10
 
 개발 진행 요청에 따른 기본판 2인 게임과 온라인 기본 정책은 [JAIPUR_GAME_RULES.md](./JAIPUR_GAME_RULES.md)에 별도 확정한다. 기존 한글 게임의 미확정 규칙은 변경하지 않는다.

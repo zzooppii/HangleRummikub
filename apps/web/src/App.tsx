@@ -2,8 +2,10 @@ import "./features/lobby/room-game-controls.css";
 import { RoomGameControls } from "./features/lobby/RoomGameControls.js";
 import { SplendorScreen } from "./features/splendor/SplendorScreen.js";
 import { JaipurScreen } from "./features/jaipur/JaipurScreen.js";
+import { LostCitiesScreen } from "./features/lost-cities/LostCitiesScreen.js";
 import "./features/splendor/splendor.css";
 import "./features/jaipur/jaipur.css";
+import "./features/lost-cities/lost-cities.css";
 import { IslandScreen } from "./features/island/IslandScreen.js";
 import "./features/island/island.css";
 import { CityExpandedScreen } from "./features/city-role/CityExpandedScreen.js";
@@ -366,6 +368,14 @@ export function App() {
     if (roomView.kind === "JAIPUR") {
       return <ReconnectBoundary {...recovery}><JaipurScreen snapshot={roomView.snapshot}
         connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={app.actJaipur} onRematch={() => app.selectRoomGame("JAIPUR")}
+        onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
+        pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
+        error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;
+    }
+
+    if (roomView.kind === "LOST_CITIES") {
+      return <ReconnectBoundary {...recovery}><LostCitiesScreen snapshot={roomView.snapshot}
+        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={app.actLostCities} onRematch={() => app.selectRoomGame("LOST_CITIES")}
         onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
         pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
         error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;

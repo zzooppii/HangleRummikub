@@ -1,4 +1,5 @@
 import { JaipurActionSchema } from "./games/jaipur/actions.js";
+import { LostCitiesActionSchema } from "./games/lost-cities/actions.js";
 import { SplendorActionSchema } from "./games/splendor/actions.js";
 import { IslandActionSchema } from "./games/island/actions.js";
 import { CityExpansionSettingsSchema, CityExpansionActionSchema } from "./games/city-role/expansion-contracts.js";
@@ -328,10 +329,15 @@ export const DrawClientCommandSchema = v.variant("kind",[DrawDraftSaveCommandSch
 export type DrawClientCommand = v.InferOutput<typeof DrawClientCommandSchema>;
 
 const JaipurIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
+const LostCitiesIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 export const JaipurActCommandSchema = v.strictObject({ ...JaipurIdentity, kind: v.literal("jaipur:act"), turnId: TurnIdSchema, payload: JaipurActionSchema });
+export const LostCitiesActCommandSchema = v.strictObject({ ...LostCitiesIdentity, kind: v.literal("lostCities:act"), turnId: TurnIdSchema, payload: LostCitiesActionSchema });
 export const JaipurNextRoundCommandSchema = v.strictObject({ ...JaipurIdentity, kind: v.literal("jaipur:nextRound"), roundId: TurnIdSchema, payload: v.strictObject({}) });
+export const LostCitiesNextRoundCommandSchema = v.strictObject({ ...LostCitiesIdentity, kind: v.literal("lostCities:nextRound"), roundId: TurnIdSchema, payload: v.strictObject({}) });
 export const JaipurClientCommandSchema = v.variant("kind", [JaipurActCommandSchema, JaipurNextRoundCommandSchema]);
+export const LostCitiesClientCommandSchema = v.variant("kind", [LostCitiesActCommandSchema, LostCitiesNextRoundCommandSchema]);
 export type JaipurClientCommand = v.InferOutput<typeof JaipurClientCommandSchema>;
+export type LostCitiesClientCommand = v.InferOutput<typeof LostCitiesClientCommandSchema>;
 
 const SplendorIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 export const SplendorActCommandSchema = v.strictObject({ ...SplendorIdentity, kind: v.literal("splendor:act"), turnId: TurnIdSchema, payload: SplendorActionSchema });

@@ -87,7 +87,7 @@ export class RoomRetentionService {
       room.phase !== "FINISHED" ||
       room.game === null ||
       room.game.gameId !== deadline.gameId ||
-      ((room.gameType === "CITY_ROLE" || room.gameType === "DRAW_RELAY" || room.gameType === "SNEAKY_LUNCH" || room.gameType === "WOLF_NIGHT" || room.gameType === "JAIPUR" || room.gameType === "SPLENDOR" || room.gameType === "HALLI_GALLI" || room.gameType === "ISLAND_SETTLERS") ? room.game.finishedAt !== deadline.finishedAt : room.game.result?.finishedAt !== deadline.finishedAt)
+      ((room.gameType === "CITY_ROLE" || room.gameType === "DRAW_RELAY" || room.gameType === "SNEAKY_LUNCH" || room.gameType === "WOLF_NIGHT" || room.gameType === "JAIPUR" || room.gameType === "LOST_CITIES" || room.gameType === "SPLENDOR" || room.gameType === "HALLI_GALLI" || room.gameType === "ISLAND_SETTLERS") ? room.game.finishedAt !== deadline.finishedAt : room.game.result?.finishedAt !== deadline.finishedAt)
     ) {
       return { status: "NO_OP", reason: "STALE_POLICY" };
     }

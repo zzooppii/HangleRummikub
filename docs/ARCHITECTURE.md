@@ -991,3 +991,7 @@ Phase 18 deployment checkpoint에서 Codex는 public `/health`, Home/assets, dir
 ## ISLAND_SETTLERS 추가 (2026-09-10)
 
 기존 게임 선택 목록에 3–4인 **섬 개척**을 추가해 현재 소스의 지원 게임은 9개다. 서버 권위형 자원·거래·건설·발전 카드와 120초 timeout, 플레이어별 비공개 projection, 자체 SVG 보드를 구현한다. 관련 경계·계약·검증은 [ISLAND_ARCHITECTURE.md](./ISLAND_ARCHITECTURE.md), 확정 규칙과 온라인 정책은 [ISLAND_GAME_RULES.md](./ISLAND_GAME_RULES.md)를 따른다. 상위 room/세션/직렬화 경계와 기존 게임 규칙은 유지한다. 공개 배포 완료를 의미하지 않는다.
+
+## 로스트시티 추가 (2026-09-11)
+
+서버 권위형 2인 3라운드 카드 게임을 기존 구체 게임 경계에 연결한다. [LOST_CITIES_ARCHITECTURE.md](./LOST_CITIES_ARCHITECTURE.md)와 [규칙](./LOST_CITIES_GAME_RULES.md)을 따른다.
