@@ -1,3 +1,4 @@
+import { CityAbbotIncome, CityAbbotTribute } from '../features/city-role/CityAbbotAbility.js';
 import { CityExpandedCatalog } from '../features/city-role/CityExpandedCatalog.js';
 import { CityRoleTargets, toggleCityRoleTarget } from '../features/city-role/CityRoleTargets.js';
 import assert from 'node:assert/strict';
@@ -5,7 +6,7 @@ import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { parse } from 'valibot';
-import { CityBuildingCardIdSchema, CITY_ALL_ROLE_IDS, CITY_DEFAULT_SETTINGS, CITY_EXPANDED_ROLES, CITY_SPECIAL_BUILDINGS, CITY_STANDARD_SPECIALS, CityRolePlayingPlatformSnapshotV2Schema, type CityRolePlayingPlatformSnapshotV2 } from '@hangul-rummikub/shared';
+import { CityPublicBuildingSchema, CityBuildingCardIdSchema, CITY_ALL_ROLE_IDS, CITY_DEFAULT_SETTINGS, CITY_EXPANDED_ROLES, CITY_SPECIAL_BUILDINGS, CITY_STANDARD_SPECIALS, CityRolePlayingPlatformSnapshotV2Schema, type CityRolePlayingPlatformSnapshotV2 } from '@hangul-rummikub/shared';
 import { CityExpandedScreen } from '../features/city-role/CityExpandedScreen.js';
 import { CityExpandedTurnHud } from '../features/city-role/CityExpandedTurnHud.js';
 import { CityConstructionProgress } from '../features/city-role/CityConstructionProgress.js';
@@ -274,4 +275,39 @@ test('public role target summary renders every mark and only server-provided pri
   assert.match(screen(owner),/나의 진짜 협박 · 장군/);
   const empty = screen(base).match(/aria-label="공개된 지목">([\s\S]*?)<\/div>/)?.[1] ?? '';
   assert.doesNotMatch(empty,/협박 ·|영장 ·|암살 대상|도둑 대상|홀린 직업/);
+});
+
+
+test('abbot automatically targets the unique richest opponent, limits ties and blocks self-richest or used actions', () => {
+  const base = cityActionFixture();
+  const render = (gold: number[], used = false, ready = true) => renderToStaticMarkup(createElement(CityAbbotTribute, {
+    players: base.game.playerStates.map((p,i) => ({...p,gold:gold[i]!})), viewerId:'P0', nickname:id => `상대${id}`, ready, used, onCollect() {},
+  }));
+  const unique = render([2,8,5]);
+  assert.match(unique,/상대P1님에게 금화 1개 받기/);
+  assert.doesNotMatch(unique,/<select|aria-pressed|상대P2/);
+  const tied = render([2,8,8]);
+  assert.equal((tied.match(/aria-pressed="false"/g) ?? []).length,2);
+  assert.match(tied,/disabled="">동률인 상대를 선택하세요/);
+  for (const gold of [[8,8,5],[10,8,5],[0,0,0]]) assert.match(render(gold),/disabled="">받을 수 있는 금화 없음/);
+  assert.match(render([2,8,5],true),/disabled="">금화 받기 완료/);
+  assert.match(render([2,8,5],false,false),/disabled="">상대P1님에게 금화 1개 받기/);
+  const forfeited = renderToStaticMarkup(createElement(CityAbbotTribute,{players:base.game.playerStates.map((p,i)=>({...p,gold:[2,10,8][i]!,forfeited:i===1})),viewerId:'P0',nickname:id=>id,ready:true,used:false,onCollect(){}}));
+  assert.match(forfeited,/P2님에게 금화 1개 받기/);
+  assert.doesNotMatch(forfeited,/P1님/);
+});
+
+test('abbot income includes culture and magic school, bounds allocation and renders separately from tribute', () => {
+  const card = cityActionFixture().game.privateState.hand[0]!;
+  const buildings = [parse(CityPublicBuildingSchema,{...card,cardId:'abbot-culture',category:'CULTURE'}),parse(CityPublicBuildingSchema,{...card,cardId:'abbot-magic',templateId:'CB-SP-23',category:'LANDMARK',cost:6,victoryPoints:6})];
+  const html = renderToStaticMarkup(createElement(CityAbbotIncome,{buildings,ready:true,used:false,onCollect(){}}));
+  assert.match(html,/마법 학교 1채/); assert.match(html,/max="2"/); assert.match(html,/금화 2개 · 카드 0장 받기/);
+  assert.match(renderToStaticMarkup(createElement(CityAbbotIncome,{buildings:[],ready:true,used:false,onCollect(){}})),/disabled="">수입을 받을 문화 건물이 없습니다/);
+  const base = expanded(cityActionFixture());
+  const cast=[...CITY_DEFAULT_SETTINGS.roles];cast[4]='ABBOT';
+  const view=parse(CityRolePlayingPlatformSnapshotV2Schema,{...base,game:{...base.game,expansion:{...base.game.expansion,settings:{...base.game.expansion?.settings,roles:cast}},window:{...base.game.window,activeRoleId:'CR-05'}}});
+  const whole=screen(view);
+  assert.ok(whole.indexOf('aria-label="수도원장 문화 건물 수입"') < whole.indexOf('<summary>직업 능력 사용</summary>'));
+  assert.match(whole,/aria-label="수도원장 금화 받기"/);
+  assert.doesNotMatch(whole,/수입 중 금화 개수|카드를 사용하는 능력은|수도원장 능력 사용|플레이어 선택/);
 });

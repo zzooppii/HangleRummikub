@@ -253,3 +253,33 @@ test('public warrant and threat order cannot identify the real mark', () => {
     assert.deepEqual(job === 'MAGISTRATE' ? a.expansion?.warrants?.roles : a.expansion?.threats?.roles,roles);
   }
 });
+
+
+test('abbot collection validates current wealth, ties and once-per-turn use atomically', () => {
+  const initial=setup('ABBOT');
+  for(const gold of [[2,8,5,0],[2,8,8,0],[8,8,5,0],[10,8,5,0]]){
+    const s={...initial,players:initial.players.map((p,i)=>({...p,gold:gold[i]!}))};
+    for(const target of [me,them,people[2]!]){
+      const before=structuredClone(s), targetGold=s.players.find(p=>p.playerId===target)!.gold;
+      if(target!==me && targetGold===Math.max(...gold) && gold[0]!<targetGold){
+        const next=extra(s,{command:'ROLE',targetPlayerId:target});
+        assert.equal(ownPlayer(next).gold,gold[0]!+1);
+        assert.equal(next.players.find(p=>p.playerId===target)!.gold,targetGold-1);
+        assert.throws(()=>extra(next,{command:'ROLE',targetPlayerId:target}));
+      }else assert.throws(()=>extra(s,{command:'ROLE',targetPlayerId:target}));
+      assert.deepEqual(s,before);
+    }
+  }
+});
+
+test('abbot culture income allocation and tribute are independent and cannot exceed current buildings', () => {
+  const s=zones(setup('ABBOT',['CB-SP-23']),['CB-CUL-01','CB-SP-23']);
+  for(const goldCount of [0,1,2]){
+    const next=extra(s,{command:'INCOME',goldCount});
+    assert.equal(ownPlayer(next).gold,ownPlayer(s).gold+goldCount);
+    assert.equal(ownPlayer(next).hand.length,ownPlayer(s).hand.length+2-goldCount);
+    assert.equal(next.window?.kind==='ROLE_ACTION' && next.window.abilityUsed,false);
+    assert.throws(()=>extra(next,{command:'INCOME',goldCount}));
+  }
+  const before=structuredClone(s);assert.throws(()=>extra(s,{command:'INCOME',goldCount:3}));assert.deepEqual(s,before);
+});
