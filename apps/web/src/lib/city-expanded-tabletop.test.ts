@@ -5,9 +5,10 @@ import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { parse } from 'valibot';
-import { CITY_ALL_ROLE_IDS, CITY_DEFAULT_SETTINGS, CITY_EXPANDED_ROLES, CITY_SPECIAL_BUILDINGS, CITY_STANDARD_SPECIALS, CityRolePlayingPlatformSnapshotV2Schema, type CityRolePlayingPlatformSnapshotV2 } from '@hangul-rummikub/shared';
+import { CityBuildingCardIdSchema, CITY_ALL_ROLE_IDS, CITY_DEFAULT_SETTINGS, CITY_EXPANDED_ROLES, CITY_SPECIAL_BUILDINGS, CITY_STANDARD_SPECIALS, CityRolePlayingPlatformSnapshotV2Schema, type CityRolePlayingPlatformSnapshotV2 } from '@hangul-rummikub/shared';
 import { CityExpandedScreen } from '../features/city-role/CityExpandedScreen.js';
 import { CityExpandedTurnHud } from '../features/city-role/CityExpandedTurnHud.js';
+import { CityConstructionProgress } from '../features/city-role/CityConstructionProgress.js';
 import { CityRoleTrack } from '../features/city-role/CityTabletop.js';
 import { cityActionFixture, citySelectionFixture } from './city-role-test-fixtures.js';
 
@@ -22,6 +23,36 @@ function expanded(base: CityRolePlayingPlatformSnapshotV2, roles = [...CITY_DEFA
 function screen(snapshot: CityRolePlayingPlatformSnapshotV2) {
   return renderToStaticMarkup(createElement(CityExpandedScreen, { snapshot, connected: true, pending: false, errorMessage: null, onCommand: async () => {}, onAction: () => {}, onLeave: () => {} }));
 }
+
+test('mobile status shows the viewer resources while another player is acting', () => {
+  const base = expanded(cityActionFixture());
+  const snapshot = parse(CityRolePlayingPlatformSnapshotV2Schema, { ...base, game: { ...base.game,
+    window: { ...base.game.window, activePlayerId: 'P1' },
+    privateState: { hand: base.game.privateState.hand, selectedRoleIds: base.game.privateState.selectedRoleIds, marks: [], expansion: base.game.privateState.expansion },
+    playerStates: base.game.playerStates.map(p => ({ ...p, gold: p.playerId === base.self.playerId ? 12 : 3 })),
+  } });
+  const html = screen(snapshot);
+  const status = html.slice(html.indexOf('class="city-mobile-status"'), html.indexOf('aria-label="공개 역할 진행 순서"'));
+  assert.match(status, /도시1님의 차례/);
+  assert.match(status, /내 자원 현황/);
+  assert.match(status, /금화<\/dt><dd>12<\/dd>/);
+  assert.match(status, /손패<\/dt><dd>1<small>장/);
+  assert.match(status, /건물 점수<\/dt><dd>0<small>점/);
+});
+
+test('city progress reflects empty, built and removed buildings and counts a monument as two slots', () => {
+  const card = cityActionFixture().game.privateState.hand[0]!;
+  const render = (buildings: typeof card[], ending = false) => renderToStaticMarkup(createElement(CityConstructionProgress, { buildings, ending, finished: false }));
+  assert.match(render([]), /aria-valuenow="0"/);
+  const buildings = Array.from({ length: 6 }, (_, i) => ({ ...card, cardId: parse(CityBuildingCardIdSchema, `built-${i}`) }));
+  const monument = { ...card, cardId: parse(CityBuildingCardIdSchema, 'monument'), templateId: 'CB-SP-16' as const, category: 'LANDMARK' as const };
+  const complete = render([...buildings, monument], true);
+  assert.match(complete, /aria-valuetext="건물 7채, 완성 8 \/ 8칸, 기념비는 2칸"/);
+  assert.equal((complete.match(/city-construction-slot is-built/g) ?? []).length, 8);
+  assert.match(render(buildings, true), /aria-valuenow="6"/);
+  assert.match(render(buildings, true), /마지막 라운드/);
+  assert.match(render([...buildings, ...buildings]), /aria-valuenow="8"/);
+});
 
 function thiefWithBuildings(handIds: string[] = [], builtIds: string[] = [], cardinal = false) {
   const base = expanded(cityActionFixture());
