@@ -61,3 +61,26 @@
   .city-expanded-page .city-reference-dialog .city-special-lineup{grid-template-columns:repeat(2,minmax(0,1fr))}
   .city-reference-dialog .city-help-header h2{font-size:14px}
 }
+
+.city-warlord{margin-top:16px;min-width:0}
+.city-warlord-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.city-warlord-heading h3{font-family:Georgia,"Noto Serif KR",serif;font-size:21px;margin:6px 0;color:#48392d}
+.city-warlord-heading .city-eyebrow{color:#994e37;letter-spacing:.08em}
+.city-warlord-wallet{display:flex;align-items:center;gap:6px;white-space:nowrap;padding:8px 12px;border:1px solid #c8ac70;border-radius:10px;background:#fff7df}
+.city-warlord-wallet b{font-size:23px}.city-warlord .city-icon{width:20px;height:20px;flex-shrink:0}
+.city-warlord-cities{display:flex;gap:8px;overflow-x:auto;padding:5px 3px 12px;scrollbar-width:thin}
+.city-expanded-page .city-warlord-cities button{display:flex;align-items:center;gap:10px;flex-shrink:0;min-height:44px;background:#fff9e9;border-color:#c6b48b}
+.city-warlord-cities button span{font-size:11px;opacity:.8}.city-expanded-page .city-warlord-cities button[aria-pressed=true]{background:#315549;border-color:#315549;color:#fff5d9;box-shadow:0 3px 8px #162e2c25}
+.city-warlord-buildings{display:flex;gap:14px;overflow-x:auto;align-items:stretch;padding:8px 5px 16px;scrollbar-width:thin;scroll-snap-type:x proximity}
+.city-warlord-card{flex:0 0 180px;scroll-snap-align:start}
+.city-warlord-card.is-selected{outline-color:#a5543c}.city-warlord-card.is-unavailable{background:#eae5d9}
+.city-expanded-page .city-warlord-card .city-card-select:disabled{opacity:.72}
+.city-warlord-price{margin-top:auto;border-top:1px solid #cab38b;background:#f0dfbf;padding:10px;color:#683d2c;display:flex;flex-direction:column;gap:5px;font-size:12px}
+.city-warlord-price>span{display:flex;align-items:center;gap:5px}.city-warlord-price b{font-size:23px}.city-warlord-price small{padding:0;font-size:10px}.city-warlord-price strong{font-size:11px;line-height:1.5}
+.city-warlord-card.is-unavailable .city-warlord-price{background:#e2ddcd;color:#625b4d}
+.city-warlord-confirm{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #ccb184;border-radius:12px;padding:14px;background:#fbf2dc;margin-top:6px}
+.city-warlord-confirm>div{display:flex;flex-direction:column;gap:5px;min-width:0;overflow-wrap:anywhere;font-size:13px}.city-warlord-confirm>div>span{color:#69604d;font-size:12px}
+.city-expanded-page .city-warlord-confirm>button{display:flex;align-items:center;justify-content:center;gap:7px;flex-shrink:0;background:#8c4936;border-color:#8c4936;color:#fff6dd;min-height:44px}
+.city-expanded-page .city-warlord-confirm>button:hover:not(:disabled){background:#713724;border-color:#713724}
+.city-warlord-empty{padding:25px 12px;color:#776c54;font-size:13px}
+@media(max-width:620px){.city-warlord-heading h3{font-size:18px}.city-warlord-wallet{padding:6px 8px;font-size:12px}.city-warlord-card{flex-basis:155px}.city-warlord-buildings{gap:10px}.city-warlord-confirm{flex-direction:column;align-items:stretch;padding:12px}.city-warlord-confirm>button{width:100%}}
