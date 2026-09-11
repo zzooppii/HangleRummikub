@@ -1,3 +1,4 @@
+import { CenturyPlayingProjectionSchema, CenturyFinishedProjectionSchema, centuryProjectionIsConsistent } from "../games/century/contracts.js";
 import { SaboteurPlayingProjectionSchema, SaboteurFinishedProjectionSchema, saboteurProjectionIsConsistent } from "../games/saboteur/contracts.js";
 import { ISLAND_RESOURCES } from "../games/island/actions.js";
 import { SplendorPlayingProjectionSchema, SplendorFinishedProjectionSchema, splendorProjectionIsConsistent } from "../games/splendor/contracts.js";
@@ -339,6 +340,22 @@ export const SaboteurLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, Sab
 export const SaboteurPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, SaboteurPlayingPlatformSnapshotV2> = SaboteurPlayingRaw;
 export const SaboteurFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, SaboteurFinishedPlatformSnapshotV2> = SaboteurFinishedRaw;
 
+const CenturyOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const CenturyRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("CENTURY") };
+const CenturyPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(5));
+const CenturyLobbyRaw = v.pipe(v.strictObject({ ...CenturyOuter, room: v.strictObject({ ...CenturyRoom, phase: v.literal("LOBBY"),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)) }), game: v.null() }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
+const CenturyPlayingRaw = v.pipe(v.strictObject({ ...CenturyOuter, room: v.strictObject({ ...CenturyRoom, phase: v.literal("PLAYING"), players: CenturyPlayers }), game: CenturyPlayingProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.hand.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.handCount), v.check(s => centuryProjectionIsConsistent(s.game)));
+const CenturyFinishedRaw = v.pipe(v.strictObject({ ...CenturyOuter, room: v.strictObject({ ...CenturyRoom, phase: v.literal("FINISHED"), players: CenturyPlayers }), game: CenturyFinishedProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.hand.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.handCount), v.check(s => centuryProjectionIsConsistent(s.game)));
+export type CenturyLobbyPlatformSnapshotV2 = v.InferOutput<typeof CenturyLobbyRaw>;
+export type CenturyPlayingPlatformSnapshotV2 = v.InferOutput<typeof CenturyPlayingRaw>;
+export type CenturyFinishedPlatformSnapshotV2 = v.InferOutput<typeof CenturyFinishedRaw>;
+export const CenturyLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, CenturyLobbyPlatformSnapshotV2> = CenturyLobbyRaw;
+export const CenturyPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, CenturyPlayingPlatformSnapshotV2> = CenturyPlayingRaw;
+export const CenturyFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, CenturyFinishedPlatformSnapshotV2> = CenturyFinishedRaw;
 const JaipurOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
 const JaipurRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("JAIPUR") };
 const JaipurPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.length(2));
@@ -577,6 +594,7 @@ export const SneakyFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, Sn
 export const LobbyPlatformSnapshotV2Schema = v.union([
   IslandLobbyPlatformSnapshotV2Schema,
   SplendorLobbyPlatformSnapshotV2Schema,
+  CenturyLobbyPlatformSnapshotV2Schema,
   JaipurLobbyPlatformSnapshotV2Schema,
   LoveLetterLobbyPlatformSnapshotV2Schema,
   GuryongtuLobbyPlatformSnapshotV2Schema,
@@ -733,6 +751,7 @@ export type GemCardPlayingPlatformSnapshotV2 = v.InferOutput<
 export const PlayingPlatformSnapshotV2Schema = v.union([
   IslandPlayingPlatformSnapshotV2Schema,
   SplendorPlayingPlatformSnapshotV2Schema,
+  CenturyPlayingPlatformSnapshotV2Schema,
   JaipurPlayingPlatformSnapshotV2Schema,
   LoveLetterPlayingPlatformSnapshotV2Schema,
   GuryongtuPlayingPlatformSnapshotV2Schema,
@@ -889,6 +908,7 @@ export type GemCardFinishedPlatformSnapshotV2 = v.InferOutput<
 export const FinishedPlatformSnapshotV2Schema = v.union([
   IslandFinishedPlatformSnapshotV2Schema,
   SplendorFinishedPlatformSnapshotV2Schema,
+  CenturyFinishedPlatformSnapshotV2Schema,
   JaipurFinishedPlatformSnapshotV2Schema,
   LoveLetterFinishedPlatformSnapshotV2Schema,
   GuryongtuFinishedPlatformSnapshotV2Schema,

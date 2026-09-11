@@ -130,6 +130,7 @@ export class ScheduledTurnRouter {
         return { status: "NO_OP" };
       }
       switch (room.gameType) {
+        case "CENTURY": return { status: "NO_OP" };
         case "JAIPUR": return { status: "NO_OP" };
         case "LOVE_LETTER": return { status: "NO_OP" };
         case "GURYONGTU": return { status: "NO_OP" };

@@ -5,6 +5,7 @@ import "./features/spyfall/spyfall.css";
 import "./features/lobby/room-game-controls.css";
 import { RoomGameControls } from "./features/lobby/RoomGameControls.js";
 import { SplendorScreen } from "./features/splendor/SplendorScreen.js";
+import { CenturyScreen } from "./features/century/CenturyScreen.js";
 import { JaipurScreen } from "./features/jaipur/JaipurScreen.js";
 import { LoveLetterScreen } from "./features/love-letter/LoveLetterScreen.js";
 import { GuryongtuScreen } from "./features/guryongtu/GuryongtuScreen.js";
@@ -16,6 +17,7 @@ import { DuetScreen } from "./features/word-duet/DuetScreen.js";
 import { SaboteurScreen } from "./features/saboteur/SaboteurScreen.js";
 import { LostCitiesScreen } from "./features/lost-cities/LostCitiesScreen.js";
 import "./features/splendor/splendor.css";
+import "./features/century/century.css";
 import "./features/jaipur/jaipur.css";
 import "./features/love-letter/loveLetter.css";
 import "./features/guryongtu/guryongtu.css";
@@ -380,6 +382,14 @@ export function App() {
     if (roomView.kind === "SPLENDOR") {
       return <ReconnectBoundary {...recovery}><SplendorScreen snapshot={roomView.snapshot}
         connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={async command => { if (command.kind === "splendor:rematch") app.selectRoomGame("SPLENDOR"); else await app.actSplendor(command); }}
+        onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
+        pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
+        error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;
+    }
+
+    if (roomView.kind === "CENTURY") {
+      return <ReconnectBoundary {...recovery}><CenturyScreen snapshot={roomView.snapshot}
+        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={app.actCentury} onRematch={() => app.selectRoomGame("CENTURY")}
         onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
         pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
         error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;

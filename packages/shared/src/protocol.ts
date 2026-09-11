@@ -1,3 +1,4 @@
+import { CenturyActionSchema } from "./games/century/actions.js";
 import { SaboteurActionSchema } from "./games/saboteur/actions.js";
 import { JaipurActionSchema } from "./games/jaipur/actions.js";
 import { LoveLetterActionSchema } from "./games/love-letter/actions.js";
@@ -734,3 +735,8 @@ export const DuetClientCommandSchema = DuetActCommandSchema;
 export type DuetClientCommand = v.InferOutput<typeof DuetClientCommandSchema>;
 
 import { SpyfallSettingsSchema, SpyfallLocationSchema } from "./games/spyfall/contracts.js";
+
+const CenturyIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
+export const CenturyActCommandSchema = v.strictObject({ ...CenturyIdentity, kind: v.literal('century:act'), turnId: TurnIdSchema, payload: CenturyActionSchema });
+export const CenturyClientCommandSchema = CenturyActCommandSchema;
+export type CenturyClientCommand = v.InferOutput<typeof CenturyClientCommandSchema>;

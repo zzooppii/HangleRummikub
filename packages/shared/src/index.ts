@@ -40,6 +40,7 @@ export * from "./games/splendor/actions.js";
 export * from "./games/splendor/contracts.js";
 export * from "./games/splendor/cities.js";
 
+export * from "./games/century/actions.js";
 export * from "./games/jaipur/actions.js";
 export * from "./games/love-letter/actions.js";
 export * from "./games/guryongtu/actions.js";
@@ -48,6 +49,7 @@ export * from "./games/vegas/actions.js";
 export * from "./games/clue/actions.js";
 export * from "./games/word-duet/actions.js";
 export * from "./games/lost-cities/actions.js";
+export * from "./games/century/contracts.js";
 export * from "./games/jaipur/contracts.js";
 export * from "./games/love-letter/contracts.js";
 export * from "./games/guryongtu/contracts.js";

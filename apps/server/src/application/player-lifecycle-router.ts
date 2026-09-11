@@ -1,5 +1,6 @@
 import type { createIslandLifecycle } from "../games/island/application/lifecycle.js";
 import type { createSplendorLifecycle } from "../games/splendor/application/lifecycle.js";
+import type { createCenturyLifecycle } from "../games/century/application/lifecycle.js";
 import type { createJaipurLifecycle } from "../games/jaipur/application/lifecycle.js";
 import type { createLoveLetterLifecycle } from "../games/love-letter/application/lifecycle.js";
 import type { createGuryongtuLifecycle } from "../games/guryongtu/application/lifecycle.js";
@@ -76,6 +77,7 @@ export type PresenceRestoredPlan =
 export type PlayerLifecycleRouterDependencies = Readonly<{
   island?: ReturnType<typeof createIslandLifecycle>;
   splendor?: ReturnType<typeof createSplendorLifecycle>;
+  century?: ReturnType<typeof createCenturyLifecycle>;
   jaipur?: ReturnType<typeof createJaipurLifecycle>;
   loveLetter?: ReturnType<typeof createLoveLetterLifecycle>;
   guryongtu?: ReturnType<typeof createGuryongtuLifecycle>;
@@ -114,6 +116,7 @@ export interface PlayerLifecycleActionRouting {
 export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
   readonly #island: ReturnType<typeof createIslandLifecycle> | undefined;
   readonly #splendor: ReturnType<typeof createSplendorLifecycle> | undefined;
+  readonly #century: ReturnType<typeof createCenturyLifecycle> | undefined;
   readonly #jaipur: ReturnType<typeof createJaipurLifecycle> | undefined;
   readonly #loveLetter: ReturnType<typeof createLoveLetterLifecycle> | undefined;
   readonly #guryongtu: ReturnType<typeof createGuryongtuLifecycle> | undefined;
@@ -144,6 +147,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
     }
     this.#island = dependencies.island;
     this.#splendor = dependencies.splendor;
+    this.#century = dependencies.century;
     this.#jaipur = dependencies.jaipur;
     this.#loveLetter = dependencies.loveLetter;
     this.#guryongtu = dependencies.guryongtu;
@@ -184,6 +188,9 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
       case "SABOTEUR":
         if (!this.#saboteur) throw new Error("SABOTEUR lifecycle missing.");
         return this.#saboteur.applyPlayingLeave(input);
+      case "CENTURY":
+        if (!this.#century) throw new Error("CENTURY lifecycle missing.");
+        return this.#century.applyPlayingLeave(input);
       case "JAIPUR":
         if (!this.#jaipur) throw new Error("JAIPUR lifecycle missing.");
         return this.#jaipur.applyPlayingLeave(input);
@@ -247,6 +254,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
     switch (room.gameType) {
       case "ISLAND_SETTLERS": return {status:"NO_CHANGE"};
       case "SPLENDOR": return {status:"NO_CHANGE"};
+      case "CENTURY": return {status:"NO_CHANGE"};
       case "JAIPUR": return {status:"NO_CHANGE"};
       case "LOVE_LETTER": return {status:"NO_CHANGE"};
       case "GURYONGTU": return {status:"NO_CHANGE"};

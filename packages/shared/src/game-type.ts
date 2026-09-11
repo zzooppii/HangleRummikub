@@ -12,6 +12,7 @@ export const SUPPORTED_GAME_TYPES = Object.freeze([
   "ISLAND_SETTLERS",
   "SPLENDOR",
   "JAIPUR",
+  "CENTURY",
   "LOVE_LETTER",
   "GURYONGTU",
   "WORD_DUET",
@@ -29,6 +30,7 @@ export const GameTypeSchema = v.picklist(SUPPORTED_GAME_TYPES);
 export type GameType = v.InferOutput<typeof GameTypeSchema>;
 
 export const GAME_PLAYER_LIMITS = Object.freeze({
+  CENTURY: { min: 2, max: 5 },
   GURYONGTU: { min: 2, max: 2 },
   AZUL: { min: 2, max: 4 },
   VEGAS: { min: 2, max: 5 },

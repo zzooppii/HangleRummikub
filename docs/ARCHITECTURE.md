@@ -1,5 +1,7 @@
 # 시스템 아키텍처
 
+2026-09-12 센추리 추가: [CENTURY_ARCHITECTURE.md](./CENTURY_ARCHITECTURE.md)의 2–5인 향신료의 길 기본판, 서버 원자적 행동·비공개 손패·자체 아트/효과음 경계를 따른다.
+
 2026-09-11 라스베이거스 추가: [VEGAS_ARCHITECTURE.md](./VEGAS_ARCHITECTURE.md)의 2–5인 주사위·카지노 정산·개인별 금액·자체 일러스트/소리 경계를 따른다.
 
 2026-09-11 카르카손 추가: [CARCASSONNE_ARCHITECTURE.md](./CARCASSONNE_ARCHITECTURE.md)의 2–5인 연결 보드·농부·서버 정산·자체 아트/효과음 경계를 따른다.

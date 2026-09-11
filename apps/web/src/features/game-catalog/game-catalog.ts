@@ -33,6 +33,7 @@ export const GAME_CATALOG = Object.freeze([
   Object.freeze({ gameType: "HALLI_GALLI", displayName: "할리갈리", description: "2~6명이 같은 과일 5개를 발견하면 벨을 누르는 스피드 카드 게임입니다." }),
   Object.freeze({ gameType: "ISLAND_SETTLERS", displayName: "섬 개척", description: "3~4명이 자원을 교환하고 도로와 도시를 건설하는 섬 전략 게임입니다. 차례마다 2분!" }),
   Object.freeze({ gameType: "SPLENDOR", displayName: "스플렌더", description: "보석을 모아 카드를 사고, 귀족의 후원을 얻는 2~4인 전략 게임입니다." }),
+  Object.freeze({ gameType: "CENTURY", displayName: "센추리", description: "향신료를 모으고 교환하며 나만의 상단을 만드는 2~5인 카드 전략 게임입니다." }),
   Object.freeze({ gameType: "JAIPUR", displayName: "자이푸르", description: "2명이 시장에서 상품을 교환하고 판매하며 인장 2개를 겨루는 카드 게임입니다." }),
   Object.freeze({ gameType: "LOVE_LETTER", displayName: "러브레터", description: "2~6명이 한 장의 비밀과 궁정의 인물들로 겨루는 추리 카드 게임입니다." }),
   Object.freeze({ gameType: "GURYONGTU", displayName: "구룡투", description: "흑백 타일에 숨긴 아홉 개의 숫자. 상대의 수를 읽고 2승을 먼저 거두는 2인 심리전입니다." }),
