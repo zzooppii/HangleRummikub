@@ -4,11 +4,13 @@ import "./features/lobby/room-game-controls.css";
 import { RoomGameControls } from "./features/lobby/RoomGameControls.js";
 import { SplendorScreen } from "./features/splendor/SplendorScreen.js";
 import { JaipurScreen } from "./features/jaipur/JaipurScreen.js";
+import { AzulScreen } from "./features/azul/AzulScreen.js";
 import { DuetScreen } from "./features/word-duet/DuetScreen.js";
 import { SaboteurScreen } from "./features/saboteur/SaboteurScreen.js";
 import { LostCitiesScreen } from "./features/lost-cities/LostCitiesScreen.js";
 import "./features/splendor/splendor.css";
 import "./features/jaipur/jaipur.css";
+import "./features/azul/azul.css";
 import "./features/word-duet/duet.css";
 import "./features/saboteur/saboteur.css";
 import "./features/lost-cities/lost-cities.css";
@@ -374,6 +376,14 @@ export function App() {
     if (roomView.kind === "JAIPUR") {
       return <ReconnectBoundary {...recovery}><JaipurScreen snapshot={roomView.snapshot}
         connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={app.actJaipur} onRematch={() => app.selectRoomGame("JAIPUR")}
+        onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
+        pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
+        error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;
+    }
+
+    if (roomView.kind === "AZUL") {
+      return <ReconnectBoundary {...recovery}><AzulScreen snapshot={roomView.snapshot}
+        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={app.actAzul} onRematch={() => app.selectRoomGame("AZUL")}
         onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
         pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
         error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;

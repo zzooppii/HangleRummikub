@@ -41,9 +41,11 @@ export * from "./games/splendor/contracts.js";
 export * from "./games/splendor/cities.js";
 
 export * from "./games/jaipur/actions.js";
+export * from "./games/azul/actions.js";
 export * from "./games/word-duet/actions.js";
 export * from "./games/lost-cities/actions.js";
 export * from "./games/jaipur/contracts.js";
+export * from "./games/azul/contracts.js";
 export * from "./games/word-duet/contracts.js";
 export * from "./games/lost-cities/contracts.js";
 

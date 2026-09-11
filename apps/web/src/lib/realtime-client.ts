@@ -1,6 +1,7 @@
 import { RoomPreparationCommandSchema, type RoomPreparationCommand } from "@hangul-rummikub/shared";
 import { SplendorClientCommandSchema, type SplendorClientCommand } from "@hangul-rummikub/shared";
 import { JaipurClientCommandSchema, type JaipurClientCommand } from "@hangul-rummikub/shared";
+import { AzulClientCommandSchema, type AzulClientCommand } from "@hangul-rummikub/shared";
 import { DuetClientCommandSchema, type DuetClientCommand } from "@hangul-rummikub/shared";
 import { SaboteurClientCommandSchema, type SaboteurClientCommand } from "@hangul-rummikub/shared";
 import { LostCitiesClientCommandSchema, type LostCitiesClientCommand } from "@hangul-rummikub/shared";
@@ -711,6 +712,15 @@ export class RealtimeClient {
       switch (command.kind) {
         case "jaipur:act": this.#socket.emit("jaipur:act", command, acknowledge); break;
         case "jaipur:nextRound": this.#socket.emit("jaipur:nextRound", command, acknowledge); break;
+      }
+    }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
+  }
+
+  actAzul(command: AzulClientCommand): Promise<StateSyncWireAck> {
+    if (!parseRematch(AzulClientCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {
+      switch (command.kind) {
+        case "azul:act": this.#socket.emit("azul:act", command, acknowledge); break;
       }
     }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
   }

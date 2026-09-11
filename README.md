@@ -18,6 +18,7 @@
 | 섬 개척 (`ISLAND_SETTLERS`) | 3~4명이 자원을 생산·거래하고 마을과 도시를 건설하는 섬 전략 게임. 차례당 2분, 시간 초과 자동 처리 | [섬 개척 규칙](./docs/ISLAND_GAME_RULES.md) · [구현과 검증](./docs/ISLAND_ARCHITECTURE.md) |
 | 코드네임 듀엣 (`WORD_DUET`) | 2명이 서로 다른 비밀 지도로 힌트를 주고 15요원을 찾는 협동 단어 게임. 시간 제한 없음 | [듀엣 규칙](./docs/DUET_GAME_RULES.md) · [구현과 디자인](./docs/DUET_ARCHITECTURE.md) |
 | 자이푸르 (`JAIPUR`) | 정확히 2명이 상품과 낙타를 교환하고 판매해 인장 2개를 겨루는 카드 게임. 시간 제한 없음 | [자이푸르 규칙](./docs/JAIPUR_GAME_RULES.md) · [구현과 검증](./docs/JAIPUR_ARCHITECTURE.md) |
+| 아줄 (`AZUL`) | 2~4명이 도자기 타일을 골라 벽을 완성하는 전략 게임. 자동 정산·시간 제한 없음 | [아줄 규칙](./docs/AZUL_GAME_RULES.md) · [화면과 검증](./docs/AZUL_ARCHITECTURE.md) |
 
 현재 소스의 기능과 실제 public 배포 상태는 구분한다. 기존 3게임의 공개 검증 이력은 [release gate](./docs/THREE_GAME_PLATFORM_RELEASE_GATE.md), CITY의 로컬 검증 이력은 [CITY local gate](./docs/CITY_ROLE_LOCAL_RELEASE_GATE.md)에 기록되어 있다. 이후 변경이 모두 Railway에 배포되었다는 의미는 아니다.
 

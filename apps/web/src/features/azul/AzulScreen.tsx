@@ -1,0 +1,112 @@
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { AZUL_COLORS, AZUL_FLOOR_PENALTIES, PROTOCOL_VERSION, azulWallColumn, type AzulClientCommand, type AzulColor, type AzulDestination, type AzulPlayerView, type AzulProjection, type AzulSource, type PlatformPlayerViewV2 } from "@hangul-rummikub/shared";
+import type { AzulWebSnapshot } from "../../lib/snapshot-wire-decoder.js";
+import { createRequestId } from "../../lib/request-id.js";
+import { getGameStartControl } from "../../lib/game-start.js";
+import { AzulCommandRejected } from "../../lib/azul-command-error.js";
+import { AZUL_LABELS, azulLineReason, azulSourceKey, previewAzul, type AzulSelection } from "./ui.js";
+
+type Props = Readonly<{ snapshot: AzulWebSnapshot; connected: boolean; pending: boolean; error: string | null; connectionLabel: string; onCommand(command: AzulClientCommand): Promise<void>; onRematch(): void; onStart(): void; onLeave(): void; onCopy(): void }>;
+
+/** Original ceramic motifs; all details scale with the tile, including on high-DPI screens. */
+export function AzulTile({ color, ghost = false, preview = false, fresh = false }: { color: AzulColor; ghost?: boolean; preview?: boolean; fresh?: boolean }) {
+  return <span className={`az-tile az-${color.toLowerCase()}${ghost ? " az-ghost" : ""}${preview ? " az-preview-tile" : ""}${fresh ? " az-new-tile" : ""}`} aria-label={`${AZUL_LABELS[color]} 타일`}>
+    <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+      <rect x="5" y="5" width="54" height="54" rx="4" fill="none" stroke="currentColor" strokeWidth="1" opacity=".45" />
+      {color === "BLUE" && <><path d="M32 10 39 25 54 32 39 39 32 54 25 39 10 32 25 25Z" fill="currentColor" opacity=".85" /><path d="M32 20 44 32 32 44 20 32Z" fill="none" stroke="var(--az-tile-base)" strokeWidth="3" /><circle cx="32" cy="32" r="3" fill="var(--az-tile-base)" /></>}
+      {color === "YELLOW" && <><path d="M32 11C20 10 18 22 27 27 17 18 7 29 17 35 6 42 19 52 27 39 20 49 32 58 37 45 42 54 55 43 43 36 55 31 47 18 38 26 46 16 35 6 32 11Z" fill="currentColor" /><circle cx="32" cy="32" r="8" fill="var(--az-tile-base)" /><circle cx="32" cy="32" r="3" fill="currentColor" /></>}
+      {color === "RED" && <><path d="m32 11 21 21-21 21-21-21Z" fill="none" stroke="currentColor" strokeWidth="3" /><path d="M32 19c-14 0-14 26 0 26 14 0 14-26 0-26Z" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M19 32c0-14 26-14 26 0 0 14-26 14-26 0Z" fill="none" stroke="currentColor" strokeWidth="2" /><circle cx="32" cy="32" r="4" fill="currentColor" /></>}
+      {color === "BLACK" && <><path d="M11 11h17v17H11ZM36 11h17v17H36ZM11 36h17v17H11ZM36 36h17v17H36Z" fill="none" stroke="currentColor" strokeWidth="2" /><path d="m32 19 13 13-13 13-13-13Z" fill="currentColor" /><path d="m32 26 6 6-6 6-6-6Z" fill="var(--az-tile-base)" /></>}
+      {color === "WHITE" && <><path d="M32 10c-4 10-13 9-12 17-8-1-7 8-17 12 10 4 9 13 17 12-1 8 8 7 12 17 4-10 13-9 12-17 8 1 7-8 17-12-10-4-9-13-17-12 1-8-8-7-12-17Z" transform="translate(7 1) scale(.78)" fill="currentColor" /><path d="M32 20v24M20 32h24" stroke="var(--az-tile-base)" strokeWidth="3" /><circle cx="32" cy="32" r="4" fill="var(--az-tile-base)" /></>}
+    </svg>
+  </span>;
+}
+function FirstPlayer({ small = false }: { small?: boolean }) { return <span className={`az-first-token${small ? " az-small-token" : ""}`} aria-label="다음 라운드 선 표식">1<span>선</span></span>; }
+function Board({ player, name, interactive = false, selection, destination, preview, onDestination, freshPlacements = [] }: {
+  player: AzulPlayerView; name: string; interactive?: boolean; selection: AzulSelection | null; destination: AzulDestination | null;
+  preview: ReturnType<typeof previewAzul> | null; onDestination?(destination: AzulDestination): void; freshPlacements?: { row: number; column: number }[];
+}) {
+  return <div className={`az-player-board${interactive ? " az-board-interactive" : ""}`} aria-label={`${name} 개인 보드`}>
+    <div className="az-board-head"><div><span className="az-kicker">{onDestination ? "YOUR MOSAIC" : "PLAYER MOSAIC"}</span><h2>{name}</h2></div><div className="az-score"><strong>{player.score}</strong><span>점</span></div></div>
+    <div className="az-board-columns"><span>준비 줄</span><span>완성 벽</span></div>
+    <div className="az-board-grid">
+      {player.patternLines.map((line, row) => {
+        const reason = selection ? azulLineReason(player, selection.color, row) : null;
+        const chosen = destination === row && preview?.action !== null;
+        const contents = <><span className="az-row-number">{row + 1}</span><span className="az-pattern-slots">{Array.from({ length: row + 1 }, (_, col) => {
+          const index = row - col, tile = line[index];
+          const pending = chosen && selection && preview && index >= line.length && index < line.length + preview.placed;
+          return <span className="az-slot" key={col}>{tile ? <AzulTile color={tile.color} /> : pending ? <AzulTile color={selection.color} preview /> : null}</span>;
+        })}</span><span className="az-row-arrow" aria-hidden="true">›</span></>;
+        return <div className="az-board-row" key={row}>
+          {onDestination ? <button type="button" className={`az-pattern-row${reason ? " az-unavailable" : ""}`} aria-pressed={destination === row} disabled={!interactive || !selection || reason !== null} aria-label={`${row + 1}번 준비 줄, ${line.length}/${row + 1}개${reason ? `, ${reason}` : ""}`} title={reason ?? `${row + 1}번 준비 줄`} onClick={() => onDestination(row as 0 | 1 | 2 | 3 | 4)}>{contents}</button> : <div className="az-pattern-row">{contents}</div>}
+          <div className="az-wall-row">{Array.from({ length: 5 }, (_, col) => {
+            const tile = player.wall[row]![col], color = AZUL_COLORS[(col - row + 5) % 5]!;
+            const target = chosen && preview?.completes && selection && azulWallColumn(row, selection.color) === col;
+            return <span className={`az-slot${target ? " az-wall-target" : ""}`} key={col}><AzulTile color={tile?.color ?? color} ghost={!tile} fresh={freshPlacements.some(p => p.row === row && p.column === col)} /></span>;
+          })}</div>
+        </div>;
+      })}
+    </div>
+    <div className="az-floor-heading"><span>바닥 <small>라운드가 끝나면 감점</small></span>{onDestination && <button type="button" disabled={!interactive || !selection} aria-pressed={destination === "FLOOR"} onClick={() => onDestination("FLOOR")}>모두 바닥에 놓기</button>}</div>
+    <div className="az-floor-line">{AZUL_FLOOR_PENALTIES.map((n, i) => {
+      const tile = player.floor[i];
+      const relative = i - player.floor.length;
+      const marker = !tile && preview?.action && preview.takesFirst && relative === 0;
+      const drop = !tile && preview?.action && selection && relative >= (preview.takesFirst ? 1 : 0) && relative < preview.dropped + (preview.takesFirst ? 1 : 0);
+      return <div key={i}><span>−{n}</span><span className="az-slot">{tile === "FIRST_PLAYER" || marker ? <FirstPlayer small /> : tile ? <AzulTile color={tile.color} /> : drop ? <AzulTile color={selection.color} preview /> : null}</span></div>;
+    })}</div>
+    <div className="az-board-bonuses"><span>가로 완성 <b>+2</b></span><span>세로 완성 <b>+7</b></span><span>같은 색 5개 <b>+10</b></span></div>
+  </div>;
+}
+export function AzulScreen(props: Props) {
+  const { snapshot: s } = props, start = getGameStartControl(s, props.pending || !props.connected);
+  return <section className="azul-screen" aria-label="아줄">
+    <header className={`az-header${s.game ? "" : " az-header-lobby"}`}><div className="az-brand"><span className="az-kicker">THE ART OF THE TILE</span><h1>AZUL<span>아줄</span></h1><p>조각을 고르고, 당신만의 아름다움을 완성하세요.</p></div><div className="az-room-tools"><span className="az-room-code">방 {s.room.roomCode}</span><span className="az-connection" role="status">{props.connectionLabel}</span><button type="button" disabled={props.pending} onClick={props.onCopy}>초대 링크</button><button type="button" disabled={props.pending} onClick={props.onLeave}>나가기</button></div></header>
+    {props.error && <p className="az-error" role="alert">{props.error}</p>}
+    {s.game === null ? <div className="az-lobby"><div className="az-lobby-tiles" aria-hidden="true">{AZUL_COLORS.map((color, i) => <span key={color} style={{ "--az-i": i } as CSSProperties}><AzulTile color={color} /></span>)}</div><span className="az-kicker">A LITTLE PIECE OF PORTUGAL</span><h2>오늘, 어떤 벽을 만들어볼까요?</h2><p>같은 색의 타일을 모으고, 벽을 채우며 아름다운 연결을 만드세요.</p><div className="az-seats">{s.room.players.map((p, i) => <div key={p.playerId}><span className="az-avatar" style={{ "--az-player-color": ["#668fa3", "#ce9b60", "#c17b6d", "#7f9581"][i] } as CSSProperties}>{p.nickname.slice(0, 1)}</span><strong>{p.nickname}</strong><small>{p.isHost ? "방장 · " : ""}{p.connectionStatus === "CONNECTED" ? "접속 중" : "재접속 대기"}</small></div>)}</div><p>{start.guidance}</p><button className="az-primary" disabled={!start.canStart} onClick={props.onStart}>아줄 시작하기 <span aria-hidden="true">→</span></button><span className="az-lobby-meta">2–4인 · 기본판 · 시간 제한 없음</span></div> : <AzulTable key={s.game.gameId} game={s.game} {...props} />}
+    <details className="az-rules"><summary>처음이신가요? <span>아줄 플레이 가이드</span></summary><div><p><b>1. 타일 고르기</b> 공장 하나 또는 가운데에서 같은 색 전부를 가져옵니다. 공장에 남은 타일은 가운데로 갑니다.</p><p><b>2. 준비 줄에 놓기</b> 한 줄에는 같은 색만 모을 수 있습니다. 오른쪽 벽에 이미 놓인 색은 그 줄에 다시 모을 수 없습니다. 넘치는 타일은 바닥으로 갑니다.</p><p><b>3. 벽 완성하기</b> 공용 타일이 소진되면 완성한 준비 줄의 타일 1개가 벽으로 이동합니다. 연결된 가로·세로 길이만큼 점수를 얻고, 바닥 감점을 적용합니다. 미완성 줄은 남습니다.</p><p><b>선과 종료</b> 가운데에서 처음 가져오면 선 표식을 바닥에 놓고 다음 라운드를 먼저 시작합니다. 누군가 벽 가로 한 줄을 완성하면 그 라운드 정산 후 최종 보너스를 더합니다. 동점이면 완성 가로줄 수를 비교하고, 같으면 공동 승리입니다.</p><p>점수는 0 미만이 되지 않습니다. 시간 제한은 없으며 연결이 끊겨도 같은 자리로 복귀할 수 있습니다. 나가기 버튼은 이번 게임을 취소합니다.</p></div></details>
+  </section>;
+}
+function AzulTable({ game: g, ...props }: Props & { game: AzulProjection }) {
+  const selfId = props.snapshot.self.playerId, players = props.snapshot.room.players;
+  const [selection, setSelection] = useState<AzulSelection | null>(null), [destination, setDestination] = useState<AzulDestination | null>(null);
+  const [flight, setFlight] = useState(false), [message, setMessage] = useState<string | null>(null), [retry, setRetry] = useState<AzulClientCommand | null>(null);
+  const [fresh, setFresh] = useState(false), roundRef = useRef(g.lastRound?.round ?? 0);
+  const locked = useRef(false), mounted = useRef(true);
+  const boardRef = useRef<HTMLElement>(null), marketRef = useRef<HTMLElement>(null);
+  function focusArea(area: HTMLElement | null) { if (window.matchMedia("(max-width: 900px)").matches) area?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" }); }
+  const scope = `${g.gameId}:${g.phase === "PLAYING" ? g.turnId : "finished"}`, scopeRef = useRef(scope); scopeRef.current = scope;
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => { setSelection(null); setDestination(null); setMessage(null); setRetry(null); }, [scope]);
+  useEffect(() => { if ((g.lastRound?.round ?? 0) <= roundRef.current) return; roundRef.current = g.lastRound?.round ?? 0; setFresh(true); const timer = setTimeout(() => setFresh(false), 1600); return () => clearTimeout(timer); }, [g.lastRound?.round]);
+  const canAct = g.phase === "PLAYING" && g.activePlayerId === selfId && props.connected && !props.pending && !flight && retry === null;
+  const preview = previewAzul(g, selfId, selection, destination), me = g.playerStates.find(p => p.playerId === selfId)!;
+  const nickname = (id: string) => players.find(p => p.playerId === id)?.nickname ?? "플레이어";
+  async function send(command: AzulClientCommand) {
+    if (locked.current || !props.connected) return;
+    locked.current = true; setFlight(true); setMessage(null); const sentScope = scope;
+    try { await props.onCommand(command); if (mounted.current && scopeRef.current === sentScope) { setRetry(null); setSelection(null); setDestination(null); } }
+    catch (error) { if (mounted.current && scopeRef.current === sentScope) { if (error instanceof AzulCommandRejected) { setRetry(null); setMessage(error.message); } else { setRetry(command); setMessage("응답을 확인하지 못했습니다. 같은 요청의 결과를 다시 확인해주세요."); } } }
+    finally { locked.current = false; if (mounted.current) setFlight(false); }
+  }
+  function pick(source: AzulSource, color: AzulColor) { if (!canAct) return; setSelection({ source, color }); setDestination(null); setMessage(null); focusArea(boardRef.current); }
+  function submit() { if (!canAct || !preview.action || g.phase !== "PLAYING") return; void send({ kind: "azul:act", protocolVersion: PROTOCOL_VERSION, requestId: createRequestId(), gameId: g.gameId, expectedGameRevision: g.gameRevision, turnId: g.turnId, payload: preview.action }); }
+  function isSelected(source: AzulSource, color: AzulColor) { return selection?.color === color && azulSourceKey(selection.source) === azulSourceKey(source); }
+  const activePlayer = g.phase === "PLAYING" ? players.find(p => p.playerId === g.activePlayerId) : null;
+  return <div className="az-game-content">
+    <div className="az-turn-strip"><div><span className={`az-turn-light${canAct ? " az-turn-mine" : ""}`} /><strong>{g.phase === "FINISHED" ? "게임 종료" : g.activePlayerId === selfId ? "당신의 차례입니다" : `${nickname(g.activePlayerId)}님의 차례`}</strong>{activePlayer?.connectionStatus !== "CONNECTED" && g.phase === "PLAYING" && <small>재접속 기다리는 중</small>}</div><span>ROUND <b>{String(g.round).padStart(2, "0")}</b></span><div className="az-player-pills">{g.playerStates.map(p => <span key={p.playerId} className={g.phase === "PLAYING" && p.playerId === g.activePlayerId ? "az-active-player" : ""}>{nickname(p.playerId)} <b>{p.score}</b>{g.firstPlayerId === p.playerId && <i aria-label="다음 라운드 선">①</i>}</span>)}</div></div>
+    {g.phase === "FINISHED" && <section className="az-result" aria-label="게임 결과"><span className="az-kicker">{g.result.reason === "CANCELLED" ? "UNTIL NEXT TIME" : "A MOSAIC TO REMEMBER"}</span><h2>{g.result.reason === "CANCELLED" ? "이번 게임이 취소되었습니다" : `${g.result.winnerPlayerIds.map(nickname).join(" · ")}${g.result.winnerPlayerIds.length > 1 ? " 공동 승리" : "님의 승리"}`}</h2>{g.result.reason !== "CANCELLED" && <div className="az-score-table"><table><thead><tr><th>플레이어</th><th>기본 점수</th><th>가로</th><th>세로</th><th>색</th><th>최종</th></tr></thead><tbody>{[...g.result.scores].sort((a, b) => b.total - a.total || b.rows - a.rows).map(p => <tr key={p.playerId}><th>{nickname(p.playerId)}</th><td>{p.base}</td><td>+{p.rows * 2}</td><td>+{p.columns * 7}</td><td>+{p.colors * 10}</td><td><b>{p.total}</b></td></tr>)}</tbody></table></div>}{players.find(p => p.playerId === selfId)?.isHost ? <button className="az-primary" disabled={!props.connected || props.pending} onClick={props.onRematch}>같은 방에서 다시 하기</button> : <p>방장이 다음 게임을 선택할 수 있습니다.</p>}</section>}
+    {g.lastRound && <details className={`az-round-recap${fresh ? " az-recap-new" : ""}`}><summary><span>{g.lastRound.round}라운드 정산</span><span>{g.lastRound.scores.map(p => `${nickname(p.playerId)} ${p.after - p.before >= 0 ? "+" : ""}${p.after - p.before}점`).join(" · ")}</span><span>상세 보기 ↓</span></summary><div>{g.lastRound.scores.map(p => <div key={p.playerId}><strong>{nickname(p.playerId)}</strong>{p.placements.map(a => <p key={a.row}>{a.row + 1}번 줄 · {AZUL_LABELS[a.color]} <b>+{a.points}</b><small>{a.horizontal === 1 && a.vertical === 1 ? "단독 배치" : `가로 ${a.horizontal > 1 ? a.horizontal : 0} + 세로 ${a.vertical > 1 ? a.vertical : 0}`}</small></p>)}<p>바닥 <b>−{p.penalty}</b></p><p>합계 {p.before} → <b>{p.after}점</b></p></div>)}</div></details>}
+    <div className="az-table-layout"><section className="az-market" ref={marketRef} aria-label="공용 타일"><div className="az-section-heading"><div><span className="az-kicker">THE FACTORY OFFER</span><h2>마음에 드는 색을 골라보세요</h2></div><span>주머니 {g.bagCount}<small>버림 {g.discardCount}</small></span></div><div className="az-factories" data-count={g.factories.length}>{g.factories.map((tiles, index) => {
+      const source: AzulSource = { kind: "FACTORY", index };
+      return <div className={`az-factory${tiles.length ? "" : " az-factory-empty"}${selection?.source.kind === "FACTORY" && selection.source.index === index ? " az-factory-chosen" : ""}`} key={index}><span className="az-factory-number">{String(index + 1).padStart(2, "0")}</span><div className="az-factory-inner">{tiles.map(t => <button key={t.tileId} className="az-pick" type="button" disabled={!canAct} aria-label={`공장 ${index + 1} ${AZUL_LABELS[t.color]} ${tiles.filter(a => a.color === t.color).length}개 선택`} aria-pressed={isSelected(source, t.color)} onClick={() => pick(source, t.color)}><AzulTile color={t.color} /></button>)}{!tiles.length && <span className="az-dish-flower" aria-hidden="true">✥</span>}</div></div>;
+    })}</div><div className="az-center"><div className="az-center-heading"><span>가운데 모인 타일</span>{g.firstPlayerId === null ? <span>첫 선택자는 다음 라운드 선</span> : <span>다음 선 · {nickname(g.firstPlayerId)}</span>}</div><div className="az-center-groups">{g.firstPlayerId === null && <FirstPlayer />}{AZUL_COLORS.map(color => { const count = g.center.filter(t => t.color === color).length; return count ? <button type="button" key={color} className="az-center-pick" disabled={!canAct} aria-label={`가운데 ${AZUL_LABELS[color]} ${count}개 선택`} aria-pressed={isSelected({ kind: "CENTER" }, color)} onClick={() => pick({ kind: "CENTER" }, color)}><AzulTile color={color} /><span>×{count}</span></button> : null; })}{!g.center.length && <span className="az-center-empty">공장에 남은 타일이 이곳에 모입니다</span>}</div></div>{g.feedback && <p className="az-move-history" role="status">{nickname(g.feedback.playerId)} · {g.feedback.source.kind === "CENTER" ? "가운데" : `공장 ${g.feedback.source.index + 1}`}에서 {AZUL_LABELS[g.feedback.color]} {g.feedback.count}개{g.feedback.dropped > 0 ? ` · 바닥 ${g.feedback.dropped}개` : ""}{g.feedback.tookFirstPlayer ? " · 다음 선" : ""}</p>}</section>
+    <section className="az-my-area" ref={boardRef} aria-label="내 타일 배치"><Board player={me} name={`${nickname(selfId)}의 벽`} selection={selection} destination={destination} preview={preview} interactive={canAct} onDestination={setDestination} freshPlacements={fresh ? g.lastRound?.scores.find(p => p.playerId === selfId)?.placements ?? [] : []} /><div className="az-selection-hint">{selection ? <><AzulTile color={selection.color} /><span>{AZUL_LABELS[selection.color]} {preview.count}개 선택됨<br /><small>빛나는 벽 칸은 준비 줄 완성 후 이동할 자리입니다.</small></span><button disabled={!canAct} onClick={() => { setSelection(null); setDestination(null); focusArea(marketRef.current); }}>다시 고르기</button></> : <span>타일을 고르면 놓을 수 있는 준비 줄이 열립니다.</span>}</div>{selection && me.patternLines.some((_, row) => azulLineReason(me, selection.color, row)) && <details className="az-placement-help"><summary>놓을 수 없는 줄 안내</summary>{me.patternLines.map((_, row) => { const reason = azulLineReason(me, selection.color, row); return reason ? <p key={row}>{row + 1}번 줄 · {reason}</p> : null; })}</details>}</section></div>
+    {g.phase === "PLAYING" && <div className={`az-action-bar${preview.action ? " az-action-ready" : ""}`}><div className="az-action-copy" aria-live="polite"><span className="az-kicker">{flight ? "PLACING YOUR TILES" : "MAKE YOUR MOVE"}</span><strong>{flight ? "타일을 놓고 있습니다…" : !canAct && !retry ? `${activePlayer?.nickname ?? "상대"}님의 선택을 기다립니다` : preview.action ? `${AZUL_LABELS[preview.action.color]} ${preview.count}개 · ${destination === "FLOOR" ? "모두 바닥에" : `${Number(destination) + 1}번 줄에 ${preview.placed}개`}` : preview.reason}</strong>{preview.action && <small>{preview.completes ? "준비 줄 완성 · " : ""}{preview.dropped ? `넘치는 타일 ${preview.dropped}개 · ` : ""}{preview.takesFirst ? "다음 라운드 선 · " : ""}추가 바닥 감점 {preview.penalty ? `−${preview.penalty}` : "없음"}</small>}</div>{retry ? <button className="az-primary" disabled={!props.connected || flight} onClick={() => void send(retry)}>요청 결과 다시 확인</button> : <button className="az-primary" disabled={!canAct || !preview.action} onClick={submit}>타일 놓기 <span aria-hidden="true">→</span></button>}{message && <p className="az-command-error" role="alert">{message}</p>}</div>}
+    <section className="az-opponents" aria-label="다른 플레이어 보드"><div className="az-section-heading"><span className="az-kicker">AROUND THE TABLE</span><span>상대의 벽도 살펴보세요</span></div><div className="az-opponent-grid">{g.playerStates.filter(p => p.playerId !== selfId).map(p => <Opponent key={p.playerId} player={p} person={players.find(a => a.playerId === p.playerId)!} active={g.phase === "PLAYING" && g.activePlayerId === p.playerId} first={g.firstPlayerId === p.playerId} />)}</div></section>
+  </div>;
+}
+function Opponent({ player, person, active, first }: { player: AzulPlayerView; person: PlatformPlayerViewV2; active: boolean; first: boolean }) {
+  return <details className={`az-opponent${active ? " az-opponent-active" : ""}`}><summary><div><span className="az-opponent-name">{person.nickname} {first ? "①" : ""}</span><small>{person.connectionStatus === "CONNECTED" ? active ? "타일을 고르는 중" : "접속 중" : "재접속 대기"}</small></div><span className="az-opponent-score">{player.score}<small>점</small></span><div className="az-mini-wall" aria-hidden="true">{player.wall.flat().map((t, i) => <span key={i} className={t ? `az-mini-filled az-${t.color.toLowerCase()}` : ""} />)}</div><div className="az-opponent-lines">{player.patternLines.map((line, i) => <span key={i}><i className={line[0] ? `az-${line[0].color.toLowerCase()}` : ""} />{line.length}/{i + 1}</span>)}</div><span className="az-opponent-expand">벽 펼치기 ↓</span></summary><Board player={player} name={`${person.nickname}의 벽`} selection={null} destination={null} preview={null} /></details>;
+}

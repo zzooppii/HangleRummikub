@@ -1,5 +1,7 @@
 # Multi-game Platform Architecture
 
+2026-09-11 아줄 추가: [AZUL_ARCHITECTURE.md](./AZUL_ARCHITECTURE.md)의 2–4인 기본판, 타일 보존·서버 자동 정산·공개 보드와 독립 React 화면 경계를 따른다. 상위 Room/Session/직렬화 경계는 유지한다.
+
 2026-09-11 듀엣 추가: [DUET_ARCHITECTURE.md](./DUET_ARCHITECTURE.md)의 2인 협동·개인별 비밀 지도·서버 판정 경계를 따른다.
 
 2026-09-11 라이어게임 추가: [LIAR_GAME_ARCHITECTURE.md](./LIAR_GAME_ARCHITECTURE.md)의 서버 비공개 제시어·설명·투표·추측 경계를 따른다.

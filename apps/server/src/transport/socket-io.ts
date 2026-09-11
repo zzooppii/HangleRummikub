@@ -1341,6 +1341,7 @@ function registerResumeHandler(
         runtime.islandHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.splendorHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.jaipurHostSuccession?.resumed(result.data.roomId, result.data.playerId);
+        runtime.azulHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.duetHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.saboteurHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.lostCitiesHostSuccession?.resumed(result.data.roomId, result.data.playerId);
@@ -2763,6 +2764,27 @@ function registerJaipurHandlers(socket: RealtimeSocket, runtime: ApplicationRunt
   });
 }
 
+import { AzulClientCommandSchema } from "@hangul-rummikub/shared";
+function registerAzulHandlers(socket: RealtimeSocket, runtime: ApplicationRuntime): void {
+  for (const event of ["azul:act"] as const) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
+    const receivedAt = runtime.clock.now(), command = parseNumberRematch(AzulClientCommandSchema, raw);
+    if (!command.success || command.output.kind !== event) { acknowledgeIfPresent(acknowledge, failureAck(raw, INVALID_PAYLOAD_ERROR, receivedAt)); return; }
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(createSocketId(socket.id));
+      if (!binding) { acknowledgeIfPresent(acknowledge, failureAck(raw, UNAUTHENTICATED_ERROR, receivedAt)); return; }
+      if (!isRoomAdmissionCompatible("AZUL", socketAdmissionCapabilities(socket))) {
+        acknowledgeIfPresent(acknowledge, failureAck(raw, {code:"INCOMPATIBLE_GAME_CAPABILITY",message:"AZUL requires V2 capability.",recoverable:false}, receivedAt)); return;
+      }
+      if (!runtime.azulService) { acknowledgeIfPresent(acknowledge, failureAck(raw, INTERNAL_ERROR, receivedAt)); return; }
+      const result = await runtime.azulService.command({roomId:binding.roomId,actorPlayerId:binding.playerId,command:command.output,receivedAt,
+        authorization:{isCurrent:()=>socket.connected && isCurrentBinding(runtime,binding)}});
+      if (!result.ok) { acknowledgeIfPresent(acknowledge, failureAck(raw,result.error,receivedAt)); return; }
+      const loaded = await loadSnapshotForSocket(runtime,socket,binding.roomId,binding.playerId);
+      if (loaded && socket.connected && isCurrentBinding(runtime,binding)) acknowledgeIfPresent(acknowledge,snapshotSuccessAck(command.output.requestId,loaded.metadata,loaded.wireSnapshot));
+    })().catch(()=>acknowledgeIfPresent(acknowledge,failureAck(raw,INTERNAL_ERROR,receivedAt)));
+  });
+}
+
 import { DuetClientCommandSchema } from "@hangul-rummikub/shared";
 function registerDuetHandlers(socket: RealtimeSocket, runtime: ApplicationRuntime): void {
   for (const event of ["duet:act"] as const) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
@@ -3189,6 +3211,7 @@ function registerDisconnectHandler(
     runtime.islandHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.splendorHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.jaipurHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
+    runtime.azulHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.duetHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.saboteurHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.lostCitiesHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
@@ -3276,6 +3299,7 @@ export function registerSocketIoHandlers(
   const unsubscribeIsland = runtime.islandService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeSplendor = runtime.splendorService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeJaipur = runtime.jaipurService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
+  const unsubscribeAzul = runtime.azulService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeDuet = runtime.duetService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeSaboteur = runtime.saboteurService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeLostCities = runtime.lostCitiesService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
@@ -3334,6 +3358,7 @@ export function registerSocketIoHandlers(
     registerIslandHandlers(socket, runtime);
     registerSplendorHandlers(socket, runtime);
     registerJaipurHandlers(socket, runtime);
+    registerAzulHandlers(socket, runtime);
     registerDuetHandlers(socket, runtime);
     registerSaboteurHandlers(socket, runtime);
     registerLostCitiesHandlers(socket, runtime);
@@ -3361,6 +3386,7 @@ export function registerSocketIoHandlers(
     unsubscribeIsland?.();
     unsubscribeSplendor?.();
     unsubscribeJaipur?.();
+    unsubscribeAzul?.();
     unsubscribeDuet?.();
     unsubscribeSaboteur?.();
     unsubscribeLostCities?.();
