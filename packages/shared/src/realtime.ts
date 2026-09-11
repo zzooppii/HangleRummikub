@@ -553,6 +553,7 @@ export interface SnapshotWireClientToServerEvents {
   "draw:configure": (command: Extract<DrawClientCommand,{kind:"draw:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "island:act": (command: Extract<IslandClientCommand,{kind:"island:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "island:rematch": (command: Extract<IslandClientCommand,{kind:"island:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "splendor:configure": (command: Extract<SplendorClientCommand,{kind:"splendor:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "splendor:act": (command: Extract<SplendorClientCommand,{kind:"splendor:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "jaipur:act": (command: Extract<JaipurClientCommand,{kind:"jaipur:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "duet:act": (command: Extract<DuetClientCommand,{kind:"duet:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;

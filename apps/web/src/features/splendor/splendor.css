@@ -1872,3 +1872,72 @@
       serif;
   }
 }
+
+/* Cities uses the noble strip; the market, bank and company keep their base geometry. */
+.splendor-screen .sp-edition-badge {
+  display: inline-block; margin-left: 8px; padding: 4px 7px; border: 1px solid #b99f635c;
+  border-radius: 5px; color: #dfc483; font-size: 10px; font-weight: 600; vertical-align: middle;
+}
+.splendor-screen .sp-edition-picker { border: 0; padding: 0; margin: 20px 0 12px; min-width: 0; }
+.splendor-screen .sp-edition-picker legend { color: #bed0c1; font-size: 12px; margin-bottom: 10px; }
+.splendor-screen .sp-edition-picker > div { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.splendor-screen .sp-edition-picker button {
+  position: relative; height: 116px; padding: 0; overflow: hidden; text-align: left;
+  border: 1px solid #73928675; border-radius: 9px; color: #edf1e2; background: #163332;
+}
+.splendor-screen .sp-edition-picker button > .sp-scene,
+.splendor-screen .sp-edition-picker button > .sp-portrait { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: 0; }
+.splendor-screen .sp-edition-shade { position: absolute; inset: 0; background: linear-gradient(0deg, #0b2428 0%, #0b242882 55%, #0b242820); }
+.splendor-screen .sp-edition-copy { position: absolute; bottom: 12px; left: 12px; right: 8px; display: grid; gap: 5px; }
+.splendor-screen .sp-edition-copy b { font-size: 16px; color: #ffedbf; }
+.splendor-screen .sp-edition-copy small { font-size: 10px; color: #c4d3c4; }
+.splendor-screen .sp-edition-picker button[aria-pressed="true"] { border-color: #e1bf75; box-shadow: 0 0 0 1px #d7b36350, 0 4px 18px #0b151550; }
+.splendor-screen .sp-edition-picker button:disabled { opacity: 1; cursor: default; }
+.splendor-screen .sp-edition-check { position: absolute; right: 9px; top: 9px; width: 20px; height: 20px; border-radius: 50%; border: 1px solid #d4c39d80; background: #0a252a88; text-align: center; color: #e8cb8b; }
+.splendor-screen .sp-edition-picker > p { font-size: 11px; line-height: 1.6; color: #adc3b7; margin: 10px 0 0; }
+.splendor-screen .sp-city-table { min-width: 0; }
+.splendor-screen .sp-cities { display: flex; justify-content: center; gap: 16px; min-height: 106px; margin-bottom: 24px; }
+.splendor-screen .sp-city {
+  position: relative; isolation: isolate; width: 180px; height: 106px; flex-shrink: 1; min-width: 0;
+  padding: 0; border: 1px solid #ceaf758c; border-radius: 9px; color: #fff0c8; background: #173131;
+  box-shadow: 0 5px 0 #061b1dc9, 0 7px 10px #0615184a; text-align: left;
+}
+.splendor-screen .sp-city > .sp-scene { position: absolute; inset: 0; border-radius: 8px; z-index: -2; }
+.splendor-screen .sp-city-shade { position: absolute; inset: 0; border-radius: 8px; background: linear-gradient(180deg, #081e2660, #081e260a 35%, #061d28f0); z-index: -1; }
+.splendor-screen .sp-city-heading { position: absolute; top: 8px; left: 9px; right: 9px; display: flex; justify-content: space-between; align-items: start; gap: 4px; text-shadow: 0 2px 4px #071315; }
+.splendor-screen .sp-city-heading > span { font-size: 10px; padding: 3px 5px; background: #132d30b3; border-radius: 3px; color: #ecddba; }
+.splendor-screen .sp-city-heading > b { font-size: 23px; display: flex; align-items: center; gap: 3px; }
+.splendor-screen .sp-city-heading small { font-size: 8px; font-weight: 500; writing-mode: vertical-rl; color: #e9d7ad; }
+.splendor-screen .sp-city-price { position: absolute; bottom: 8px; left: 6px; right: 6px; display: flex; justify-content: center; align-items: center; gap: 3px; }
+.splendor-screen .sp-city-price .sp-token-badge { height: 20px; gap: 2px; padding: 2px 3px; }
+.splendor-screen .sp-city-price .sp-gem { width: 13px; height: 13px; }
+.splendor-screen .sp-city-price .sp-token-badge b { font-size: 10px; }
+.splendor-screen .sp-city-wild { display: inline-flex; align-items: center; gap: 3px; border: 1px solid #e3d6b866; border-radius: 12px; padding: 2px 5px; background: #152930d9; height: 20px; }
+.splendor-screen .sp-city-wild > span { font-size: 15px; color: #d4d0bd; }
+.splendor-screen .sp-city-wild b { font-size: 11px; }
+.splendor-screen .sp-city-wild small, .splendor-screen .sp-city-score-only { font-size: 9px; color: #e2d8bc; }
+.splendor-screen .sp-city-progress { position: absolute; bottom: -21px; left: 0; right: 0; color: #a8c1b3; font-size: 10px; text-align: center; white-space: nowrap; }
+.splendor-screen .sp-city.ready, .splendor-screen .sp-city[aria-pressed="true"] { border-color: #ffe2a1; box-shadow: 0 0 0 2px #dfbf7775, 0 0 20px #d0b46525; }
+.splendor-screen .sp-city.claimed > .sp-scene { filter: saturate(.45); }
+.splendor-screen .sp-city-claimed { position: absolute; top: 45%; left: 8px; right: 8px; text-align: center; background: #142b2fed; border: 1px solid #d6bb7673; border-radius: 4px; padding: 3px 6px; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.splendor-screen .sp-city-seal { color: #e6c782; }
+.splendor-screen .sp-city-choice > div { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 22px; }
+.splendor-screen .sp-city-choice .sp-city { flex: 1 1 130px; }
+.splendor-screen .sp-city-choice > p { font-size: 12px; color: #c4d2bd; }
+.splendor-screen .sp-city-preview { width: 100%; height: 190px; margin: 18px 0 24px; }
+.splendor-screen .sp-city-preview .sp-city-heading > b { font-size: 32px; }
+.splendor-screen .sp-city-preview .sp-city-price { bottom: 16px; gap: 8px; }
+.splendor-screen .sp-city-preview .sp-token-badge { transform: scale(1.2); margin: 0 4px; }
+@media (max-width: 600px) {
+  .splendor-screen .sp-cities { gap: 8px; min-height: 104px; margin-bottom: 25px; }
+  .splendor-screen .sp-cities .sp-city { flex: 1; height: 104px; }
+  .splendor-screen .sp-cities .sp-city-heading { left: 5px; right: 5px; top: 5px; flex-direction: column; gap: 2px; }
+  .splendor-screen .sp-cities .sp-city-heading > b { font-size: 20px; }
+  .splendor-screen .sp-cities .sp-city-heading small { writing-mode: horizontal-tb; }
+  .splendor-screen .sp-cities .sp-city-price { flex-wrap: wrap; gap: 2px; left: 3px; right: 3px; bottom: 5px; }
+  .splendor-screen .sp-cities .sp-city-price .sp-token-badge { height: 16px; padding: 1px 2px; }
+  .splendor-screen .sp-cities .sp-city-price .sp-gem { width: 10px; height: 10px; }
+  .splendor-screen .sp-cities .sp-city-price .sp-token-badge b { font-size: 9px; }
+  .splendor-screen .sp-cities .sp-city-claimed { top: 40%; font-size: 9px; left: 4px; right: 4px; }
+  .splendor-screen .sp-edition-badge { margin-left: 3px; font-size: 9px; padding: 3px 4px; }
+}

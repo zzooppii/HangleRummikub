@@ -99,7 +99,8 @@ export type DrawRelayRoomRecord = RoomRecordBase & Readonly<{ gameType:"DRAW_REL
 export type SneakyLunchRoomRecord = RoomRecordBase & Readonly<{ gameType: "SNEAKY_LUNCH"; game: SneakyLunchStoredGame | null; departedPlayerIds?: readonly PlayerId[]; settings?: LunchSettings }>;
 export type WolfRoomRecord = RoomRecordBase & Readonly<{ gameType: "WOLF_NIGHT"; game: WolfStoredGame | null; departedPlayerIds?: readonly PlayerId[]; settings?: WolfSettings }>;
 export type LiarRoomRecord = RoomRecordBase & Readonly<{ gameType: "LIAR_GAME"; game: LiarStoredGame | null; departedPlayerIds?: readonly PlayerId[]; settings?: LiarSettings }>;
-export type SplendorRoomRecord = RoomRecordBase & Readonly<{ gameType: "SPLENDOR"; game: SplendorStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
+import type { SplendorSettings } from "@hangul-rummikub/shared";
+export type SplendorRoomRecord = RoomRecordBase & Readonly<{ gameType: "SPLENDOR"; settings?: SplendorSettings; game: SplendorStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
 export type JaipurRoomRecord = RoomRecordBase & Readonly<{ gameType: "JAIPUR"; game: JaipurStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
 export type DuetRoomRecord = RoomRecordBase & Readonly<{ gameType: "WORD_DUET"; game: DuetStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
 export type SaboteurRoomRecord = RoomRecordBase & Readonly<{ gameType: "SABOTEUR"; game: SaboteurStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;

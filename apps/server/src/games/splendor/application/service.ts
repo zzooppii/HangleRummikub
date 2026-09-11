@@ -1,5 +1,6 @@
 import { makeSplendorCards, SPLENDOR_NOBLES } from "../domain/catalog.js";
 import {
+  SPLENDOR_CITY_TILES,
   GameRevisionSchema,
   RoomRevisionSchema,
   ServerTimeSchema,
@@ -207,7 +208,12 @@ export class SplendorService {
           shuffle(cards);
           shuffle(nobles);
           shuffle(playerIds);
+          const tiles = [...SPLENDOR_CITY_TILES];
+          if (room.settings?.mode === "CITIES") shuffle(tiles);
+          const cities = room.settings?.mode === "CITIES"
+            ? tiles.slice(0, 3).map(faces => faces[d.random.nextInt(2)]!) : undefined;
           const state = createSplendorGame({
+            ...(cities ? {cities} : {}),
             gameId,
             playerIds,
             cards,
@@ -312,57 +318,74 @@ export class SplendorService {
           const now = d.clock.now();
           let candidate: Omit<SplendorRoomRecord, "storageRevision"> = room;
           let outcome: v.InferOutput<typeof Receipt>["outcome"];
-          if (
-            !room.game ||
-            room.game.gameId !== c.gameId ||
-            room.game.gameRevision !== c.expectedGameRevision
-          )
-            return failure("STALE_GAME_REVISION");
-          if (c.kind === "splendor:rematch") {
-            if (room.phase !== "FINISHED") return failure("INVALID_PHASE");
-            if (room.hostPlayerId !== input.actorPlayerId)
-              return failure("HOST_ONLY");
-            if (room.roomRevision !== c.expectedRoomRevision)
-              return failure("STALE_ROOM_REVISION");
+          if (c.kind === "splendor:configure") {
+            if (room.phase !== "LOBBY" || room.game !== null) return failure("INVALID_PHASE");
+            if (room.hostPlayerId !== input.actorPlayerId) return failure("HOST_ONLY");
+            if (room.roomRevision !== c.expectedRoomRevision) return failure("STALE_ROOM_REVISION");
             candidate = {
               ...room,
-              phase: "LOBBY",
-              game: null,
-              departedPlayerIds: [],
-              players: room.players.filter(
-                (p) => !room.departedPlayerIds?.includes(p.playerId),
-              ),
+              settings: c.payload,
+              ...(room.readyPlayerIds === undefined ? {} : {
+                readyPlayerIds: c.payload.mode === (room.settings?.mode ?? "BASE")
+                  ? room.readyPlayerIds : [],
+              }),
               roomRevision: v.parse(RoomRevisionSchema, room.roomRevision + 1),
               updatedAt: now,
             };
-            outcome = "REMATCHED";
+            outcome = "CONFIGURED";
           } else {
-            if (room.phase !== "PLAYING") return failure("INVALID_PHASE");
-            if (c.turnId !== room.game.state.transitionId)
-              return failure("STALE_GAME_REVISION");
-            if (room.game.state.activePlayerId !== input.actorPlayerId)
-              return failure("NOT_YOUR_TURN");
             if (
-              room.game.state.nextTransitionAt === null ||
-              now >= room.game.state.nextTransitionAt ||
-              input.receivedAt >= room.game.state.nextTransitionAt
+              !room.game ||
+              room.game.gameId !== c.gameId ||
+              room.game.gameRevision !== c.expectedGameRevision
             )
-              return failure("TURN_EXPIRED");
-            const applied = applySplendorAction(
-              room.game.state,
-              input.actorPlayerId,
-              c.payload,
-              now,
-              d.ids.generateTurnId(),
-            );
-            if (!applied.ok)
-              return failure(
-                applied.reason === "TURN_EXPIRED"
-                  ? "TURN_EXPIRED"
-                  : "INVALID_PAYLOAD",
+              return failure("STALE_GAME_REVISION");
+            if (c.kind === "splendor:rematch") {
+              if (room.phase !== "FINISHED") return failure("INVALID_PHASE");
+              if (room.hostPlayerId !== input.actorPlayerId)
+                return failure("HOST_ONLY");
+              if (room.roomRevision !== c.expectedRoomRevision)
+                return failure("STALE_ROOM_REVISION");
+              candidate = {
+                ...room,
+                phase: "LOBBY",
+                game: null,
+                departedPlayerIds: [],
+                players: room.players.filter(
+                  (p) => !room.departedPlayerIds?.includes(p.playerId),
+                ),
+                roomRevision: v.parse(RoomRevisionSchema, room.roomRevision + 1),
+                updatedAt: now,
+              };
+              outcome = "REMATCHED";
+            } else {
+              if (room.phase !== "PLAYING") return failure("INVALID_PHASE");
+              if (c.turnId !== room.game.state.transitionId)
+                return failure("STALE_GAME_REVISION");
+              if (room.game.state.activePlayerId !== input.actorPlayerId)
+                return failure("NOT_YOUR_TURN");
+              if (
+                room.game.state.nextTransitionAt === null ||
+                now >= room.game.state.nextTransitionAt ||
+                input.receivedAt >= room.game.state.nextTransitionAt
+              )
+                return failure("TURN_EXPIRED");
+              const applied = applySplendorAction(
+                room.game.state,
+                input.actorPlayerId,
+                c.payload,
+                now,
+                d.ids.generateTurnId(),
               );
-            candidate = transitionSplendor(room, applied.state, now);
-            outcome = "ACCEPTED";
+              if (!applied.ok)
+                return failure(
+                  applied.reason === "TURN_EXPIRED"
+                    ? "TURN_EXPIRED"
+                    : "INVALID_PAYLOAD",
+                );
+              candidate = transitionSplendor(room, applied.state, now);
+              outcome = "ACCEPTED";
+            }
           }
           // The state and replay receipt commit atomically under the room lane.
           const committed = await d.roomUnitOfWork.commit(

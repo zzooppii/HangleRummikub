@@ -7,11 +7,14 @@ import {
   SplendorLobbyPlatformSnapshotV2Schema,
   SplendorPlayingPlatformSnapshotV2Schema,
   SplendorFinishedPlatformSnapshotV2Schema,
+  SPLENDOR_CITY_TILES,
   SplendorCardSchema,
   SplendorClientCommandSchema,
 } from "@hangul-rummikub/shared";
 import { SplendorScreen } from "../features/splendor/SplendorScreen.js";
 import {
+  cityRemaining,
+  cityLabel,
   effectiveCost,
   paymentPreview,
   validTake,
@@ -245,4 +248,49 @@ test("SPLENDOR leaving describes cancellation of the whole game", () => {
     roomLeaveConfirmationMessage("PLAYING", "SPLENDOR"),
     /모든 참가자.*취소/,
   );
+});
+
+
+test("SPLENDOR CITIES lobby presents graphical host edition selection and guests see the selected mode", () => {
+  const host = lobby(); host.room.settings = {mode:"CITIES"};
+  const hostHtml = render(host);
+  assert.match(hostHtml,/sp-edition-picker/); assert.match(hostHtml,/도시 확장/);
+  assert.match(hostHtml,/aria-pressed="true"/);
+  const guest = {...host,self:{playerId:host.room.players[1]!.playerId}};
+  const guestHtml = render(guest);
+  assert.match(guestHtml,/방장이 선택한 여정/);
+  assert.match(guestHtml,/disabled="" aria-pressed|aria-pressed="true" disabled=""/);
+});
+test("SPLENDOR CITIES swaps noble strip while preserving twelve illustrated cards, bank and company", () => {
+  const s = playing();
+  s.game.rulesVersion = "splendor-cities-2017-v1";
+  s.game.cities = [SPLENDOR_CITY_TILES[0]![0]!, SPLENDOR_CITY_TILES[4]![0]!, SPLENDOR_CITY_TILES[5]![0]!];
+  assert.equal(decodeWebSnapshot(s).kind,"COMPATIBLE");
+  const html = render(s);
+  assert.match(html,/도시의 부름/); assert.match(html,/sp-city-progress/);
+  assert.match(html,/같은 색/); assert.match(html,/도시 목표/);
+  assert.equal((html.match(/class="sp-development/g)??[]).length,12);
+  assert.match(html,/id="sp-bank"/); assert.match(html,/id="sp-company"/);
+  assert.doesNotMatch(html,/귀족의 후원/); assert.doesNotMatch(html,/<small>\/ 15<\/small>/);
+  const base = render(playing()); assert.match(base,/귀족의 후원/); assert.doesNotMatch(base,/class="sp-cities"/);
+});
+test("SPLENDOR CITIES UI counts bonus shortage without reusing the fixed color for a gray requirement", () => {
+  const city = SPLENDOR_CITY_TILES[5]![0]!;
+  assert.deepEqual(cityRemaining(city,10,{WHITE:2,BLUE:1,GREEN:8,RED:0,BLACK:0}),{points:4,cards:2});
+  assert.match(cityLabel(city),/지정 색 이외의 한 가지 색/);
+});
+test("SPLENDOR CITIES wire rejects changed objective data, both faces, nobles and wrong-mode winners", () => {
+  const s = playing(); s.game.rulesVersion="splendor-cities-2017-v1";
+  s.game.cities=[SPLENDOR_CITY_TILES[0]![0]!,SPLENDOR_CITY_TILES[1]![0]!,SPLENDOR_CITY_TILES[2]![0]!];
+  assert.equal(safeParse(SplendorPlayingPlatformSnapshotV2Schema,s).success,true);
+  const bad = structuredClone(s); bad.game.cities[0]!.points--;
+  assert.equal(safeParse(SplendorPlayingPlatformSnapshotV2Schema,bad).success,false);
+  const duplicate = structuredClone(s); duplicate.game.cities[1]=SPLENDOR_CITY_TILES[0]![1]!;
+  assert.equal(safeParse(SplendorPlayingPlatformSnapshotV2Schema,duplicate).success,false);
+  const base = structuredClone(s); base.game.rulesVersion="splendor-base-v1";
+  assert.equal(safeParse(SplendorPlayingPlatformSnapshotV2Schema,base).success,false);
+  const stolen = structuredClone(s); stolen.game.playerStates[0]!.cities.push(stolen.game.cities.shift()!); stolen.game.finalRound=true;
+  assert.equal(safeParse(SplendorPlayingPlatformSnapshotV2Schema,stolen).success,false);
+  assert.equal(safeParse(SplendorClientCommandSchema,{kind:"splendor:configure",protocolVersion:1,requestId:"configure-city",expectedRoomRevision:0,payload:{mode:"CITIES"}}).success,true);
+  assert.equal(safeParse(SplendorClientCommandSchema,{kind:"splendor:configure",protocolVersion:1,requestId:"configure-city",expectedRoomRevision:0,payload:{mode:"ORIENT"}}).success,false);
 });

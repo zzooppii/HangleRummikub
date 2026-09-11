@@ -4651,7 +4651,7 @@ test("runtime Socket.IO map은 Number events를 additive하게 제공하고 lega
     | "city:endTurn"
     | "city:configure" | "city:expansionAction"
     | "draw:draftSave" | "draw:submitDrawing" | "draw:submitGuess" | "draw:revealNext" | "draw:rematch" | "draw:configure"
-    | "splendor:act" | "splendor:rematch"
+    | "splendor:configure" | "splendor:act" | "splendor:rematch"
     | "halli:flip" | "halli:bell" | "halli:rematch"
     | "liar:configure" | "liar:clue" | "liar:vote" | "liar:say" | "liar:guess"
     | "wolf:configure" | "wolf:act" | "wolf:vote" | "wolf:say" | "wolf:rematch"

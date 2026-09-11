@@ -699,6 +699,7 @@ export class RealtimeClient {
     if (!parseRematch(SplendorClientCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
     return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {
       switch (command.kind) {
+        case "splendor:configure": this.#socket.emit("splendor:configure", command, acknowledge); break;
         case "splendor:act": this.#socket.emit("splendor:act", command, acknowledge); break;
         case "splendor:rematch": this.#socket.emit("splendor:rematch", command, acknowledge); break;
       }

@@ -2,7 +2,7 @@ import { SaboteurActionSchema } from "./games/saboteur/actions.js";
 import { JaipurActionSchema } from "./games/jaipur/actions.js";
 import { DuetActionSchema } from "./games/word-duet/actions.js";
 import { LostCitiesSettingsSchema, LostCitiesActionSchema } from "./games/lost-cities/actions.js";
-import { SplendorActionSchema } from "./games/splendor/actions.js";
+import { SplendorActionSchema, SplendorSettingsSchema } from "./games/splendor/actions.js";
 import { IslandActionSchema } from "./games/island/actions.js";
 import { CityExpansionSettingsSchema, CityExpansionActionSchema } from "./games/city-role/expansion-contracts.js";
 import { GemCollectSelectionSchema, GemPurchaseSourceSchema, GemMarketSourceSchema } from "./games/gem-card/contracts.js";
@@ -347,7 +347,8 @@ export type LostCitiesClientCommand = v.InferOutput<typeof LostCitiesClientComma
 const SplendorIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 export const SplendorActCommandSchema = v.strictObject({ ...SplendorIdentity, kind: v.literal("splendor:act"), turnId: TurnIdSchema, payload: SplendorActionSchema });
 export const SplendorRematchCommandSchema = v.strictObject({ ...SplendorIdentity, kind: v.literal("splendor:rematch"), expectedRoomRevision: RoomRevisionSchema, payload: v.strictObject({}) });
-export const SplendorClientCommandSchema = v.variant("kind", [SplendorActCommandSchema, SplendorRematchCommandSchema]);
+export const SplendorConfigureCommandSchema = v.strictObject({ kind: v.literal("splendor:configure"), protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, expectedRoomRevision: RoomRevisionSchema, payload: SplendorSettingsSchema });
+export const SplendorClientCommandSchema = v.variant("kind", [SplendorConfigureCommandSchema, SplendorActCommandSchema, SplendorRematchCommandSchema]);
 export type SplendorClientCommand = v.InferOutput<typeof SplendorClientCommandSchema>;
 
 const HalliIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };

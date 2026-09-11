@@ -41,7 +41,7 @@ async function harness(t: TestContext, count = 3, start = true) {
       transports: ["websocket"],
       forceNew: true,
       reconnection: false,
-      auth: { supportedSnapshotVersions: [2], supportedGameTypes: types },
+      auth: { supportsRoomPreparation: true, supportedSnapshotVersions: [2], supportedGameTypes: types },
     });
     clients.push(c);
     await new Promise<void>((r, j) => {
@@ -568,4 +568,66 @@ test("SPLENDOR invalid action is atomic; deadline race advances exactly once", a
     (await h.server.runtime.splendorService!.timeout(deadline)).status,
     "NO_OP",
   );
+});
+
+test("SPLENDOR CITIES configure is host-only, revision guarded, idempotent and visible to every participant", async t => {
+  const h = await harness(t,3,false), host = h.members[0]!, guest = h.members[1]!;
+  assert.equal(h.lobby.room.settings?.mode,"BASE");
+  const configure = h.request("splendor:configure",{mode:"CITIES"},{expectedRoomRevision:h.lobby.versions.roomRevision});
+  assert.equal(h.failure(await h.send(guest.client,configure)),"HOST_ONLY");
+  assert.equal(h.failure(await h.call(host.client,"splendor:configure",{mode:"ORIENT"},{expectedRoomRevision:h.lobby.versions.roomRevision})),"INVALID_PAYLOAD");
+  const changed = parse(SplendorLobbyPlatformSnapshotV2Schema,h.success(await h.send(host.client,configure)));
+  assert.equal(changed.room.settings?.mode,"CITIES");
+  assert.equal(changed.versions.roomRevision,h.lobby.versions.roomRevision+1);
+  assert.equal(parse(SplendorLobbyPlatformSnapshotV2Schema,await h.sync(guest.client)).room.settings?.mode,"CITIES");
+  assert.equal(parse(SplendorLobbyPlatformSnapshotV2Schema,h.success(await h.send(host.client,configure))).versions.roomRevision,changed.versions.roomRevision);
+  assert.equal(h.failure(await h.send(host.client,{...configure,payload:{mode:"BASE"}})),"REQUEST_ID_REUSED");
+  assert.equal(h.failure(await h.call(host.client,"splendor:configure",{mode:"BASE"},{expectedRoomRevision:h.lobby.versions.roomRevision})),"STALE_ROOM_REVISION");
+  h.success(await h.call(host.client,"game:start",{}, {expectedRoomRevision:changed.versions.roomRevision}));
+  const game = parse(SplendorPlayingPlatformSnapshotV2Schema,await h.sync());
+  assert.equal(game.game.rulesVersion,"splendor-cities-2017-v1");
+  assert.equal(game.game.cities.length,3); assert.equal(game.game.nobles.length,0);
+  assert.equal(new Set(game.game.cities.map(c=>c.tile)).size,3);
+  assert.ok(game.game.cities.every(c=>c.side==="B"));
+  assert.equal(h.failure(await h.call(host.client,"splendor:configure",{mode:"BASE"},{expectedRoomRevision:game.versions.roomRevision})),"INVALID_PHASE");
+  const state = (await h.stored()).game!.state;
+  assert.equal(state.cards.length,90);
+  assert.equal(state.rulesVersion,"splendor-cities-2017-v1");
+  assert.equal(h.success(await h.send(host.client,configure)).room.phase,"PLAYING");
+});
+
+test("SPLENDOR CITIES survives private reservation, reconnect, rematch and return to base", async t => {
+  const h = await harness(t,2,false), host = h.members[0]!, guest = h.members[1]!;
+  const selected = h.success(await h.call(host.client,"splendor:configure",{mode:"CITIES"},{expectedRoomRevision:h.lobby.versions.roomRevision}));
+  h.success(await h.call(host.client,"game:start",{},{expectedRoomRevision:selected.versions.roomRevision}));
+  const first = parse(SplendorPlayingPlatformSnapshotV2Schema,await h.sync());
+  const reserved = parse(SplendorPlayingPlatformSnapshotV2Schema,h.success(await h.call(host.client,"splendor:act",{kind:"RESERVE_DECK",tier:1,returns:zero(),nobleId:null,cityId:null},{gameId:first.game.gameId,expectedGameRevision:first.game.gameRevision,turnId:first.game.turnId})));
+  assert.equal(reserved.game.privateState.reserved.length,1);
+  const hiddenId = reserved.game.privateState.reserved[0]!.cardId;
+  assert.equal(JSON.stringify(await h.sync(guest.client)).includes(hiddenId),false);
+  host.client.disconnect();
+  const resumedClient = await h.connect();
+  const resumed = parse(SplendorPlayingPlatformSnapshotV2Schema,h.success(await h.call(resumedClient,"session:resume",{credential:{...host.credential,roomCode:h.lobby.room.roomCode},lastSeenVersions:null})));
+  assert.deepEqual(resumed.game.cities,reserved.game.cities);
+  assert.equal(resumed.game.privateState.reserved[0]?.cardId,hiddenId);
+  for(let i=0;i<6 && (await h.stored()).phase==="PLAYING";i++) await h.advance();
+  const end = parse(SplendorFinishedPlatformSnapshotV2Schema,await h.sync(resumedClient));
+  const rematch = parse(SplendorLobbyPlatformSnapshotV2Schema,h.success(await h.call(resumedClient,"splendor:rematch",{},{gameId:end.game.gameId,expectedGameRevision:end.game.gameRevision,expectedRoomRevision:end.versions.roomRevision})));
+  assert.equal(rematch.room.settings?.mode,"CITIES");
+  const base = h.success(await h.call(resumedClient,"splendor:configure",{mode:"BASE"},{expectedRoomRevision:rematch.versions.roomRevision}));
+  h.success(await h.call(resumedClient,"game:start",{},{expectedRoomRevision:base.versions.roomRevision}));
+  const restarted = parse(SplendorPlayingPlatformSnapshotV2Schema,await h.sync(resumedClient));
+  assert.equal(restarted.game.rulesVersion,"splendor-base-v1");
+  assert.equal(restarted.game.cities.length,0); assert.equal(restarted.game.nobles.length,3);
+});
+
+test("SPLENDOR CITIES generic same-game lobby preserves mode and configuration resets ready participants", async t => {
+  const h=await harness(t,2,false),host=h.members[0]!,guest=h.members[1]!;
+  const configured=h.success(await h.call(host.client,"splendor:configure",{mode:"CITIES"},{expectedRoomRevision:h.lobby.versions.roomRevision}));
+  const selected=parse(SplendorLobbyPlatformSnapshotV2Schema,h.success(await h.call(host.client,"room:selectGame",{gameType:"SPLENDOR",gameId:null},{expectedRoomRevision:configured.versions.roomRevision,expectedGameRevision:null})));
+  assert.equal(selected.room.settings?.mode,"CITIES");
+  const ready=parse(SplendorLobbyPlatformSnapshotV2Schema,h.success(await h.call(guest.client,"room:ready",{ready:true},{expectedRoomRevision:selected.versions.roomRevision})));
+  assert.equal(ready.room.players.find(p=>p.playerId===guest.playerId)?.isReady,true);
+  const changed=parse(SplendorLobbyPlatformSnapshotV2Schema,h.success(await h.call(host.client,"splendor:configure",{mode:"BASE"},{expectedRoomRevision:ready.versions.roomRevision})));
+  assert.ok(changed.room.players.every(p=>p.isReady===false));
 });

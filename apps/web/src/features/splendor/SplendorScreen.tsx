@@ -2,6 +2,8 @@ import { SplendorCommandRejected } from "../../lib/splendor-command-error.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   SPLENDOR_COLORS,
+  meetsSplendorCity,
+  type SplendorCity,
   SPLENDOR_TOKENS,
   type SplendorAction,
   type SplendorCard,
@@ -21,6 +23,8 @@ import {
   paymentPreview,
   validTake,
   cardLabel,
+  cityLabel,
+  cityRemaining,
 } from "./ui.js";
 type Props = {
   snapshot: SplendorWebSnapshot;
@@ -77,11 +81,21 @@ function NobleFace({ noble }: { noble: SplendorNoble }) {
     </>
   );
 }
+export function CityFace({city}: {city: SplendorCity}) {
+  return <><Scene index={(city.tile + 2) % 6}/><span className="sp-city-shade"/>
+    <span className="sp-city-heading"><span>도시 {city.tile}</span><b>✦ {city.points}<small>목표</small></b></span>
+    <span className="sp-city-price">{SPLENDOR_COLORS.filter(k => city.cost[k] > 0).map(k =>
+      <TokenBadge key={k} color={k} count={city.cost[k]}/>)}
+      {city.sameColor > 0 && <span className="sp-city-wild" aria-label={`한 가지 ${SPLENDOR_COLORS.some(k => city.cost[k] > 0) ? "다른 " : ""}색 할인 ${city.sameColor}개`}><span>◇</span><b>{city.sameColor}</b><small>같은 색</small></span>}
+      {SPLENDOR_COLORS.every(k => city.cost[k] === 0) && city.sameColor === 0 && <span className="sp-city-score-only">명성만으로 달성</span>}
+    </span></>;
+}
 export function SplendorScreen(props: Props) {
   const s = props.snapshot,
     game = s.game,
     playing = game?.phase === "PLAYING" ? game : null,
     self = s.self.playerId;
+  const citiesMode = game ? game.rulesVersion === "splendor-cities-2017-v1" : s.room.phase === "LOBBY" && s.room.settings?.mode === "CITIES";
   const mine = game?.playerStates.find((p) => p.playerId === self),
     isHost = s.room.players.some((p) => p.playerId === self && p.isHost);
   const [now, setNow] = useState<number>(s.serverTime),
@@ -91,7 +105,9 @@ export function SplendorScreen(props: Props) {
   const [actionMode, setActionMode] = useState<"BUY" | "RESERVE">("BUY"),
     [chosenPayment, setChosenPayment] = useState<SplendorTokens | null>(null),
     [returns, setReturns] = useState(zeroTokens),
-    [nobleId, setNobleId] = useState<string | null>(null);
+    [nobleId, setNobleId] = useState<string | null>(null),
+    [cityId, setCityId] = useState<string | null>(null),
+    [inspectedCity, setInspectedCity] = useState<SplendorCity | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null),
     [retry, setRetry] = useState<SplendorClientCommand | null>(null),
@@ -99,6 +115,7 @@ export function SplendorScreen(props: Props) {
   const busyRef = useRef(false),
     actionDialog = useRef<HTMLDialogElement>(null),
     helpDialog = useRef<HTMLDialogElement>(null),
+    cityDialog = useRef<HTMLDialogElement>(null),
     lastTrigger = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const base = performance.now();
@@ -115,6 +132,7 @@ export function SplendorScreen(props: Props) {
     setReturns(zeroTokens());
     setChosenPayment(null);
     setNobleId(null);
+    setCityId(null);
     setRetry(null);
     setError(null);
   }, [game?.gameId, game?.gameRevision]);
@@ -130,6 +148,7 @@ export function SplendorScreen(props: Props) {
     if (help) helpDialog.current?.showModal();
     else helpDialog.current?.close();
   }, [help]);
+  useEffect(() => { if (inspectedCity) cityDialog.current?.showModal(); else cityDialog.current?.close(); }, [inspectedCity]);
   const enabled = props.connected && !props.pending && !busy && !retry;
   const canAct =
     enabled &&
@@ -169,6 +188,14 @@ export function SplendorScreen(props: Props) {
       SPLENDOR_COLORS.every((k) => bonus[k] >= n.cost[k]),
     );
   }, [game, mine, selectedCard, buying]);
+  const eligibleCities = useMemo(() => {
+    if (!game || !mine || !citiesMode) return [];
+    const bonus = {...mine.bonuses};
+    if (selectedCard && buying) bonus[selectedCard.bonus]++;
+    return game.cities.filter(c => meetsSplendorCity(c, mine.score + (selectedCard && buying ? selectedCard.points : 0), bonus));
+  }, [game, mine, citiesMode, selectedCard, buying]);
+  const cityOK = eligibleCities.length <= 1 || eligibleCities.some(c => c.cityId === cityId);
+  const displayedCities = game ? [...game.cities.map(city => ({city, owner: null})), ...game.playerStates.flatMap(p => p.cities.map(city => ({city, owner: p.playerId})))].sort((a,b) => a.city.tile - b.city.tile) : [];
   const after = mine ? { ...mine.tokens } : zeroTokens();
   if (selection?.kind === "TAKE")
     for (const k of SPLENDOR_TOKENS) after[k] += take[k];
@@ -217,6 +244,7 @@ export function SplendorScreen(props: Props) {
     setChosenPayment(null);
     setReturns(zeroTokens());
     setNobleId(null);
+    setCityId(null);
     setActionMode("BUY");
     setError(null);
     setSelection(value);
@@ -251,11 +279,12 @@ export function SplendorScreen(props: Props) {
       !canAct ||
       !selectionOK ||
       !returnOK ||
-      !nobleOK
+      !nobleOK || !cityOK
     )
       return;
     const resolution = {
       returns,
+      ...(citiesMode ? {cityId: eligibleCities.length === 1 ? eligibleCities[0]!.cityId : cityId} : {}),
       nobleId: eligible.length === 1 ? eligible[0]!.nobleId : nobleId,
     };
     let action: SplendorAction;
@@ -339,7 +368,7 @@ export function SplendorScreen(props: Props) {
           <Gem color="GREEN" />
           <div>
             <span>SPLENDOR</span>
-            <h1>스플렌더</h1>
+            <h1>스플렌더 {citiesMode && <small className="sp-edition-badge">도시 확장</small>}</h1>
           </div>
         </div>
         <div className="sp-roomtools">
@@ -397,7 +426,7 @@ export function SplendorScreen(props: Props) {
                 ))}
               </div>
               <span className="sp-lobby-meta">
-                2–4명 <i /> 기본판 <i /> 차례당 90초
+                2–4명 <i /> {citiesMode ? "도시 확장" : "기본판"} <i /> 차례당 90초
               </span>
             </div>
           </div>
@@ -430,6 +459,18 @@ export function SplendorScreen(props: Props) {
                 </div>
               );
             })}
+            <fieldset className="sp-edition-picker">
+              <legend>{isHost ? "이번 판의 여정" : "방장이 선택한 여정"}</legend>
+              <div>{(["BASE", "CITIES"] as const).map(value => <button key={value}
+                type="button" aria-pressed={citiesMode === (value === "CITIES")}
+                disabled={!isHost || !enabled}
+                onClick={() => { if (citiesMode !== (value === "CITIES")) void send({kind:"splendor:configure", protocolVersion:1, requestId:createRequestId(), expectedRoomRevision:s.versions.roomRevision, payload:{mode:value}}); }}>
+                {value === "BASE" ? <Portrait index={3}/> : <Scene index={4}/>}
+                <span className="sp-edition-shade"/><span className="sp-edition-copy"><b>{value === "BASE" ? "기본판" : "도시 확장"}</b><small>{value === "BASE" ? "귀족의 후원 · 15점 경쟁" : "세 도시 · 새로운 승리 조건"}</small></span>
+                <span className="sp-edition-check" aria-hidden="true">{citiesMode === (value === "CITIES") ? "✓" : ""}</span>
+              </button>)}</div>
+              <p>{citiesMode ? "도시의 명성과 할인 조건을 달성해 승리를 차지하세요." : "보석을 모아 귀족의 후원을 받고 명성을 높이세요."}</p>
+            </fieldset>
             <p>{ready.guidance}</p>
             {isHost ? (
               <button
@@ -451,7 +492,7 @@ export function SplendorScreen(props: Props) {
           </span>
           <span className="sp-eyebrow">THE FINAL PRESTIGE</span>
           <h2>
-            {game.result.reason === "POINTS"
+            {(game.result.reason === "POINTS" || game.result.reason === "CITIES")
               ? `${game.result.winnerPlayerIds.map(name).join(" · ")} 승리`
               : "이번 판을 마쳤습니다"}
           </h2>
@@ -464,8 +505,8 @@ export function SplendorScreen(props: Props) {
           </p>
           <div className="sp-final-scores">
             {[...game.result.scores]
-              .sort((a, b) => b.score - a.score || a.cards - b.cards)
-              .map((p, i) => (
+              .sort((a, b) => Number(game.result.winnerPlayerIds.includes(b.playerId)) - Number(game.result.winnerPlayerIds.includes(a.playerId)) || b.score - a.score || a.cards - b.cards)
+              .map((p) => (
                 <article
                   key={p.playerId}
                   className={
@@ -487,7 +528,8 @@ export function SplendorScreen(props: Props) {
                     <small>명성</small>
                   </strong>
                   <span>구매 카드 {p.cards}장</span>
-                  {i === 0 && game.result.reason === "POINTS" && (
+                  {citiesMode && <span>{game.playerStates.find(x => x.playerId === p.playerId)?.cities.length ? "도시 획득" : "도시 미획득"}</span>}
+                  {game.result.winnerPlayerIds.includes(p.playerId) && (
                     <span className="sp-winner-ribbon">WINNER</span>
                   )}
                 </article>
@@ -549,7 +591,7 @@ export function SplendorScreen(props: Props) {
                         <TokenBadge key={k} color={k} count={p.bonuses[k]} />
                       ))}
                     </span>
-                    <strong className="sp-player-score">✦ {p.score}</strong>
+                    <strong className="sp-player-score">{p.cities.length > 0 && <span className="sp-city-seal" aria-label="도시 획득">♜</span>} ✦ {p.score}</strong>
                   </summary>
                   <div className="sp-player-detail">
                     <span>보유 보석</span>
@@ -559,7 +601,7 @@ export function SplendorScreen(props: Props) {
                       ))}
                     </div>
                     <span>
-                      구매 {p.purchased.length}장 · 귀족 {p.nobles.length}명 ·
+                      구매 {p.purchased.length}장 · {citiesMode ? `도시 ${p.cities.length}개` : `귀족 ${p.nobles.length}명`} ·
                       예약 {p.reservedCount}장
                     </span>
                     <div className="sp-owned-gallery">
@@ -604,10 +646,22 @@ export function SplendorScreen(props: Props) {
           <div className="sp-table-layout">
             <section
               id="sp-market"
-              className="sp-table"
+              className={`sp-table ${citiesMode ? "sp-city-table" : ""}`}
               aria-label="공용 카드 시장"
             >
-              <div className="sp-section-label">
+              {citiesMode ? <>
+                <div className="sp-section-label"><span>도시의 부름</span><span>명성 + 영구 할인 · 타일을 눌러 목표 확인</span></div>
+                <div className="sp-cities" aria-label="도시 목표">
+                  {displayedCities.map(({city, owner}) => {
+                    const remaining = cityRemaining(city, mine?.score ?? 0, mine?.bonuses ?? zeroTokens());
+                    return <button key={city.cityId} className={`sp-city ${owner ? "claimed" : remaining.points === 0 && remaining.cards === 0 ? "ready" : ""}`}
+                      onClick={() => setInspectedCity(city)} aria-label={`${cityLabel(city)}. ${owner ? `${name(owner)} 획득` : `내 명성 ${remaining.points}점, 할인 ${remaining.cards}개 더 필요`}`}>
+                      <CityFace city={city}/>{owner && <span className="sp-city-claimed">♜ {name(owner)}</span>}
+                      <span className="sp-city-progress">{owner ? "도시 획득" : remaining.points === 0 && remaining.cards === 0 ? "달성 가능" : `✦ ${remaining.points} · ▱ ${remaining.cards} 더`}</span>
+                    </button>;
+                  })}
+                </div>
+              </> : <><div className="sp-section-label">
                 <span>귀족의 후원</span>
                 <span>조건 달성 시 ✦ 3</span>
               </div>
@@ -638,6 +692,7 @@ export function SplendorScreen(props: Props) {
                   );
                 })}
               </div>
+              </>}
               <div className="sp-market">
                 {[...game.market].reverse().map((t) => (
                   <div className="sp-market-row" key={t.tier}>
@@ -775,7 +830,7 @@ export function SplendorScreen(props: Props) {
                 </div>
                 <strong>
                   ✦ {mine.score}
-                  <small>/ 15</small>
+                  <small>{citiesMode ? (mine.cities.length > 0 ? "♜ 도시 획득" : "도시 목표") : "/ 15"}</small>
                 </strong>
               </div>
               <div className="sp-my-engine">
@@ -922,6 +977,7 @@ export function SplendorScreen(props: Props) {
                       setActionMode("BUY");
                       setReturns(zeroTokens());
                       setNobleId(null);
+    setCityId(null);
                     }}
                   >
                     구매
@@ -932,6 +988,7 @@ export function SplendorScreen(props: Props) {
                       setActionMode("RESERVE");
                       setReturns(zeroTokens());
                       setNobleId(null);
+    setCityId(null);
                     }}
                   >
                     예약
@@ -1089,6 +1146,13 @@ export function SplendorScreen(props: Props) {
               </div>
             </section>
           )}
+          {eligibleCities.length > 0 && <section className="sp-city-choice">
+            <h3>{eligibleCities.length === 1 ? "도시의 초대를 받습니다" : "획득할 도시를 고르세요"}</h3>
+            <p>도시를 획득하면 이번 라운드가 마지막입니다.</p>
+            <div>{eligibleCities.map(city => <button key={city.cityId} className="sp-city"
+              aria-label={`${cityLabel(city)} 선택`} aria-pressed={eligibleCities.length === 1 || city.cityId === cityId}
+              disabled={busy} onClick={() => setCityId(city.cityId)}><CityFace city={city}/></button>)}</div>
+          </section>}
           {error && (
             <p className="sp-error" role="alert">
               {error}
@@ -1105,7 +1169,7 @@ export function SplendorScreen(props: Props) {
           ) : (
             <button
               className="sp-primary"
-              disabled={!canAct || !selectionOK || !returnOK || !nobleOK}
+              disabled={!canAct || !selectionOK || !returnOK || !nobleOK || !cityOK}
               onClick={confirm}
             >
               {!props.connected
@@ -1118,11 +1182,23 @@ export function SplendorScreen(props: Props) {
                       ? "돌려줄 보석을 선택하세요"
                       : !nobleOK
                         ? "귀족을 선택하세요"
+                        : !cityOK
+                          ? "도시를 선택하세요"
                         : buying
                           ? "구매 확정"
                           : "선택 확정"}
             </button>
           )}
+        </div>
+      </dialog>
+      <dialog ref={cityDialog} className="sp-help-dialog" aria-labelledby="sp-city-title" onCancel={() => setInspectedCity(null)}>
+        <div className="sp-dialog-content"><header><span className="sp-eyebrow">A CITY AWAITS</span><button className="sp-close" aria-label="도시 목표 닫기" onClick={() => setInspectedCity(null)}>×</button></header>
+          {inspectedCity && <><h2 id="sp-city-title">도시 {inspectedCity.tile}의 초대</h2><div className="sp-city sp-city-preview"><CityFace city={inspectedCity}/></div>
+            <p>{cityLabel(inspectedCity)}</p>
+            <p>명성과 영구 할인을 모두 갖추면 턴 끝에 도시를 획득합니다. 보유 보석은 조건에 포함되지 않습니다.</p>
+            {displayedCities.find(c => c.city.cityId === inspectedCity.cityId)?.owner ? <p>이미 획득한 도시입니다. 다른 도시를 목표로 해보세요.</p> : <p>여러 도시를 동시에 달성하면 하나를 선택합니다. 도시 획득 후에는 현재 라운드를 끝까지 진행합니다.</p>}
+            <p>도시를 획득한 상인끼리 점수를 비교합니다. 동점이면 구매 카드가 적은 상인이, 다시 같으면 함께 승리합니다.</p>
+            <small>이 안내를 읽는 동안에도 턴 시간은 흐릅니다.</small></>}
         </div>
       </dialog>
       <dialog
@@ -1142,13 +1218,13 @@ export function SplendorScreen(props: Props) {
               ×
             </button>
           </header>
-          <h2 id="sp-help-title">보석 → 카드 → 명성</h2>
+          <h2 id="sp-help-title">{citiesMode ? "보석 → 상단 → 도시" : "보석 → 카드 → 명성"}</h2>
           <div className="sp-help-visual">
             <Gem color="BLUE" />
             <span>→</span>
             <span>▱</span>
             <span>→</span>
-            <b>✦ 15</b>
+            <b>{citiesMode ? "♜" : "✦ 15"}</b>
           </div>
           <ol>
             <li>
@@ -1164,14 +1240,8 @@ export function SplendorScreen(props: Props) {
               3장, 황금이 없어도 예약 가능합니다.
             </li>
             <li>보석은 황금 포함 최대 10개. 초과분은 선택해 반환합니다.</li>
-            <li>
-              귀족에 표시된 만큼 할인 카드를 모으면 3점. 한 턴에 한 귀족만
-              얻습니다.
-            </li>
-            <li>
-              누군가 15점에 도달하면 같은 라운드를 마친 뒤 최고점 승리. 동점은
-              구매 카드가 더 적은 사람이 승리하며 다시 같으면 공동 승리입니다.
-            </li>
+            {citiesMode ? <><li>귀족 대신 도시 3개가 펼쳐집니다. 표시된 명성과 영구 할인을 모두 달성하면 턴 끝에 도시를 획득합니다. ◇는 한 가지 색 할인 조건이며, 지정된 색과 다른 색이어야 합니다.</li>
+              <li>도시를 여러 개 달성하면 하나를 선택합니다. 누군가 도시를 획득하면 라운드를 끝까지 진행하고, 도시를 가진 상인 중 최고점이 승리합니다. 동점이면 구매 카드가 적은 상인이, 다시 같으면 함께 승리합니다. 15점만으로는 게임이 끝나지 않습니다.</li></> : <><li>귀족에 표시된 만큼 할인 카드를 모으면 3점. 한 턴에 한 귀족만 얻습니다.</li><li>누군가 15점에 도달하면 같은 라운드를 마친 뒤 최고점 승리. 동점은 구매 카드가 더 적은 사람이 승리하며 다시 같으면 공동 승리입니다.</li></>}
           </ol>
           <p>
             차례당 90초 · 시간초과는 턴 넘김 · 3라운드 연속 행동이 없으면 종료 ·

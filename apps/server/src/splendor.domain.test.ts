@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { parse } from "valibot";
 import {
+  SPLENDOR_CITY_TILES,
+  meetsSplendorCity,
   PlayerIdSchema,
   SplendorCardIdSchema,
   SPLENDOR_COLORS,
@@ -353,9 +355,9 @@ test("SPLENDOR corrupt cards, noble counts and results fail closed", () => {
   end.result!.winnerPlayerIds = [ids[0]!];
   assert.throws(() => parseSplendorState(end));
 });
-for (const n of [2, 3, 4])
-  test(`SPLENDOR ${n}-player complete game through legal atomic actions`, () => {
-    let s = fixture(n);
+for (const cities of [false, true]) for (const n of [2, 3, 4])
+  test(`SPLENDOR ${cities ? "CITIES" : "BASE"} ${n}-player complete game through legal atomic actions`, () => {
+    let s = cities ? cityFixture(n) : fixture(n);
     for (let turn = 0; turn < 600 && s.phase === "PLAYING"; turn++) {
       const p = s.players.find((p) => p.playerId === s.activePlayerId)!,
         cards = [
@@ -422,6 +424,7 @@ for (const n of [2, 3, 4])
         SPLENDOR_COLORS.every((k) => bonuses[k] >= n.cost[k]),
       );
       a.nobleId = nobles[0]?.nobleId ?? null;
+      a.cityId = s.cities.find(c => meetsSplendorCity(c, scoreFor(s,p) + (buy?.points ?? 0), bonuses))?.cityId ?? null;
       const r = applySplendorAction(
         s,
         s.activePlayerId,
@@ -433,7 +436,7 @@ for (const n of [2, 3, 4])
       s = r.state;
     }
     assert.equal(s.phase, "FINISHED");
-    assert.equal(s.result?.reason, "POINTS");
+    assert.equal(s.result?.reason, cities ? "CITIES" : "POINTS");
     assert.ok(s.result.winnerPlayerIds.length > 0);
   });
 
@@ -452,4 +455,101 @@ test("SPLENDOR tied scores use fewer bought cards, then shared winners", () => {
   const c = s.cards.find((c) => c.points === 0)!;
   acquire(s, c, 1);
   assert.deepEqual(resultFor(s, "POINTS").winnerPlayerIds, [ids[0]]);
+});
+
+function cityFixture(n = 3) {
+  const s = fixture(n);
+  s.rulesVersion = "splendor-cities-2017-v1";
+  s.nobles = [];
+  s.cities = [SPLENDOR_CITY_TILES[0]![0]!, SPLENDOR_CITY_TILES[1]![0]!, SPLENDOR_CITY_TILES[3]![0]!];
+  return parseSplendorState(s);
+}
+function grantBonus(s: SplendorState, color: SplendorCard["bonus"], count: number, seat = 0) {
+  const cards = s.cards.filter(c => c.bonus === color && c.points === 0 && !s.players.some(p => p.purchased.includes(c.cardId))).slice(0, count);
+  assert.equal(cards.length, count);
+  cards.forEach(c => acquire(s, c, seat));
+}
+function grantPoints(s: SplendorState, points: readonly number[], seat = 0) {
+  for (const n of points) {
+    const c = s.cards.find(c => c.points === n && !s.players.some(p => p.purchased.includes(c.cardId)));
+    assert.ok(c); acquire(s, c, seat);
+  }
+}
+const cityTake = (): SplendorAction => ({kind:"TAKE", tokens:{...emptyTokens(), WHITE:1, BLUE:1, GREEN:1}, ...resolution()});
+
+test("SPLENDOR CITIES: seven paired tiles, three physical tiles, no nobles for every player count", () => {
+  assert.equal(SPLENDOR_CITY_TILES.length, 7);
+  assert.equal(new Set(SPLENDOR_CITY_TILES.flat().map(c => c.cityId)).size, 14);
+  for (const n of [2,3,4]) {
+    const s = cityFixture(n);
+    assert.equal(s.cities.length, 3);
+    assert.equal(s.nobles.length, 0);
+    assert.equal(s.cards.length, 90);
+    const duplicate = structuredClone(s); duplicate.cities[1] = SPLENDOR_CITY_TILES[0]![1]!;
+    assert.throws(() => parseSplendorState(duplicate));
+    const missing = structuredClone(s); missing.cities.pop();
+    assert.throws(() => parseSplendorState(missing));
+    const tampered = structuredClone(s); tampered.cities[0]!.points--;
+    assert.throws(() => parseSplendorState(tampered));
+    const nobles = structuredClone(s); nobles.nobles = [SPLENDOR_NOBLES[0]!];
+    assert.throws(() => parseSplendorState(nobles));
+  }
+});
+test("SPLENDOR CITIES: gray requirement needs another single color and sufficient prestige", () => {
+  const c = SPLENDOR_CITY_TILES[5]![0]!;
+  assert.equal(meetsSplendorCity(c, 14, {WHITE:0,BLUE:0,GREEN:8,RED:0,BLACK:0}), false);
+  assert.equal(meetsSplendorCity(c, 14, {WHITE:2,BLUE:2,GREEN:4,RED:0,BLACK:0}), false);
+  assert.equal(meetsSplendorCity(c, 13, {WHITE:4,BLUE:0,GREEN:4,RED:0,BLACK:0}), false);
+  assert.equal(meetsSplendorCity(c, 14, {WHITE:4,BLUE:0,GREEN:4,RED:0,BLACK:0}), true);
+  assert.equal(meetsSplendorCity(SPLENDOR_CITY_TILES[4]![0]!, 12, {WHITE:0,BLUE:0,GREEN:6,RED:0,BLACK:0}), true);
+});
+test("SPLENDOR CITIES: 15 points alone does not start the final round", () => {
+  const s = cityFixture(); grantPoints(s, [5,5,5]);
+  const r = play(s, cityTake()); assert.ok(r.ok);
+  assert.equal(r.state.finalRound, false); assert.equal(r.state.phase, "PLAYING");
+});
+test("SPLENDOR CITIES: city below 15 starts final round; higher score without a city loses", () => {
+  const s = cityFixture(); grantBonus(s,"RED",4); grantBonus(s,"BLACK",3); grantPoints(s,[5,5,3]);
+  grantPoints(s,[5,5,5,4],1);
+  const r = play(s, cityTake()); assert.ok(r.ok);
+  assert.equal(scoreFor(r.state,r.state.players[0]!),13);
+  assert.equal(r.state.players[0]!.cities.length,1);
+  assert.equal(r.state.cities.length,2); assert.equal(r.state.finalRound,true);
+  assert.equal(r.state.phase,"PLAYING");
+  const second = timeoutSplendor(r.state,r.state.nextTransitionAt!,"city-next")!;
+  assert.equal(second.phase,"PLAYING");
+  const end = timeoutSplendor(second,second.nextTransitionAt!,"city-end")!;
+  assert.equal(end.result?.reason,"CITIES");
+  assert.deepEqual(end.result?.winnerPlayerIds,[ids[0]]);
+  assert.equal(end.result?.scores.find(p=>p.playerId===ids[1])?.score,19);
+});
+test("SPLENDOR CITIES: multiple city choice is atomic and claimed cities cannot be chosen again", () => {
+  const s = cityFixture();
+  for (const [k,n] of [["RED",4],["BLACK",3],["WHITE",3],["BLUE",4]] as const) grantBonus(s,k,n);
+  grantPoints(s,[5,5,3]); const before = structuredClone(s);
+  assert.deepEqual(play(s,cityTake()),{ok:false,reason:"CHOOSE_CITY"});
+  assert.deepEqual(s,before);
+  const chosen = s.cities[0]!;
+  const r = play(s,{...cityTake(),cityId:chosen.cityId}); assert.ok(r.ok);
+  assert.equal(r.state.players[0]!.cities[0]?.cityId,chosen.cityId);
+  assert.equal(r.state.cities.some(c=>c.cityId===chosen.cityId),false);
+  assert.deepEqual(play(r.state,{...cityTake(),cityId:chosen.cityId}),{ok:false,reason:"CHOOSE_CITY"});
+  assert.deepEqual(play(fixture(),{...cityTake(),cityId:chosen.cityId}),{ok:false,reason:"CHOOSE_CITY"});
+  assert.deepEqual(play(cityFixture(),{...cityTake(),nobleId:"SPN-0"}),{ok:false,reason:"CHOOSE_NOBLE"});
+});
+test("SPLENDOR CITIES: last seat acquisition ends immediately; city contenders tie by card count", () => {
+  const s = cityFixture();
+  grantBonus(s,"RED",4); grantBonus(s,"BLACK",3); grantPoints(s,[5,5,3]);
+  grantBonus(s,"WHITE",3,2); grantBonus(s,"BLUE",4,2); grantPoints(s,[5,4,4],2);
+  const first = play(s,cityTake()); assert.ok(first.ok);
+  const second = play(first.state,cityTake()); assert.ok(second.ok);
+  const last = play(second.state,cityTake()); assert.ok(last.ok);
+  assert.equal(last.state.phase,"FINISHED");
+  assert.deepEqual(last.state.result?.winnerPlayerIds,[ids[0],ids[2]]);
+  const fewer = structuredClone(last.state);
+  const extra = fewer.cards.find(c=>c.points===0 && !fewer.players.some(p=>p.purchased.includes(c.cardId)))!;
+  acquire(fewer,extra,2); fewer.result = resultFor(fewer,"CITIES");
+  assert.deepEqual(parseSplendorState(fewer).result?.winnerPlayerIds,[ids[0]]);
+  const unearned = cityFixture(); unearned.players[0]!.cities.push(unearned.cities.shift()!); unearned.finalRound=true;
+  assert.throws(()=>parseSplendorState(unearned));
 });

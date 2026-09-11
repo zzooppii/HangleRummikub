@@ -2,6 +2,7 @@ import {
   SPLENDOR_COLORS,
   SPLENDOR_TOKENS,
   type SplendorCard,
+  type SplendorCity,
   type SplendorTokens,
   type SplendorCost,
 } from "@hangul-rummikub/shared";
@@ -78,4 +79,16 @@ export function cardLabel(c: SplendorCard): string {
   )
     .map((k) => `${TOKEN_LABELS[k]} ${c.cost[k]}`)
     .join(", ")}`;
+}
+
+export function cityLabel(c: SplendorCity): string {
+  const colors = SPLENDOR_COLORS.filter(k => c.cost[k] > 0)
+    .map(k => `${TOKEN_LABELS[k]} 영구 할인 ${c.cost[k]}개`);
+  if (c.sameColor) colors.push(`${colors.length ? "지정 색 이외의 " : ""}한 가지 색 영구 할인 ${c.sameColor}개`);
+  return `도시 ${c.tile}, 명성 ${c.points}점 이상${colors.length ? `, ${colors.join(", ")}` : ""}`;
+}
+export function cityRemaining(c: SplendorCity, score: number, bonus: SplendorCost) {
+  const fixed = SPLENDOR_COLORS.reduce((n,k) => n + Math.max(0, c.cost[k] - bonus[k]), 0);
+  const same = c.sameColor === 0 ? 0 : Math.min(...SPLENDOR_COLORS.filter(k => c.cost[k] === 0).map(k => Math.max(0, c.sameColor - bonus[k])));
+  return {points: Math.max(0, c.points - score), cards: fixed + same};
 }

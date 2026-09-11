@@ -40,7 +40,11 @@ export const SplendorNobleIdSchema = v.pipe(
   v.string(),
   v.regex(/^SPN-[0-9]$/u),
 );
+export const SplendorSettingsSchema = v.strictObject({ mode: v.picklist(["BASE", "CITIES"]) });
+export type SplendorSettings = v.InferOutput<typeof SplendorSettingsSchema>;
+export const SplendorCityIdSchema = v.pipe(v.string(), v.regex(/^SPC-[1-7]-[AB]$/u));
 const Resolution = {
+  cityId: v.optional(v.nullable(SplendorCityIdSchema)),
   returns: SplendorTokensSchema,
   nobleId: v.nullable(SplendorNobleIdSchema),
 };

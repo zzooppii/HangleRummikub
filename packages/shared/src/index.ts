@@ -38,6 +38,7 @@ export * from "./games/island/board.js";
 
 export * from "./games/splendor/actions.js";
 export * from "./games/splendor/contracts.js";
+export * from "./games/splendor/cities.js";
 
 export * from "./games/jaipur/actions.js";
 export * from "./games/word-duet/actions.js";

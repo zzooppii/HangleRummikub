@@ -1,6 +1,6 @@
 # 스플렌더 구현 경계
 
-2026-09-10. `SPLENDOR`는 기존 `GEM_CARD`와 별개인 기본판 2–4인 게임이다. [규칙](./SPLENDOR_GAME_RULES.md), [카드 데이터·그래픽](./SPLENDOR_ASSETS.md)을 함께 따른다.
+2026-09-10. `SPLENDOR`는 기존 `GEM_CARD`와 별개인 기본판과 도시 확장을 선택할 수 있는 2–4인 게임이다. [규칙](./SPLENDOR_GAME_RULES.md), [카드 데이터·그래픽](./SPLENDOR_ASSETS.md)을 함께 따른다.
 
 ## 모듈과 상태
 
@@ -38,3 +38,20 @@
 `apps/web/src/lib/splendor-ui.test.ts`: 각 phase 라우팅과 그래픽 렌더, 구매/황금/보석 선택 안내, 입장 조건, 엄격한 payload 및 viewer 검증. 기존 공용 계약과 카탈로그 테스트는 지원 게임 10개를 명시적으로 확인한다.
 
 2026-09-10 완료 검증: root `npm run typecheck`, `npm test`(shared 121 + web 525 + server 1,423 = 2,069개), `npm run build`, `git diff --check` 통과. 기존 대용량 JS chunk 경고는 유지되며 이번 빌드의 주 JS는 약 887 kB다. 실제 브라우저에서 방 생성, 보석 선택/확정, 예약과 황금 획득, 황금으로 예약 카드 구매, 새로고침 복원, 모바일 390px 폭의 빠른 이동/확인창, 도움말 Escape 닫기를 확인했다.
+
+
+## 도시 확장 (2026-09-11)
+
+- `splendor:configure`: protocolVersion, requestId, expectedRoomRevision, payload.mode(BASE/CITIES). 게임 ID가 없는 대기실 전용 명령. 현재 연결의 방 멤버·방장·LOBBY·room revision을 검증하고 설정과 영수증을 같은 UoW에 저장한다. 변경된 모드는 준비 상태를 초기화한다.
+- Room settings는 시작 시 규칙 버전 `splendor-base-v1` 또는 `splendor-cities-2017-v1`으로 고정한다. 저장소는 설정과 게임 규칙의 일치를 검증한다. 재경기에서는 설정이 유지된다.
+- shared `cities.ts`는 7개 양면 타일의 공개 카탈로그 및 순수 조건 계산을 정의한다. 무작위 타일/면 선택은 주입된 RandomSource로 application에서 수행한다. domain은 공용/소유 도시 합계 3개, 물리 타일 중복 금지, 정본 비용/점수, 소유 조건, 귀족 제외와 도시 종료 판정을 검증한다.
+- 기존 action에 선택적 `cityId`를 추가한다. 기본판 기존 클라이언트 입력은 유지한다. 도시 선택·점수·종료·보석 반환은 단일 candidate에서 검증한다. projection은 공용 도시와 소유 도시를 공개하며 비공개 예약은 기존처럼 본인에게만 보인다.
+- 화면은 귀족 영역을 같은 높이의 그림 도시 타일 3개로 교체한다. 획득 후에도 타일을 같은 자리에 두고 소유 상인을 표시한다. 도시 상세/복수 선택은 기존 dialog 스타일을 따른다. 카드 시장·보석 은행·하단 상단 구조와 기존 atlas는 재사용한다. 도시 모드의 하단 15점 표시는 도시 목표로 바뀐다.
+- 교역소·성채·동방은 구현 범위 밖의 후속 모듈이다. 새 설정 값만 추가해 미구현 모드가 선택되는 경로는 만들지 않는다.
+
+
+### 도시 확장 완료 검증
+
+2026-09-11: root `npm run typecheck`, `npm test`(shared 124 + web 593 + server 1,603 = 2,320개), `npm run build` 통과. 이어 같은 작업 디렉터리에서 별도 AZUL 개발이 진행되어 마지막 UI 보정 이후의 통합 빌드가 AZUL 미완성 import/type 오류로 실패했다. 다른 작업은 변경하지 않고 HEAD와 스플렌더 변경만 담은 `/private/tmp/splendor-city-review`에서 root 세 검증을 다시 실행해 모두 통과했다. 기존 500 kB 초과 JS chunk 경고는 유지된다.
+
+실제 브라우저에서 방장 기본판/도시 선택, 도시 목표 상세와 Escape 닫기, 390px·320px 가로 넘침 없음, 복수 도시 선택 전 확정 차단, 선택 후 원자적 획득과 마지막 라운드 표시, 새로고침 후 획득 도시 보존을 확인했다. 복수 목표 상황은 격리된 로컬 서버의 준비된 테스트 상태로 검증했으며 실제 배포 게임에 테스트 상태를 추가하지 않았다. 게임 도메인은 2·3·4인 각각 기본판/도시판을 합법적인 행동으로 끝까지 진행하는 테스트도 통과했다.

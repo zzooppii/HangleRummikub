@@ -1,6 +1,6 @@
 import { SaboteurPlayingProjectionSchema, SaboteurFinishedProjectionSchema, saboteurProjectionIsConsistent } from "../games/saboteur/contracts.js";
 import { ISLAND_RESOURCES } from "../games/island/actions.js";
-import { SplendorPlayingProjectionSchema, SplendorFinishedProjectionSchema } from "../games/splendor/contracts.js";
+import { SplendorPlayingProjectionSchema, SplendorFinishedProjectionSchema, splendorProjectionIsConsistent } from "../games/splendor/contracts.js";
 import { JaipurPlayingProjectionSchema, JaipurFinishedProjectionSchema, jaipurProjectionIsConsistent } from "../games/jaipur/contracts.js";
 import { DuetPlayingProjectionSchema, DuetFinishedProjectionSchema, duetProjectionIsConsistent } from "../games/word-duet/contracts.js";
 import { LostCitiesSettingsSchema } from "../games/lost-cities/actions.js";
@@ -296,15 +296,18 @@ export const IslandPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, Isl
 export const IslandFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, IslandFinishedPlatformSnapshotV2> = IslandFinishedRaw;
 
 
+import { SplendorSettingsSchema } from "../games/splendor/actions.js";
 const SplendorOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
 const SplendorRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("SPLENDOR") };
 const SplendorPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(4));
-const SplendorLobbyRaw = v.pipe(v.strictObject({ ...SplendorOuter, room: v.strictObject({ ...SplendorRoom, phase: v.literal("LOBBY"),
+const SplendorLobbyRaw = v.pipe(v.strictObject({ ...SplendorOuter, room: v.strictObject({ ...SplendorRoom, phase: v.literal("LOBBY"), settings: v.optional(SplendorSettingsSchema),
   players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)) }), game: v.null() }),
   v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
 const SplendorPlayingRaw = v.pipe(v.strictObject({ ...SplendorOuter, room: v.strictObject({ ...SplendorRoom, phase: v.literal("PLAYING"), players: SplendorPlayers }), game: SplendorPlayingProjectionSchema }),
+  v.check(s => splendorProjectionIsConsistent(s.game)),
   v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.reserved.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.reservedCount));
 const SplendorFinishedRaw = v.pipe(v.strictObject({ ...SplendorOuter, room: v.strictObject({ ...SplendorRoom, phase: v.literal("FINISHED"), players: SplendorPlayers }), game: SplendorFinishedProjectionSchema }),
+  v.check(s => splendorProjectionIsConsistent(s.game)),
   v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.reserved.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.reservedCount));
 export type SplendorLobbyPlatformSnapshotV2 = v.InferOutput<typeof SplendorLobbyRaw>;
 export type SplendorPlayingPlatformSnapshotV2 = v.InferOutput<typeof SplendorPlayingRaw>;

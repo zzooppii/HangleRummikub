@@ -1,5 +1,6 @@
 import { LostCitiesSettingsSchema, CityExpansionSettingsSchema } from "@hangul-rummikub/shared";
 import { IslandGameStateAdapter, type IslandLifecycle } from "../games/island/compatibility/adapter.js";
+import { SplendorSettingsSchema } from "@hangul-rummikub/shared";
 import { SplendorGameStateAdapter, type SplendorLifecycle } from "../games/splendor/compatibility/adapter.js";
 import { JaipurGameStateAdapter, type JaipurLifecycle } from "../games/jaipur/compatibility/adapter.js";
 import { DuetGameStateAdapter, type DuetLifecycle } from "../games/word-duet/compatibility/adapter.js";
@@ -252,7 +253,9 @@ function cloneRoomWriteCandidate(
       validateRoomGameCoherence(shell.phase, shell.players, game, () => game === null ? null : adapter.inspectLifecycle(game));
       const departedPlayerIds = Object.freeze([...(candidate.departedPlayerIds ?? [])]);
       if (new Set(departedPlayerIds).size !== departedPlayerIds.length || departedPlayerIds.some(id => !shell.players.some(p => p.playerId === id)) || shell.phase === "LOBBY" && departedPlayerIds.length > 0) throw new Error("Invalid departed SPLENDOR roster.");
-      return Object.freeze({...shell, gameType:"SPLENDOR", game, departedPlayerIds});
+      const settings = v.parse(SplendorSettingsSchema, candidate.settings ?? {mode:"BASE"});
+      if (game && (settings.mode === "CITIES") !== (game.state.rulesVersion === "splendor-cities-2017-v1")) throw new Error("SPLENDOR mode mismatch.");
+      return Object.freeze({...shell, gameType:"SPLENDOR", settings: Object.freeze(settings), game, departedPlayerIds});
     }
     case "SABOTEUR": {
       const adapter = new SaboteurGameStateAdapter(), game = candidate.game === null ? null : adapter.cloneAndValidate(candidate.game);

@@ -2722,7 +2722,7 @@ function registerIslandHandlers(socket: RealtimeSocket, runtime: ApplicationRunt
 
 import { SplendorClientCommandSchema } from "@hangul-rummikub/shared";
 function registerSplendorHandlers(socket: RealtimeSocket, runtime: ApplicationRuntime): void {
-  for (const event of ["splendor:act", "splendor:rematch"] as const) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
+  for (const event of ["splendor:configure", "splendor:act", "splendor:rematch"] as const) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
     const receivedAt = runtime.clock.now(), command = parseNumberRematch(SplendorClientCommandSchema, raw);
     if (!command.success || command.output.kind !== event) { acknowledgeIfPresent(acknowledge, failureAck(raw, INVALID_PAYLOAD_ERROR, receivedAt)); return; }
     void (async () => {

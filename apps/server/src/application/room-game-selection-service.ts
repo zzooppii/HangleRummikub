@@ -52,6 +52,9 @@ export class RoomGameSelectionService {
             phase: "LOBBY", game: null, players, hostPlayerId: room.hostPlayerId,
             readyPlayerIds: [], roomRevision, createdAt: room.createdAt, updatedAt: now,
           };
+          if(command.payload.gameType === "SPLENDOR" && room.gameType === "SPLENDOR") {
+            candidate={...candidate,gameType:"SPLENDOR",game:null,settings:room.settings??{mode:"BASE"}};
+          }
           if(command.payload.gameType === "LOST_CITIES" && room.gameType === "LOST_CITIES") {
             candidate={...candidate,gameType:"LOST_CITIES",game:null,settings:room.settings??{mode:"BASE"}};
           }

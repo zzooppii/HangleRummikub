@@ -23,6 +23,7 @@ export function projectSplendor(game: SplendorStoredGame, viewer: PlayerId) {
       deckCount: t.deck.length,
     })),
     nobles: s.nobles,
+    cities: s.cities,
     playerStates: s.players.map((p) => ({
       playerId: p.playerId,
       tokens: { ...p.tokens },
@@ -30,6 +31,7 @@ export function projectSplendor(game: SplendorStoredGame, viewer: PlayerId) {
       purchased: p.purchased.map((id) => cardFor(s, id)),
       reservedCount: p.reserved.length,
       nobles: p.nobles,
+      cities: p.cities,
       score: scoreFor(s, p),
     })),
     privateState: {

@@ -11,6 +11,7 @@
 | 한글 타일 게임 (`HANGUL_TILE`) | 한글 타일로 단어를 구성하는 게임 | [한글 규칙](./docs/GAME_RULES.md) |
 | 숫자 타일 게임 (`NUMBER_TILE`) | GROUP/RUN 구성과 테이블 재배열, 패를 비운 순서에 따른 순위, 같은 방 재게임 | [숫자 규칙](./docs/NUMBER_TILE_GAME_RULES.md) · [순위/재게임](./docs/NUMBER_TILE_PLACEMENT_REMATCH.md) |
 | 보석 카드 게임 (`GEM_CARD`) | 자원 수집·예약·구매와 영구 할인을 활용하는 카드 게임 | [보석 규칙](./docs/GEM_CARD_GAME_RULES.md) |
+| 스플렌더 (`SPLENDOR`) | 2~4명이 보석과 영구 할인으로 명성을 겨루는 전략 게임. 방장이 기본판 / 도시 확장을 선택 | [스플렌더 규칙](./docs/SPLENDOR_GAME_RULES.md) · [구현과 디자인](./docs/SPLENDOR_ARCHITECTURE.md) |
 | 비밀 도시 게임 (`CITY_ROLE`) | 비밀 역할 선택과 도시 건설, 명소 6종의 특수 능력 | [도시 규칙](./docs/CITY_ROLE_GAME_RULES.md) · [명소 V2](./docs/CITY_ROLE_GAME_RULES_V2.md) |
 | 그림 릴레이 (`DRAW_RELAY`) | 3~8명이 그림과 추측을 전달하고 함께 공개하는 파티게임 | [그림 릴레이 규칙](./docs/DRAW_RELAY_GAME_RULES.md) |
 | 몰래 한입 (`SNEAKY_LUNCH`) | 2~8명이 선생님 눈을 피해 도시락을 비우는 교실 파티게임 | [몰래 한입 규칙](./docs/SNEAKY_LUNCH_GAME_RULES.md) · [로컬 검증](./docs/SNEAKY_LUNCH_LOCAL_RELEASE_GATE.md) |

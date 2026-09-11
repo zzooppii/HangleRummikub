@@ -6,6 +6,10 @@ import {
   ServerTimeSchema,
   GameRevisionSchema,
   SplendorCardSchema,
+  SplendorCitySchema,
+  SPLENDOR_CITY_TILES,
+  meetsSplendorCity,
+  type SplendorCity,
   SplendorNobleSchema,
   SplendorTokensSchema,
   SplendorCardIdSchema,
@@ -37,10 +41,11 @@ const Player = v.strictObject({
   purchased: v.array(SplendorCardIdSchema),
   reserved: v.pipe(v.array(SplendorCardIdSchema), v.maxLength(3)),
   nobles: v.array(SplendorNobleSchema),
+  cities: v.optional(v.array(SplendorCitySchema), () => []),
 });
 const State = v.strictObject({
   gameId: GameIdSchema,
-  rulesVersion: v.literal("splendor-base-v1"),
+  rulesVersion: v.picklist(["splendor-base-v1", "splendor-cities-2017-v1"]),
   revision: GameRevisionSchema,
   phase: v.picklist(["PLAYING", "FINISHED"]),
   startedAt: ServerTimeSchema,
@@ -64,6 +69,7 @@ const State = v.strictObject({
   ),
   bank: SplendorTokensSchema,
   nobles: v.array(SplendorNobleSchema),
+  cities: v.optional(v.array(SplendorCitySchema), () => []),
   players: v.pipe(v.array(Player), v.minLength(2), v.maxLength(4)),
   feedback: SplendorFeedbackSchema,
   result: v.nullable(SplendorResultSchema),
@@ -108,7 +114,8 @@ export function resultFor(
     score: scoreFor(s, p),
     cards: p.purchased.length,
   }));
-  const ordered = [...scores].sort(
+  const contenders = reason === "CITIES" ? scores.filter(score => s.players.some(p => p.playerId === score.playerId && p.cities.length > 0)) : scores;
+  const ordered = [...contenders].sort(
       (a, b) => b.score - a.score || a.cards - b.cards,
     ),
     best = ordered[0]!;
@@ -116,7 +123,7 @@ export function resultFor(
     reason,
     scores,
     winnerPlayerIds:
-      reason === "POINTS"
+      (reason === "POINTS" || reason === "CITIES") && best
         ? ordered
             .filter((p) => p.score === best.score && p.cards === best.cards)
             .map((p) => p.playerId)
@@ -172,7 +179,7 @@ export function parseSplendorState(input: unknown): SplendorState {
     throw new Error("SPLENDOR hand limit exceeded.");
   const nobles = [...s.nobles, ...s.players.flatMap((p) => p.nobles)];
   if (
-    nobles.length !== s.players.length + 1 ||
+    nobles.length !== (s.rulesVersion === "splendor-base-v1" ? s.players.length + 1 : 0) ||
     new Set(nobles.map((n) => n.nobleId)).size !== nobles.length ||
     nobles.some(
       (n) =>
@@ -189,6 +196,14 @@ export function parseSplendorState(input: unknown): SplendorState {
     )
   )
     throw new Error("SPLENDOR unearned noble.");
+  const cities = [...s.cities, ...s.players.flatMap(p => p.cities)];
+  if (cities.length !== (s.rulesVersion === "splendor-base-v1" ? 0 : 3) ||
+      new Set(cities.map(c => c.tile)).size !== cities.length ||
+      cities.some(c => JSON.stringify(c) !== JSON.stringify(SPLENDOR_CITY_TILES.flat().find(x => x.cityId === c.cityId))) ||
+      s.players.some(p => p.cities.length > 1 || p.cities.some(c => !meetsSplendorCity(c, scoreFor(s, p), bonusesFor(s, p)))))
+    throw new Error("SPLENDOR city conservation or qualification failure.");
+  if (s.rulesVersion === "splendor-cities-2017-v1" && s.players.some(p => p.cities.length > 0) !== s.finalRound)
+    throw new Error("SPLENDOR missing city final round.");
   if (s.phase === "PLAYING") {
     if (
       s.result !== null ||
@@ -205,15 +220,19 @@ export function parseSplendorState(input: unknown): SplendorState {
     throw new Error("SPLENDOR finished metadata mismatch.");
   if (
     s.result?.reason === "POINTS" &&
-    (!s.finalRound || !s.players.some((p) => scoreFor(s, p) >= 15))
+    (s.rulesVersion !== "splendor-base-v1" || !s.finalRound || !s.players.some((p) => scoreFor(s, p) >= 15))
   )
     throw new Error("SPLENDOR premature finish.");
+  if (s.result?.reason === "CITIES" &&
+      (s.rulesVersion !== "splendor-cities-2017-v1" || !s.finalRound || !s.players.some(p => p.cities.length > 0)))
+    throw new Error("SPLENDOR premature city finish.");
   return s;
 }
 export function createSplendorGame(input: {
   gameId: string;
   playerIds: readonly PlayerId[];
   cards: readonly SplendorCard[];
+  cities?: readonly SplendorCity[];
   nobles: readonly (typeof SPLENDOR_NOBLES)[number][];
   now: number;
   transitionId: string;
@@ -222,7 +241,7 @@ export function createSplendorGame(input: {
     input.playerIds.length === 2 ? 4 : input.playerIds.length === 3 ? 5 : 7;
   return parseSplendorState({
     gameId: input.gameId,
-    rulesVersion: "splendor-base-v1",
+    rulesVersion: input.cities ? "splendor-cities-2017-v1" : "splendor-base-v1",
     revision: 0,
     phase: "PLAYING",
     startedAt: input.now,
@@ -248,7 +267,8 @@ export function createSplendorGame(input: {
       BLACK: amount,
       GOLD: 5,
     },
-    nobles: input.nobles.slice(0, input.playerIds.length + 1),
+    nobles: input.cities ? [] : input.nobles.slice(0, input.playerIds.length + 1),
+    cities: input.cities ?? [],
     players: input.playerIds.map((playerId) => ({
       playerId,
       tokens: emptyTokens(),
@@ -302,12 +322,12 @@ function finish(
 }
 function endTurn(s: SplendorState, now: number, token: string): void {
   s.revision = v.parse(GameRevisionSchema, s.revision + 1);
-  if (s.players.some((p) => scoreFor(s, p) >= 15)) s.finalRound = true;
+  if (s.rulesVersion === "splendor-base-v1" ? s.players.some((p) => scoreFor(s, p) >= 15) : s.players.some(p => p.cities.length > 0)) s.finalRound = true;
   const next =
     (s.players.findIndex((p) => p.playerId === s.activePlayerId) + 1) %
     s.players.length;
   if (s.finalRound && next === 0) {
-    finish(s, now, "POINTS");
+    finish(s, now, s.rulesVersion === "splendor-base-v1" ? "POINTS" : "CITIES");
     return;
   }
   if (s.noProgress >= s.players.length * 3) {
@@ -338,6 +358,7 @@ export type SplendorActionResult =
         | "INVALID_PAYMENT"
         | "INVALID_RETURN"
         | "CHOOSE_NOBLE"
+        | "CHOOSE_CITY"
         | "TURN_EXPIRED";
     };
 export function applySplendorAction(
@@ -457,6 +478,16 @@ export function applySplendorAction(
   if (noble) {
     s.nobles = s.nobles.filter((n) => n.nobleId !== noble.nobleId);
     p.nobles.push(noble);
+  }
+  const eligibleCities = s.cities.filter(c => meetsSplendorCity(c, scoreFor(s, p), bonusesFor(s, p)));
+  const city = action.cityId == null
+    ? eligibleCities.length === 1 ? eligibleCities[0] : undefined
+    : eligibleCities.find(c => c.cityId === action.cityId);
+  if ((eligibleCities.length > 0 && !city) || (action.cityId != null && !city))
+    return {ok: false, reason: "CHOOSE_CITY"};
+  if (city) {
+    s.cities = s.cities.filter(c => c.cityId !== city.cityId);
+    p.cities.push(city);
   }
   s.noProgress = action.kind === "PASS" ? s.noProgress + 1 : 0;
   s.feedback = {

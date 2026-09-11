@@ -32,3 +32,10 @@
 3. **보석**: Polished 3D game-asset atlas, exactly 3 columns by 2 rows, six isolated large tokens on a consistent dark midnight teal background #10282c. White brilliant-cut diamond, deep blue sapphire, rectangular green emerald, red ruby, angular black onyx, small stack of gold coins. Distinct silhouettes, sharp reflective facets, luxurious tactile lighting, centered with padding. No lettering, UI, labels, logos or existing game assets.
 
 점수, 비용, 카드 테두리, 토큰 수량, 귀족 조건은 CSS와 텍스트로 렌더링한다. 이미지에 게임 수치를 고정하지 않는다. 각 토큰은 색 외에도 서로 다른 모양과 접근성 이름을 가진다.
+
+
+## 도시 목표 데이터 (2017, 2026-09-11)
+
+`packages/shared/src/games/splendor/cities.ts`에 7개 실물 타일 × 2면을 기록한다. [고정 커밋의 citycards.csv](https://github.com/hexanome-04/splendor/blob/d1797acf5d43c6bc512b57ef3c1d990006a49a5c/server/src/main/resources/citycards.csv)의 40001–40014와 같은 커밋의 `client/public/images/cities` 타일 스캔 14장을 대조했다. 프로모 40015는 제외한다. 같은 그림의 양면 쌍은 1/4, 2/5, 3/6, 7/11, 8/12, 9/13, 10/14다. 규칙서 예시의 13점+빨강4+검정3, 15점+같은색5, 14점+초록4+다른색4와 일치한다.
+
+스캔은 수치 확인에만 사용했으며 저장소/배포물에 추가하지 않았다. 화면 도시는 기존 자체 제작 `landscapes.jpg` atlas와 보석 이미지를 재사용하고, 실제 지명을 추정하지 않고 도시 번호로 표시한다. 추가 이미지·dependency는 없다.
