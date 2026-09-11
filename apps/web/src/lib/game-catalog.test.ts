@@ -9,9 +9,9 @@ import {
   GAME_CATALOG,
 } from "../features/game-catalog/game-catalog.js";
 
-test("Web game catalog는 구현 완료된 스무 게임을 같은 계층으로 공개한다", () => {
+test("Web game catalog는 구현 완료된 스물한 게임을 같은 계층으로 공개한다", () => {
   assert.equal(Object.isFrozen(GAME_CATALOG), true);
-  assert.equal(GAME_CATALOG.length, 20);
+  assert.equal(GAME_CATALOG.length, 21);
   assert.deepEqual(GAME_CATALOG, [
     {
       gameType: "HANGUL_TILE",
@@ -48,6 +48,7 @@ test("Web game catalog는 구현 완료된 스무 게임을 같은 계층으로 
     { gameType: "LIAR_GAME", displayName: "라이어게임", description: "4~8명이 설명 속 거짓말을 찾아내는 비밀 제시어·토론·투표 게임입니다." },
     { gameType: "SPYFALL", displayName: "스파이폴", description: "3~8명, 질문 속에 숨은 스파이를 찾아라. 비밀 장소와 첩보 테이블에서 펼치는 대화 추리 게임." },
     { gameType: "AZUL", displayName: "아줄", description: "아름다운 타일로 나만의 벽을 완성하는 2~4인 전략 게임입니다." },
+    { gameType: "CARCASSONNE", displayName: "카르카손", description: "도시와 길을 잇고 미플로 땅을 차지하는 2~5인 타일 전략 게임입니다." },
     { gameType: "CLUE", displayName: "클루", description: "저택을 탐색하고 비밀 단서를 모아 사건을 해결하는 3~6인 추리 보드게임입니다." },
   ]);
   assert.equal(Object.isFrozen(GAME_CATALOG[0]), true);
@@ -58,13 +59,13 @@ test("Web game catalog는 구현 완료된 스무 게임을 같은 계층으로 
   assert.doesNotMatch(JSON.stringify(GAME_CATALOG), /준비중|COMING_SOON/u);
 });
 
-test("Home renders exactly twenty playable game choices including the approved CITY title and capacity", () => {
+test("Home renders exactly twenty-one playable game choices including the approved CITY title and capacity", () => {
   const html = renderToStaticMarkup(createElement(HomeScreen, {
     nickname: "", roomCodeInput: "", invitationRoomCode: null, routeErrorMessage: null,
     busyLabel: null, connectionLabel: "연결됨", connectionTone: "connected", errorMessage: null,
     onNicknameChange() {}, onRoomCodeChange() {}, onCreateRoom() {}, onJoinRoom() {}, onGoHome() {},
   }));
-  assert.equal((html.match(/class="game-option(?: selected)?"/gu) ?? []).length, 20);
+  assert.equal((html.match(/class="game-option(?: selected)?"/gu) ?? []).length, 21);
   for (const game of GAME_CATALOG) assert.ok(html.includes(game.displayName));
   assert.match(html, /2~6명이 비밀 역할을 고르고/u);
   assert.doesNotMatch(html, /COMING_SOON|준비중/u);

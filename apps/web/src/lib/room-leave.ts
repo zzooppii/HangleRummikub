@@ -85,6 +85,7 @@ export function roomLeaveConfirmationMessage(phase: RoomPhase, gameType?: GameTy
       if (gameType === "LOVE_LETTER") return "나가면 이번 러브레터 매치가 취소됩니다. 잠시 자리를 비우려면 창을 닫고 재접속할 수 있습니다. 방에서 나가시겠습니까?";
       if (gameType === "GURYONGTU") return "나가면 이번 구룡투 매치가 취소됩니다. 잠시 자리를 비우려면 창을 닫고 재접속할 수 있습니다. 방에서 나가시겠습니까?";
       if (gameType === "AZUL") return "나가면 이번 아줄 매치가 취소됩니다. 잠시 자리를 비우려면 창을 닫고 재접속할 수 있습니다. 방에서 나가시겠습니까?";
+      if (gameType === "CARCASSONNE") return "나가면 이번 카르카손 매치가 취소됩니다. 잠시 자리를 비우려면 창을 닫고 재접속할 수 있습니다. 방에서 나가시겠습니까?";
       if (gameType === "CLUE") return "나가면 이번 클루 게임이 취소됩니다. 잠시 자리를 비우려면 창을 닫고 재접속할 수 있습니다. 방에서 나가시겠습니까?";
       if (gameType === "WORD_DUET") return "나가면 이번 코드네임 듀엣 매치가 취소됩니다. 잠시 자리를 비우려면 창을 닫고 재접속할 수 있습니다. 방에서 나가시겠습니까?";
       if (gameType === "SABOTEUR") return "나가면 이번 사보타지 매치가 취소됩니다. 잠시 자리를 비우려면 창을 닫고 재접속할 수 있습니다. 방에서 나가시겠습니까?";

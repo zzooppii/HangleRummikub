@@ -5,6 +5,7 @@ import { JaipurPlayingProjectionSchema, JaipurFinishedProjectionSchema, jaipurPr
 import { LoveLetterPlayingProjectionSchema, LoveLetterFinishedProjectionSchema, loveLetterProjectionIsConsistent } from "../games/love-letter/contracts.js";
 import { GuryongtuPlayingProjectionSchema, GuryongtuFinishedProjectionSchema, guryongtuProjectionIsConsistent } from "../games/guryongtu/contracts.js";
 import { AzulPlayingProjectionSchema, AzulFinishedProjectionSchema, azulProjectionIsConsistent } from "../games/azul/contracts.js";
+import { CarcassonnePlayingProjectionSchema, CarcassonneFinishedProjectionSchema, carcassonneProjectionIsConsistent } from "../games/carcassonne/contracts.js";
 import { CluePlayingProjectionSchema, ClueFinishedProjectionSchema, clueProjectionIsConsistent } from "../games/clue/contracts.js";
 import { DuetPlayingProjectionSchema, DuetFinishedProjectionSchema, duetProjectionIsConsistent } from "../games/word-duet/contracts.js";
 import { LostCitiesSettingsSchema } from "../games/lost-cities/actions.js";
@@ -402,6 +403,23 @@ export const AzulLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, AzulLob
 export const AzulPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, AzulPlayingPlatformSnapshotV2> = AzulPlayingRaw;
 export const AzulFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, AzulFinishedPlatformSnapshotV2> = AzulFinishedRaw;
 
+const CarcassonneOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const CarcassonneRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("CARCASSONNE") };
+const CarcassonnePlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(5));
+const CarcassonneLobbyRaw = v.pipe(v.strictObject({ ...CarcassonneOuter, room: v.strictObject({ ...CarcassonneRoom, phase: v.literal("LOBBY"),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)) }), game: v.null() }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
+const CarcassonnePlayingRaw = v.pipe(v.strictObject({ ...CarcassonneOuter, room: v.strictObject({ ...CarcassonneRoom, phase: v.literal("PLAYING"), players: CarcassonnePlayers }), game: CarcassonnePlayingProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => carcassonneProjectionIsConsistent(s.game)));
+const CarcassonneFinishedRaw = v.pipe(v.strictObject({ ...CarcassonneOuter, room: v.strictObject({ ...CarcassonneRoom, phase: v.literal("FINISHED"), players: CarcassonnePlayers }), game: CarcassonneFinishedProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => carcassonneProjectionIsConsistent(s.game)));
+export type CarcassonneLobbyPlatformSnapshotV2 = v.InferOutput<typeof CarcassonneLobbyRaw>;
+export type CarcassonnePlayingPlatformSnapshotV2 = v.InferOutput<typeof CarcassonnePlayingRaw>;
+export type CarcassonneFinishedPlatformSnapshotV2 = v.InferOutput<typeof CarcassonneFinishedRaw>;
+export const CarcassonneLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, CarcassonneLobbyPlatformSnapshotV2> = CarcassonneLobbyRaw;
+export const CarcassonnePlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, CarcassonnePlayingPlatformSnapshotV2> = CarcassonnePlayingRaw;
+export const CarcassonneFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, CarcassonneFinishedPlatformSnapshotV2> = CarcassonneFinishedRaw;
+
 const ClueOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
 const ClueRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("CLUE") };
 const CluePlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(3), v.maxLength(6));
@@ -545,6 +563,7 @@ export const LobbyPlatformSnapshotV2Schema = v.union([
   LoveLetterLobbyPlatformSnapshotV2Schema,
   GuryongtuLobbyPlatformSnapshotV2Schema,
   AzulLobbyPlatformSnapshotV2Schema,
+  CarcassonneLobbyPlatformSnapshotV2Schema,
   ClueLobbyPlatformSnapshotV2Schema,
   DuetLobbyPlatformSnapshotV2Schema,
   SaboteurLobbyPlatformSnapshotV2Schema,
@@ -699,6 +718,7 @@ export const PlayingPlatformSnapshotV2Schema = v.union([
   LoveLetterPlayingPlatformSnapshotV2Schema,
   GuryongtuPlayingPlatformSnapshotV2Schema,
   AzulPlayingPlatformSnapshotV2Schema,
+  CarcassonnePlayingPlatformSnapshotV2Schema,
   CluePlayingPlatformSnapshotV2Schema,
   DuetPlayingPlatformSnapshotV2Schema,
   SaboteurPlayingPlatformSnapshotV2Schema,
@@ -853,6 +873,7 @@ export const FinishedPlatformSnapshotV2Schema = v.union([
   LoveLetterFinishedPlatformSnapshotV2Schema,
   GuryongtuFinishedPlatformSnapshotV2Schema,
   AzulFinishedPlatformSnapshotV2Schema,
+  CarcassonneFinishedPlatformSnapshotV2Schema,
   ClueFinishedPlatformSnapshotV2Schema,
   DuetFinishedPlatformSnapshotV2Schema,
   SaboteurFinishedPlatformSnapshotV2Schema,

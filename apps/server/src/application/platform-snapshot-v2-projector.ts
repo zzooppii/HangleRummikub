@@ -5,6 +5,7 @@ import { projectJaipur } from "../games/jaipur/compatibility/projector.js";
 import { projectLoveLetter } from "../games/love-letter/compatibility/projector.js";
 import { projectGuryongtu } from "../games/guryongtu/compatibility/projector.js";
 import { projectAzul } from "../games/azul/compatibility/projector.js";
+import { projectCarcassonne } from "../games/carcassonne/compatibility/projector.js";
 import { projectClue } from "../games/clue/compatibility/projector.js";
 import { projectDuet } from "../games/word-duet/compatibility/projector.js";
 import { projectSaboteur } from "../games/saboteur/compatibility/projector.js";
@@ -136,6 +137,7 @@ export class PlatformSnapshotV2Projector {
     if(input.room.gameType === "LOVE_LETTER") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectLoveLetter(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "GURYONGTU") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectGuryongtu(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "AZUL") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectAzul(input.room.game,input.selfPlayerId)});
+    if(input.room.gameType === "CARCASSONNE") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectCarcassonne(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "CLUE") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectClue(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "WORD_DUET") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectDuet(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "SABOTEUR") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectSaboteur(input.room.game,input.selfPlayerId)});

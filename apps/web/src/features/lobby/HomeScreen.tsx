@@ -181,6 +181,7 @@ export function HomeScreen(props: HomeScreenProps) {
                             {game.gameType === "SABOTEUR" ? <span aria-hidden="true" style={{display:"block",width:"100%",height:"100%",backgroundImage:"url(/images/saboteur/atlas.png)",backgroundSize:"300% 200%",backgroundPosition:"0% 0%"}}/> : null}
                             {game.gameType === "WORD_DUET" ? <img src="/images/word-duet/operation-night.webp" alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : null}
                             {game.gameType === "AZUL" ? <img src="/images/azul/courtyard.webp" alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:12}} /> : null}
+                            {game.gameType === "CARCASSONNE" ? <img src="/images/carcassonne/countryside.png" alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:12}} /> : null}
                             {game.gameType === "CLUE" ? <img src="/images/clue/manor.webp" alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:12}} /> : null}
                             {game.gameType === "GURYONGTU" ? <span aria-hidden="true" style={{ fontSize: 52, letterSpacing: -8 }}>◐◑</span> : null}
                             {game.gameType === "LOVE_LETTER" ? <span aria-hidden="true" style={{display:"block",width:90,height:90,borderRadius:12,backgroundImage:"url(/images/love-letter/court.png)",backgroundSize:"500% 200%",backgroundPosition:"100% 100%"}}/> : null}

@@ -1344,6 +1344,7 @@ function registerResumeHandler(
         runtime.loveLetterHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.guryongtuHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.azulHostSuccession?.resumed(result.data.roomId, result.data.playerId);
+        runtime.carcassonneHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.clueHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.duetHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.saboteurHostSuccession?.resumed(result.data.roomId, result.data.playerId);
@@ -2832,6 +2833,28 @@ function registerAzulHandlers(socket: RealtimeSocket, runtime: ApplicationRuntim
 }
 
 
+import { CarcassonneClientCommandSchema } from "@hangul-rummikub/shared";
+function registerCarcassonneHandlers(socket: RealtimeSocket, runtime: ApplicationRuntime): void {
+  for (const event of ["carcassonne:act"] as const) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
+    const receivedAt = runtime.clock.now(), command = parseNumberRematch(CarcassonneClientCommandSchema, raw);
+    if (!command.success || command.output.kind !== event) { acknowledgeIfPresent(acknowledge, failureAck(raw, INVALID_PAYLOAD_ERROR, receivedAt)); return; }
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(createSocketId(socket.id));
+      if (!binding) { acknowledgeIfPresent(acknowledge, failureAck(raw, UNAUTHENTICATED_ERROR, receivedAt)); return; }
+      if (!isRoomAdmissionCompatible("CARCASSONNE", socketAdmissionCapabilities(socket))) {
+        acknowledgeIfPresent(acknowledge, failureAck(raw, {code:"INCOMPATIBLE_GAME_CAPABILITY",message:"CARCASSONNE requires V2 capability.",recoverable:false}, receivedAt)); return;
+      }
+      if (!runtime.carcassonneService) { acknowledgeIfPresent(acknowledge, failureAck(raw, INTERNAL_ERROR, receivedAt)); return; }
+      const result = await runtime.carcassonneService.command({roomId:binding.roomId,actorPlayerId:binding.playerId,command:command.output,receivedAt,
+        authorization:{isCurrent:()=>socket.connected && isCurrentBinding(runtime,binding)}});
+      if (!result.ok) { acknowledgeIfPresent(acknowledge, failureAck(raw,result.error,receivedAt)); return; }
+      const loaded = await loadSnapshotForSocket(runtime,socket,binding.roomId,binding.playerId);
+      if (loaded && socket.connected && isCurrentBinding(runtime,binding)) acknowledgeIfPresent(acknowledge,snapshotSuccessAck(command.output.requestId,loaded.metadata,loaded.wireSnapshot));
+    })().catch(()=>acknowledgeIfPresent(acknowledge,failureAck(raw,INTERNAL_ERROR,receivedAt)));
+  });
+}
+
+
 import { ClueClientCommandSchema } from "@hangul-rummikub/shared";
 function registerClueHandlers(socket: RealtimeSocket, runtime: ApplicationRuntime): void {
   for (const event of ["clue:act"] as const) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
@@ -3303,6 +3326,7 @@ function registerDisconnectHandler(
     runtime.loveLetterHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.guryongtuHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.azulHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
+    runtime.carcassonneHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.clueHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.duetHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.saboteurHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
@@ -3395,6 +3419,7 @@ export function registerSocketIoHandlers(
   const unsubscribeLoveLetter = runtime.loveLetterService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeGuryongtu = runtime.guryongtuService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeAzul = runtime.azulService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
+  const unsubscribeCarcassonne = runtime.carcassonneService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeClue = runtime.clueService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeDuet = runtime.duetService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeSaboteur = runtime.saboteurService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
@@ -3458,6 +3483,7 @@ export function registerSocketIoHandlers(
     registerLoveLetterHandlers(socket, runtime);
     registerGuryongtuHandlers(socket, runtime);
     registerAzulHandlers(socket, runtime);
+    registerCarcassonneHandlers(socket, runtime);
     registerClueHandlers(socket, runtime);
     registerDuetHandlers(socket, runtime);
     registerSaboteurHandlers(socket, runtime);
@@ -3490,6 +3516,7 @@ export function registerSocketIoHandlers(
     unsubscribeLoveLetter?.();
     unsubscribeGuryongtu?.();
     unsubscribeAzul?.();
+    unsubscribeCarcassonne?.();
     unsubscribeClue?.();
     unsubscribeDuet?.();
     unsubscribeSaboteur?.();

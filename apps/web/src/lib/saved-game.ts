@@ -54,7 +54,7 @@ export class SavedGameStorage {
       return {
         session: session.value,
         gameType: gameType === "HANGUL_TILE" || gameType === "NUMBER_TILE" ||
-          gameType === "GEM_CARD" || gameType === "CITY_ROLE" || gameType === "DRAW_RELAY" || gameType === "SNEAKY_LUNCH" || gameType === "WOLF_NIGHT" || gameType === "LIAR_GAME" || gameType === "SPYFALL" || gameType === "WORD_DUET" || gameType === "JAIPUR" || gameType === "LOVE_LETTER" || gameType === "GURYONGTU" || gameType === "AZUL" || gameType === "CLUE" || gameType === "SABOTEUR" || gameType === "LOST_CITIES" || gameType === "SPLENDOR" || gameType === "HALLI_GALLI" || gameType === "ISLAND_SETTLERS" ? gameType : null,
+          gameType === "GEM_CARD" || gameType === "CITY_ROLE" || gameType === "DRAW_RELAY" || gameType === "SNEAKY_LUNCH" || gameType === "WOLF_NIGHT" || gameType === "LIAR_GAME" || gameType === "SPYFALL" || gameType === "WORD_DUET" || gameType === "JAIPUR" || gameType === "LOVE_LETTER" || gameType === "GURYONGTU" || gameType === "AZUL" || gameType === "CARCASSONNE" || gameType === "CLUE" || gameType === "SABOTEUR" || gameType === "LOST_CITIES" || gameType === "SPLENDOR" || gameType === "HALLI_GALLI" || gameType === "ISLAND_SETTLERS" ? gameType : null,
       };
     } catch {
       return null;

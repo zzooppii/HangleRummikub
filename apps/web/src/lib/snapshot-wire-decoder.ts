@@ -4,6 +4,7 @@ import type { JaipurLobbyPlatformSnapshotV2, JaipurPlayingPlatformSnapshotV2, Ja
 import type { LoveLetterLobbyPlatformSnapshotV2, LoveLetterPlayingPlatformSnapshotV2, LoveLetterFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import type { GuryongtuLobbyPlatformSnapshotV2, GuryongtuPlayingPlatformSnapshotV2, GuryongtuFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import type { AzulLobbyPlatformSnapshotV2, AzulPlayingPlatformSnapshotV2, AzulFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
+import type { CarcassonneLobbyPlatformSnapshotV2, CarcassonnePlayingPlatformSnapshotV2, CarcassonneFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import type { ClueLobbyPlatformSnapshotV2, CluePlayingPlatformSnapshotV2, ClueFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import type { DuetLobbyPlatformSnapshotV2, DuetPlayingPlatformSnapshotV2, DuetFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
 import type { SaboteurLobbyPlatformSnapshotV2, SaboteurPlayingPlatformSnapshotV2, SaboteurFinishedPlatformSnapshotV2 } from "@hangul-rummikub/shared";
@@ -54,6 +55,7 @@ export const WEB_SUPPORTED_GAME_TYPES = Object.freeze([
   "LIAR_GAME",
   "SPYFALL",
   "AZUL",
+  "CARCASSONNE",
   "CLUE",
 ] as const);
 
@@ -79,6 +81,7 @@ export type JaipurWebSnapshot = JaipurLobbyPlatformSnapshotV2 | JaipurPlayingPla
 export type LoveLetterWebSnapshot = LoveLetterLobbyPlatformSnapshotV2 | LoveLetterPlayingPlatformSnapshotV2 | LoveLetterFinishedPlatformSnapshotV2;
 export type GuryongtuWebSnapshot = GuryongtuLobbyPlatformSnapshotV2 | GuryongtuPlayingPlatformSnapshotV2 | GuryongtuFinishedPlatformSnapshotV2;
 export type AzulWebSnapshot = AzulLobbyPlatformSnapshotV2 | AzulPlayingPlatformSnapshotV2 | AzulFinishedPlatformSnapshotV2;
+export type CarcassonneWebSnapshot = CarcassonneLobbyPlatformSnapshotV2 | CarcassonnePlayingPlatformSnapshotV2 | CarcassonneFinishedPlatformSnapshotV2;
 export type ClueWebSnapshot = ClueLobbyPlatformSnapshotV2 | CluePlayingPlatformSnapshotV2 | ClueFinishedPlatformSnapshotV2;
 export type DuetWebSnapshot = DuetLobbyPlatformSnapshotV2 | DuetPlayingPlatformSnapshotV2 | DuetFinishedPlatformSnapshotV2;
 export type SaboteurWebSnapshot = SaboteurLobbyPlatformSnapshotV2 | SaboteurPlayingPlatformSnapshotV2 | SaboteurFinishedPlatformSnapshotV2;
@@ -95,6 +98,7 @@ export type CompatibleWebSnapshot =
   | Readonly<{kind: "PLATFORM_V2_LOVE_LETTER"; snapshotVersion: 2; gameType: "LOVE_LETTER"; platformSnapshot: LoveLetterWebSnapshot }>
   | Readonly<{kind: "PLATFORM_V2_GURYONGTU"; snapshotVersion: 2; gameType: "GURYONGTU"; platformSnapshot: GuryongtuWebSnapshot }>
   | Readonly<{kind: "PLATFORM_V2_AZUL"; snapshotVersion: 2; gameType: "AZUL"; platformSnapshot: AzulWebSnapshot }>
+  | Readonly<{kind: "PLATFORM_V2_CARCASSONNE"; snapshotVersion: 2; gameType: "CARCASSONNE"; platformSnapshot: CarcassonneWebSnapshot }>
   | Readonly<{kind: "PLATFORM_V2_CLUE"; snapshotVersion: 2; gameType: "CLUE"; platformSnapshot: ClueWebSnapshot }>
   | Readonly<{kind: "PLATFORM_V2_WORD_DUET"; snapshotVersion: 2; gameType: "WORD_DUET"; platformSnapshot: DuetWebSnapshot }>
   | Readonly<{kind: "PLATFORM_V2_SABOTEUR"; snapshotVersion: 2; gameType: "SABOTEUR"; platformSnapshot: SaboteurWebSnapshot }>
@@ -205,7 +209,7 @@ function decodePlatformSnapshotV2(
     input.room.gameType !== "HANGUL_TILE" &&
     input.room.gameType !== "NUMBER_TILE" &&
     input.room.gameType !== "GEM_CARD" &&
-    input.room.gameType !== "CITY_ROLE" && input.room.gameType !== "DRAW_RELAY" && input.room.gameType !== "SNEAKY_LUNCH" && input.room.gameType !== "WOLF_NIGHT" && input.room.gameType !== "LIAR_GAME" && input.room.gameType !== "SPYFALL" && input.room.gameType !== "WORD_DUET" && input.room.gameType !== "JAIPUR" && input.room.gameType !== "LOVE_LETTER" && input.room.gameType !== "GURYONGTU" && input.room.gameType !== "AZUL" && input.room.gameType !== "CLUE" && input.room.gameType !== "SABOTEUR" && input.room.gameType !== "LOST_CITIES" && input.room.gameType !== "SPLENDOR" && input.room.gameType !== "HALLI_GALLI" && input.room.gameType !== "ISLAND_SETTLERS"
+    input.room.gameType !== "CITY_ROLE" && input.room.gameType !== "DRAW_RELAY" && input.room.gameType !== "SNEAKY_LUNCH" && input.room.gameType !== "WOLF_NIGHT" && input.room.gameType !== "LIAR_GAME" && input.room.gameType !== "SPYFALL" && input.room.gameType !== "WORD_DUET" && input.room.gameType !== "JAIPUR" && input.room.gameType !== "LOVE_LETTER" && input.room.gameType !== "GURYONGTU" && input.room.gameType !== "AZUL" && input.room.gameType !== "CARCASSONNE" && input.room.gameType !== "CLUE" && input.room.gameType !== "SABOTEUR" && input.room.gameType !== "LOST_CITIES" && input.room.gameType !== "SPLENDOR" && input.room.gameType !== "HALLI_GALLI" && input.room.gameType !== "ISLAND_SETTLERS"
   ) {
     return typeof input.room.gameType === "string"
       ? { kind: "INCOMPATIBLE", reason: "UNSUPPORTED_GAME_TYPE" }
@@ -249,6 +253,11 @@ function decodePlatformSnapshotV2(
     const snapshot = validation.value;
     if (!isAzulSnapshot(snapshot)) return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
     return { kind: "COMPATIBLE", value: { kind: "PLATFORM_V2_AZUL", snapshotVersion: 2, gameType: "AZUL", platformSnapshot: snapshot } };
+  }
+  if (input.room.gameType === "CARCASSONNE") {
+    const snapshot = validation.value;
+    if (!isCarcassonneSnapshot(snapshot)) return { kind: "INCOMPATIBLE", reason: "INVALID_V2_PROJECTION" };
+    return { kind: "COMPATIBLE", value: { kind: "PLATFORM_V2_CARCASSONNE", snapshotVersion: 2, gameType: "CARCASSONNE", platformSnapshot: snapshot } };
   }
   if (input.room.gameType === "CLUE") {
     const snapshot = validation.value;
@@ -392,6 +401,7 @@ function isJaipurSnapshot(s: PlatformSnapshotV2): s is JaipurWebSnapshot { retur
 function isLoveLetterSnapshot(s: PlatformSnapshotV2): s is LoveLetterWebSnapshot { return s.room.gameType === "LOVE_LETTER" && (s.game === null || s.game.gameType === "LOVE_LETTER"); }
 function isGuryongtuSnapshot(s: PlatformSnapshotV2): s is GuryongtuWebSnapshot { return s.room.gameType === "GURYONGTU" && (s.game === null || s.game.gameType === "GURYONGTU"); }
 function isAzulSnapshot(s: PlatformSnapshotV2): s is AzulWebSnapshot { return s.room.gameType === "AZUL" && (s.game === null || s.game.gameType === "AZUL"); }
+function isCarcassonneSnapshot(s: PlatformSnapshotV2): s is CarcassonneWebSnapshot { return s.room.gameType === "CARCASSONNE" && (s.game === null || s.game.gameType === "CARCASSONNE"); }
 function isClueSnapshot(s: PlatformSnapshotV2): s is ClueWebSnapshot { return s.room.gameType === "CLUE" && (s.game === null || s.game.gameType === "CLUE"); }
 function isDuetSnapshot(s: PlatformSnapshotV2): s is DuetWebSnapshot { return s.room.gameType === "WORD_DUET" && (s.game === null || s.game.gameType === "WORD_DUET"); }
 function isSaboteurSnapshot(s: PlatformSnapshotV2): s is SaboteurWebSnapshot { return s.room.gameType === "SABOTEUR" && (s.game === null || s.game.gameType === "SABOTEUR"); }
