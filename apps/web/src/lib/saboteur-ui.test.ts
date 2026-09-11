@@ -11,7 +11,7 @@ import { resolveRoomSnapshotView } from './room-snapshot-view.js';
 import { getGameStartControl } from './game-start.js';
 const players = ['a', 'b', 'c'].map((id, i) => ({ playerId: id, nickname: ['하비', '친구', '동료'][i]!, isHost: i === 0, connectionStatus: 'CONNECTED' }));
 function lobby(n = 3) { return parse(SaboteurLobbyPlatformSnapshotV2Schema, { snapshotVersion: 2, versions: { roomRevision: 1, presenceVersion: 1 }, serverTime: 10000, self: { playerId: 'a' }, room: { roomId: 'sab-room', roomCode: 'BCDFGH', gameType: 'SABOTEUR', phase: 'LOBBY', players: players.slice(0, n) }, game: null }); }
-function playing() { const l = lobby(); return parse(SaboteurPlayingPlatformSnapshotV2Schema, { ...l, room: { ...l.room, phase: 'PLAYING' }, game: { gameType: 'SABOTEUR', gameId: 'sab-game', gameRevision: 0, rulesVersion: 'saboteur-base-2025-v1', round: 1, roundId: 'r1', phase: 'PLAYING', turnId: 't1', activePlayerId: 'a', deckCount: 49, discardCount: 0, board: [], goals: ['A', 'B', 'C'].map((goalId, i) => ({ goalId, x: 8, y: [-2, 0, 2][i], face: null, rotation: 0 })), playerStates: players.map(p => ({ playerId: p.playerId, handCount: 6, brokenTools: [] })), privateState: { playerId: 'a', role: 'SABOTEUR', hand: [{ kind: 'PATH', path: 'EW', cardId: 'h1' }, { kind: 'BREAK', tool: 'PICKAXE', cardId: 'h2' }, { kind: 'REPAIR', tools: ['PICKAXE', 'CART'], cardId: 'h3' }, { kind: 'MAP', cardId: 'h4' }, { kind: 'ROCKFALL', cardId: 'h5' }, { kind: 'PATH', path: 'DEAD_EW', cardId: 'h6' }], gold: [], observations: [], goldChoices: [], chatSequence: 0 }, roundResults: [], feedback: null, messages: [] } }); }
+function playing() { const l = lobby(); return parse(SaboteurPlayingPlatformSnapshotV2Schema, { ...l, room: { ...l.room, phase: 'PLAYING' }, game: { gameType: 'SABOTEUR', gameId: 'sab-game', gameRevision: 0, rulesVersion: 'saboteur-base-2025-v1', round: 1, roundId: 'r1', deadlineAt: 40000, phase: 'PLAYING', turnId: 't1', activePlayerId: 'a', deckCount: 49, discardCount: 0, board: [], goals: ['A', 'B', 'C'].map((goalId, i) => ({ goalId, x: 8, y: [-2, 0, 2][i], face: null, rotation: 0 })), playerStates: players.map(p => ({ playerId: p.playerId, handCount: 6, brokenTools: [] })), privateState: { playerId: 'a', role: 'SABOTEUR', hand: [{ kind: 'PATH', path: 'EW', cardId: 'h1' }, { kind: 'BREAK', tool: 'PICKAXE', cardId: 'h2' }, { kind: 'REPAIR', tools: ['PICKAXE', 'CART'], cardId: 'h3' }, { kind: 'MAP', cardId: 'h4' }, { kind: 'ROCKFALL', cardId: 'h5' }, { kind: 'PATH', path: 'DEAD_EW', cardId: 'h6' }], gold: [], observations: [], goldChoices: [], chatSequence: 0 }, roundResults: [], feedback: null, messages: [] } }); }
 const render = (snapshot: SaboteurWebSnapshot) => renderToStaticMarkup(createElement(SaboteurScreen, { snapshot, connected: true, pending: false, error: null, connectionLabel: '접속 중', onCommand: async () => { }, onRematch: () => { }, onStart: () => { }, onLeave: () => { }, onCopy: () => { } }));
 test('Saboteur catalog admission and snapshot route reach concrete tabletop renderer', () => {
     for (const s of [lobby(), playing()]) {
@@ -64,7 +64,7 @@ test('Saboteur round result offers confirmation and cancellation offers same-roo
     const result = parse(SaboteurPlayingPlatformSnapshotV2Schema, { ...p, game: settled });
     assert.match(render(result), /확인 · 다음 라운드/);
     assert.match(render(result), /사보타지가 광산을 막았습니다/);
-    const { confirmedPlayerIds: _confirmed, ...base } = settled, cancelled = parse(SaboteurFinishedPlatformSnapshotV2Schema, { ...p, room: { ...p.room, phase: 'FINISHED' }, game: { ...base, phase: 'FINISHED', result: { reason: 'CANCELLED', winnerPlayerIds: [], scores: [] } } });
+    const { confirmedPlayerIds: _confirmed, ...base } = settled, cancelled = parse(SaboteurFinishedPlatformSnapshotV2Schema, { ...p, room: { ...p.room, phase: 'FINISHED' }, game: { ...base, phase: 'FINISHED', deadlineAt:null, result: { reason: 'CANCELLED', winnerPlayerIds: [], scores: [] } } });
     assert.match(render(cancelled), /경기가 취소되었습니다/);
     assert.match(render(cancelled), /같은 방에서 다시 하기/);
 });
@@ -76,4 +76,26 @@ test('Saboteur public chat escapes markup and map feedback includes no target or
     assert.doesNotMatch(html, /<img src="?x/);
     p.game.feedback = { playerId: p.self.playerId, kind: 'MAP', at: p.serverTime, targetPlayerId: null, tool: null, position: null };
     assert.equal(saboteurFeedback(p.game, () => '하비'), '하비님이 지도를 확인했습니다.');
+});
+
+test('Saboteur shows server-based 30-second action timer and disables actions when the deadline is reached', () => {
+    const s=playing();
+    assert.match(render(s),/행동 남은 시간/);
+    assert.match(render(s),/30초/);
+    s.game.deadlineAt=s.serverTime;
+    const html=render(s);
+    assert.match(html,/sab-timer-urgent/);
+    assert.match(html,/시간 종료/);
+    assert.equal((html.match(/class="sab-hand-card"[^>]*disabled/g)??[]).length,6);
+    const {deadlineAt:_deadline,...missing}=s.game;
+    assert.equal(safeParse(SaboteurPlayingPlatformSnapshotV2Schema,{...s,game:missing}).success,false);
+    assert.equal(safeParse(SaboteurPlayingPlatformSnapshotV2Schema,{...s,game:{...s.game,deadlineAt:null}}).success,false);
+});
+
+test('Saboteur automatic timeout feedback never includes discarded card identity or gold value', () => {
+    const g=playing().game;
+    g.feedback={kind:'TIMEOUT_DISCARD',playerId:g.privateState.playerId,at:playing().serverTime,position:null,targetPlayerId:null,tool:null};
+    assert.equal(saboteurFeedback(g,()=> '하비'),'하비님의 시간이 끝나 카드 한 장을 자동으로 버렸습니다.');
+    g.feedback.kind='TIMEOUT_GOLD';
+    assert.equal(saboteurFeedback(g,()=> '하비'),'하비님의 시간이 끝나 금 카드를 자동으로 선택했습니다.');
 });

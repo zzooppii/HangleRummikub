@@ -1,4 +1,4 @@
-import { GameIdSchema, GameRevisionSchema, ServerTimeSchema, type GameId, type GameRevision, type ServerTime } from "@hangul-rummikub/shared";
+import { GameIdSchema, GameRevisionSchema, ServerTimeSchema, type GameId, type GameRevision, type ServerTime, type TurnId } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 import { parseSaboteurState, type SaboteurState } from "../domain/game.js";
 export type SaboteurStoredGame = Readonly<{
@@ -12,7 +12,7 @@ export type SaboteurLifecycle = Readonly<{
     lifecycle: 'RUNNING';
     gameId: GameId;
     gameRevision: GameRevision;
-    activeTurn: null;
+    activeTurn: Readonly<{turnId: TurnId; deadlineAt: ServerTime}>;
 }> | Readonly<{
     lifecycle: 'FINISHED';
     gameId: GameId;
@@ -31,6 +31,7 @@ export class SaboteurGameStateAdapter {
                 throw new Error('Saboteur finish time missing.');
             return { lifecycle: 'FINISHED', gameId: game.gameId, finishedAt: game.finishedAt };
         }
-        return { lifecycle: 'RUNNING', gameId: game.gameId, gameRevision: game.gameRevision, activeTurn: null };
+        if (game.state.deadlineAt === null) throw new Error('Saboteur deadline missing.');
+        return { lifecycle: 'RUNNING', gameId: game.gameId, gameRevision: game.gameRevision, activeTurn: {turnId:game.state.transitionId, deadlineAt:game.state.deadlineAt} };
     }
 }

@@ -82,7 +82,10 @@ export function toScheduledTurnDeadline(
 ): ScheduledTurnDeadline {
   if ("state" in game && !("windowStartedAt" in game)) {
     if (game.state.rulesVersion === "jaipur-base-v1") throw new Error("Jaipur has no turn deadline.");
-    if (game.state.rulesVersion === "saboteur-base-2025-v1") throw new Error("Saboteur has no turn deadline.");
+    if (game.state.rulesVersion === "saboteur-base-2025-v1") {
+      if (game.state.deadlineAt === null) throw new Error("Saboteur deadline missing.");
+      return {roomId,gameId:game.gameId,expectedGameRevision:game.gameRevision,turnId:game.state.transitionId,deadlineAt:game.state.deadlineAt};
+    }
     if ("startingPlayerId" in game.state) throw new Error("LostCities has no turn deadline.");
     if ("turnId" in game.state) return { roomId, gameId: game.gameId, expectedGameRevision: game.gameRevision, turnId: game.state.turnId, deadlineAt: game.state.deadlineAt };
     if ("nextTransitionAt" in game.state) return {roomId,gameId:game.gameId,expectedGameRevision:game.gameRevision,turnId:parse(TurnIdSchema,game.state.transitionId),deadlineAt:parse(ServerTimeSchema,game.state.nextTransitionAt)};
@@ -163,9 +166,10 @@ export async function scheduleCurrentTurnBestEffort(
 
     if ("state" in game && !("windowStartedAt" in game)) {
       if (game.state.rulesVersion === "jaipur-base-v1") return false;
-      if (game.state.rulesVersion === "saboteur-base-2025-v1") return false;
-      if ("startingPlayerId" in game.state) return false;
-      if ("turnId" in game.state) {
+      if (game.state.rulesVersion === "saboteur-base-2025-v1") {
+        if (game.state.deadlineAt === null || game.state.transitionId !== identity.turnId) return false;
+      } else if ("startingPlayerId" in game.state) return false;
+      else if ("turnId" in game.state) {
         if (game.state.turnId !== identity.turnId) return false;
       } else if ("nextTransitionAt" in game.state) {
         if (game.state.nextTransitionAt === null || game.state.transitionId !== identity.turnId) return false;

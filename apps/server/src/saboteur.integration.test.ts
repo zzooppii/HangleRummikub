@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { io, type Socket } from "socket.io-client";
 import * as v from "valibot";
-import { SUPPORTED_GAME_TYPES, PlatformSnapshotV2Schema, SessionBootstrapAckSchema, StateSyncWireAckSchema, RoomLeaveAckSchema, type GameType, type PlatformSnapshotV2, } from "@hangul-rummikub/shared";
+import { StateSnapshotWireEventSchema, ServerTimeSchema, SUPPORTED_GAME_TYPES, PlatformSnapshotV2Schema, SessionBootstrapAckSchema, StateSyncWireAckSchema, RoomLeaveAckSchema, type GameType, type PlatformSnapshotV2, } from "@hangul-rummikub/shared";
 import { createHttpServer } from "./server.js";
 type Client = Socket<Record<string, (value: unknown) => void>, Record<string, (value: unknown, ack: (value: unknown) => void) => void>>;
 type Command = {
@@ -77,7 +77,7 @@ test('SABOTEUR socket admission supports 3/6/10, rejects too few, full room and 
         }
         const s = await start(h);
         assert.equal(sab(s).playerStates.length, count);
-        assert.equal((await h.server.runtime.persistence.listActiveTurnDeadlines()).some(d => d.roomId === s.room.roomId), false);
+        assert.equal((await h.server.runtime.persistence.listActiveTurnDeadlines()).some(d => d.roomId === s.room.roomId), true);
     }
     const h = await harness(t), old = await h.connect(['JAIPUR']), credential = await h.bootstrap(old);
     assert.equal(h.failure(await h.call(old, 'room:join', { bootstrapCredential: credential, nickname: '구버전', roomCode: h.lobby.room.roomCode })), 'INCOMPATIBLE_GAME_CAPABILITY');
@@ -152,6 +152,7 @@ test('SABOTEUR reconnect restores exact private state, revokes old primary and e
     const h = await harness(t), initial = await start(h), before = await h.sync(h.host), member = h.members[0]!, replacement = await h.connect();
     const resume = h.success(await h.call(replacement, 'session:resume', { credential: { roomCode: before.room.roomCode, sessionToken: member.credential.sessionToken }, lastSeenVersions: null }));
     assert.deepEqual(sab(resume).privateState, sab(before).privateState);
+    assert.equal(sab(resume).deadlineAt, sab(before).deadlineAt);
     assert.equal(h.failure(await h.send(h.host, action(h, resume, { kind: 'DISCARD', cardId: sab(resume).privateState.hand[0]!.cardId }))), 'UNAUTHENTICATED');
     const after = await h.server.runtime.persistence.findById(before.room.roomId);
     assert.ok(after);
@@ -162,4 +163,91 @@ test('SABOTEUR reconnect restores exact private state, revokes old primary and e
     assert.equal(remaining.phase, 'FINISHED');
     if (remaining.phase === 'FINISHED')
         assert.equal(remaining.result.reason, 'CANCELLED');
+});
+
+test('SABOTEUR deadline race rejects late socket action and applies only one timeout despite chat revisions', async t => {
+    const h=await harness(t), initial=await start(h),g=sab(initial);
+    assert.ok(g.phase==='PLAYING');
+    const service=h.server.runtime.saboteurService!;
+    let clock=initial.serverTime;
+    t.mock.method(h.server.runtime.clock,'now',()=>clock);
+    const active=h.members.find(p=>p.playerId===g.activePlayerId)!, view=await h.sync(active.client);
+    const cmd=action(h,view,{kind:'DISCARD',cardId:sab(view).privateState.hand[0]!.cardId});
+    const deadline=(await h.server.runtime.persistence.listActiveTurnDeadlines()).find(d=>d.roomId===initial.room.roomId)!;
+    assert.equal(deadline.deadlineAt,g.deadlineAt);
+    h.success(await h.call(h.host,'saboteur:say',{text:'시간은 유지',sequence:0},{gameId:g.gameId,roundId:g.roundId}));
+    assert.equal(sab(await h.sync()).deadlineAt,deadline.deadlineAt);
+    clock=v.parse(ServerTimeSchema,deadline.deadlineAt-1);
+    assert.equal((await service.timeout(deadline)).status,'NO_OP');
+    clock=deadline.deadlineAt;
+    const [late,one,two]=await Promise.all([h.send(active.client,cmd),service.timeout(deadline),service.timeout(deadline)]);
+    assert.equal(v.parse(StateSyncWireAckSchema,late).ok,false);
+    assert.equal([one,two].filter(r=>r.status==='APPLIED').length,1);
+    const next=sab(await h.sync());
+    assert.equal(next.deckCount,g.deckCount-1);
+    assert.equal(next.discardCount,1);
+    assert.equal(next.gameRevision,g.gameRevision+2);
+    assert.equal(next.deadlineAt,clock+30000);
+    assert.equal(next.feedback?.kind,'TIMEOUT_DISCARD');
+    const before=await h.server.runtime.persistence.findById(initial.room.roomId);
+    assert.equal((await service.timeout(deadline)).status,'NO_OP');
+    assert.deepEqual(await h.server.runtime.persistence.findById(initial.room.roomId),before);
+});
+
+test('SABOTEUR offline actor still times out and result confirmation deadline advances without unanimity', async t => {
+    const h=await harness(t),initial=await start(h);
+    let clock=initial.serverTime;
+    t.mock.method(h.server.runtime.clock,'now',()=>clock);
+    let s=initial;
+    // Reach a genuine round result via accepted commands.
+    while(sab(s).phase==='PLAYING'){
+        const g=sab(s);assert.ok(g.phase==='PLAYING');
+        const actor=h.members.find(p=>p.playerId===g.activePlayerId)!,view=await h.sync(actor.client);
+        s=h.success(await h.send(actor.client,action(h,view,{kind:'DISCARD',cardId:sab(view).privateState.hand[0]!.cardId})));
+    }
+    const result=sab(s);assert.equal(result.phase,'ROUND_RESULT');
+    assert.equal(result.deadlineAt,clock+60000);
+    const deadline=(await h.server.runtime.persistence.listActiveTurnDeadlines()).find(d=>d.roomId===s.room.roomId)!;
+    h.success(await h.call(h.host,'saboteur:nextRound',{}, {gameId:result.gameId,roundId:result.roundId,expectedGameRevision:result.gameRevision}));
+    assert.equal(sab(await h.sync()).deadlineAt,deadline.deadlineAt);
+    clock=v.parse(ServerTimeSchema,deadline.deadlineAt-1);
+    assert.equal((await h.server.runtime.saboteurService!.timeout(deadline)).status,'NO_OP');
+    clock=deadline.deadlineAt;
+    assert.equal((await h.server.runtime.saboteurService!.timeout(deadline)).status,'APPLIED');
+    const next=sab(await h.sync());assert.ok(next.phase==='PLAYING');
+    assert.equal(next.round,2);assert.equal(next.deadlineAt,clock+30000);
+    assert.equal((await h.server.runtime.saboteurService!.timeout(deadline)).status,'NO_OP');
+    const actor=h.members.find(p=>p.playerId===next.activePlayerId)!,observer=h.members.find(p=>p!==actor)!;
+    const activeDeadline=(await h.server.runtime.persistence.listActiveTurnDeadlines()).find(d=>d.roomId===s.room.roomId)!;
+    actor.client.disconnect();
+    assert.equal(sab(await h.sync(observer.client)).deadlineAt,activeDeadline.deadlineAt);
+    clock=activeDeadline.deadlineAt;
+    assert.equal((await h.server.runtime.saboteurService!.timeout(activeDeadline)).status,'APPLIED');
+    const after=sab(await h.sync(observer.client));
+    assert.equal(after.feedback?.kind,'TIMEOUT_DISCARD');
+    assert.equal(after.deckCount,next.deckCount-1);
+});
+
+test('SABOTEUR runtime scheduler dispatches timeout and broadcasts the resulting snapshot', async t => {
+    const h=await harness(t),s=await start(h),g=sab(s);
+    assert.ok(g.deadlineAt!==null);
+    const clock=g.deadlineAt;
+    t.mock.method(h.server.runtime.clock,'now',()=>clock);
+    const automatic=new Promise<PlatformSnapshotV2>((resolve,reject)=>{
+        const timer=setTimeout(()=>{h.host.off('state:snapshot',receive);reject(new Error('Missing scheduled timeout broadcast'));},5000);
+        function receive(raw:unknown){
+            const event=v.safeParse(StateSnapshotWireEventSchema,raw);
+            if(!event.success)return;
+            const parsed=v.safeParse(PlatformSnapshotV2Schema,event.output.payload.snapshot);
+            if(!parsed.success||parsed.output.game?.gameType!=='SABOTEUR'||parsed.output.game.feedback?.kind!=='TIMEOUT_DISCARD')return;
+            clearTimeout(timer);h.host.off('state:snapshot',receive);resolve(parsed.output);
+        }
+        h.host.on('state:snapshot',receive);
+    });
+    // A chat revision re-registers the same, already-due deadline; the real timer driver calls the router.
+    h.success(await h.call(h.host,'saboteur:say',{text:'기한 유지',sequence:0},{gameId:g.gameId,roundId:g.roundId}));
+    const after=sab(await automatic);
+    assert.equal(after.deckCount,g.deckCount-1);
+    assert.equal(after.gameRevision,g.gameRevision+2);
+    assert.equal(after.deadlineAt,clock+30000);
 });

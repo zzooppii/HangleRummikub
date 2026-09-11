@@ -3,7 +3,7 @@ import test from 'node:test';
 import * as v from 'valibot';
 import { GameIdSchema, PlayerIdSchema, ServerTimeSchema, TurnIdSchema, SaboteurCardIdSchema, SaboteurActionSchema, SaboteurPlayingProjectionSchema, saboteurProjectionIsConsistent, saboteurConnections, canPlaceSaboteur, reachableSaboteurPorts, type SaboteurAction, type SaboteurCard, type SaboteurPath } from '@hangul-rummikub/shared';
 import { makeSaboteurCards, makeSaboteurGold, saboteurRoles, PATH_COUNTS } from './games/saboteur/domain/catalog.js';
-import { createSaboteurGame, parseSaboteurState, applySaboteurAction, confirmSaboteurRound, cancelSaboteur, saySaboteur, saboteurCard, type SaboteurState, type SaboteurRoundSetup } from './games/saboteur/domain/game.js';
+import { timeoutSaboteur, createSaboteurGame, parseSaboteurState, applySaboteurAction, confirmSaboteurRound, cancelSaboteur, saySaboteur, saboteurCard, type SaboteurState, type SaboteurRoundSetup } from './games/saboteur/domain/game.js';
 import { projectSaboteur } from './games/saboteur/compatibility/projector.js';
 import { revealSaboteurGoals } from './games/saboteur/domain/board.js';
 let id = 0;
@@ -169,7 +169,7 @@ test('Saboteur three rounds, empty-deck play, private gold and fresh roles/cards
                 }
                 else if (s.phase === 'ROUND_RESULT') {
                     for (const p of s.players) {
-                        const next = confirmSaboteurRound(s, p.playerId, s.confirmedPlayerIds.length === n - 1 ? setup(n, seed + s.round) : null, token());
+                        const next = confirmSaboteurRound(s, p.playerId, s.confirmedPlayerIds.length === n - 1 ? setup(n, seed + s.round) : null, token(), now);
                         assert.ok(next.ok);
                         s = next.state;
                     }
@@ -197,7 +197,7 @@ test('Saboteur role-free sabotage round awards no gold and last actor successor 
     assert.equal(s.players.flatMap(p => p.gold).length, 0);
     const last = s.players.findIndex(p => p.playerId === s.lastActorId), expected = s.players[(last + 1) % 3]!.playerId;
     for (const p of s.players) {
-        const r = confirmSaboteurRound(s, p.playerId, s.confirmedPlayerIds.length === 2 ? setup() : null, token());
+        const r = confirmSaboteurRound(s, p.playerId, s.confirmedPlayerIds.length === 2 ? setup() : null, token(), now);
         assert.ok(r.ok);
         s = r.state;
     }
@@ -223,4 +223,89 @@ test('Saboteur stored validation rejects duplicate cards, equipment, hidden goal
     assert.equal(cancelled.result?.reason, 'CANCELLED');
     assert.deepEqual(cancelled.result?.scores, []);
     assert.equal(s.phase, 'PLAYING');
+});
+
+test('Saboteur 30-second boundary rejects late commands and timeout discards exactly one private card', () => {
+    const s = game(), before = structuredClone(s), deadline = s.deadlineAt!;
+    assert.equal(deadline, now + 30000);
+    const cardId = s.players[0]!.hand[2]!;
+    const justBefore = v.parse(ServerTimeSchema, deadline - 1);
+    const accepted = applySaboteurAction(s,s.activePlayerId,{kind:'DISCARD',cardId},justBefore,token());
+    assert.ok(accepted.ok);
+    assert.equal(accepted.state.deadlineAt,justBefore+30000);
+    assert.equal(applySaboteurAction(s,s.activePlayerId,{kind:'DISCARD',cardId},deadline,token()).ok,false);
+    assert.equal(timeoutSaboteur(s,justBefore,token(),2,null),null);
+    const expired = timeoutSaboteur(s,deadline,token(),2,null)!;
+    assert.deepEqual(s,before);
+    assert.deepEqual(expired.discard,[cardId]);
+    assert.equal(expired.deck.length,s.deck.length-1);
+    assert.equal(expired.players[0]!.hand.length,6);
+    assert.equal(expired.deadlineAt,deadline+30000);
+    assert.equal(expired.revision,s.revision+1);
+    assert.notEqual(expired.transitionId,s.transitionId);
+    assert.equal(expired.feedback?.kind,'TIMEOUT_DISCARD');
+    assert.equal(JSON.stringify(project(expired,s.players[1]!.playerId)).includes(cardId),false);
+    assert.equal(saboteurProjectionIsConsistent(project(expired)),true);
+});
+
+test('Saboteur confirmations and chat never extend the 60-second result deadline; timeout starts one new round', () => {
+    let s=game();
+    while(s.phase==='PLAYING') s=apply(s,{kind:'DISCARD',cardId:s.players.find(p=>p.playerId===s.activePlayerId)!.hand[0]!});
+    assert.equal(s.phase,'ROUND_RESULT');
+    const deadline=s.deadlineAt!;
+    assert.equal(deadline,now+60000);
+    const partial=confirmSaboteurRound(s,s.players[0]!.playerId,null,token(),now);
+    assert.ok(partial.ok);s=partial.state;
+    const chat=saySaboteur(s,s.players[1]!.playerId,'다음 라운드',0,now);
+    assert.ok(chat.ok);s=chat.state;
+    assert.equal(s.deadlineAt,deadline);
+    assert.equal(confirmSaboteurRound(s,s.players[1]!.playerId,null,token(),deadline).ok,false);
+    assert.equal(timeoutSaboteur(s,v.parse(ServerTimeSchema,deadline-1),token(),0,setup()),null);
+    const next=timeoutSaboteur(s,deadline,token(),0,setup())!;
+    assert.equal(next.round,2);assert.equal(next.phase,'PLAYING');
+    assert.equal(next.deadlineAt,deadline+30000);
+    assert.deepEqual(next.confirmedPlayerIds,[]);
+    assert.equal(next.revision,s.revision+1);
+    assert.equal(next.activePlayerId,s.players[(s.players.findIndex(p=>p.playerId===s.lastActorId)+1)%3]!.playerId);
+    const second=confirmSaboteurRound(s,s.players[1]!.playerId,null,token(),now);
+    assert.ok(second.ok);
+    const unanimous=confirmSaboteurRound(second.state,s.players[2]!.playerId,setup(),token(),now);
+    assert.ok(unanimous.ok);assert.equal(unanimous.state.phase,'PLAYING');
+    assert.equal(unanimous.state.deadlineAt,now+30000);
+});
+
+test('Saboteur gold timeout selects one injected candidate, resets each picker to 30s, then starts 60s result wait', () => {
+    let s=game();
+    for(let x=1;x<=7;x++){
+        const c=give(s,c=>c.kind==='PATH'&&(c.path==='EW'||c.path==='NESW'));
+        s=apply(s,{kind:'PLACE',cardId:c.cardId,x,y:0,rotation:0});
+    }
+    assert.equal(s.phase,'GOLD_SELECTION');
+    let steps=0;
+    while(s.phase==='GOLD_SELECTION'){
+        const picker=s.activePlayerId,choice=s.goldPool.length-1,id=s.goldPool[choice]!,at=s.deadlineAt!;
+        const next=timeoutSaboteur(s,at,token(),choice,null)!;
+        assert.equal(next.players.find(p=>p.playerId===picker)!.gold.includes(id),true);
+        assert.equal(next.goldPool.includes(id),false);
+        assert.equal(next.feedback?.kind,'TIMEOUT_GOLD');
+        assert.equal(next.deadlineAt,at+(next.phase==='ROUND_RESULT'?60000:30000));
+        assert.equal(saboteurProjectionIsConsistent(project(next)),true);
+        s=next;assert.ok(++steps<=3);
+    }
+    assert.equal(s.phase,'ROUND_RESULT');
+    const cancelled=cancelSaboteur(s,s.deadlineAt!);
+    assert.equal(cancelled.deadlineAt,null);
+    assert.equal(timeoutSaboteur(cancelled,s.deadlineAt!,token(),0,null),null);
+});
+
+test('Saboteur a completely idle 3-round match ends via deadlines without a connected confirmer', () => {
+    let s=game(10),steps=0;
+    while(s.phase!=='FINISHED'){
+        s=timeoutSaboteur(s,s.deadlineAt!,token(),0,s.phase==='ROUND_RESULT'?setup(10,s.round):null)!;
+        assert.equal(saboteurProjectionIsConsistent(project(s)),true);
+        assert.ok(++steps<=203);
+    }
+    assert.equal(steps,203);
+    assert.equal(s.result?.reason,'THREE_ROUNDS');
+    assert.equal(s.deadlineAt,null);
 });

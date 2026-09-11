@@ -2,9 +2,11 @@ import * as v from 'valibot';
 import { GameIdSchema, GameRevisionSchema, PlayerIdSchema, ServerTimeSchema, TurnIdSchema, SaboteurCardIdSchema, SaboteurCardSchema, SaboteurGoldSchema, SaboteurRoleSchema, SaboteurToolSchema, SaboteurBoardTileSchema, SaboteurGoalSchema, SaboteurRoundResultSchema, SaboteurResultSchema, SaboteurFeedbackSchema, SaboteurMessageSchema, SaboteurGoalIdSchema, SaboteurActionSchema, canPlaceSaboteur, type SaboteurCard, type SaboteurAction, type PlayerId, type ServerTime, type TurnId } from '@hangul-rummikub/shared';
 import { cardSignature, makeSaboteurCards, saboteurRoles } from './catalog.js';
 import { revealSaboteurGoals } from './board.js';
+export const SABOTEUR_ACTION_MS = 30_000;
+export const SABOTEUR_RESULT_MS = 60_000;
 const count = v.pipe(v.number(), v.safeInteger(), v.minValue(0));
 const cardIds = v.array(SaboteurCardIdSchema);
-const State = v.strictObject({ gameId: GameIdSchema, rulesVersion: v.literal('saboteur-base-2025-v1'), revision: GameRevisionSchema, phase: v.picklist(['PLAYING', 'GOLD_SELECTION', 'ROUND_RESULT', 'FINISHED']), startedAt: ServerTimeSchema, finishedAt: v.nullable(ServerTimeSchema), round: v.pipe(count, v.minValue(1), v.maxValue(3)), roundId: TurnIdSchema, transitionId: TurnIdSchema, activePlayerId: PlayerIdSchema, lastActorId: PlayerIdSchema,
+const State = v.strictObject({ gameId: GameIdSchema, rulesVersion: v.literal('saboteur-base-2025-v1'), revision: GameRevisionSchema, phase: v.picklist(['PLAYING', 'GOLD_SELECTION', 'ROUND_RESULT', 'FINISHED']), startedAt: ServerTimeSchema, finishedAt: v.nullable(ServerTimeSchema), deadlineAt: v.nullable(ServerTimeSchema), round: v.pipe(count, v.minValue(1), v.maxValue(3)), roundId: TurnIdSchema, transitionId: TurnIdSchema, activePlayerId: PlayerIdSchema, lastActorId: PlayerIdSchema,
     cards: v.pipe(v.array(SaboteurCardSchema), v.length(67)), deck: cardIds, discard: cardIds, board: v.pipe(v.array(SaboteurBoardTileSchema), v.maxLength(40)), goals: v.pipe(v.array(SaboteurGoalSchema), v.length(3)), hiddenGoals: v.pipe(v.array(v.picklist(['GOLD', 'ROCK_NE', 'ROCK_NW'])), v.length(3)), unusedRole: SaboteurRoleSchema,
     goldCards: v.pipe(v.array(SaboteurGoldSchema), v.length(28)), goldDeck: cardIds, goldPool: cardIds, goldQueue: v.array(PlayerIdSchema),
     players: v.pipe(v.array(v.strictObject({ playerId: PlayerIdSchema, role: SaboteurRoleSchema, hand: v.pipe(cardIds, v.maxLength(6)), equipment: v.pipe(v.array(v.strictObject({ tool: SaboteurToolSchema, cardId: SaboteurCardIdSchema })), v.maxLength(3)), gold: cardIds, observations: v.pipe(v.array(v.strictObject({ goalId: SaboteurGoalIdSchema, face: v.picklist(['GOLD', 'ROCK_NE', 'ROCK_NW']) })), v.maxLength(3)), chatSequence: count, lastChatAt: v.nullable(ServerTimeSchema) })), v.minLength(3), v.maxLength(10)),
@@ -33,6 +35,7 @@ export function parseSaboteurState(input: unknown): SaboteurState {
     const s = v.parse(State, input), ids = new Set(s.players.map(p => p.playerId));
     if (ids.size !== s.players.length || !ids.has(s.activePlayerId) || !ids.has(s.lastActorId))
         throw new Error('Invalid Saboteur roster.');
+    if ((s.phase === 'FINISHED') !== (s.deadlineAt === null) || s.deadlineAt !== null && s.deadlineAt < s.startedAt) throw new Error('Invalid Saboteur deadline.');
     const cards = new Map(s.cards.map(c => [c.cardId, c])), all = [...s.deck, ...s.discard, ...s.board.map(c => c.cardId), ...s.players.flatMap(p => [...p.hand, ...p.equipment.map(e => e.cardId)])];
     if (cards.size !== 67 || all.length !== 67 || new Set(all).size !== 67 || all.some(id => !cards.has(id)) || !sameMultiset(s.cards.map(cardSignature), inventory))
         throw new Error('Saboteur card conservation.');
@@ -99,7 +102,7 @@ export function createSaboteurGame(input: Identity & SaboteurRoundSetup): Sabote
     if (input.playerIds.length < 3 || input.playerIds.length > 10 || !Number.isInteger(input.starter) || !input.playerIds[input.starter])
         throw new Error('Invalid initial roster.');
     const starter = input.playerIds[input.starter]!;
-    const s: SaboteurState = { gameId: input.gameId, rulesVersion: 'saboteur-base-2025-v1', revision: v.parse(GameRevisionSchema, 0), phase: 'PLAYING', startedAt: input.now, finishedAt: null, round: 1, roundId: input.transitionId, transitionId: input.transitionId, activePlayerId: starter, lastActorId: starter, cards: [], deck: [], discard: [], board: [], goals: [], hiddenGoals: [], unusedRole: 'MINER', goldCards: input.goldCards.map(c => ({ ...c })), goldDeck: input.goldCards.map(c => c.cardId), goldPool: [], goldQueue: [], players: input.playerIds.map(playerId => ({ playerId, role: 'MINER', hand: [], equipment: [], gold: [], observations: [], chatSequence: 0, lastChatAt: null })), confirmedPlayerIds: [], roundResults: [], result: null, feedback: null, messages: [] };
+    const s: SaboteurState = { gameId: input.gameId, rulesVersion: 'saboteur-base-2025-v1', revision: v.parse(GameRevisionSchema, 0), phase: 'PLAYING', startedAt: input.now, finishedAt: null, deadlineAt: v.parse(ServerTimeSchema, input.now + SABOTEUR_ACTION_MS), round: 1, roundId: input.transitionId, transitionId: input.transitionId, activePlayerId: starter, lastActorId: starter, cards: [], deck: [], discard: [], board: [], goals: [], hiddenGoals: [], unusedRole: 'MINER', goldCards: input.goldCards.map(c => ({ ...c })), goldDeck: input.goldCards.map(c => c.cardId), goldPool: [], goldQueue: [], players: input.playerIds.map(playerId => ({ playerId, role: 'MINER', hand: [], equipment: [], gold: [], observations: [], chatSequence: 0, lastChatAt: null })), confirmedPlayerIds: [], roundResults: [], result: null, feedback: null, messages: [] };
     deal(s, input, starter, input.transitionId);
     return parseSaboteurState(s);
 }
@@ -120,6 +123,7 @@ function settle(s: SaboteurState, now: ServerTime) {
         return;
     }
     s.phase = 'FINISHED';
+    s.deadlineAt = null;
     s.finishedAt = now;
     const scores = s.players.map(p => ({ playerId: p.playerId, gold: p.gold.reduce((n, id) => n + saboteurGold(s, id).value, 0) })), best = Math.max(...scores.map(p => p.gold));
     s.result = { reason: 'THREE_ROUNDS', winnerPlayerIds: scores.filter(p => p.gold === best).map(p => p.playerId), scores };
@@ -157,7 +161,7 @@ function endRound(s: SaboteurState, goldReached: boolean, now: ServerTime) {
         settle(s, now);
     }
 }
-export function applySaboteurAction(input: SaboteurState, actor: PlayerId, actionInput: SaboteurAction, now: ServerTime, token: TurnId): Outcome {
+function performSaboteurAction(input: SaboteurState, actor: PlayerId, actionInput: SaboteurAction, now: ServerTime, token: TurnId): Outcome {
     if (input.phase !== 'PLAYING' && input.phase !== 'GOLD_SELECTION')
         return { ok: false, reason: 'INVALID_PHASE' };
     if (input.activePlayerId !== actor)
@@ -240,11 +244,13 @@ export function applySaboteurAction(input: SaboteurState, actor: PlayerId, actio
         }
     }
     s.feedback = { playerId: actor, kind: a.kind, at: now, targetPlayerId: a.kind === 'BREAK' || a.kind === 'REPAIR' ? a.targetPlayerId : null, tool: a.kind === 'REPAIR' ? a.tool : a.kind === 'BREAK' ? (() => { const c = saboteurCard(s, a.cardId); return c.kind === 'BREAK' ? c.tool : null; })() : null, position: a.kind === 'PLACE' || a.kind === 'ROCKFALL' ? { x: a.x, y: a.y } : null };
+    s.deadlineAt = s.phase === 'FINISHED' ? null : v.parse(ServerTimeSchema, now + (s.phase === 'ROUND_RESULT' ? SABOTEUR_RESULT_MS : SABOTEUR_ACTION_MS));
     s.transitionId = token;
     s.revision = v.parse(GameRevisionSchema, s.revision + 1);
     return { ok: true, state: parseSaboteurState(s) };
 }
-export function confirmSaboteurRound(input: SaboteurState, actor: PlayerId, setup: SaboteurRoundSetup | null, token: TurnId): Outcome {
+export function confirmSaboteurRound(input: SaboteurState, actor: PlayerId, setup: SaboteurRoundSetup | null, token: TurnId, now: ServerTime): Outcome {
+    if (input.deadlineAt === null || now >= input.deadlineAt) return { ok: false, reason: 'INVALID_PHASE' };
     if (input.phase !== 'ROUND_RESULT')
         return { ok: false, reason: 'INVALID_PHASE' };
     if (!input.players.some(p => p.playerId === actor) || input.confirmedPlayerIds.includes(actor))
@@ -257,6 +263,7 @@ export function confirmSaboteurRound(input: SaboteurState, actor: PlayerId, setu
         const i = s.players.findIndex(p => p.playerId === s.lastActorId), starter = s.players[(i + 1) % s.players.length]!.playerId;
         s.round++;
         deal(s, setup, starter, token);
+        s.deadlineAt = v.parse(ServerTimeSchema, now + SABOTEUR_ACTION_MS);
     }
     s.revision = v.parse(GameRevisionSchema, s.revision + 1);
     return { ok: true, state: parseSaboteurState(s) };
@@ -285,8 +292,34 @@ export function cancelSaboteur(input: SaboteurState, now: ServerTime): SaboteurS
     s.goldQueue = [];
     s.confirmedPlayerIds = [];
     s.phase = 'FINISHED';
+    s.deadlineAt = null;
     s.finishedAt = now;
     s.result = { reason: 'CANCELLED', winnerPlayerIds: [], scores: [] };
     s.revision = v.parse(GameRevisionSchema, s.revision + 1);
     return parseSaboteurState(s);
+}
+
+/** Player commands cannot beat an overdue server timer, even if its callback is delayed. */
+export function applySaboteurAction(input: SaboteurState, actor: PlayerId, action: SaboteurAction, now: ServerTime, token: TurnId): Outcome {
+    if (input.deadlineAt === null || now >= input.deadlineAt) return {ok:false,reason:'INVALID_PHASE'};
+    return performSaboteurAction(input, actor, action, now, token);
+}
+/** The application supplies the random index and next-round setup; no client chooses a timeout action. */
+export function timeoutSaboteur(input: SaboteurState, now: ServerTime, token: TurnId, choice: number, setup: SaboteurRoundSetup | null): SaboteurState | null {
+    if (input.phase === 'FINISHED' || input.deadlineAt === null || now < input.deadlineAt) return null;
+    if (input.phase === 'ROUND_RESULT') {
+        if (!setup) throw new Error('Next round setup required.');
+        const s = parseSaboteurState(input), i = s.players.findIndex(p => p.playerId === s.lastActorId);
+        s.round++;
+        deal(s, setup, s.players[(i+1)%s.players.length]!.playerId, token);
+        s.deadlineAt = v.parse(ServerTimeSchema, now + SABOTEUR_ACTION_MS);
+        s.revision = v.parse(GameRevisionSchema, s.revision + 1);
+        return parseSaboteurState(s);
+    }
+    const cards = input.phase === 'GOLD_SELECTION' ? input.goldPool : input.players.find(p => p.playerId === input.activePlayerId)!.hand;
+    if (!Number.isInteger(choice) || !cards[choice]) throw new Error('Invalid timeout selection.');
+    const outcome = performSaboteurAction(input, input.activePlayerId, {kind:input.phase === 'GOLD_SELECTION' ? 'TAKE_GOLD' : 'DISCARD', cardId:cards[choice]!}, now, token);
+    if (!outcome.ok) throw new Error('Invalid timeout action.');
+    if (outcome.state.feedback) outcome.state.feedback.kind = input.phase === 'GOLD_SELECTION' ? 'TIMEOUT_GOLD' : 'TIMEOUT_DISCARD';
+    return parseSaboteurState(outcome.state);
 }

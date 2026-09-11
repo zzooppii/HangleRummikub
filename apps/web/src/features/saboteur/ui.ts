@@ -23,6 +23,8 @@ export function saboteurFeedback(g: SaboteurProjection, name: (id: string) => st
         return null;
     const who = name(f.playerId), target = f.targetPlayerId ? name(f.targetPlayerId) : '';
     switch (f.kind) {
+        case 'TIMEOUT_DISCARD': return `${who}님의 시간이 끝나 카드 한 장을 자동으로 버렸습니다.`;
+        case 'TIMEOUT_GOLD': return `${who}님의 시간이 끝나 금 카드를 자동으로 선택했습니다.`;
         case 'PLACE': return `${who}님이 길을 놓았습니다.`;
         case 'BREAK': return `${who}님이 ${target}님의 장비를 고장 냈습니다.`;
         case 'REPAIR': return `${who}님이 ${target}님의 장비를 수리했습니다.`;

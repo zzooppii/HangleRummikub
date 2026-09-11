@@ -1,16 +1,16 @@
 import { shuffleFrozen } from "../../../domain/frozen-fisher-yates.js";
 import * as v from "valibot";
-import { SaboteurClientCommandSchema, GameRevisionSchema, RoomRevisionSchema, ServerTimeSchema, type SaboteurClientCommand, type ErrorDto, type RoomId, type PlayerId, type ServerTime } from "@hangul-rummikub/shared";
+import { RequestIdSchema, SaboteurClientCommandSchema, GameRevisionSchema, RoomRevisionSchema, ServerTimeSchema, type SaboteurClientCommand, type ErrorDto, type RoomId, type PlayerId, type ServerTime } from "@hangul-rummikub/shared";
 import { GameStartSuccessDataSchema, type StartGameInput, type GameStartResult } from "../../../application/game-start-service.js";
 import type { RoomMutationSerialExecutor } from "../../../application/room-session-service.js";
 import type { RoomRepository } from "../../../ports/room-repository.js";
 import type { RoomUnitOfWork } from "../../../ports/room-unit-of-work.js";
 import type { IdempotencyRepository } from "../../../ports/idempotency-repository.js";
 import type { RoomPresencePolicyReader } from "../../../ports/room-presence-policy.js";
-import type { Clock, IdGenerator, RandomSource } from "../../../ports/system.js";
+import type { Clock, IdGenerator, RandomSource, ScheduledTurnDeadline, TurnScheduler } from "../../../ports/system.js";
 import type { SaboteurRoomRecord } from "../../../model/persistence.js";
 import { makeSaboteurCards, makeSaboteurGold, saboteurRoles } from "../domain/catalog.js";
-import { createSaboteurGame, applySaboteurAction, confirmSaboteurRound, saySaboteur, type SaboteurState, type SaboteurRoundSetup } from "../domain/game.js";
+import { timeoutSaboteur, createSaboteurGame, applySaboteurAction, confirmSaboteurRound, saySaboteur, type SaboteurState, type SaboteurRoundSetup } from "../domain/game.js";
 export type SaboteurDependencies = Readonly<{
     roomRepository: RoomRepository;
     roomUnitOfWork: RoomUnitOfWork;
@@ -20,6 +20,7 @@ export type SaboteurDependencies = Readonly<{
     clock: Clock;
     ids: IdGenerator;
     random: RandomSource;
+    turnScheduler: TurnScheduler;
 }>;
 const failure = (code: ErrorDto['code']) => ({ ok: false as const, error: { code, message: code === 'RULE_VIOLATION' ? '선택한 카드와 수량을 확인해주세요.' : code === 'NOT_ENOUGH_PLAYERS' ? '사보타지는 3~10명이 플레이합니다.' : '현재 차례와 연결 상태를 확인해주세요.', recoverable: true } });
 const Receipt = v.strictObject({ outcome: v.literal('ACCEPTED') });
@@ -34,6 +35,35 @@ export class SaboteurService {
     constructor(readonly deps: SaboteurDependencies) { }
     subscribe(listener: (roomId: RoomId) => void | Promise<void>) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
     async notify(roomId: RoomId) { await Promise.allSettled([...this.listeners].map(fn => Promise.resolve().then(() => fn(roomId)))); }
+    private async cancelTimer(turnId: ScheduledTurnDeadline['turnId']) {
+        try { await this.deps.turnScheduler.cancelTimeout(turnId); }
+        catch { console.error('Saboteur timer cancellation failed; stale callbacks are guarded.'); }
+    }
+    async schedule(roomId: RoomId) {
+        try {
+            const room = await this.deps.roomRepository.findById(roomId);
+            if (room?.gameType !== 'SABOTEUR' || room.phase !== 'PLAYING' || !room.game || room.game.state.deadlineAt === null) return;
+            await this.deps.turnScheduler.scheduleTimeout({roomId,gameId:room.game.gameId,expectedGameRevision:room.game.gameRevision,turnId:room.game.state.transitionId,deadlineAt:room.game.state.deadlineAt});
+        } catch { console.error('Saboteur scheduling failed; overdue recovery will retry.'); }
+    }
+    async timeout(input: ScheduledTurnDeadline): Promise<{status:'APPLIED'|'NO_OP'|'FAILED'}> {
+        const d = this.deps;
+        try {
+            const applied = await d.roomMutationExecutor.run(input.roomId, async () => {
+                const room = await d.roomRepository.findById(input.roomId), now = d.clock.now();
+                // Chat and partial confirmations may advance revision without changing this deadline.
+                if (room?.gameType !== 'SABOTEUR' || room.phase !== 'PLAYING' || !room.game || room.game.gameId !== input.gameId || room.game.gameRevision < input.expectedGameRevision || room.game.state.transitionId !== input.turnId || room.game.state.deadlineAt !== input.deadlineAt || now < input.deadlineAt) return false;
+                const previous = room.game.state;
+                const choiceCount = previous.phase === 'ROUND_RESULT' ? 0 : previous.phase === 'GOLD_SELECTION' ? previous.goldPool.length : previous.players.find(p=>p.playerId===previous.activePlayerId)!.hand.length;
+                const state = timeoutSaboteur(previous, now, d.ids.generateTurnId(), choiceCount ? d.random.nextInt(choiceCount) : 0, previous.phase === 'ROUND_RESULT' ? this.roundSetup(previous.players.length) : null);
+                if (!state) return false;
+                const committed = await d.roomUnitOfWork.commit({roomMutation:{kind:'REPLACE',candidate:transitionSaboteur(room,state,now),expectedRoomRevision:room.roomRevision,expectedStorageRevision:room.storageRevision},sessionMutation:{kind:'NONE'},idempotency:{scopeKey:`room-timeout:${room.roomId}:${room.game.gameId}`,requestId:v.parse(RequestIdSchema,`phase:${input.turnId}`),payloadFingerprint:JSON.stringify([input.turnId,input.deadlineAt]),terminalResult:{transitioned:true},createdAt:now}});
+                return committed.status === 'COMMITTED';
+            });
+            if (applied) { await this.cancelTimer(input.turnId); await this.schedule(input.roomId); await this.notify(input.roomId); }
+            return {status:applied?'APPLIED':'NO_OP'};
+        } catch { return {status:'FAILED'}; }
+    }
     private roundSetup(count: number): SaboteurRoundSetup {
         return { cards: [...shuffleFrozen(makeSaboteurCards(() => this.deps.ids.generateTileId()), this.deps.random)],
             roles: [...shuffleFrozen(saboteurRoles(count), this.deps.random)], goals: [...shuffleFrozen(['GOLD', 'ROCK_NE', 'ROCK_NW'] as const, this.deps.random)] };
@@ -41,7 +71,7 @@ export class SaboteurService {
     async start(input: StartGameInput): Promise<GameStartResult> {
         const d = this.deps;
         try {
-            return await d.roomMutationExecutor.run(input.roomId, async (): Promise<GameStartResult> => {
+            const result = await d.roomMutationExecutor.run(input.roomId, async (): Promise<GameStartResult> => {
                 if (!input.authorization.isCurrent())
                     return failure('UNAUTHENTICATED');
                 const room = await d.roomRepository.findById(input.roomId);
@@ -71,6 +101,8 @@ export class SaboteurService {
                 const committed = await d.roomUnitOfWork.commit({ roomMutation: { kind: 'REPLACE', candidate: { ...room, phase: 'PLAYING', roomRevision, updatedAt: now, game: { gameId, gameRevision, startedAt: now, finishedAt: null, state } }, expectedRoomRevision: room.roomRevision, expectedStorageRevision: room.storageRevision }, sessionMutation: { kind: 'NONE' }, idempotency: { scopeKey, requestId: input.requestId, payloadFingerprint, terminalResult: data, createdAt: now } }, { isSatisfied: () => input.authorization.isCurrent() && lease.isCurrent() });
                 return committed.status === 'COMMITTED' ? { ok: true, data } : failure('STALE_ROOM_REVISION');
             });
+            if (result.ok) await this.schedule(input.roomId);
+            return result;
         }
         catch {
             return failure('INTERNAL_ERROR');
@@ -90,6 +122,7 @@ export class SaboteurService {
             return failure('INVALID_PAYLOAD');
         const d = this.deps, c = parsed.output;
         let changed = false;
+        let previousTurn: ScheduledTurnDeadline['turnId'] | null = null;
         try {
             const result = await d.roomMutationExecutor.run(input.roomId, async () => {
                 if (!input.authorization.isCurrent())
@@ -114,17 +147,21 @@ export class SaboteurService {
                     return failure('STALE_GAME_REVISION');
                 if (c.kind === 'saboteur:nextRound' && (s.phase !== 'ROUND_RESULT' || s.confirmedPlayerIds.includes(input.actorPlayerId)))
                     return failure('INVALID_PHASE');
-                const applied = c.kind === 'saboteur:say' ? saySaboteur(s, input.actorPlayerId, c.payload.text, c.payload.sequence, now) : c.kind === 'saboteur:act' ? applySaboteurAction(s, input.actorPlayerId, c.payload, now, d.ids.generateTurnId()) : confirmSaboteurRound(s, input.actorPlayerId, s.confirmedPlayerIds.length === s.players.length - 1 ? this.roundSetup(s.players.length) : null, d.ids.generateTurnId());
+                const applied = c.kind === 'saboteur:say' ? saySaboteur(s, input.actorPlayerId, c.payload.text, c.payload.sequence, now) : c.kind === 'saboteur:act' ? applySaboteurAction(s, input.actorPlayerId, c.payload, now, d.ids.generateTurnId()) : confirmSaboteurRound(s, input.actorPlayerId, s.confirmedPlayerIds.length === s.players.length - 1 ? this.roundSetup(s.players.length) : null, d.ids.generateTurnId(), now);
                 if (!applied.ok)
                     return failure(applied.reason === 'INVALID_ACTION' ? 'RULE_VIOLATION' : applied.reason);
                 const committed = await d.roomUnitOfWork.commit({ roomMutation: { kind: 'REPLACE', candidate: transitionSaboteur(room, applied.state, now), expectedRoomRevision: room.roomRevision, expectedStorageRevision: room.storageRevision }, sessionMutation: { kind: 'NONE' }, idempotency: { scopeKey, requestId: c.requestId, payloadFingerprint, terminalResult: { outcome: 'ACCEPTED' }, createdAt: now } }, { isSatisfied: () => input.authorization.isCurrent() });
                 if (committed.status !== 'COMMITTED')
                     return failure('STALE_GAME_REVISION');
+                if (s.transitionId !== applied.state.transitionId || applied.state.phase === 'FINISHED') previousTurn = s.transitionId;
                 changed = true;
                 return { ok: true as const };
             });
-            if (changed)
+            if (changed) {
+                if (previousTurn) await this.cancelTimer(previousTurn);
+                await this.schedule(input.roomId);
                 await this.notify(input.roomId);
+            }
             return result;
         }
         catch {
