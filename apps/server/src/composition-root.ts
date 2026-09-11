@@ -610,7 +610,7 @@ export function createApplicationRuntime(
     if (room?.gameType === "GURYONGTU" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
   });
   const azulService = new AzulService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
-    roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource });
+    roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource, turnScheduler });
   const azulHostSuccession = new AzulHostSuccession(azulService.deps, roomId => azulService.notify(roomId));
   azulService.subscribe(async roomId => {
     const room = await persistence.findById(roomId);
@@ -853,6 +853,7 @@ export function createApplicationRuntime(
   });
   scheduledTurnRouter = new ScheduledTurnRouter({
     lostCities: {gameType:"LOST_CITIES", handleTurnTimeout: input => lostCitiesService.timeout(input)},
+    azul: {gameType:"AZUL", handleTurnTimeout: input => azulService.timeout(input)},
     saboteur: {gameType:"SABOTEUR", handleTurnTimeout: input => saboteurService.timeout(input)},
     drawRelay: { gameType: "DRAW_RELAY", handleTurnTimeout: input => drawRelayService.timeout(input) },
     island: { gameType: "ISLAND_SETTLERS", handleTurnTimeout: input => islandService.timeout(input) },

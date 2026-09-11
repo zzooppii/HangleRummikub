@@ -10,7 +10,7 @@
 - `application`: 같은 방 직렬화 → actor/phase/identity/revision/규칙 검증 → 전체 candidate → RoomUnitOfWork 원자적 commit. 중복 성공 요청은 재적용하지 않고 기존 영수증을 반환한다. 실패한 명령은 기존 state/revision을 보존한다.
 - `compatibility`: 구체적인 AzulRoomRecord와 adapter/projector. 서버 내부 state를 그대로 broadcast하지 않는다. 모든 보드는 공개하고, 주머니/버림 더미는 총 개수만 전송한다. 각 타일 ID와 다음 추첨은 비공개다.
 - 게임 phase는 PLAYING/FINISHED. 라운드 정산과 다음 배분은 마지막 유효 행동 안에서 자동 처리하고 `lastRound`를 보관한다. UI 애니메이션 완료 확인을 기다리지 않는다.
-- 시간 제한이 없으므로 activeTurn deadline은 null. 연결 끊김은 게임에 영향을 주지 않으며 명시적 퇴장은 무승부가 아닌 CANCELLED로 종료한다. 공통 Room 게임 교체/재시작과 60초 종료 후 방장 승계를 연결한다.
+- 각 턴은 서버 Clock 기준 30초다. `turnStartedAt`/`deadlineAt`을 공개하고 adapter의 activeTurn에 등록하여 공통 overdue 복구 경로에서도 처리한다. 종료 시 deadline은 null이다. 연결이 끊겨도 타이머는 계속 흐르며 명시적 퇴장은 무승부가 아닌 CANCELLED로 종료한다. 공통 Room 게임 교체/재시작과 60초 종료 후 방장 승계를 연결한다.
 
 ## UI
 
@@ -23,7 +23,7 @@
 - 서버 정산 후 새 벽 타일의 이동과 점수 내역 강조를 표시한다. `prefers-reduced-motion`에서 이동과 애니메이션을 줄인다. 색과 문양을 함께 사용하며 touch/keyboard로 조작할 수 있다.
 - 응답 유실이면 같은 requestId의 결과 확인을 제공한다. 확정 거절과 연결 오류를 구분한다.
 
-## 검증 결과
+## 최초 구현 검증 결과
 
 - Root `npm run typecheck`: PASS.
 - Root `npm test`: shared 124 / web 597 / server 1,622, 합계 **2,343 PASS**, 실패·skip 없음.
@@ -37,3 +37,17 @@
 - 최초 sandbox 소켓 테스트의 loopback EPERM은 로컬 소켓 권한이 허용된 실행으로 재검증하여 모두 통과했다.
 
 이 기록은 로컬 구현/검증이다. public 배포는 수행하지 않았다. 기존 작업 중이던 스플렌더 변경은 보존했다. 회색 보드/확장판/AI/관전/서버 재시작 복구는 후속 미확정 항목이다.
+
+## 30초 타이머·소리·차례 강조 (2026-09-11)
+
+- 사용자 승인: 각 턴 30초, 만료 시 자동 선택·배치 후 다음 차례. 서버가 공개 타일과 해당 플레이어 보드만 보고 넘침 최소 → 배치 수 최대 → 낮은 준비 줄/공장/색 순으로 결정한다. 기본판의 타일 보존·정산 규칙은 그대로 적용한다.
+- 만료 경계 `now >= deadlineAt`의 수동 명령은 TURN_EXPIRED. timeout은 gameId/revision/turnId/deadlineAt 전체를 검증하고 같은 room 직렬화와 원자적 commit을 사용한다. 초기 시작·정상 입력·자동 입력마다 새 타이머를 예약하고 오래된 callback은 무시한다. 재접속으로 시간을 늘리지 않는다.
+- `sound.ts`: 4개 공명 성분과 짧은 stereo 잔향을 합성하는 Web Audio 효과음. 선택/미리보기/서버 배치/차례 시작/라운드/종료/5초 안내를 구분한다. 실제 배치음은 새 서버 revision에서만 재생하며 새로고침/중복 snapshot에서 과거 배치를 재생하지 않는다. 사용자 제스처로 오디오를 열고, 음량·음소거를 저장하며 장치 오류는 게임 진행에 영향을 주지 않는다. 외부 오디오 dependency/다운로드 없음.
+- 내 차례는 금색 안내판, 큰 한글 안내, 원형 남은 시간, 개인 보드 테두리와 sticky 조작부로 표시한다. 5초 이하는 경고색과 한 번의 부드러운 알림을 사용하며 reduced-motion을 따른다. 클라이언트 countdown은 serverTime과 monotonic elapsed time을 이용한 표시용 추정이다.
+
+### 후속 검증
+
+- Root typecheck/test/build 및 `git diff --check` 통과. 기존 Vite 500 kB 초과 번들 경고는 남아 있다. 전체 shared 124 + web 611 + server 1,659 = **2,394 PASS**, fail/skip 없음. 함께 진행 중인 클루 등 다른 게임의 테스트도 포함한 현재 작업 트리 기준이다.
+- 신규 검증: 29,999ms 정상 입력/30,000ms 거절, 조기·오래된·중복 timeout 무시, 수동 입력과 timeout 경쟁 시 단일 commit, 재접속 deadline 유지, 종료 시 active deadline 제거, 2/3/4인 전원 자동 진행으로 매치 완주와 타일 보존, 차례 안내/음량 컨트롤 접근성, 중복 snapshot 음향 재생 방지.
+- 실제 독립 브라우저 두 세션에서 30초 경과 → 자동 배치 → 상대 차례 전환, 수동 선택/배치와 다음 타이머, 소리 미리듣기 버튼과 음소거 저장/새로고침 복원을 확인했다. 390px/320px 모바일 viewport에서 가로 넘침 없이 안내·타이머·sticky 버튼을 확인했다.
+- Public 배포와 추가 commit은 수행하지 않았다.

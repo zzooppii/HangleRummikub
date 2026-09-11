@@ -26,7 +26,7 @@ export const AzulResultSchema = v.strictObject({
   reason: v.picklist(["WALL_COMPLETE", "CANCELLED"]), winnerPlayerIds: v.pipe(v.array(PlayerIdSchema), v.maxLength(4)),
   scores: v.pipe(v.array(v.strictObject({ playerId: PlayerIdSchema, base: score, rows: v.pipe(count, v.maxValue(5)), columns: v.pipe(count, v.maxValue(5)), colors: v.pipe(count, v.maxValue(5)), total: score })), v.maxLength(4)),
 });
-export const AzulFeedbackSchema = v.strictObject({ playerId: PlayerIdSchema, color: AzulColorSchema, source: AzulSourceSchema, destination: AzulDestinationSchema, count, placed: count, dropped: count, tookFirstPlayer: v.boolean(), at: ServerTimeSchema });
+export const AzulFeedbackSchema = v.strictObject({ playerId: PlayerIdSchema, color: AzulColorSchema, source: AzulSourceSchema, destination: AzulDestinationSchema, count, placed: count, dropped: count, tookFirstPlayer: v.boolean(), automatic: v.boolean(), at: ServerTimeSchema });
 const base = {
   gameType: v.literal("AZUL"), gameId: GameIdSchema, gameRevision: GameRevisionSchema, rulesVersion: v.literal("azul-base-v1"),
   round: v.pipe(score, v.minValue(1)), factories: v.pipe(v.array(v.pipe(v.array(AzulTileSchema), v.maxLength(4))), v.minLength(5), v.maxLength(9)),
@@ -34,7 +34,7 @@ const base = {
   playerStates: v.pipe(v.array(AzulPlayerSchema), v.minLength(2), v.maxLength(4)),
   lastRound: v.nullable(AzulRoundResultSchema), feedback: v.nullable(AzulFeedbackSchema),
 };
-export const AzulPlayingProjectionSchema = v.strictObject({ ...base, phase: v.literal("PLAYING"), turnId: TurnIdSchema, activePlayerId: PlayerIdSchema });
+export const AzulPlayingProjectionSchema = v.strictObject({ ...base, phase: v.literal("PLAYING"), turnId: TurnIdSchema, activePlayerId: PlayerIdSchema, turnStartedAt: ServerTimeSchema, deadlineAt: ServerTimeSchema });
 export const AzulFinishedProjectionSchema = v.strictObject({ ...base, phase: v.literal("FINISHED"), result: AzulResultSchema });
 export type AzulPlayingProjection = v.InferOutput<typeof AzulPlayingProjectionSchema>;
 export type AzulFinishedProjection = v.InferOutput<typeof AzulFinishedProjectionSchema>;
@@ -58,6 +58,7 @@ export function azulProjectionIsConsistent(g: AzulProjection): boolean {
     }
   }
   if (markers > 1 || new Set(visible.map(t => t.tileId)).size !== visible.length || visible.length + g.bagCount + g.discardCount !== 100) return false;
+  if (g.phase === "PLAYING" && g.deadlineAt - g.turnStartedAt !== 30_000) return false;
   if (g.phase === "PLAYING" && (!players.has(g.activePlayerId) || g.center.length + g.factories.flat().length === 0)) return false;
   if (g.feedback && !players.has(g.feedback.playerId)) return false;
   if (g.lastRound && (g.lastRound.round > g.round || new Set(g.lastRound.scores.map(s => s.playerId)).size !== players.size || g.lastRound.scores.some(s => !players.has(s.playerId)))) return false;

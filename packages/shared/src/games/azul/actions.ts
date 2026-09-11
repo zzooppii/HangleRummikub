@@ -20,3 +20,5 @@ export const AZUL_FLOOR_PENALTIES = [1, 1, 2, 2, 2, 3, 3] as const;
 export function azulWallColumn(row: number, color: AzulColor): number {
   return (AZUL_COLORS.indexOf(color) + row) % 5;
 }
+
+export const AZUL_TURN_DURATION_MS = 30_000;

@@ -1,6 +1,6 @@
 import * as v from "valibot";
 import {
-  AZUL_COLORS, AZUL_FLOOR_PENALTIES, AzulActionSchema, AzulTileSchema,
+  AZUL_COLORS, AZUL_FLOOR_PENALTIES, AZUL_TURN_DURATION_MS, AzulActionSchema, AzulTileSchema,
   AzulFeedbackSchema, AzulRoundResultSchema, AzulResultSchema,
   AzulPlayingProjectionSchema, AzulFinishedProjectionSchema, azulProjectionIsConsistent,
   azulWallColumn, GameIdSchema, GameRevisionSchema, PlayerIdSchema, TileIdSchema,
@@ -14,6 +14,7 @@ const StateSchema = v.strictObject({
   rulesVersion: v.literal("azul-base-v1"), gameId: GameIdSchema, revision: GameRevisionSchema,
   startedAt: ServerTimeSchema, finishedAt: v.nullable(ServerTimeSchema), phase: v.picklist(["PLAYING", "FINISHED"]),
   round: v.pipe(v.number(), v.safeInteger(), v.minValue(1)), transitionId: TurnIdSchema,
+  turnStartedAt: ServerTimeSchema, deadlineAt: v.nullable(ServerTimeSchema),
   activePlayerId: PlayerIdSchema, roundStarterId: PlayerIdSchema, firstPlayerId: v.nullable(PlayerIdSchema),
   inventory: v.pipe(v.array(AzulTileSchema), v.length(100)), bag: ids, discard: ids,
   factories: v.pipe(v.array(v.pipe(v.array(TileIdSchema), v.maxLength(4))), v.minLength(5), v.maxLength(9)), center: ids,
@@ -56,7 +57,7 @@ export function publicAzul(s: AzulState): AzulProjection {
     })), lastRound: s.lastRound, feedback: s.feedback,
   };
   return s.phase === "PLAYING"
-    ? v.parse(AzulPlayingProjectionSchema, { ...base, phase: s.phase, turnId: s.transitionId, activePlayerId: s.activePlayerId })
+    ? v.parse(AzulPlayingProjectionSchema, { ...base, phase: s.phase, turnId: s.transitionId, activePlayerId: s.activePlayerId, turnStartedAt: s.turnStartedAt, deadlineAt: s.deadlineAt })
     : v.parse(AzulFinishedProjectionSchema, { ...base, phase: s.phase, result: s.result });
 }
 export function parseAzulState(input: unknown): AzulState {
@@ -68,6 +69,7 @@ export function parseAzulState(input: unknown): AzulState {
   if (zones.length !== 100 || new Set(zones).size !== 100 || zones.some(id => !inventory.has(id))) throw new Error("Azul tile conservation failed.");
   if (!s.players.some(p => p.playerId === s.activePlayerId) || !s.players.some(p => p.playerId === s.roundStarterId)) throw new Error("Invalid Azul active player.");
   if (s.phase === "FINISHED" ? s.finishedAt === null || s.result === null : s.finishedAt !== null || s.result !== null) throw new Error("Invalid Azul terminal state.");
+  if (s.phase === "FINISHED" ? s.deadlineAt !== null : s.deadlineAt !== s.turnStartedAt + AZUL_TURN_DURATION_MS) throw new Error("Invalid Azul deadline.");
   const view = publicAzul(s);
   if (!azulProjectionIsConsistent(view)) throw new Error("Invalid Azul board.");
   if (s.phase === "PLAYING" && s.players.some(p => p.wall.some(r => r.every(t => t !== null)))) throw new Error("Unsettled Azul finish.");
@@ -87,6 +89,7 @@ export function createAzulGame(input: { gameId: GameId; playerIds: readonly Play
   if (input.playerIds.length < 2 || input.playerIds.length > 4 || new Set(input.playerIds).size !== input.playerIds.length || !Number.isInteger(input.starter) || input.starter < 0 || input.starter >= input.playerIds.length) throw new Error("Invalid Azul players.");
   const s: AzulState = {
     rulesVersion: "azul-base-v1", gameId: input.gameId, revision: v.parse(GameRevisionSchema, 0), startedAt: input.now, finishedAt: null,
+    turnStartedAt: input.now, deadlineAt: v.parse(ServerTimeSchema, input.now + AZUL_TURN_DURATION_MS),
     phase: "PLAYING", round: 1, transitionId: input.turnId, activePlayerId: input.playerIds[input.starter]!, roundStarterId: input.playerIds[input.starter]!, firstPlayerId: null,
     inventory: input.tiles.map(t => ({ ...t })), bag: shuffleAzul(input.tiles.map(t => t.tileId), input.random), discard: [], factories: [], center: [],
     players: input.playerIds.map(playerId => ({ playerId, score: 0, patternLines: Array.from({ length: 5 }, () => []), wall: Array.from({ length: 5 }, () => Array.from({ length: 5 }, () => null)), floor: [] })),
@@ -149,10 +152,14 @@ function settleRound(s: AzulState, now: ServerTime, random: AzulRandom): void {
     fillFactories(s, random);
   }
 }
-export type AzulApplyResult = { ok: true; state: AzulState } | { ok: false; reason: "INVALID_PHASE" | "NOT_YOUR_TURN" | "INVALID_ACTION" };
+export type AzulApplyResult = { ok: true; state: AzulState } | { ok: false; reason: "INVALID_PHASE" | "NOT_YOUR_TURN" | "INVALID_ACTION" | "TURN_EXPIRED" };
 export function applyAzulAction(state: AzulState, actor: PlayerId, input: unknown, now: ServerTime, turnId: TurnId, random: AzulRandom): AzulApplyResult {
   if (state.phase !== "PLAYING") return { ok: false, reason: "INVALID_PHASE" };
   if (state.activePlayerId !== actor) return { ok: false, reason: "NOT_YOUR_TURN" };
+  if (state.deadlineAt === null || now >= state.deadlineAt) return { ok: false, reason: "TURN_EXPIRED" };
+  return applyMove(state, actor, input, now, turnId, random, false);
+}
+function applyMove(state: AzulState, actor: PlayerId, input: unknown, now: ServerTime, turnId: TurnId, random: AzulRandom, automatic: boolean): AzulApplyResult {
   const parsed = v.safeParse(AzulActionSchema, input);
   if (!parsed.success) return { ok: false, reason: "INVALID_ACTION" };
   const action: AzulAction = parsed.output;
@@ -177,17 +184,44 @@ export function applyAzulAction(state: AzulState, actor: PlayerId, input: unknow
   const placed = Math.min(capacity, chosen.length);
   if (action.destination !== "FLOOR") player.patternLines[action.destination]!.push(...chosen.slice(0, placed));
   for (const id of chosen.slice(placed)) { if (player.floor.length < 7) player.floor.push(id); else s.discard.push(id); }
-  s.feedback = { playerId: actor, color: action.color, source: action.source, destination: action.destination, count: chosen.length, placed, dropped: chosen.length - placed, tookFirstPlayer, at: now };
+  s.feedback = { playerId: actor, color: action.color, source: action.source, destination: action.destination, count: chosen.length, placed, dropped: chosen.length - placed, tookFirstPlayer, automatic, at: now };
   s.revision = v.parse(GameRevisionSchema, s.revision + 1);
   s.transitionId = turnId;
   if (s.center.length === 0 && s.factories.every(f => f.length === 0)) settleRound(s, now, random);
   else s.activePlayerId = s.players[(s.players.findIndex(p => p.playerId === actor) + 1) % s.players.length]!.playerId;
+  s.turnStartedAt = now;
+  s.deadlineAt = s.phase === "FINISHED" ? null : v.parse(ServerTimeSchema, now + AZUL_TURN_DURATION_MS);
   return { ok: true, state: parseAzulState(s) };
 }
 export function cancelAzul(state: AzulState, now: ServerTime): AzulState {
   const s = parseAzulState(state);
   if (s.phase === "FINISHED") return s;
-  s.phase = "FINISHED"; s.finishedAt = now; s.revision = v.parse(GameRevisionSchema, s.revision + 1);
+  s.phase = "FINISHED"; s.deadlineAt = null; s.finishedAt = now; s.revision = v.parse(GameRevisionSchema, s.revision + 1);
   s.result = { reason: "CANCELLED", winnerPlayerIds: [], scores: [] };
   return parseAzulState(s);
+}
+
+/** Stable fallback using only public offers and the active player's board. */
+export function chooseAzulTimeoutAction(s: AzulState): AzulAction | null {
+  if (s.phase !== "PLAYING") return null;
+  const p = s.players.find(p => p.playerId === s.activePlayerId)!;
+  let best: { action: AzulAction; dropped: number; placed: number } | null = null;
+  const sources: AzulAction["source"][] = [...s.factories.map((_, index) => ({ kind: "FACTORY" as const, index })), { kind: "CENTER" }];
+  for (const destination of [0, 1, 2, 3, 4, "FLOOR"] as const) for (const source of sources) for (const color of AZUL_COLORS) {
+    const pool = source.kind === "CENTER" ? s.center : s.factories[source.index]!;
+    const count = pool.filter(id => azulTile(s, id).color === color).length;
+    if (!count) continue;
+    if (destination !== "FLOOR" && (p.patternLines[destination]!.length === destination + 1 || p.patternLines[destination]!.some(id => azulTile(s, id).color !== color) || p.wall[destination]![azulWallColumn(destination, color)] !== null)) continue;
+    const placed = destination === "FLOOR" ? 0 : Math.min(count, destination + 1 - p.patternLines[destination]!.length);
+    const dropped = count - placed;
+    if (!best || dropped < best.dropped || dropped === best.dropped && placed > best.placed) best = { action: { source, color, destination }, dropped, placed };
+  }
+  return best?.action ?? null;
+}
+export function timeoutAzul(s: AzulState, now: ServerTime, turnId: TurnId, random: AzulRandom): AzulState | null {
+  if (s.phase !== "PLAYING" || s.deadlineAt === null || now < s.deadlineAt) return null;
+  const action = chooseAzulTimeoutAction(s);
+  if (!action) return null;
+  const result = applyMove(s, s.activePlayerId, action, now, turnId, random, true);
+  return result.ok ? result.state : null;
 }

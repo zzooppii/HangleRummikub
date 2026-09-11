@@ -87,7 +87,10 @@ export function toScheduledTurnDeadline(
     if (game.state.rulesVersion === "duet-2025-ko-v1") throw new Error("Duet has no turn deadline.");
     if (game.state.rulesVersion === "jaipur-base-v1") throw new Error("Jaipur has no turn deadline.");
     if (game.state.rulesVersion === "guryongtu-base-v1") throw new Error("Guryongtu has no turn deadline.");
-    if (game.state.rulesVersion === "azul-base-v1") throw new Error("Azul has no turn deadline.");
+    if (game.state.rulesVersion === "azul-base-v1") {
+      if (game.state.deadlineAt === null) throw new Error("Azul deadline missing.");
+      return {roomId,gameId:game.gameId,expectedGameRevision:game.gameRevision,turnId:game.state.transitionId,deadlineAt:game.state.deadlineAt};
+    }
     if (game.state.rulesVersion === "saboteur-base-2025-v1") {
       if (game.state.deadlineAt === null) throw new Error("Saboteur deadline missing.");
       return {roomId,gameId:game.gameId,expectedGameRevision:game.gameRevision,turnId:game.state.transitionId,deadlineAt:game.state.deadlineAt};
@@ -174,8 +177,7 @@ export async function scheduleCurrentTurnBestEffort(
       if (game.state.rulesVersion === "duet-2025-ko-v1") return false;
       if (game.state.rulesVersion === "jaipur-base-v1") return false;
       if (game.state.rulesVersion === "guryongtu-base-v1") return false;
-      if (game.state.rulesVersion === "azul-base-v1") return false;
-      if (game.state.rulesVersion === "saboteur-base-2025-v1") {
+      if (game.state.rulesVersion === "saboteur-base-2025-v1" || game.state.rulesVersion === "azul-base-v1") {
         if (game.state.deadlineAt === null || game.state.transitionId !== identity.turnId) return false;
       } else if ("startingPlayerId" in game.state) return false;
       else if ("turnId" in game.state) {

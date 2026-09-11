@@ -76,8 +76,8 @@ function legalMove(g: AzulPlayingProjection): AzulAction {
   }
   throw new Error("No legal move.");
 }
-test("AZUL socket: starts 2/3/4-player games without readiness or deadlines; rejects 1/5 players", async t => {
-  for (const count of [2, 3, 4]) { const h = await harness(t, count), s = await start(h); assert.equal(azul(s).factories.length, 2 * count + 1); assert.equal(azul(s).playerStates.length, count); assert.equal((await h.server.runtime.persistence.listActiveTurnDeadlines()).some(d => d.roomId === s.room.roomId), false); }
+test("AZUL socket: starts 2/3/4-player games without readiness and with 30-second deadlines; rejects 1/5 players", async t => {
+  for (const count of [2, 3, 4]) { const h = await harness(t, count), s = await start(h); assert.equal(azul(s).factories.length, 2 * count + 1); assert.equal(azul(s).playerStates.length, count); assert.equal((await h.server.runtime.persistence.listActiveTurnDeadlines()).some(d => d.roomId === s.room.roomId), true); }
   const single = await harness(t, 1), one = await single.sync(); assert.equal(single.failure(await single.call(single.host, "game:start", {}, { expectedRoomRevision: one.versions.roomRevision })), "NOT_ENOUGH_PLAYERS");
   const large = await harness(t, 5), selected = large.success(await large.send(large.host, large.selection(await large.sync(), "AZUL"))); assert.equal(selected.room.players.length, 5); assert.equal(large.failure(await large.call(large.host, "game:start", {}, { expectedRoomRevision: selected.versions.roomRevision })), "NOT_ENOUGH_PLAYERS");
   const four = await harness(t, 4), outsider = await four.connect(), credential = await four.bootstrap(outsider); assert.equal(four.failure(await four.call(outsider, "room:join", { bootstrapCredential: credential, nickname: "다섯째", roomCode: four.lobby.room.roomCode })), "ROOM_FULL");
@@ -129,4 +129,39 @@ test("AZUL socket: explicit leave cancels and game switch preserves room and rem
   const h = await harness(t), s = await start(h); const ack = v.parse(RoomLeaveAckSchema, await h.call(h.members[1]!.client, "room:leave", {}, { expectedRoomRevision: s.versions.roomRevision, expectedGameRevision: azul(s).gameRevision })); assert.ok(ack.ok);
   const end = await h.sync(), g = azul(end); assert.equal(g.phase, "FINISHED"); if (g.phase !== "FINISHED") throw new Error(); assert.equal(g.result.reason, "CANCELLED"); assert.deepEqual(g.result.winnerPlayerIds, []);
   const selected = h.success(await h.send(h.host, h.selection(end, "NUMBER_TILE"))); assert.equal(selected.room.roomCode, s.room.roomCode); assert.equal(selected.room.players.length, 1);
+});
+
+test("AZUL timer: server deadline survives resume; premature/stale callbacks do nothing; expired command and racing timeouts commit once", async t => {
+  const h=await harness(t), s=await start(h), g=azul(s); assert.equal(g.phase,'PLAYING'); if(g.phase!=='PLAYING')throw new Error();
+  assert.equal(g.deadlineAt-g.turnStartedAt,30_000);
+  const service=h.server.runtime.azulService!;
+  const deadline=(await h.server.runtime.persistence.listActiveTurnDeadlines()).find(d=>d.roomId===s.room.roomId)!; assert.ok(deadline);
+  const before=await h.server.runtime.persistence.findById(s.room.roomId);
+  assert.deepEqual(await service.timeout(deadline),{status:'NO_OP'});
+  assert.deepEqual(await h.server.runtime.persistence.findById(s.room.roomId),before);
+  const actor=h.members.find(m=>m.playerId===g.activePlayerId)!, replacement=await h.connect();
+  const resumed=h.success(await h.call(replacement,'session:resume',{credential:{...actor.credential,roomCode:s.room.roomCode},lastSeenVersions:null}));
+  assert.deepEqual(azul(resumed),g);
+  t.mock.method(h.server.runtime.clock,'now',()=>v.parse(ServerTimeSchema,g.deadlineAt));
+  const late=action(h,s,legalMove(g));
+  assert.equal(h.failure(await h.send(replacement,late)),'TURN_EXPIRED');
+  assert.deepEqual(await h.server.runtime.persistence.findById(s.room.roomId),before);
+  const results=await Promise.all([service.timeout(deadline),service.timeout(deadline),h.send(replacement,{...late,requestId:'deadline-race'})]);
+  assert.equal(results.slice(0,2).filter(r=>typeof r==='object' && r!==null && 'status' in r && r.status==='APPLIED').length,1);
+  const next=azul(await h.sync(replacement)); assert.equal(next.gameRevision,g.gameRevision+1); assert.equal(next.feedback?.automatic,true);
+  if(next.phase!=='PLAYING')throw new Error(); assert.equal(next.deadlineAt,g.deadlineAt+30_000); assert.notEqual(next.turnId,g.turnId);
+  assert.deepEqual(await service.timeout(deadline),{status:'NO_OP'});
+  const active=(await h.server.runtime.persistence.listActiveTurnDeadlines()).find(d=>d.roomId===s.room.roomId)!;
+  assert.equal(active.turnId,next.turnId); assert.equal(active.deadlineAt,next.deadlineAt);
+});
+test("AZUL timer: a successful manual command makes its old timeout stale; leaving removes active deadline",async t=>{
+  const h=await harness(t),s=await start(h),g=azul(s);if(g.phase!=='PLAYING')throw new Error();
+  const deadline=(await h.server.runtime.persistence.listActiveTurnDeadlines()).find(d=>d.roomId===s.room.roomId)!;
+  const actor=h.members.find(m=>m.playerId===g.activePlayerId)!;
+  h.success(await h.send(actor.client,action(h,s,legalMove(g))));
+  t.mock.method(h.server.runtime.clock,'now',()=>v.parse(ServerTimeSchema,g.deadlineAt));
+  assert.deepEqual(await h.server.runtime.azulService!.timeout(deadline),{status:'NO_OP'});
+  const current=await h.sync();
+  const ack=v.parse(RoomLeaveAckSchema,await h.call(h.members[1]!.client,'room:leave',{}, {expectedRoomRevision:current.versions.roomRevision,expectedGameRevision:azul(current).gameRevision})); assert.ok(ack.ok);
+  assert.equal((await h.server.runtime.persistence.listActiveTurnDeadlines()).some(d=>d.roomId===s.room.roomId),false);
 });

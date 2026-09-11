@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as v from "valibot";
 import { AZUL_COLORS, GameIdSchema, PlayerIdSchema, ServerTimeSchema, TileIdSchema, TurnIdSchema, azulWallColumn, type AzulAction, type AzulColor, type AzulDestination } from "@hangul-rummikub/shared";
-import { applyAzulAction, createAzulGame, makeAzulTiles, parseAzulState, publicAzul, scoreAzulPlacement, type AzulState } from "./games/azul/domain/game.js";
+import { chooseAzulTimeoutAction, timeoutAzul, applyAzulAction, createAzulGame, makeAzulTiles, parseAzulState, publicAzul, scoreAzulPlacement, type AzulState } from "./games/azul/domain/game.js";
 
 const now = v.parse(ServerTimeSchema, 1_000), gameId = v.parse(GameIdSchema, "azul-domain");
 const turn = (n: number) => v.parse(TurnIdSchema, `azul-turn-${n}`);
@@ -94,5 +94,36 @@ test("AZUL deterministic complete 2/3/4-player games preserve 100 tiles througho
     let s = setup(count, seed), steps = 0;
     while (s.phase === "PLAYING" && steps++ < 1500) { s = apply(s, legal(s)); assert.deepEqual(parseAzulState(s), s); }
     assert.equal(s.phase, "FINISHED", `count=${count}, seed=${seed}, steps=${steps}`); assert.equal(s.result?.reason, "WALL_COMPLETE"); assert.ok(s.result?.winnerPlayerIds.length);
+  }
+});
+
+test("AZUL deadline: accepts just before 30 seconds, rejects at boundary without mutation", () => {
+  const s = setup(), before = structuredClone(s), move = legal(s);
+  assert.equal(s.deadlineAt, now + 30_000);
+  const justBefore = applyAzulAction(s, s.activePlayerId, move, v.parse(ServerTimeSchema, s.deadlineAt! - 1), turn(1), random());
+  assert.ok(justBefore.ok); assert.equal(justBefore.state.deadlineAt, s.deadlineAt! + 29_999);
+  assert.deepEqual(applyAzulAction(s, s.activePlayerId, move, s.deadlineAt!, turn(1), random()), {ok:false,reason:'TURN_EXPIRED'});
+  assert.deepEqual(s, before);
+});
+test("AZUL timeout: chooses legal low-overflow placement, preserves state, marks automatic and resets deadline", () => {
+  const f = fixture(); f.s.factories[0] = [f.take('BLUE'), f.take('BLUE'), f.take('BLUE'), f.take('RED')];
+  const before = structuredClone(f.s), move = chooseAzulTimeoutAction(f.s);
+  assert.deepEqual(move, {source:{kind:'FACTORY',index:0},color:'BLUE',destination:2});
+  assert.equal(timeoutAzul(f.s, now, turn(1), random()), null);
+  const next = timeoutAzul(f.s, f.s.deadlineAt!, turn(1), random())!;
+  assert.equal(next.feedback?.automatic, true); assert.equal(next.feedback?.placed, 3); assert.equal(next.feedback?.dropped, 0);
+  assert.equal(next.deadlineAt, f.s.deadlineAt! + 30_000); assert.deepEqual(f.s, before);
+  assert.deepEqual(parseAzulState(next), next);
+  assert.throws(() => parseAzulState({...next,deadlineAt:next.deadlineAt!+1}));
+});
+test("AZUL automatic play completes 2/3/4-player matches with conservation and terminal timer cleared", () => {
+  for (const count of [2,3,4]) {
+    let s = setup(count, count), steps=0;
+    while(s.phase==='PLAYING' && steps++<1500) {
+      const next = timeoutAzul(s, s.deadlineAt!, turn(steps), random(steps)); assert.ok(next);
+      assert.equal(next.revision, s.revision+1); assert.deepEqual(parseAzulState(next),next); s=next;
+    }
+    assert.equal(s.phase,'FINISHED'); assert.equal(s.deadlineAt,null);
+    assert.equal(timeoutAzul(s, now, turn(2000), random()),null);
   }
 });
