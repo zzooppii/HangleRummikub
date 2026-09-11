@@ -2,6 +2,7 @@ import { SaboteurPlayingProjectionSchema, SaboteurFinishedProjectionSchema, sabo
 import { ISLAND_RESOURCES } from "../games/island/actions.js";
 import { SplendorPlayingProjectionSchema, SplendorFinishedProjectionSchema, splendorProjectionIsConsistent } from "../games/splendor/contracts.js";
 import { JaipurPlayingProjectionSchema, JaipurFinishedProjectionSchema, jaipurProjectionIsConsistent } from "../games/jaipur/contracts.js";
+import { GuryongtuPlayingProjectionSchema, GuryongtuFinishedProjectionSchema, guryongtuProjectionIsConsistent } from "../games/guryongtu/contracts.js";
 import { AzulPlayingProjectionSchema, AzulFinishedProjectionSchema, azulProjectionIsConsistent } from "../games/azul/contracts.js";
 import { DuetPlayingProjectionSchema, DuetFinishedProjectionSchema, duetProjectionIsConsistent } from "../games/word-duet/contracts.js";
 import { LostCitiesSettingsSchema } from "../games/lost-cities/actions.js";
@@ -350,6 +351,22 @@ export type JaipurFinishedPlatformSnapshotV2 = v.InferOutput<typeof JaipurFinish
 export const JaipurLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, JaipurLobbyPlatformSnapshotV2> = JaipurLobbyRaw;
 export const JaipurPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, JaipurPlayingPlatformSnapshotV2> = JaipurPlayingRaw;
 export const JaipurFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, JaipurFinishedPlatformSnapshotV2> = JaipurFinishedRaw;
+const GuryongtuOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const GuryongtuRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("GURYONGTU") };
+const GuryongtuPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.length(2));
+const GuryongtuLobbyRaw = v.pipe(v.strictObject({ ...GuryongtuOuter, room: v.strictObject({ ...GuryongtuRoom, phase: v.literal("LOBBY"),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)) }), game: v.null() }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
+const GuryongtuPlayingRaw = v.pipe(v.strictObject({ ...GuryongtuOuter, room: v.strictObject({ ...GuryongtuRoom, phase: v.literal("PLAYING"), players: GuryongtuPlayers }), game: GuryongtuPlayingProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.hand.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.handCount), v.check(s => guryongtuProjectionIsConsistent(s.game)));
+const GuryongtuFinishedRaw = v.pipe(v.strictObject({ ...GuryongtuOuter, room: v.strictObject({ ...GuryongtuRoom, phase: v.literal("FINISHED"), players: GuryongtuPlayers }), game: GuryongtuFinishedProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.hand.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.handCount), v.check(s => guryongtuProjectionIsConsistent(s.game)));
+export type GuryongtuLobbyPlatformSnapshotV2 = v.InferOutput<typeof GuryongtuLobbyRaw>;
+export type GuryongtuPlayingPlatformSnapshotV2 = v.InferOutput<typeof GuryongtuPlayingRaw>;
+export type GuryongtuFinishedPlatformSnapshotV2 = v.InferOutput<typeof GuryongtuFinishedRaw>;
+export const GuryongtuLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, GuryongtuLobbyPlatformSnapshotV2> = GuryongtuLobbyRaw;
+export const GuryongtuPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, GuryongtuPlayingPlatformSnapshotV2> = GuryongtuPlayingRaw;
+export const GuryongtuFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, GuryongtuFinishedPlatformSnapshotV2> = GuryongtuFinishedRaw;
 const AzulOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
 const AzulRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("AZUL") };
 const AzulPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(4));
@@ -473,6 +490,7 @@ export const LobbyPlatformSnapshotV2Schema = v.union([
   IslandLobbyPlatformSnapshotV2Schema,
   SplendorLobbyPlatformSnapshotV2Schema,
   JaipurLobbyPlatformSnapshotV2Schema,
+  GuryongtuLobbyPlatformSnapshotV2Schema,
   AzulLobbyPlatformSnapshotV2Schema,
   DuetLobbyPlatformSnapshotV2Schema,
   SaboteurLobbyPlatformSnapshotV2Schema,
@@ -623,6 +641,7 @@ export const PlayingPlatformSnapshotV2Schema = v.union([
   IslandPlayingPlatformSnapshotV2Schema,
   SplendorPlayingPlatformSnapshotV2Schema,
   JaipurPlayingPlatformSnapshotV2Schema,
+  GuryongtuPlayingPlatformSnapshotV2Schema,
   AzulPlayingPlatformSnapshotV2Schema,
   DuetPlayingPlatformSnapshotV2Schema,
   SaboteurPlayingPlatformSnapshotV2Schema,
@@ -773,6 +792,7 @@ export const FinishedPlatformSnapshotV2Schema = v.union([
   IslandFinishedPlatformSnapshotV2Schema,
   SplendorFinishedPlatformSnapshotV2Schema,
   JaipurFinishedPlatformSnapshotV2Schema,
+  GuryongtuFinishedPlatformSnapshotV2Schema,
   AzulFinishedPlatformSnapshotV2Schema,
   DuetFinishedPlatformSnapshotV2Schema,
   SaboteurFinishedPlatformSnapshotV2Schema,

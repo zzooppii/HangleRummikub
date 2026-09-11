@@ -6,7 +6,7 @@ import type {
   StartGameInput,
 } from "./game-start-service.js";
 
-type StartCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPLENDOR" | "WORD_DUET" | "JAIPUR" | "AZUL" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS"> =
+type StartCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPLENDOR" | "WORD_DUET" | "JAIPUR" | "GURYONGTU" | "AZUL" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS"> =
   Readonly<{
     gameType: TGameType;
     start(input: StartGameInput): Promise<GameStartResult>;
@@ -26,6 +26,7 @@ export type GameStartRouterDependencies = Readonly<{
   island?: StartCapability<"ISLAND_SETTLERS">;
   splendor?: StartCapability<"SPLENDOR">;
   jaipur?: StartCapability<"JAIPUR">;
+  guryongtu?: StartCapability<"GURYONGTU">;
   azul?: StartCapability<"AZUL">;
   duet?: StartCapability<"WORD_DUET">;
   saboteur?: StartCapability<"SABOTEUR">;
@@ -58,7 +59,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function isStartCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPLENDOR" | "WORD_DUET" | "JAIPUR" | "AZUL" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPLENDOR" | "WORD_DUET" | "JAIPUR" | "GURYONGTU" | "AZUL" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS",
 >(
   value: unknown,
   gameType: TGameType,
@@ -70,7 +71,7 @@ function isStartCapability<
   );
 }
 
-function requireCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPLENDOR" | "WORD_DUET" | "JAIPUR" | "AZUL" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS">(
+function requireCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPLENDOR" | "WORD_DUET" | "JAIPUR" | "GURYONGTU" | "AZUL" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS">(
   value: unknown,
   gameType: TGameType,
 ): StartCapability<TGameType> {
@@ -94,6 +95,7 @@ export class GameStartRouter implements GameStartRouting {
   readonly #island: StartCapability<"ISLAND_SETTLERS"> | undefined;
   readonly #splendor: StartCapability<"SPLENDOR"> | undefined;
   readonly #jaipur: StartCapability<"JAIPUR"> | undefined;
+  readonly #guryongtu: StartCapability<"GURYONGTU"> | undefined;
   readonly #azul: StartCapability<"AZUL"> | undefined;
   readonly #duet: StartCapability<"WORD_DUET"> | undefined;
   readonly #saboteur: StartCapability<"SABOTEUR"> | undefined;
@@ -109,6 +111,7 @@ export class GameStartRouter implements GameStartRouting {
     this.#island = dependencies.island;
     this.#splendor = dependencies.splendor;
     this.#jaipur = dependencies.jaipur;
+    this.#guryongtu = dependencies.guryongtu;
     this.#azul = dependencies.azul;
     this.#duet = dependencies.duet;
     this.#saboteur = dependencies.saboteur;
@@ -143,6 +146,7 @@ export class GameStartRouter implements GameStartRouting {
         case "ISLAND_SETTLERS": return this.#island ? await this.#island.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "SPLENDOR": return this.#splendor ? await this.#splendor.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "JAIPUR": return this.#jaipur ? await this.#jaipur.start(input) : {ok:false,error:INTERNAL_ERROR};
+        case "GURYONGTU": return this.#guryongtu ? await this.#guryongtu.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "AZUL": return this.#azul ? await this.#azul.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "WORD_DUET": return this.#duet ? await this.#duet.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "SABOTEUR": return this.#saboteur ? await this.#saboteur.start(input) : {ok:false,error:INTERNAL_ERROR};

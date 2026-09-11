@@ -1,5 +1,6 @@
 import { SaboteurActionSchema } from "./games/saboteur/actions.js";
 import { JaipurActionSchema } from "./games/jaipur/actions.js";
+import { GuryongtuActionSchema } from "./games/guryongtu/actions.js";
 import { AzulActionSchema } from "./games/azul/actions.js";
 import { DuetActionSchema } from "./games/word-duet/actions.js";
 import { LostCitiesSettingsSchema, LostCitiesActionSchema } from "./games/lost-cities/actions.js";
@@ -332,19 +333,24 @@ export const DrawClientCommandSchema = v.variant("kind",[DrawDraftSaveCommandSch
 export type DrawClientCommand = v.InferOutput<typeof DrawClientCommandSchema>;
 
 const JaipurIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
+const GuryongtuIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 const AzulIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 const DuetIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 const LostCitiesIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 export const JaipurActCommandSchema = v.strictObject({ ...JaipurIdentity, kind: v.literal("jaipur:act"), turnId: TurnIdSchema, payload: JaipurActionSchema });
+export const GuryongtuActCommandSchema = v.strictObject({ ...GuryongtuIdentity, kind: v.literal("guryongtu:act"), turnId: TurnIdSchema, payload: GuryongtuActionSchema });
 export const AzulActCommandSchema = v.strictObject({ ...AzulIdentity, kind: v.literal("azul:act"), turnId: TurnIdSchema, payload: AzulActionSchema });
 export const DuetActCommandSchema = v.strictObject({ ...DuetIdentity, kind: v.literal("duet:act"), turnId: TurnIdSchema, payload: DuetActionSchema });
 export const LostCitiesActCommandSchema = v.strictObject({ ...LostCitiesIdentity, kind: v.literal("lostCities:act"), turnId: TurnIdSchema, payload: LostCitiesActionSchema });
 export const JaipurNextRoundCommandSchema = v.strictObject({ ...JaipurIdentity, kind: v.literal("jaipur:nextRound"), roundId: TurnIdSchema, payload: v.strictObject({}) });
+export const GuryongtuNextRoundCommandSchema = v.strictObject({ ...GuryongtuIdentity, kind: v.literal("guryongtu:nextRound"), roundId: TurnIdSchema, payload: v.strictObject({}) });
 export const LostCitiesNextRoundCommandSchema = v.strictObject({ ...LostCitiesIdentity, kind: v.literal("lostCities:nextRound"), roundId: TurnIdSchema, payload: v.strictObject({}) });
 export const JaipurClientCommandSchema = v.variant("kind", [JaipurActCommandSchema, JaipurNextRoundCommandSchema]);
+export const GuryongtuClientCommandSchema = v.variant("kind", [GuryongtuActCommandSchema, GuryongtuNextRoundCommandSchema]);
 export const LostCitiesConfigureCommandSchema = v.strictObject({kind:v.literal("lostCities:configure"),protocolVersion:ProtocolVersionSchema,requestId:RequestIdSchema,expectedRoomRevision:RoomRevisionSchema,payload:LostCitiesSettingsSchema});
 export const LostCitiesClientCommandSchema = v.variant("kind", [LostCitiesConfigureCommandSchema, LostCitiesActCommandSchema, LostCitiesNextRoundCommandSchema]);
 export type JaipurClientCommand = v.InferOutput<typeof JaipurClientCommandSchema>;
+export type GuryongtuClientCommand = v.InferOutput<typeof GuryongtuClientCommandSchema>;
 export const AzulClientCommandSchema = AzulActCommandSchema;
 export type AzulClientCommand = v.InferOutput<typeof AzulClientCommandSchema>;
 export type LostCitiesClientCommand = v.InferOutput<typeof LostCitiesClientCommandSchema>;

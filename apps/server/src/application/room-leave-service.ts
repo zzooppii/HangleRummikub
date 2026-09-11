@@ -336,7 +336,7 @@ export class RoomLeaveService {
           } else if (
             room.phase === "FINISHED" &&
             room.game !== null &&
-            ((room.gameType === "CITY_ROLE" || room.gameType === "DRAW_RELAY" || room.gameType === "SNEAKY_LUNCH" || room.gameType === "WOLF_NIGHT" || room.gameType === "LIAR_GAME" || room.gameType === "WORD_DUET" || room.gameType === "JAIPUR" || room.gameType === "AZUL" || room.gameType === "SABOTEUR" || room.gameType === "LOST_CITIES" || room.gameType === "SPLENDOR" || room.gameType === "HALLI_GALLI" || room.gameType === "ISLAND_SETTLERS") ? room.game.finishedAt !== null : room.game.result !== null)
+            ((room.gameType === "CITY_ROLE" || room.gameType === "DRAW_RELAY" || room.gameType === "SNEAKY_LUNCH" || room.gameType === "WOLF_NIGHT" || room.gameType === "LIAR_GAME" || room.gameType === "WORD_DUET" || room.gameType === "JAIPUR" || room.gameType === "GURYONGTU" || room.gameType === "AZUL" || room.gameType === "SABOTEUR" || room.gameType === "LOST_CITIES" || room.gameType === "SPLENDOR" || room.gameType === "HALLI_GALLI" || room.gameType === "ISLAND_SETTLERS") ? room.game.finishedAt !== null : room.game.result !== null)
           ) {
             candidate = { ...room, updatedAt: now };
             finishedGameId = room.game.gameId;

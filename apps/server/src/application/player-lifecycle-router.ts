@@ -1,6 +1,7 @@
 import type { createIslandLifecycle } from "../games/island/application/lifecycle.js";
 import type { createSplendorLifecycle } from "../games/splendor/application/lifecycle.js";
 import type { createJaipurLifecycle } from "../games/jaipur/application/lifecycle.js";
+import type { createGuryongtuLifecycle } from "../games/guryongtu/application/lifecycle.js";
 import type { createAzulLifecycle } from "../games/azul/application/lifecycle.js";
 import type { createDuetLifecycle } from "../games/word-duet/application/lifecycle.js";
 import type { createSaboteurLifecycle } from "../games/saboteur/application/lifecycle.js";
@@ -71,6 +72,7 @@ export type PlayerLifecycleRouterDependencies = Readonly<{
   island?: ReturnType<typeof createIslandLifecycle>;
   splendor?: ReturnType<typeof createSplendorLifecycle>;
   jaipur?: ReturnType<typeof createJaipurLifecycle>;
+  guryongtu?: ReturnType<typeof createGuryongtuLifecycle>;
   azul?: ReturnType<typeof createAzulLifecycle>;
   duet?: ReturnType<typeof createDuetLifecycle>;
   saboteur?: ReturnType<typeof createSaboteurLifecycle>;
@@ -103,6 +105,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
   readonly #island: ReturnType<typeof createIslandLifecycle> | undefined;
   readonly #splendor: ReturnType<typeof createSplendorLifecycle> | undefined;
   readonly #jaipur: ReturnType<typeof createJaipurLifecycle> | undefined;
+  readonly #guryongtu: ReturnType<typeof createGuryongtuLifecycle> | undefined;
   readonly #azul: ReturnType<typeof createAzulLifecycle> | undefined;
   readonly #duet: ReturnType<typeof createDuetLifecycle> | undefined;
   readonly #saboteur: ReturnType<typeof createSaboteurLifecycle> | undefined;
@@ -127,6 +130,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
     this.#island = dependencies.island;
     this.#splendor = dependencies.splendor;
     this.#jaipur = dependencies.jaipur;
+    this.#guryongtu = dependencies.guryongtu;
     this.#azul = dependencies.azul;
     this.#duet = dependencies.duet;
     this.#saboteur = dependencies.saboteur;
@@ -163,6 +167,9 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
       case "JAIPUR":
         if (!this.#jaipur) throw new Error("JAIPUR lifecycle missing.");
         return this.#jaipur.applyPlayingLeave(input);
+      case "GURYONGTU":
+        if (!this.#guryongtu) throw new Error("GURYONGTU lifecycle missing.");
+        return this.#guryongtu.applyPlayingLeave(input);
       case "AZUL":
         if (!this.#azul) throw new Error("AZUL lifecycle missing.");
         return this.#azul.applyPlayingLeave(input);
@@ -206,6 +213,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
       case "ISLAND_SETTLERS": return {status:"NO_CHANGE"};
       case "SPLENDOR": return {status:"NO_CHANGE"};
       case "JAIPUR": return {status:"NO_CHANGE"};
+      case "GURYONGTU": return {status:"NO_CHANGE"};
       case "AZUL": return {status:"NO_CHANGE"};
       case "WORD_DUET": return {status:"NO_CHANGE"};
       case "SABOTEUR": return {status:"NO_CHANGE"};

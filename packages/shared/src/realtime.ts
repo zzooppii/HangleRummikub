@@ -1,5 +1,6 @@
 import type { SplendorClientCommand } from "./protocol.js";
 import type { JaipurClientCommand } from "./protocol.js";
+import type { GuryongtuClientCommand } from "./protocol.js";
 import type { AzulClientCommand } from "./protocol.js";
 import type { DuetClientCommand } from "./protocol.js";
 import type { SaboteurClientCommand } from "./protocol.js";
@@ -557,6 +558,7 @@ export interface SnapshotWireClientToServerEvents {
   "splendor:configure": (command: Extract<SplendorClientCommand,{kind:"splendor:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "splendor:act": (command: Extract<SplendorClientCommand,{kind:"splendor:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "jaipur:act": (command: Extract<JaipurClientCommand,{kind:"jaipur:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "guryongtu:act": (command: Extract<GuryongtuClientCommand,{kind:"guryongtu:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "azul:act": (command: Extract<AzulClientCommand,{kind:"azul:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "duet:act": (command: Extract<DuetClientCommand,{kind:"duet:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "saboteur:act": (command: Extract<SaboteurClientCommand,{kind:"saboteur:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
@@ -564,6 +566,7 @@ export interface SnapshotWireClientToServerEvents {
   "lostCities:act": (command: Extract<LostCitiesClientCommand,{kind:"lostCities:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "splendor:rematch": (command: Extract<SplendorClientCommand,{kind:"splendor:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "jaipur:nextRound": (command: Extract<JaipurClientCommand,{kind:"jaipur:nextRound"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "guryongtu:nextRound": (command: Extract<GuryongtuClientCommand,{kind:"guryongtu:nextRound"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "saboteur:say": (command: Extract<SaboteurClientCommand,{kind:"saboteur:say"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "saboteur:nextRound": (command: Extract<SaboteurClientCommand,{kind:"saboteur:nextRound"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "lostCities:nextRound": (command: Extract<LostCitiesClientCommand,{kind:"lostCities:nextRound"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;

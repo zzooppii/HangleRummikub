@@ -1,5 +1,6 @@
 import type { SplendorStoredGame } from "../games/splendor/compatibility/adapter.js";
 import type { JaipurStoredGame } from "../games/jaipur/compatibility/adapter.js";
+import type { GuryongtuStoredGame } from "../games/guryongtu/compatibility/adapter.js";
 import type { AzulStoredGame } from "../games/azul/compatibility/adapter.js";
 import type { DuetStoredGame } from "../games/word-duet/compatibility/adapter.js";
 import type { SaboteurStoredGame } from "../games/saboteur/compatibility/adapter.js";
@@ -80,11 +81,12 @@ export function createNextTurn(
 
 export function toScheduledTurnDeadline(
   roomId: RoomId,
-  game: PlayingGameState | PlayingNumberTileGameState | PlayingGemGameState | CityRoleStoredGame | DrawRelayStoredGame | SneakyLunchStoredGame | WolfStoredGame | LiarStoredGame | DuetStoredGame | JaipurStoredGame | AzulStoredGame | SaboteurStoredGame | LostCitiesStoredGame | SplendorStoredGame | HalliStoredGame | IslandStoredGame,
+  game: PlayingGameState | PlayingNumberTileGameState | PlayingGemGameState | CityRoleStoredGame | DrawRelayStoredGame | SneakyLunchStoredGame | WolfStoredGame | LiarStoredGame | DuetStoredGame | JaipurStoredGame | GuryongtuStoredGame | AzulStoredGame | SaboteurStoredGame | LostCitiesStoredGame | SplendorStoredGame | HalliStoredGame | IslandStoredGame,
 ): ScheduledTurnDeadline {
   if ("state" in game && !("windowStartedAt" in game)) {
     if (game.state.rulesVersion === "duet-2025-ko-v1") throw new Error("Duet has no turn deadline.");
     if (game.state.rulesVersion === "jaipur-base-v1") throw new Error("Jaipur has no turn deadline.");
+    if (game.state.rulesVersion === "guryongtu-base-v1") throw new Error("Guryongtu has no turn deadline.");
     if (game.state.rulesVersion === "azul-base-v1") throw new Error("Azul has no turn deadline.");
     if (game.state.rulesVersion === "saboteur-base-2025-v1") {
       if (game.state.deadlineAt === null) throw new Error("Saboteur deadline missing.");
@@ -171,6 +173,7 @@ export async function scheduleCurrentTurnBestEffort(
     if ("state" in game && !("windowStartedAt" in game)) {
       if (game.state.rulesVersion === "duet-2025-ko-v1") return false;
       if (game.state.rulesVersion === "jaipur-base-v1") return false;
+      if (game.state.rulesVersion === "guryongtu-base-v1") return false;
       if (game.state.rulesVersion === "azul-base-v1") return false;
       if (game.state.rulesVersion === "saboteur-base-2025-v1") {
         if (game.state.deadlineAt === null || game.state.transitionId !== identity.turnId) return false;

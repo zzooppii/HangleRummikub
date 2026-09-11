@@ -2,6 +2,7 @@ import { CITY_DEFAULT_SETTINGS } from "@hangul-rummikub/shared";
 import { projectIsland } from "../games/island/compatibility/projector.js";
 import { projectSplendor } from "../games/splendor/compatibility/projector.js";
 import { projectJaipur } from "../games/jaipur/compatibility/projector.js";
+import { projectGuryongtu } from "../games/guryongtu/compatibility/projector.js";
 import { projectAzul } from "../games/azul/compatibility/projector.js";
 import { projectDuet } from "../games/word-duet/compatibility/projector.js";
 import { projectSaboteur } from "../games/saboteur/compatibility/projector.js";
@@ -129,6 +130,7 @@ export class PlatformSnapshotV2Projector {
     if(input.room.gameType === "ISLAND_SETTLERS") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectIsland(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "SPLENDOR") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectSplendor(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "JAIPUR") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectJaipur(input.room.game,input.selfPlayerId)});
+    if(input.room.gameType === "GURYONGTU") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectGuryongtu(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "AZUL") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectAzul(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "WORD_DUET") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectDuet(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "SABOTEUR") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectSaboteur(input.room.game,input.selfPlayerId)});

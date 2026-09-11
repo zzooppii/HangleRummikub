@@ -1,0 +1,10 @@
+import * as v from "valibot";
+import { TileIdSchema } from "../../identifiers.js";
+export const GuryongtuRankSchema = v.pipe(v.number(), v.safeInteger(), v.minValue(1), v.maxValue(9));
+export const GuryongtuParitySchema = v.picklist(["ODD", "EVEN"]);
+export const GuryongtuTileSchema = v.strictObject({ tileId: TileIdSchema, rank: GuryongtuRankSchema });
+export type GuryongtuTile = v.InferOutput<typeof GuryongtuTileSchema>;
+export type GuryongtuParity = v.InferOutput<typeof GuryongtuParitySchema>;
+export const GuryongtuActionSchema = v.strictObject({ kind: v.literal("PLAY_TILE"), tileId: TileIdSchema });
+export type GuryongtuAction = v.InferOutput<typeof GuryongtuActionSchema>;
+export const guryongtuParity = (rank: number): GuryongtuParity => rank % 2 ? "ODD" : "EVEN";

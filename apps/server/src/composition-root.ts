@@ -2,6 +2,7 @@ import { CuratedLiarPrompts } from "./games/liar-game/domain/prompts.js";
 import { IslandHostSuccession } from "./games/island/application/host-succession.js";
 import { SplendorHostSuccession } from "./games/splendor/application/host-succession.js";
 import { JaipurHostSuccession } from "./games/jaipur/application/host-succession.js";
+import { GuryongtuHostSuccession } from "./games/guryongtu/application/host-succession.js";
 import { AzulHostSuccession } from "./games/azul/application/host-succession.js";
 import { DuetHostSuccession } from "./games/word-duet/application/host-succession.js";
 import { SaboteurHostSuccession } from "./games/saboteur/application/host-succession.js";
@@ -12,6 +13,7 @@ import { LiarHostSuccession } from "./games/liar-game/application/host-successio
 import { IslandService } from "./games/island/application/service.js";
 import { SplendorService } from "./games/splendor/application/service.js";
 import { JaipurService } from "./games/jaipur/application/service.js";
+import { GuryongtuService } from "./games/guryongtu/application/service.js";
 import { AzulService } from "./games/azul/application/service.js";
 import { DuetService } from "./games/word-duet/application/service.js";
 import { SaboteurService } from "./games/saboteur/application/service.js";
@@ -22,6 +24,7 @@ import { LiarService } from "./games/liar-game/application/service.js";
 import { createIslandLifecycle } from "./games/island/application/lifecycle.js";
 import { createSplendorLifecycle } from "./games/splendor/application/lifecycle.js";
 import { createJaipurLifecycle } from "./games/jaipur/application/lifecycle.js";
+import { createGuryongtuLifecycle } from "./games/guryongtu/application/lifecycle.js";
 import { createAzulLifecycle } from "./games/azul/application/lifecycle.js";
 import { createDuetLifecycle } from "./games/word-duet/application/lifecycle.js";
 import { createSaboteurLifecycle } from "./games/saboteur/application/lifecycle.js";
@@ -145,6 +148,7 @@ export type ApplicationRuntime = Readonly<{
   islandService?: IslandService;
   splendorService?: SplendorService;
   jaipurService?: JaipurService;
+  guryongtuService?: GuryongtuService;
   azulService?: AzulService;
   duetService?: DuetService;
   saboteurService?: SaboteurService;
@@ -155,6 +159,7 @@ export type ApplicationRuntime = Readonly<{
   islandHostSuccession?: IslandHostSuccession;
   splendorHostSuccession?: SplendorHostSuccession;
   jaipurHostSuccession?: JaipurHostSuccession;
+  guryongtuHostSuccession?: GuryongtuHostSuccession;
   azulHostSuccession?: AzulHostSuccession;
   duetHostSuccession?: DuetHostSuccession;
   saboteurHostSuccession?: SaboteurHostSuccession;
@@ -268,6 +273,7 @@ export function createApplicationRuntime(
       { gameType: "ISLAND_SETTLERS" },
       { gameType: "SPLENDOR" },
       { gameType: "JAIPUR" },
+      { gameType: "GURYONGTU" },
       { gameType: "AZUL" },
       { gameType: "WORD_DUET" },
       { gameType: "SABOTEUR" },
@@ -306,6 +312,7 @@ export function createApplicationRuntime(
     island: createIslandLifecycle(),
     splendor: createSplendorLifecycle(),
     jaipur: createJaipurLifecycle(),
+    guryongtu: createGuryongtuLifecycle(),
     azul: createAzulLifecycle(),
     duet: createDuetLifecycle(),
     saboteur: createSaboteurLifecycle(),
@@ -595,6 +602,13 @@ export function createApplicationRuntime(
     const room = await persistence.findById(roomId);
     if (room?.gameType === "JAIPUR" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
   });
+  const guryongtuService = new GuryongtuService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
+    roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource });
+  const guryongtuHostSuccession = new GuryongtuHostSuccession(guryongtuService.deps, roomId => guryongtuService.notify(roomId));
+  guryongtuService.subscribe(async roomId => {
+    const room = await persistence.findById(roomId);
+    if (room?.gameType === "GURYONGTU" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
+  });
   const azulService = new AzulService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
     roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource });
   const azulHostSuccession = new AzulHostSuccession(azulService.deps, roomId => azulService.notify(roomId));
@@ -716,6 +730,7 @@ export function createApplicationRuntime(
     island: { gameType: "ISLAND_SETTLERS", start: input => islandService.start(input) },
     splendor: { gameType: "SPLENDOR", start: input => splendorService.start(input) },
     jaipur: { gameType: "JAIPUR", start: input => jaipurService.start(input) },
+    guryongtu: { gameType: "GURYONGTU", start: input => guryongtuService.start(input) },
     azul: { gameType: "AZUL", start: input => azulService.start(input) },
     duet: { gameType: "WORD_DUET", start: input => duetService.start(input) },
     saboteur: { gameType: "SABOTEUR", start: input => saboteurService.start(input) },
@@ -916,6 +931,7 @@ export function createApplicationRuntime(
     islandService,
     splendorService,
     jaipurService,
+    guryongtuService,
     azulService,
     duetService,
     saboteurService,
@@ -926,6 +942,7 @@ export function createApplicationRuntime(
     islandHostSuccession,
     splendorHostSuccession,
     jaipurHostSuccession,
+    guryongtuHostSuccession,
     azulHostSuccession,
     duetHostSuccession,
     saboteurHostSuccession,
@@ -985,6 +1002,7 @@ export function createApplicationRuntime(
       islandHostSuccession.start();
       splendorHostSuccession.start();
       jaipurHostSuccession.start();
+      guryongtuHostSuccession.start();
       azulHostSuccession.start();
       duetHostSuccession.start();
       saboteurHostSuccession.start();
@@ -1012,6 +1030,7 @@ export function createApplicationRuntime(
       islandHostSuccession.stop();
       splendorHostSuccession.stop();
       jaipurHostSuccession.stop();
+      guryongtuHostSuccession.stop();
       azulHostSuccession.stop();
       duetHostSuccession.stop();
       saboteurHostSuccession.stop();
