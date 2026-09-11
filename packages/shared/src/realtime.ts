@@ -1,5 +1,6 @@
 import type { SplendorClientCommand } from "./protocol.js";
 import type { JaipurClientCommand } from "./protocol.js";
+import type { DuetClientCommand } from "./protocol.js";
 import type { SaboteurClientCommand } from "./protocol.js";
 import type { LostCitiesClientCommand } from "./protocol.js";
 import type { IslandClientCommand } from "./protocol.js";
@@ -554,6 +555,7 @@ export interface SnapshotWireClientToServerEvents {
   "island:rematch": (command: Extract<IslandClientCommand,{kind:"island:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "splendor:act": (command: Extract<SplendorClientCommand,{kind:"splendor:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "jaipur:act": (command: Extract<JaipurClientCommand,{kind:"jaipur:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "duet:act": (command: Extract<DuetClientCommand,{kind:"duet:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "saboteur:act": (command: Extract<SaboteurClientCommand,{kind:"saboteur:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "lostCities:configure": (command: Extract<LostCitiesClientCommand,{kind:"lostCities:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "lostCities:act": (command: Extract<LostCitiesClientCommand,{kind:"lostCities:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;

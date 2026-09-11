@@ -2,6 +2,7 @@ import { SaboteurPlayingProjectionSchema, SaboteurFinishedProjectionSchema, sabo
 import { ISLAND_RESOURCES } from "../games/island/actions.js";
 import { SplendorPlayingProjectionSchema, SplendorFinishedProjectionSchema } from "../games/splendor/contracts.js";
 import { JaipurPlayingProjectionSchema, JaipurFinishedProjectionSchema, jaipurProjectionIsConsistent } from "../games/jaipur/contracts.js";
+import { DuetPlayingProjectionSchema, DuetFinishedProjectionSchema, duetProjectionIsConsistent } from "../games/word-duet/contracts.js";
 import { LostCitiesSettingsSchema } from "../games/lost-cities/actions.js";
 import { LostCitiesPlayingProjectionSchema, LostCitiesFinishedProjectionSchema, lostCitiesProjectionIsConsistent } from "../games/lost-cities/contracts.js";
 import { IslandPlayingProjectionSchema, IslandFinishedProjectionSchema } from "../games/island/contracts.js";
@@ -346,6 +347,23 @@ export const JaipurLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, Jaipu
 export const JaipurPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, JaipurPlayingPlatformSnapshotV2> = JaipurPlayingRaw;
 export const JaipurFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, JaipurFinishedPlatformSnapshotV2> = JaipurFinishedRaw;
 
+const DuetOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const DuetRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("WORD_DUET") };
+const DuetPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.length(2));
+const DuetLobbyRaw = v.pipe(v.strictObject({ ...DuetOuter, room: v.strictObject({ ...DuetRoom, phase: v.literal("LOBBY"),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)) }), game: v.null() }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
+const DuetPlayingRaw = v.pipe(v.strictObject({ ...DuetOuter, room: v.strictObject({ ...DuetRoom, phase: v.literal("PLAYING"), players: DuetPlayers }), game: DuetPlayingProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => duetProjectionIsConsistent(s.game)));
+const DuetFinishedRaw = v.pipe(v.strictObject({ ...DuetOuter, room: v.strictObject({ ...DuetRoom, phase: v.literal("FINISHED"), players: DuetPlayers }), game: DuetFinishedProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => duetProjectionIsConsistent(s.game)));
+export type DuetLobbyPlatformSnapshotV2 = v.InferOutput<typeof DuetLobbyRaw>;
+export type DuetPlayingPlatformSnapshotV2 = v.InferOutput<typeof DuetPlayingRaw>;
+export type DuetFinishedPlatformSnapshotV2 = v.InferOutput<typeof DuetFinishedRaw>;
+export const DuetLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, DuetLobbyPlatformSnapshotV2> = DuetLobbyRaw;
+export const DuetPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, DuetPlayingPlatformSnapshotV2> = DuetPlayingRaw;
+export const DuetFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, DuetFinishedPlatformSnapshotV2> = DuetFinishedRaw;
+
 const LostCitiesOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
 const LostCitiesRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("LOST_CITIES"), settings:v.optional(LostCitiesSettingsSchema) };
 const LostCitiesPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.length(2));
@@ -435,6 +453,7 @@ export const LobbyPlatformSnapshotV2Schema = v.union([
   IslandLobbyPlatformSnapshotV2Schema,
   SplendorLobbyPlatformSnapshotV2Schema,
   JaipurLobbyPlatformSnapshotV2Schema,
+  DuetLobbyPlatformSnapshotV2Schema,
   SaboteurLobbyPlatformSnapshotV2Schema,
   LostCitiesLobbyPlatformSnapshotV2Schema,
   HalliLobbyPlatformSnapshotV2Schema,
@@ -583,6 +602,7 @@ export const PlayingPlatformSnapshotV2Schema = v.union([
   IslandPlayingPlatformSnapshotV2Schema,
   SplendorPlayingPlatformSnapshotV2Schema,
   JaipurPlayingPlatformSnapshotV2Schema,
+  DuetPlayingPlatformSnapshotV2Schema,
   SaboteurPlayingPlatformSnapshotV2Schema,
   LostCitiesPlayingPlatformSnapshotV2Schema,
   HalliPlayingPlatformSnapshotV2Schema,
@@ -731,6 +751,7 @@ export const FinishedPlatformSnapshotV2Schema = v.union([
   IslandFinishedPlatformSnapshotV2Schema,
   SplendorFinishedPlatformSnapshotV2Schema,
   JaipurFinishedPlatformSnapshotV2Schema,
+  DuetFinishedPlatformSnapshotV2Schema,
   SaboteurFinishedPlatformSnapshotV2Schema,
   LostCitiesFinishedPlatformSnapshotV2Schema,
   HalliFinishedPlatformSnapshotV2Schema,

@@ -1,6 +1,7 @@
 import type { createIslandLifecycle } from "../games/island/application/lifecycle.js";
 import type { createSplendorLifecycle } from "../games/splendor/application/lifecycle.js";
 import type { createJaipurLifecycle } from "../games/jaipur/application/lifecycle.js";
+import type { createDuetLifecycle } from "../games/word-duet/application/lifecycle.js";
 import type { createSaboteurLifecycle } from "../games/saboteur/application/lifecycle.js";
 import type { createLostCitiesLifecycle } from "../games/lost-cities/application/lifecycle.js";
 import type { createHalliLifecycle } from "../games/halli-galli/application/lifecycle.js";
@@ -69,6 +70,7 @@ export type PlayerLifecycleRouterDependencies = Readonly<{
   island?: ReturnType<typeof createIslandLifecycle>;
   splendor?: ReturnType<typeof createSplendorLifecycle>;
   jaipur?: ReturnType<typeof createJaipurLifecycle>;
+  duet?: ReturnType<typeof createDuetLifecycle>;
   saboteur?: ReturnType<typeof createSaboteurLifecycle>;
   lostCities?: ReturnType<typeof createLostCitiesLifecycle>;
   halli?: ReturnType<typeof createHalliLifecycle>;
@@ -99,6 +101,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
   readonly #island: ReturnType<typeof createIslandLifecycle> | undefined;
   readonly #splendor: ReturnType<typeof createSplendorLifecycle> | undefined;
   readonly #jaipur: ReturnType<typeof createJaipurLifecycle> | undefined;
+  readonly #duet: ReturnType<typeof createDuetLifecycle> | undefined;
   readonly #saboteur: ReturnType<typeof createSaboteurLifecycle> | undefined;
   readonly #lostCities: ReturnType<typeof createLostCitiesLifecycle> | undefined;
   readonly #halli: ReturnType<typeof createHalliLifecycle> | undefined;
@@ -121,6 +124,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
     this.#island = dependencies.island;
     this.#splendor = dependencies.splendor;
     this.#jaipur = dependencies.jaipur;
+    this.#duet = dependencies.duet;
     this.#saboteur = dependencies.saboteur;
     this.#lostCities = dependencies.lostCities;
     this.#halli = dependencies.halli;
@@ -155,6 +159,9 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
       case "JAIPUR":
         if (!this.#jaipur) throw new Error("JAIPUR lifecycle missing.");
         return this.#jaipur.applyPlayingLeave(input);
+      case "WORD_DUET":
+        if (!this.#duet) throw new Error("WORD_DUET lifecycle missing.");
+        return this.#duet.applyPlayingLeave(input);
       case "LOST_CITIES":
         if (!this.#lostCities) throw new Error("LOST_CITIES lifecycle missing.");
         return this.#lostCities.applyPlayingLeave(input);
@@ -192,6 +199,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
       case "ISLAND_SETTLERS": return {status:"NO_CHANGE"};
       case "SPLENDOR": return {status:"NO_CHANGE"};
       case "JAIPUR": return {status:"NO_CHANGE"};
+      case "WORD_DUET": return {status:"NO_CHANGE"};
       case "SABOTEUR": return {status:"NO_CHANGE"};
       case "LOST_CITIES": return {status:"NO_CHANGE"};
       case "HALLI_GALLI": return {status:"NO_CHANGE"};

@@ -4,10 +4,12 @@ import "./features/lobby/room-game-controls.css";
 import { RoomGameControls } from "./features/lobby/RoomGameControls.js";
 import { SplendorScreen } from "./features/splendor/SplendorScreen.js";
 import { JaipurScreen } from "./features/jaipur/JaipurScreen.js";
+import { DuetScreen } from "./features/word-duet/DuetScreen.js";
 import { SaboteurScreen } from "./features/saboteur/SaboteurScreen.js";
 import { LostCitiesScreen } from "./features/lost-cities/LostCitiesScreen.js";
 import "./features/splendor/splendor.css";
 import "./features/jaipur/jaipur.css";
+import "./features/word-duet/duet.css";
 import "./features/saboteur/saboteur.css";
 import "./features/lost-cities/lost-cities.css";
 import { IslandScreen } from "./features/island/IslandScreen.js";
@@ -375,6 +377,14 @@ export function App() {
         onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
         pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
         error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;
+    }
+
+    if (roomView.kind === "WORD_DUET") {
+      return <div className="duet-room-shell"><ReconnectBoundary {...recovery}><DuetScreen snapshot={roomView.snapshot}
+        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={app.actDuet} onRematch={() => app.selectRoomGame("WORD_DUET")}
+        onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
+        pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
+        error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary></div>;
     }
 
     if (roomView.kind === "SABOTEUR") {

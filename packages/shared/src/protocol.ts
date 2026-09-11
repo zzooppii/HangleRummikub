@@ -1,5 +1,6 @@
 import { SaboteurActionSchema } from "./games/saboteur/actions.js";
 import { JaipurActionSchema } from "./games/jaipur/actions.js";
+import { DuetActionSchema } from "./games/word-duet/actions.js";
 import { LostCitiesSettingsSchema, LostCitiesActionSchema } from "./games/lost-cities/actions.js";
 import { SplendorActionSchema } from "./games/splendor/actions.js";
 import { IslandActionSchema } from "./games/island/actions.js";
@@ -330,8 +331,10 @@ export const DrawClientCommandSchema = v.variant("kind",[DrawDraftSaveCommandSch
 export type DrawClientCommand = v.InferOutput<typeof DrawClientCommandSchema>;
 
 const JaipurIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
+const DuetIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 const LostCitiesIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 export const JaipurActCommandSchema = v.strictObject({ ...JaipurIdentity, kind: v.literal("jaipur:act"), turnId: TurnIdSchema, payload: JaipurActionSchema });
+export const DuetActCommandSchema = v.strictObject({ ...DuetIdentity, kind: v.literal("duet:act"), turnId: TurnIdSchema, payload: DuetActionSchema });
 export const LostCitiesActCommandSchema = v.strictObject({ ...LostCitiesIdentity, kind: v.literal("lostCities:act"), turnId: TurnIdSchema, payload: LostCitiesActionSchema });
 export const JaipurNextRoundCommandSchema = v.strictObject({ ...JaipurIdentity, kind: v.literal("jaipur:nextRound"), roundId: TurnIdSchema, payload: v.strictObject({}) });
 export const LostCitiesNextRoundCommandSchema = v.strictObject({ ...LostCitiesIdentity, kind: v.literal("lostCities:nextRound"), roundId: TurnIdSchema, payload: v.strictObject({}) });
@@ -680,3 +683,6 @@ export const SaboteurClientCommandSchema=v.variant('kind',[SaboteurActCommandSch
 export type SaboteurClientCommand=v.InferOutput<typeof SaboteurClientCommandSchema>;
 
 import { LiarSettingsSchema, LiarClueSchema, LiarTextSchema } from "./games/liar-game/contracts.js";
+
+export const DuetClientCommandSchema = DuetActCommandSchema;
+export type DuetClientCommand = v.InferOutput<typeof DuetClientCommandSchema>;

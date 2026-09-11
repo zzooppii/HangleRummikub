@@ -179,6 +179,7 @@ export function HomeScreen(props: HomeScreenProps) {
                             {game.gameType === "ISLAND_SETTLERS" ? <span style={{ display: "block", width: 110 }}><IslandEmblem/></span> : null}
                             {game.gameType === "LOST_CITIES" ? <img src="/images/lost-cities/expeditions.png" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
                             {game.gameType === "SABOTEUR" ? <span aria-hidden="true" style={{display:"block",width:"100%",height:"100%",backgroundImage:"url(/images/saboteur/atlas.png)",backgroundSize:"300% 200%",backgroundPosition:"0% 0%"}}/> : null}
+                            {game.gameType === "WORD_DUET" ? <img src="/images/word-duet/operation-night.webp" alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : null}
                             {game.gameType === "JAIPUR" ? <span aria-hidden="true" style={{ fontSize: 52 }}>🐪</span> : null}
                             {game.gameType === "SPLENDOR" ? <img src="/assets/splendor/gems.jpg" alt="스플렌더의 다채로운 보석" style={{ width: 125, height: 84, objectFit: "cover", borderRadius: 10 }}/> : null}
                             {game.gameType === "HALLI_GALLI" ? <span style={{ display: "block", width: 90 }}><HalliBellArt/></span> : null}

@@ -2,6 +2,7 @@ import { CuratedLiarPrompts } from "./games/liar-game/domain/prompts.js";
 import { IslandHostSuccession } from "./games/island/application/host-succession.js";
 import { SplendorHostSuccession } from "./games/splendor/application/host-succession.js";
 import { JaipurHostSuccession } from "./games/jaipur/application/host-succession.js";
+import { DuetHostSuccession } from "./games/word-duet/application/host-succession.js";
 import { SaboteurHostSuccession } from "./games/saboteur/application/host-succession.js";
 import { LostCitiesHostSuccession } from "./games/lost-cities/application/host-succession.js";
 import { HalliHostSuccession } from "./games/halli-galli/application/host-succession.js";
@@ -10,6 +11,7 @@ import { LiarHostSuccession } from "./games/liar-game/application/host-successio
 import { IslandService } from "./games/island/application/service.js";
 import { SplendorService } from "./games/splendor/application/service.js";
 import { JaipurService } from "./games/jaipur/application/service.js";
+import { DuetService } from "./games/word-duet/application/service.js";
 import { SaboteurService } from "./games/saboteur/application/service.js";
 import { LostCitiesService } from "./games/lost-cities/application/service.js";
 import { HalliService } from "./games/halli-galli/application/service.js";
@@ -18,6 +20,7 @@ import { LiarService } from "./games/liar-game/application/service.js";
 import { createIslandLifecycle } from "./games/island/application/lifecycle.js";
 import { createSplendorLifecycle } from "./games/splendor/application/lifecycle.js";
 import { createJaipurLifecycle } from "./games/jaipur/application/lifecycle.js";
+import { createDuetLifecycle } from "./games/word-duet/application/lifecycle.js";
 import { createSaboteurLifecycle } from "./games/saboteur/application/lifecycle.js";
 import { createLostCitiesLifecycle } from "./games/lost-cities/application/lifecycle.js";
 import { createHalliLifecycle } from "./games/halli-galli/application/lifecycle.js";
@@ -139,6 +142,7 @@ export type ApplicationRuntime = Readonly<{
   islandService?: IslandService;
   splendorService?: SplendorService;
   jaipurService?: JaipurService;
+  duetService?: DuetService;
   saboteurService?: SaboteurService;
   lostCitiesService?: LostCitiesService;
   halliService?: HalliService;
@@ -147,6 +151,7 @@ export type ApplicationRuntime = Readonly<{
   islandHostSuccession?: IslandHostSuccession;
   splendorHostSuccession?: SplendorHostSuccession;
   jaipurHostSuccession?: JaipurHostSuccession;
+  duetHostSuccession?: DuetHostSuccession;
   saboteurHostSuccession?: SaboteurHostSuccession;
   lostCitiesHostSuccession?: LostCitiesHostSuccession;
   halliHostSuccession?: HalliHostSuccession;
@@ -258,6 +263,7 @@ export function createApplicationRuntime(
       { gameType: "ISLAND_SETTLERS" },
       { gameType: "SPLENDOR" },
       { gameType: "JAIPUR" },
+      { gameType: "WORD_DUET" },
       { gameType: "SABOTEUR" },
       { gameType: "LOST_CITIES" },
       { gameType: "HALLI_GALLI" },
@@ -294,6 +300,7 @@ export function createApplicationRuntime(
     island: createIslandLifecycle(),
     splendor: createSplendorLifecycle(),
     jaipur: createJaipurLifecycle(),
+    duet: createDuetLifecycle(),
     saboteur: createSaboteurLifecycle(),
     lostCities: createLostCitiesLifecycle(),
     halli: createHalliLifecycle(),
@@ -581,6 +588,13 @@ export function createApplicationRuntime(
     const room = await persistence.findById(roomId);
     if (room?.gameType === "JAIPUR" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
   });
+  const duetService = new DuetService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
+    roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource });
+  const duetHostSuccession = new DuetHostSuccession(duetService.deps, roomId => duetService.notify(roomId));
+  duetService.subscribe(async roomId => {
+    const room = await persistence.findById(roomId);
+    if (room?.gameType === "WORD_DUET" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
+  });
   const saboteurService = new SaboteurService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
     roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource, turnScheduler });
   const saboteurHostSuccession = new SaboteurHostSuccession(saboteurService.deps, roomId => saboteurService.notify(roomId));
@@ -688,6 +702,7 @@ export function createApplicationRuntime(
     island: { gameType: "ISLAND_SETTLERS", start: input => islandService.start(input) },
     splendor: { gameType: "SPLENDOR", start: input => splendorService.start(input) },
     jaipur: { gameType: "JAIPUR", start: input => jaipurService.start(input) },
+    duet: { gameType: "WORD_DUET", start: input => duetService.start(input) },
     saboteur: { gameType: "SABOTEUR", start: input => saboteurService.start(input) },
     lostCities: { gameType: "LOST_CITIES", start: input => lostCitiesService.start(input) },
     halli: { gameType: "HALLI_GALLI", start: input => halliService.start(input) },
@@ -885,6 +900,7 @@ export function createApplicationRuntime(
     islandService,
     splendorService,
     jaipurService,
+    duetService,
     saboteurService,
     lostCitiesService,
     halliService,
@@ -893,6 +909,7 @@ export function createApplicationRuntime(
     islandHostSuccession,
     splendorHostSuccession,
     jaipurHostSuccession,
+    duetHostSuccession,
     saboteurHostSuccession,
     lostCitiesHostSuccession,
     halliHostSuccession,
@@ -950,6 +967,7 @@ export function createApplicationRuntime(
       islandHostSuccession.start();
       splendorHostSuccession.start();
       jaipurHostSuccession.start();
+      duetHostSuccession.start();
       saboteurHostSuccession.start();
       lostCitiesHostSuccession.start();
       halliHostSuccession.start();
@@ -975,6 +993,7 @@ export function createApplicationRuntime(
       islandHostSuccession.stop();
       splendorHostSuccession.stop();
       jaipurHostSuccession.stop();
+      duetHostSuccession.stop();
       saboteurHostSuccession.stop();
       lostCitiesHostSuccession.stop();
       halliHostSuccession.stop();

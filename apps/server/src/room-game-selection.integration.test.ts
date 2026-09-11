@@ -58,10 +58,10 @@ async function harness(t: TestContext, count = 3) {
   return { server, host, members, lobby, connect, bootstrap, request, send, call, success, failure, sync, selection, readyAll };
 }
 
-test("same room: all fourteen games can be selected, host starts without any ready commands", async t => {
+test("same room: all fifteen games can be selected, host starts without any ready commands", async t => {
   for (const gameType of SUPPORTED_GAME_TYPES) {
     await t.test(gameType, async t => {
-      const h = await harness(t, gameType === "LIAR_GAME" ? 4 : (gameType === "JAIPUR" || gameType === "LOST_CITIES") ? 2 : 3), before = await h.sync();
+      const h = await harness(t, gameType === "LIAR_GAME" ? 4 : (gameType === "WORD_DUET" || gameType === "JAIPUR" || gameType === "LOST_CITIES") ? 2 : 3), before = await h.sync();
       const selected = h.success(await h.send(h.host, h.selection(before, gameType)));
       assert.equal(selected.room.roomId, before.room.roomId); assert.equal(selected.room.roomCode, before.room.roomCode);
       assert.deepEqual(selected.room.players.map(p => [p.playerId, p.nickname, p.isHost]), before.room.players.map(p => [p.playerId, p.nickname, p.isHost]));
@@ -135,7 +135,7 @@ test("six players remain in a four-player game's lobby, start is blocked", async
 
 test("every game's finished roster returns only remaining members to the same room", async t => {
   for (const gameType of SUPPORTED_GAME_TYPES) await t.test(gameType, async t => {
-    const h = await harness(t, gameType === "LIAR_GAME" ? 4 : (gameType === "JAIPUR" || gameType === "LOST_CITIES") ? 2 : 3);
+    const h = await harness(t, gameType === "LIAR_GAME" ? 4 : (gameType === "WORD_DUET" || gameType === "JAIPUR" || gameType === "LOST_CITIES") ? 2 : 3);
     h.success(await h.send(h.host, h.selection(await h.sync(), gameType)));
     const prepared = await h.readyAll();
     h.success(await h.call(h.host, "game:start", {}, { expectedRoomRevision: prepared.versions.roomRevision }));

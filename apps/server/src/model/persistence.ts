@@ -3,6 +3,7 @@ import type { IslandStoredGame } from "../games/island/compatibility/adapter.js"
 import type { LostCitiesSettings, CityExpansionSettings } from "@hangul-rummikub/shared";
 import type { SplendorStoredGame } from "../games/splendor/compatibility/adapter.js";
 import type { JaipurStoredGame } from "../games/jaipur/compatibility/adapter.js";
+import type { DuetStoredGame } from "../games/word-duet/compatibility/adapter.js";
 import type { LostCitiesStoredGame } from "../games/lost-cities/compatibility/adapter.js";
 import type { HalliStoredGame } from "../games/halli-galli/compatibility/adapter.js";
 import type { WolfStoredGame } from "../games/wolf-night/compatibility/adapter.js";
@@ -100,11 +101,12 @@ export type WolfRoomRecord = RoomRecordBase & Readonly<{ gameType: "WOLF_NIGHT";
 export type LiarRoomRecord = RoomRecordBase & Readonly<{ gameType: "LIAR_GAME"; game: LiarStoredGame | null; departedPlayerIds?: readonly PlayerId[]; settings?: LiarSettings }>;
 export type SplendorRoomRecord = RoomRecordBase & Readonly<{ gameType: "SPLENDOR"; game: SplendorStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
 export type JaipurRoomRecord = RoomRecordBase & Readonly<{ gameType: "JAIPUR"; game: JaipurStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
+export type DuetRoomRecord = RoomRecordBase & Readonly<{ gameType: "WORD_DUET"; game: DuetStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
 export type SaboteurRoomRecord = RoomRecordBase & Readonly<{ gameType: "SABOTEUR"; game: SaboteurStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
 export type LostCitiesRoomRecord = RoomRecordBase & Readonly<{ gameType: "LOST_CITIES"; settings?: LostCitiesSettings; game: LostCitiesStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
 export type HalliRoomRecord = RoomRecordBase & Readonly<{ gameType: "HALLI_GALLI"; game: HalliStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
 export type IslandRoomRecord = RoomRecordBase & Readonly<{ gameType: "ISLAND_SETTLERS"; game: IslandStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
-export type RoomRecord = SaboteurRoomRecord | LostCitiesRoomRecord | JaipurRoomRecord | SplendorRoomRecord | IslandRoomRecord | HalliRoomRecord | WolfRoomRecord | LiarRoomRecord | HangulRoomRecord | NumberTileRoomRecord | GemCardRoomRecord | CityRoleRoomRecord | DrawRelayRoomRecord | SneakyLunchRoomRecord;
+export type RoomRecord = SaboteurRoomRecord | LostCitiesRoomRecord | DuetRoomRecord | JaipurRoomRecord | SplendorRoomRecord | IslandRoomRecord | HalliRoomRecord | WolfRoomRecord | LiarRoomRecord | HangulRoomRecord | NumberTileRoomRecord | GemCardRoomRecord | CityRoleRoomRecord | DrawRelayRoomRecord | SneakyLunchRoomRecord;
 
 type WithoutStorageRevision<TRoom> = TRoom extends RoomRecord
   ? Omit<TRoom, "storageRevision">

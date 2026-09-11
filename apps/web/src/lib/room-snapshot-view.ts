@@ -1,6 +1,7 @@
 import type { IslandWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { SplendorWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { JaipurWebSnapshot } from "./snapshot-wire-decoder.js";
+import type { DuetWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { SaboteurWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { LostCitiesWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { HalliWebSnapshot } from "./snapshot-wire-decoder.js";
@@ -52,6 +53,7 @@ export type RoomSnapshotView =
   | Readonly<{ kind: "ISLAND_SETTLERS"; snapshot: IslandWebSnapshot }>
   | Readonly<{ kind: "SPLENDOR"; snapshot: SplendorWebSnapshot }>
   | Readonly<{ kind: "JAIPUR"; snapshot: JaipurWebSnapshot }>
+  | Readonly<{ kind: "WORD_DUET"; snapshot: DuetWebSnapshot }>
   | Readonly<{ kind: "SABOTEUR"; snapshot: SaboteurWebSnapshot }>
   | Readonly<{ kind: "LOST_CITIES"; snapshot: LostCitiesWebSnapshot }>
   | Readonly<{ kind: "HALLI_GALLI"; snapshot: HalliWebSnapshot }>
@@ -101,6 +103,7 @@ export function resolveRoomSnapshotView(
   if (decoded.kind === "PLATFORM_V2_ISLAND_SETTLERS") return { kind: "ISLAND_SETTLERS", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "PLATFORM_V2_SPLENDOR") return { kind: "SPLENDOR", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "PLATFORM_V2_JAIPUR") return { kind: "JAIPUR", snapshot: decoded.platformSnapshot };
+  if (decoded.kind === "PLATFORM_V2_WORD_DUET") return { kind: "WORD_DUET", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "PLATFORM_V2_SABOTEUR") return { kind: "SABOTEUR", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "PLATFORM_V2_LOST_CITIES") return { kind: "LOST_CITIES", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "PLATFORM_V2_HALLI_GALLI") return { kind: "HALLI_GALLI", snapshot: decoded.platformSnapshot };
