@@ -21,6 +21,7 @@ import type { LostCitiesClientCommand } from "@hangul-rummikub/shared";
 import type { HalliClientCommand } from "@hangul-rummikub/shared";
 import type { WolfClientCommand } from "@hangul-rummikub/shared";
 import type { LiarClientCommand } from "@hangul-rummikub/shared";
+import type { SpyfallClientCommand } from "@hangul-rummikub/shared";
 import type { DrawClientCommand } from "@hangul-rummikub/shared";
 import type { SneakyClientCommand } from "@hangul-rummikub/shared";
 import {
@@ -265,6 +266,7 @@ export type LobbyAppState = Readonly<{
   actHalli: (command: HalliClientCommand) => Promise<void>;
   actWolf: (command: WolfClientCommand) => Promise<void>;
   actLiar: (command: LiarClientCommand) => Promise<void>;
+  actSpyfall: (command: SpyfallClientCommand) => Promise<void>;
   actCityExpansion: (command: CityExpansionClientCommand) => Promise<void>;
   actSneaky: (command: SneakyClientCommand) => Promise<void>;
   collectGemResources: (selection: GemCollectSelectionDto) => void;
@@ -475,7 +477,7 @@ export function useLobbyApp(): LobbyAppState {
   function currentLegacyHangulSnapshot(): StateSnapshot | null {
     const compatible = compatibleSnapshotRef.current;
     return compatible === null || compatible.kind === "PLATFORM_V2_NUMBER_TILE" ||
-      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY" || compatible.kind === "PLATFORM_V2_SNEAKY_LUNCH" || compatible.kind === "PLATFORM_V2_WOLF_NIGHT" || compatible.kind === "PLATFORM_V2_LIAR_GAME" || compatible.kind === "PLATFORM_V2_WORD_DUET" || compatible.kind === "PLATFORM_V2_JAIPUR" || compatible.kind === "PLATFORM_V2_GURYONGTU" || compatible.kind === "PLATFORM_V2_AZUL" || compatible.kind === "PLATFORM_V2_CLUE" || compatible.kind === "PLATFORM_V2_SABOTEUR" || compatible.kind === "PLATFORM_V2_LOST_CITIES" || compatible.kind === "PLATFORM_V2_SPLENDOR" || compatible.kind === "PLATFORM_V2_HALLI_GALLI" || compatible.kind === "PLATFORM_V2_ISLAND_SETTLERS"
+      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY" || compatible.kind === "PLATFORM_V2_SNEAKY_LUNCH" || compatible.kind === "PLATFORM_V2_WOLF_NIGHT" || compatible.kind === "PLATFORM_V2_LIAR_GAME" || compatible.kind === "PLATFORM_V2_SPYFALL" || compatible.kind === "PLATFORM_V2_WORD_DUET" || compatible.kind === "PLATFORM_V2_JAIPUR" || compatible.kind === "PLATFORM_V2_GURYONGTU" || compatible.kind === "PLATFORM_V2_AZUL" || compatible.kind === "PLATFORM_V2_CLUE" || compatible.kind === "PLATFORM_V2_SABOTEUR" || compatible.kind === "PLATFORM_V2_LOST_CITIES" || compatible.kind === "PLATFORM_V2_SPLENDOR" || compatible.kind === "PLATFORM_V2_HALLI_GALLI" || compatible.kind === "PLATFORM_V2_ISLAND_SETTLERS"
       ? null
       : compatible.legacySnapshot;
   }
@@ -624,6 +626,19 @@ export function useLobbyApp(): LobbyAppState {
     const client = clientRef.current, session = storedSessionForCurrentRoute();
     if (!client?.connected || session === null || sessionReplacedRef.current || compatibleSnapshotRef.current?.kind !== "PLATFORM_V2_WOLF_NIGHT") throw new Error("연결을 확인하고 다시 시도해주세요.");
     const ack = await client.actWolf(command);
+    if (clientRef.current !== client || sessionReplacedRef.current || storedSessionForCurrentRoute()?.playerId !== session.playerId ||
+      storedSessionForCurrentRoute()?.credential.roomCode !== session.credential.roomCode) throw new Error("게임 연결이 변경되었습니다.");
+    if (!ack.ok) {
+      void requestLatestSnapshot();
+      throw new Error(getUserErrorMessage(ack.error.code));
+    }
+    applyWireSnapshot(ack.data.snapshot, session);
+  }
+
+  async function actSpyfall(command: SpyfallClientCommand): Promise<void> {
+    const client = clientRef.current, session = storedSessionForCurrentRoute();
+    if (!client?.connected || session === null || sessionReplacedRef.current || compatibleSnapshotRef.current?.kind !== "PLATFORM_V2_SPYFALL") throw new Error("연결을 확인하고 다시 시도해주세요.");
+    const ack = await client.actSpyfall(command);
     if (clientRef.current !== client || sessionReplacedRef.current || storedSessionForCurrentRoute()?.playerId !== session.playerId ||
       storedSessionForCurrentRoute()?.credential.roomCode !== session.credential.roomCode) throw new Error("게임 연결이 변경되었습니다.");
     if (!ack.ok) {
@@ -949,7 +964,7 @@ export function useLobbyApp(): LobbyAppState {
     const incomingSnapshot = projectRoomSnapshotShell(compatible);
     const incomingLegacySnapshot =
       compatible.kind === "PLATFORM_V2_NUMBER_TILE" ||
-      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY" || compatible.kind === "PLATFORM_V2_SNEAKY_LUNCH" || compatible.kind === "PLATFORM_V2_WOLF_NIGHT" || compatible.kind === "PLATFORM_V2_LIAR_GAME" || compatible.kind === "PLATFORM_V2_WORD_DUET" || compatible.kind === "PLATFORM_V2_JAIPUR" || compatible.kind === "PLATFORM_V2_GURYONGTU" || compatible.kind === "PLATFORM_V2_AZUL" || compatible.kind === "PLATFORM_V2_CLUE" || compatible.kind === "PLATFORM_V2_SABOTEUR" || compatible.kind === "PLATFORM_V2_LOST_CITIES" || compatible.kind === "PLATFORM_V2_SPLENDOR" || compatible.kind === "PLATFORM_V2_HALLI_GALLI" || compatible.kind === "PLATFORM_V2_ISLAND_SETTLERS"
+      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY" || compatible.kind === "PLATFORM_V2_SNEAKY_LUNCH" || compatible.kind === "PLATFORM_V2_WOLF_NIGHT" || compatible.kind === "PLATFORM_V2_LIAR_GAME" || compatible.kind === "PLATFORM_V2_SPYFALL" || compatible.kind === "PLATFORM_V2_WORD_DUET" || compatible.kind === "PLATFORM_V2_JAIPUR" || compatible.kind === "PLATFORM_V2_GURYONGTU" || compatible.kind === "PLATFORM_V2_AZUL" || compatible.kind === "PLATFORM_V2_CLUE" || compatible.kind === "PLATFORM_V2_SABOTEUR" || compatible.kind === "PLATFORM_V2_LOST_CITIES" || compatible.kind === "PLATFORM_V2_SPLENDOR" || compatible.kind === "PLATFORM_V2_HALLI_GALLI" || compatible.kind === "PLATFORM_V2_ISLAND_SETTLERS"
         ? null
         : compatible.legacySnapshot;
     const incomingNumberSnapshot =
@@ -3193,6 +3208,7 @@ export function useLobbyApp(): LobbyAppState {
     actHalli,
     actWolf,
     actLiar,
+    actSpyfall,
     actSneaky,
     actCityExpansion,
     collectGemResources,

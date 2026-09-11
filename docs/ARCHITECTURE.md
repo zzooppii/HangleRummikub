@@ -1,5 +1,7 @@
 # 시스템 아키텍처
 
+2026-09-11 스파이폴 추가: [SPYFALL_ARCHITECTURE.md](./SPYFALL_ARCHITECTURE.md)의 3–8인 비밀 장소·질문·만장일치 지목·자발적 추측 경계를 따른다.
+
 2026-09-11 클루 추가: [CLUE_ARCHITECTURE.md](./CLUE_ARCHITECTURE.md)의 3–6인 추리·개인별 카드/증거·오리지널 저택 지도 경계를 따른다. 상위 Room/Session/직렬화 경계는 유지한다.
 
 2026-09-11 구룡투 추가: [GURYONGTU_ARCHITECTURE.md](./GURYONGTU_ARCHITECTURE.md)의 2인 비밀 타일·서버 판정·2승 선취 경계를 따른다.

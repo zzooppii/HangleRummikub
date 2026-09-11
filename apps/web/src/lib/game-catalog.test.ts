@@ -11,7 +11,7 @@ import {
 
 test("Web game catalog는 구현 완료된 열여덟 게임을 같은 계층으로 공개한다", () => {
   assert.equal(Object.isFrozen(GAME_CATALOG), true);
-  assert.equal(GAME_CATALOG.length, 18);
+  assert.equal(GAME_CATALOG.length, 19);
   assert.deepEqual(GAME_CATALOG, [
     {
       gameType: "HANGUL_TILE",
@@ -45,6 +45,7 @@ test("Web game catalog는 구현 완료된 열여덟 게임을 같은 계층으�
     { gameType: "LOST_CITIES", displayName: "로스트시티", description: "일반판·확장판을 골라 탐험에 투자하고, 3라운드 합계 점수를 겨루는 2인 카드 게임입니다." },
     { gameType: "SABOTEUR", displayName: "사보타지", description: "3~10명이 비밀 역할을 숨기고 광산의 길을 잇거나 방해하는 3라운드 보드게임입니다." },
     { gameType: "LIAR_GAME", displayName: "라이어게임", description: "4~8명이 설명 속 거짓말을 찾아내는 비밀 제시어·토론·투표 게임입니다." },
+    { gameType: "SPYFALL", displayName: "스파이폴", description: "3~8명, 질문 속에 숨은 스파이를 찾아라. 비밀 장소와 첩보 테이블에서 펼치는 대화 추리 게임." },
     { gameType: "AZUL", displayName: "아줄", description: "아름다운 타일로 나만의 벽을 완성하는 2~4인 전략 게임입니다." },
     { gameType: "CLUE", displayName: "클루", description: "저택을 탐색하고 비밀 단서를 모아 사건을 해결하는 3~6인 추리 보드게임입니다." },
   ]);
@@ -62,7 +63,7 @@ test("Home renders exactly eighteen playable game choices including the approved
     busyLabel: null, connectionLabel: "연결됨", connectionTone: "connected", errorMessage: null,
     onNicknameChange() {}, onRoomCodeChange() {}, onCreateRoom() {}, onJoinRoom() {}, onGoHome() {},
   }));
-  assert.equal((html.match(/class="game-option(?: selected)?"/gu) ?? []).length, 18);
+  assert.equal((html.match(/class="game-option(?: selected)?"/gu) ?? []).length, 19);
   for (const game of GAME_CATALOG) assert.ok(html.includes(game.displayName));
   assert.match(html, /2~6명이 비밀 역할을 고르고/u);
   assert.doesNotMatch(html, /COMING_SOON|준비중/u);

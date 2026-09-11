@@ -470,6 +470,23 @@ export const WolfLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, WolfLob
 export const WolfPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, WolfPlayingPlatformSnapshotV2> = WolfPlayingRaw;
 export const WolfFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, WolfFinishedPlatformSnapshotV2> = WolfFinishedRaw;
 
+const SpyfallOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const SpyfallRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("SPYFALL") };
+const SpyfallPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(3), v.maxLength(8));
+const SpyfallLobbyRaw = v.pipe(v.strictObject({ ...SpyfallOuter, room: v.strictObject({ ...SpyfallRoom, phase: v.literal("LOBBY"),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)), settings: SpyfallSettingsSchema }), game: v.null() }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
+const SpyfallPlayingRaw = v.pipe(v.strictObject({ ...SpyfallOuter, room: v.strictObject({ ...SpyfallRoom, phase: v.literal("PLAYING"), players: SpyfallPlayers }), game: SpyfallPlayingProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateView.playerId === s.self.playerId));
+const SpyfallFinishedRaw = v.pipe(v.strictObject({ ...SpyfallOuter, room: v.strictObject({ ...SpyfallRoom, phase: v.literal("FINISHED"), players: SpyfallPlayers }), game: SpyfallFinishedProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)));
+export type SpyfallLobbyPlatformSnapshotV2 = v.InferOutput<typeof SpyfallLobbyRaw>;
+export type SpyfallPlayingPlatformSnapshotV2 = v.InferOutput<typeof SpyfallPlayingRaw>;
+export type SpyfallFinishedPlatformSnapshotV2 = v.InferOutput<typeof SpyfallFinishedRaw>;
+export const SpyfallLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, SpyfallLobbyPlatformSnapshotV2> = SpyfallLobbyRaw;
+export const SpyfallPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, SpyfallPlayingPlatformSnapshotV2> = SpyfallPlayingRaw;
+export const SpyfallFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, SpyfallFinishedPlatformSnapshotV2> = SpyfallFinishedRaw;
+
 const LiarOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
 const LiarRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("LIAR_GAME") };
 const LiarPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(4), v.maxLength(8));
@@ -517,6 +534,7 @@ export const LobbyPlatformSnapshotV2Schema = v.union([
   HalliLobbyPlatformSnapshotV2Schema,
   WolfLobbyPlatformSnapshotV2Schema,
   LiarLobbyPlatformSnapshotV2Schema,
+  SpyfallLobbyPlatformSnapshotV2Schema,
   SneakyLobbyPlatformSnapshotV2Schema,
   DrawRelayLobbyPlatformSnapshotV2Schema,
   HangulTileLobbyPlatformSnapshotV2Schema,
@@ -669,6 +687,7 @@ export const PlayingPlatformSnapshotV2Schema = v.union([
   HalliPlayingPlatformSnapshotV2Schema,
   WolfPlayingPlatformSnapshotV2Schema,
   LiarPlayingPlatformSnapshotV2Schema,
+  SpyfallPlayingPlatformSnapshotV2Schema,
   DrawRelayPlayingPlatformSnapshotV2Schema,
   SneakyPlayingPlatformSnapshotV2Schema,
   HangulTilePlayingPlatformSnapshotV2Schema,
@@ -821,6 +840,7 @@ export const FinishedPlatformSnapshotV2Schema = v.union([
   HalliFinishedPlatformSnapshotV2Schema,
   WolfFinishedPlatformSnapshotV2Schema,
   LiarFinishedPlatformSnapshotV2Schema,
+  SpyfallFinishedPlatformSnapshotV2Schema,
   DrawRelayFinishedPlatformSnapshotV2Schema,
   SneakyFinishedPlatformSnapshotV2Schema,
   HangulTileFinishedPlatformSnapshotV2Schema,
@@ -849,4 +869,6 @@ import { WolfSettingsSchema } from "../games/wolf-night/contracts.js";
 import { WolfPlayingProjectionSchema, WolfFinishedProjectionSchema } from "../games/wolf-night/v2-projection-contracts.js";
 
 import { LiarSettingsSchema } from "../games/liar-game/contracts.js";
+import { SpyfallSettingsSchema } from "../games/spyfall/contracts.js";
 import { LiarPlayingProjectionSchema, LiarFinishedProjectionSchema } from "../games/liar-game/v2-projection-contracts.js";
+import { SpyfallPlayingProjectionSchema, SpyfallFinishedProjectionSchema } from "../games/spyfall/v2-projection-contracts.js";

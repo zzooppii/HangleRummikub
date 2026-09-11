@@ -6,7 +6,7 @@ import type {
   StartGameInput,
 } from "./game-start-service.js";
 
-type StartCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPLENDOR" | "WORD_DUET" | "JAIPUR" | "GURYONGTU" | "AZUL" | "CLUE" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS"> =
+type StartCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "WORD_DUET" | "JAIPUR" | "GURYONGTU" | "AZUL" | "CLUE" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS"> =
   Readonly<{
     gameType: TGameType;
     start(input: StartGameInput): Promise<GameStartResult>;
@@ -35,6 +35,7 @@ export type GameStartRouterDependencies = Readonly<{
   halli?: StartCapability<"HALLI_GALLI">;
   wolf?: StartCapability<"WOLF_NIGHT">;
   liar?: StartCapability<"LIAR_GAME">;
+  spyfall?: StartCapability<"SPYFALL">;
   sneaky?: StartCapability<"SNEAKY_LUNCH">;
   drawRelay?: StartCapability<"DRAW_RELAY">;
 }>;
@@ -60,7 +61,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function isStartCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPLENDOR" | "WORD_DUET" | "JAIPUR" | "GURYONGTU" | "AZUL" | "CLUE" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "WORD_DUET" | "JAIPUR" | "GURYONGTU" | "AZUL" | "CLUE" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS",
 >(
   value: unknown,
   gameType: TGameType,
@@ -72,7 +73,7 @@ function isStartCapability<
   );
 }
 
-function requireCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPLENDOR" | "WORD_DUET" | "JAIPUR" | "GURYONGTU" | "AZUL" | "CLUE" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS">(
+function requireCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "WORD_DUET" | "JAIPUR" | "GURYONGTU" | "AZUL" | "CLUE" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS">(
   value: unknown,
   gameType: TGameType,
 ): StartCapability<TGameType> {
@@ -105,6 +106,7 @@ export class GameStartRouter implements GameStartRouting {
   readonly #halli: StartCapability<"HALLI_GALLI"> | undefined;
   readonly #wolf: StartCapability<"WOLF_NIGHT"> | undefined;
   readonly #liar: StartCapability<"LIAR_GAME"> | undefined;
+  readonly #spyfall: StartCapability<"SPYFALL"> | undefined;
   readonly #sneaky: StartCapability<"SNEAKY_LUNCH"> | undefined;
   readonly #drawRelay: StartCapability<"DRAW_RELAY"> | undefined;
 
@@ -122,6 +124,7 @@ export class GameStartRouter implements GameStartRouting {
     this.#halli = dependencies.halli;
     this.#wolf = dependencies.wolf;
     this.#liar = dependencies.liar;
+    this.#spyfall = dependencies.spyfall;
     this.#sneaky = dependencies.sneaky;
     this.#drawRelay = dependencies.drawRelay;
     this.#hangul = requireCapability(dependencies.hangul, "HANGUL_TILE");
@@ -158,6 +161,7 @@ export class GameStartRouter implements GameStartRouting {
         case "HALLI_GALLI": return this.#halli ? await this.#halli.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "WOLF_NIGHT": return this.#wolf ? await this.#wolf.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "LIAR_GAME": return this.#liar ? await this.#liar.start(input) : {ok:false,error:INTERNAL_ERROR};
+        case "SPYFALL": return this.#spyfall ? await this.#spyfall.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "SNEAKY_LUNCH": return this.#sneaky ? await this.#sneaky.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "DRAW_RELAY": return this.#drawRelay ? await this.#drawRelay.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "CITY_ROLE":

@@ -384,6 +384,18 @@ export const LiarSayCommandSchema = v.strictObject({ ...LiarGameIdentity, kind: 
 export const LiarGuessCommandSchema = v.strictObject({ ...LiarGameIdentity, kind: v.literal("liar:guess"), payload: v.strictObject({ text: LiarClueSchema }) });
 export const LiarClientCommandSchema = v.variant("kind", [LiarConfigureCommandSchema, LiarClueCommandSchema, LiarVoteCommandSchema, LiarSayCommandSchema, LiarGuessCommandSchema]);
 export type LiarClientCommand = v.InferOutput<typeof LiarClientCommandSchema>;
+const SpyfallIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema };
+const SpyfallGameIdentity = { ...SpyfallIdentity, gameId: GameIdSchema, phaseId: TurnIdSchema };
+export const SpyfallConfigureCommandSchema = v.strictObject({ ...SpyfallIdentity, kind: v.literal("spyfall:configure"), expectedRoomRevision: RoomRevisionSchema, payload: SpyfallSettingsSchema });
+export const SpyfallAskCommandSchema = v.strictObject({ ...SpyfallGameIdentity, kind: v.literal("spyfall:ask"), payload: v.strictObject({ playerId: PlayerIdSchema }) });
+export const SpyfallAnswerCommandSchema = v.strictObject({ ...SpyfallGameIdentity, kind: v.literal("spyfall:answer"), payload: v.strictObject({}) });
+export const SpyfallAccuseCommandSchema = v.strictObject({ ...SpyfallGameIdentity, kind: v.literal("spyfall:accuse"), payload: v.strictObject({ playerId: PlayerIdSchema }) });
+export const SpyfallVoteCommandSchema = v.strictObject({ ...SpyfallGameIdentity, kind: v.literal("spyfall:vote"), payload: v.strictObject({ agree: v.boolean() }) });
+export const SpyfallSkipCommandSchema = v.strictObject({ ...SpyfallGameIdentity, kind: v.literal("spyfall:skip"), payload: v.strictObject({}) });
+export const SpyfallRevealCommandSchema = v.strictObject({ ...SpyfallGameIdentity, kind: v.literal("spyfall:reveal"), payload: v.strictObject({}) });
+export const SpyfallGuessCommandSchema = v.strictObject({ ...SpyfallGameIdentity, kind: v.literal("spyfall:guess"), payload: v.strictObject({ location: SpyfallLocationSchema }) });
+export const SpyfallClientCommandSchema = v.variant("kind", [SpyfallConfigureCommandSchema, SpyfallAskCommandSchema, SpyfallAnswerCommandSchema, SpyfallAccuseCommandSchema, SpyfallVoteCommandSchema, SpyfallSkipCommandSchema, SpyfallRevealCommandSchema, SpyfallGuessCommandSchema]);
+export type SpyfallClientCommand = v.InferOutput<typeof SpyfallClientCommandSchema>;
 
 const WolfIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema };
 const WolfGameIdentity = { ...WolfIdentity, gameId: GameIdSchema, phaseId: TurnIdSchema };
@@ -543,6 +555,7 @@ export type Phase2ClientCommand = v.InferOutput<
 
 export const ClientCommandSchema = v.variant("kind", [
   LiarConfigureCommandSchema, LiarClueCommandSchema, LiarVoteCommandSchema, LiarSayCommandSchema, LiarGuessCommandSchema,
+  SpyfallConfigureCommandSchema, SpyfallAskCommandSchema, SpyfallAnswerCommandSchema, SpyfallAccuseCommandSchema, SpyfallVoteCommandSchema, SpyfallSkipCommandSchema, SpyfallRevealCommandSchema, SpyfallGuessCommandSchema,
   WolfConfigureCommandSchema, WolfActCommandSchema, WolfVoteCommandSchema, WolfSayCommandSchema, WolfRematchCommandSchema,
   SneakyConfigureCommandSchema, SneakyEatCommandSchema, SneakyRematchCommandSchema,
   DrawDraftSaveCommandSchema, DrawSubmitDrawingCommandSchema, DrawSubmitGuessCommandSchema, DrawRevealNextCommandSchema, DrawRematchCommandSchema, DrawConfigureCommandSchema,
@@ -703,3 +716,5 @@ import { LiarSettingsSchema, LiarClueSchema, LiarTextSchema } from "./games/liar
 
 export const DuetClientCommandSchema = DuetActCommandSchema;
 export type DuetClientCommand = v.InferOutput<typeof DuetClientCommandSchema>;
+
+import { SpyfallSettingsSchema, SpyfallLocationSchema } from "./games/spyfall/contracts.js";

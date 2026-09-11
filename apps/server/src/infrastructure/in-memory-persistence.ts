@@ -12,8 +12,10 @@ import { LostCitiesGameStateAdapter, type LostCitiesLifecycle } from "../games/l
 import { HalliGameStateAdapter, type HalliLifecycle } from "../games/halli-galli/compatibility/adapter.js";
 import { WolfGameStateAdapter, type WolfLifecycle } from "../games/wolf-night/compatibility/adapter.js";
 import { LiarGameStateAdapter, type LiarLifecycle } from "../games/liar-game/compatibility/adapter.js";
+import { SpyfallGameStateAdapter, type SpyfallLifecycle } from "../games/spyfall/compatibility/adapter.js";
 import { WolfSettingsSchema } from "@hangul-rummikub/shared";
 import { LiarSettingsSchema } from "@hangul-rummikub/shared";
+import { SpyfallSettingsSchema } from "@hangul-rummikub/shared";
 import { GemCardGameStateAdapter, type GemCardGameStateStorage, type GemCardGameLifecycleInspection } from "../games/gem-card/compatibility/gem-card-game-state-adapter.js";
 import { CityRoleGameStateAdapter, type CityRoleGameStateStorage, type CityRoleGameLifecycleInspection } from "../games/city-role/compatibility/city-role-game-state-adapter.js";
 import type {
@@ -131,6 +133,7 @@ type RoomGameLifecycleInspection =
   | Readonly<{gameType:"HALLI_GALLI";inspection:HalliLifecycle}>
   | Readonly<{gameType:"WOLF_NIGHT";inspection:WolfLifecycle}>
   | Readonly<{gameType:"LIAR_GAME";inspection:LiarLifecycle}>
+  | Readonly<{gameType:"SPYFALL";inspection:SpyfallLifecycle}>
   | Readonly<{gameType:"SNEAKY_LUNCH";inspection:SneakyLunchLifecycle}>
   | Readonly<{gameType:"DRAW_RELAY";inspection:DrawRelayLifecycle}>
   | Readonly<{ gameType: "CITY_ROLE"; inspection: CityRoleGameLifecycleInspection }>
@@ -330,6 +333,15 @@ function cloneRoomWriteCandidate(
       if (game && JSON.stringify(settings) !== JSON.stringify(game.state.settings)) throw new Error("WOLF settings changed during game.");
       return Object.freeze({...shell, gameType:"WOLF_NIGHT", game, departedPlayerIds, settings});
     }
+    case "SPYFALL": {
+      const adapter = new SpyfallGameStateAdapter(), game = candidate.game === null ? null : adapter.cloneAndValidate(candidate.game);
+      validateRoomGameCoherence(shell.phase, shell.players, game, () => game === null ? null : adapter.inspectLifecycle(game));
+      const departedPlayerIds = Object.freeze([...(candidate.departedPlayerIds ?? [])]);
+      if (new Set(departedPlayerIds).size !== departedPlayerIds.length || departedPlayerIds.some(id => !shell.players.some(p => p.playerId === id)) || shell.phase === "LOBBY" && departedPlayerIds.length > 0) throw new Error("Invalid departed SPYFALL roster.");
+      const settings = v.parse(SpyfallSettingsSchema, candidate.settings ?? { roundSeconds: 480, useRoles: false, locationPack: "ALL" });
+      if (game && JSON.stringify(settings) !== JSON.stringify(game.state.settings)) throw new Error("SPYFALL settings changed during game.");
+      return Object.freeze({...shell, gameType:"SPYFALL", game, departedPlayerIds, settings});
+    }
     case "LIAR_GAME": {
       const adapter = new LiarGameStateAdapter(), game = candidate.game === null ? null : adapter.cloneAndValidate(candidate.game);
       validateRoomGameCoherence(shell.phase, shell.players, game, () => game === null ? null : adapter.inspectLifecycle(game));
@@ -428,6 +440,7 @@ function validateRoomGameCoherence(
     | HalliLifecycle
     | WolfLifecycle
     | LiarLifecycle
+    | SpyfallLifecycle
     | SneakyLunchLifecycle
     | NumberTileGameLifecycleInspection
     | null,
@@ -488,6 +501,7 @@ function persistRoom(
     case "HALLI_GALLI":
     case "WOLF_NIGHT":
     case "LIAR_GAME":
+    case "SPYFALL":
     case "SNEAKY_LUNCH":
       return Object.freeze({ ...detached, storageRevision: revision });
   }
@@ -520,6 +534,7 @@ function inspectRoomGame(
     case "HALLI_GALLI": return {gameType:"HALLI_GALLI",inspection:new HalliGameStateAdapter().inspectLifecycle(room.game)};
     case "WOLF_NIGHT": return {gameType:"WOLF_NIGHT",inspection:new WolfGameStateAdapter().inspectLifecycle(room.game)};
     case "LIAR_GAME": return {gameType:"LIAR_GAME",inspection:new LiarGameStateAdapter().inspectLifecycle(room.game)};
+    case "SPYFALL": return {gameType:"SPYFALL",inspection:new SpyfallGameStateAdapter().inspectLifecycle(room.game)};
     case "SNEAKY_LUNCH": return {gameType:"SNEAKY_LUNCH",inspection:new SneakyLunchGameStateAdapter().inspectLifecycle(room.game)};
     case "DRAW_RELAY": return {gameType:"DRAW_RELAY",inspection:new DrawRelayGameStateAdapter().inspectLifecycle(room.game)};
     case "HANGUL_TILE":

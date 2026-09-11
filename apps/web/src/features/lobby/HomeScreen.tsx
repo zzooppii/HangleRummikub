@@ -188,6 +188,7 @@ export function HomeScreen(props: HomeScreenProps) {
                             {game.gameType === "HALLI_GALLI" ? <span style={{ display: "block", width: 90 }}><HalliBellArt/></span> : null}
                             {game.gameType === "WOLF_NIGHT" ? <WolfEmblem/> : null}
                             {game.gameType === "LIAR_GAME" ? <LiarEmblem/> : null}
+                            {game.gameType === "SPYFALL" ? <img src="/images/spyfall/mission.jpg" alt="" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"80% center",borderRadius:12}}/> : null}
                             {game.gameType === "SNEAKY_LUNCH" ? <LunchboxArt small/> : null}
                             <span className="game-option-heading">
                               <strong>{game.displayName}</strong>

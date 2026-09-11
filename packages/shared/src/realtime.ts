@@ -575,6 +575,14 @@ export interface SnapshotWireClientToServerEvents {
   "halli:flip": (command: Extract<HalliClientCommand,{kind:"halli:flip"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "halli:bell": (command: Extract<HalliClientCommand,{kind:"halli:bell"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "halli:rematch": (command: Extract<HalliClientCommand,{kind:"halli:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "spyfall:configure": (command: Extract<SpyfallClientCommand,{kind:"spyfall:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "spyfall:ask": (command: Extract<SpyfallClientCommand,{kind:"spyfall:ask"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "spyfall:answer": (command: Extract<SpyfallClientCommand,{kind:"spyfall:answer"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "spyfall:accuse": (command: Extract<SpyfallClientCommand,{kind:"spyfall:accuse"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "spyfall:vote": (command: Extract<SpyfallClientCommand,{kind:"spyfall:vote"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "spyfall:skip": (command: Extract<SpyfallClientCommand,{kind:"spyfall:skip"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "spyfall:reveal": (command: Extract<SpyfallClientCommand,{kind:"spyfall:reveal"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "spyfall:guess": (command: Extract<SpyfallClientCommand,{kind:"spyfall:guess"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "liar:configure": (command: Extract<LiarClientCommand,{kind:"liar:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "liar:clue": (command: Extract<LiarClientCommand,{kind:"liar:clue"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "liar:vote": (command: Extract<LiarClientCommand,{kind:"liar:vote"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
@@ -666,3 +674,5 @@ import type { SneakyClientCommand } from "./protocol.js";
 import type { WolfClientCommand } from "./protocol.js";
 
 import type { LiarClientCommand } from "./protocol.js";
+
+import type { SpyfallClientCommand } from "./protocol.js";

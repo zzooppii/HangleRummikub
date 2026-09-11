@@ -58,6 +58,8 @@ export * from "./games/saboteur/contracts.js";
 export * from "./games/saboteur/geometry.js";
 
 export * from "./games/liar-game/contracts.js";
+export * from "./games/spyfall/contracts.js";
 export * from "./games/liar-game/v2-projection-contracts.js";
+export * from "./games/spyfall/v2-projection-contracts.js";
 
 export * from "./games/clue/board.js";

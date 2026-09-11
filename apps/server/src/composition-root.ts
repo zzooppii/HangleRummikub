@@ -11,6 +11,7 @@ import { LostCitiesHostSuccession } from "./games/lost-cities/application/host-s
 import { HalliHostSuccession } from "./games/halli-galli/application/host-succession.js";
 import { WolfHostSuccession } from "./games/wolf-night/application/host-succession.js";
 import { LiarHostSuccession } from "./games/liar-game/application/host-succession.js";
+import { SpyfallHostSuccession } from "./games/spyfall/application/host-succession.js";
 import { IslandService } from "./games/island/application/service.js";
 import { SplendorService } from "./games/splendor/application/service.js";
 import { JaipurService } from "./games/jaipur/application/service.js";
@@ -23,6 +24,7 @@ import { LostCitiesService } from "./games/lost-cities/application/service.js";
 import { HalliService } from "./games/halli-galli/application/service.js";
 import { WolfService } from "./games/wolf-night/application/service.js";
 import { LiarService } from "./games/liar-game/application/service.js";
+import { SpyfallService } from "./games/spyfall/application/service.js";
 import { createIslandLifecycle } from "./games/island/application/lifecycle.js";
 import { createSplendorLifecycle } from "./games/splendor/application/lifecycle.js";
 import { createJaipurLifecycle } from "./games/jaipur/application/lifecycle.js";
@@ -35,6 +37,7 @@ import { createLostCitiesLifecycle } from "./games/lost-cities/application/lifec
 import { createHalliLifecycle } from "./games/halli-galli/application/lifecycle.js";
 import { createWolfLifecycle } from "./games/wolf-night/application/lifecycle.js";
 import { createLiarLifecycle } from "./games/liar-game/application/lifecycle.js";
+import { createSpyfallLifecycle } from "./games/spyfall/application/lifecycle.js";
 import { SneakyLunchService } from "./games/sneaky-lunch/application/service.js";
 import { SneakyLunchPresence } from "./games/sneaky-lunch/application/presence.js";
 import { createSneakyLifecycle } from "./games/sneaky-lunch/application/lifecycle.js";
@@ -160,6 +163,7 @@ export type ApplicationRuntime = Readonly<{
   halliService?: HalliService;
   wolfService?: WolfService;
   liarService?: LiarService;
+  spyfallService?: SpyfallService;
   islandHostSuccession?: IslandHostSuccession;
   splendorHostSuccession?: SplendorHostSuccession;
   jaipurHostSuccession?: JaipurHostSuccession;
@@ -172,6 +176,7 @@ export type ApplicationRuntime = Readonly<{
   halliHostSuccession?: HalliHostSuccession;
   wolfHostSuccession?: WolfHostSuccession;
   liarHostSuccession?: LiarHostSuccession;
+  spyfallHostSuccession?: SpyfallHostSuccession;
   sneakyLunchService?: SneakyLunchService;
   sneakyLunchPresence?: SneakyLunchPresence;
   drawRelayService?: DrawRelayService;
@@ -287,6 +292,7 @@ export function createApplicationRuntime(
       { gameType: "HALLI_GALLI" },
       { gameType: "WOLF_NIGHT" },
       { gameType: "LIAR_GAME" },
+      { gameType: "SPYFALL" },
     ],
   );
   gameRegistry.getRequired(LEGACY_V1_DEFAULT_GAME_TYPE);
@@ -327,6 +333,7 @@ export function createApplicationRuntime(
     halli: createHalliLifecycle(),
     wolf: createWolfLifecycle(),
     liar: createLiarLifecycle(),
+    spyfall: createSpyfallLifecycle(),
     sneaky: createSneakyLifecycle(),
   });
   const roomCodeGenerator = new RandomRoomCodeGenerator(randomSource);
@@ -667,6 +674,13 @@ export function createApplicationRuntime(
     const room = await persistence.findById(roomId);
     if (room?.gameType === "WOLF_NIGHT" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
   });
+  const spyfallService = new SpyfallService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
+    roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource, turnScheduler });
+  const spyfallHostSuccession = new SpyfallHostSuccession(spyfallService.deps, roomId => spyfallService.notify(roomId));
+  spyfallService.subscribe(async roomId => {
+    const room = await persistence.findById(roomId);
+    if (room?.gameType === "SPYFALL" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
+  });
   const liarService = new LiarService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
     roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource, turnScheduler, prompts: new CuratedLiarPrompts() });
   const liarHostSuccession = new LiarHostSuccession(liarService.deps, roomId => liarService.notify(roomId));
@@ -754,6 +768,7 @@ export function createApplicationRuntime(
     halli: { gameType: "HALLI_GALLI", start: input => halliService.start(input) },
     wolf: { gameType: "WOLF_NIGHT", start: input => wolfService.start(input) },
     liar: { gameType: "LIAR_GAME", start: input => liarService.start(input) },
+    spyfall: { gameType: "SPYFALL", start: input => spyfallService.start(input) },
     sneaky: { gameType: "SNEAKY_LUNCH", start: input => sneakyLunchService.start(input) },
     cityRole: { gameType: "CITY_ROLE", start: input => cityRoleStartService.start(input) },
     gemCard: { gameType: "GEM_CARD", start: input => gemCardStartService.start(input) },
@@ -877,6 +892,7 @@ export function createApplicationRuntime(
     halli: { gameType: "HALLI_GALLI", handleTurnTimeout: input => halliService.timeout(input) },
     wolf: { gameType: "WOLF_NIGHT", handleTurnTimeout: input => wolfService.timeout(input) },
     liar: { gameType: "LIAR_GAME", handleTurnTimeout: input => liarService.timeout(input) },
+    spyfall: { gameType: "SPYFALL", handleTurnTimeout: input => spyfallService.timeout(input) },
     sneaky: { gameType: "SNEAKY_LUNCH", handleTurnTimeout: input => sneakyLunchService.timeout(input) },
     cityRole: { gameType: "CITY_ROLE", handleTurnTimeout: input => cityRoleTimeoutService.timeout(input) },
     gemCard: { gameType: "GEM_CARD", handleTurnTimeout: input => gemCardTimeoutService.timeout(input) },
@@ -957,6 +973,7 @@ export function createApplicationRuntime(
     halliService,
     wolfService,
     liarService,
+    spyfallService,
     islandHostSuccession,
     splendorHostSuccession,
     jaipurHostSuccession,
@@ -969,6 +986,7 @@ export function createApplicationRuntime(
     halliHostSuccession,
     wolfHostSuccession,
     liarHostSuccession,
+    spyfallHostSuccession,
     sneakyLunchService,
     sneakyLunchPresence,
     subscribeCityRoleTimeoutApplied(listener) { return cityRoleTimeoutService.subscribeApplied(listener); },
@@ -1030,6 +1048,7 @@ export function createApplicationRuntime(
       halliHostSuccession.start();
       wolfHostSuccession.start();
       liarHostSuccession.start();
+      spyfallHostSuccession.start();
       roomPolicyScheduler.start();
       turnScheduler.start();
       gameDeadlineScheduler.start();
@@ -1059,6 +1078,7 @@ export function createApplicationRuntime(
       halliHostSuccession.stop();
       wolfHostSuccession.stop();
       liarHostSuccession.stop();
+      spyfallHostSuccession.stop();
       roomPolicyScheduler.stop();
       overdueTurnSweeper.stop();
       overdueGameDeadlineSweeper.stop();

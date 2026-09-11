@@ -12,6 +12,7 @@ import { IslandClientCommandSchema, type IslandClientCommand } from "@hangul-rum
 import { HalliClientCommandSchema, type HalliClientCommand } from "@hangul-rummikub/shared";
 import { WolfClientCommandSchema, type WolfClientCommand } from "@hangul-rummikub/shared";
 import { LiarClientCommandSchema, type LiarClientCommand } from "@hangul-rummikub/shared";
+import { SpyfallClientCommandSchema, type SpyfallClientCommand } from "@hangul-rummikub/shared";
 import { DrawClientCommandSchema, type DrawClientCommand } from "@hangul-rummikub/shared";
 import { SneakyClientCommandSchema, type SneakyClientCommand } from "@hangul-rummikub/shared";
 import { safeParse as parseRematch } from "valibot";
@@ -797,6 +798,22 @@ export class RealtimeClient {
         case "wolf:vote": this.#socket.emit("wolf:vote", command, acknowledge); break;
         case "wolf:say": this.#socket.emit("wolf:say", command, acknowledge); break;
         case "wolf:rematch": this.#socket.emit("wolf:rematch", command, acknowledge); break;
+      }
+    }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
+  }
+  actSpyfall(command: SpyfallClientCommand): Promise<StateSyncWireAck> {
+    if (!parseRematch(SpyfallClientCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {
+      switch (command.kind) {
+        case "spyfall:configure": this.#socket.emit("spyfall:configure", command, acknowledge); break;
+        case "spyfall:ask": this.#socket.emit("spyfall:ask", command, acknowledge); break;
+        case "spyfall:answer": this.#socket.emit("spyfall:answer", command, acknowledge); break;
+        case "spyfall:accuse": this.#socket.emit("spyfall:accuse", command, acknowledge); break;
+        case "spyfall:vote": this.#socket.emit("spyfall:vote", command, acknowledge); break;
+        case "spyfall:skip": this.#socket.emit("spyfall:skip", command, acknowledge); break;
+        case "spyfall:reveal": this.#socket.emit("spyfall:reveal", command, acknowledge); break;
+        case "spyfall:guess": this.#socket.emit("spyfall:guess", command, acknowledge); break;
+
       }
     }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
   }
