@@ -378,6 +378,7 @@ export function applySplendorAction(
   const s = parseSplendorState(state),
     p = s.players.find((p) => p.playerId === actor)!;
   const before = scoreFor(s, p);
+  const gained = emptyTokens();
   switch (action.kind) {
     case "TAKE": {
       const colors = SPLENDOR_COLORS.filter((k) => action.tokens[k] > 0),
@@ -399,6 +400,7 @@ export function applySplendorAction(
       for (const k of colors) {
         s.bank[k] -= action.tokens[k];
         p.tokens[k] += action.tokens[k];
+        gained[k] = action.tokens[k];
       }
       break;
     }
@@ -445,6 +447,7 @@ export function applySplendorAction(
       if (s.bank.GOLD > 0) {
         s.bank.GOLD--;
         p.tokens.GOLD++;
+        gained.GOLD++;
       }
       break;
     }
@@ -495,6 +498,11 @@ export function applySplendorAction(
     kind: action.kind,
     at: v.parse(ServerTimeSchema, now),
     points: scoreFor(s, p) - before,
+    tokenMovement: {
+      gained,
+      spent: action.kind === "BUY" ? action.payment : emptyTokens(),
+      returned: action.returns,
+    },
   };
   endTurn(s, now, token);
   return { ok: true, state: parseSplendorState(s) };

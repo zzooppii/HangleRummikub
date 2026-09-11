@@ -553,3 +553,25 @@ test("SPLENDOR CITIES: last seat acquisition ends immediately; city contenders t
   const unearned = cityFixture(); unearned.players[0]!.cities.push(unearned.cities.shift()!); unearned.finalRound=true;
   assert.throws(()=>parseSplendorState(unearned));
 });
+
+test("SPLENDOR feedback records actual collection and excess returns without netting them", () => {
+  const s=fixture(4);
+  give(s,{WHITE:3,BLUE:3,RED:3,GOLD:1});
+  const action:SplendorAction={kind:"TAKE",tokens:{...emptyTokens(),GREEN:2},...resolution(),returns:{...emptyTokens(),WHITE:1,GREEN:1}};
+  const r=play(s,action); assert.ok(r.ok);
+  assert.deepEqual(r.state.feedback?.tokenMovement,{gained:action.tokens,spent:emptyTokens(),returned:action.returns});
+  assert.equal(r.state.players[0]!.tokens.GREEN,1);
+  assert.equal(r.state.players[0]!.tokens.WHITE,2);
+  assert.equal(s.feedback,null);
+});
+test("SPLENDOR reservation feedback reports gold only if the bank actually supplied it", () => {
+  const s=fixture();
+  const action:SplendorAction={kind:"RESERVE_DECK",tier:1,...resolution()};
+  const r=play(s,action); assert.ok(r.ok);
+  assert.deepEqual(r.state.feedback?.tokenMovement?.gained,{...emptyTokens(),GOLD:1});
+  const noGold=fixture(); give(noGold,{GOLD:5},1);
+  const no=play(noGold,action); assert.ok(no.ok);
+  assert.deepEqual(no.state.feedback?.tokenMovement?.gained,emptyTokens());
+  const timed=timeoutSplendor(r.state,r.state.nextTransitionAt!,"no-old-movement");
+  assert.equal(timed?.feedback?.tokenMovement,undefined);
+});

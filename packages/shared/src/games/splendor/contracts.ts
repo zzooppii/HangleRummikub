@@ -72,6 +72,11 @@ export const SplendorFeedbackSchema = v.nullable(
     ]),
     at: ServerTimeSchema,
     points: Count,
+    tokenMovement: v.optional(v.strictObject({
+      gained: SplendorTokensSchema,
+      spent: SplendorTokensSchema,
+      returned: SplendorTokensSchema,
+    })),
   }),
 );
 export const SplendorResultSchema = v.strictObject({

@@ -294,3 +294,32 @@ test("SPLENDOR CITIES wire rejects changed objective data, both faces, nobles an
   assert.equal(safeParse(SplendorClientCommandSchema,{kind:"splendor:configure",protocolVersion:1,requestId:"configure-city",expectedRoomRevision:0,payload:{mode:"CITIES"}}).success,true);
   assert.equal(safeParse(SplendorClientCommandSchema,{kind:"splendor:configure",protocolVersion:1,requestId:"configure-city",expectedRoomRevision:0,payload:{mode:"ORIENT"}}).success,false);
 });
+
+test("SPLENDOR collapsed opponents show all six held tokens separately from discounts", () => {
+  const s = playing(), opponent = s.game.playerStates[1]!;
+  opponent.tokens = {...zeroTokens(), WHITE:2, RED:3, GOLD:1};
+  opponent.bonuses = {...opponent.bonuses, WHITE:4};
+  const html = render(s);
+  const summary = html.match(/<summary>[\s\S]*?<\/summary>/)?.[0];
+  assert.ok(summary);
+  assert.match(summary,/상인1 보유 토큰/);
+  assert.match(summary,/다이아몬드 2/);
+  assert.match(summary,/루비 3/);
+  assert.match(summary,/황금 1/);
+  assert.doesNotMatch(summary,/다이아몬드 4/);
+  assert.match(html,/상인1 영구 할인/);
+  assert.match(html,/할인 0/);
+  assert.doesNotMatch(html,/▱ 0/);
+});
+test("SPLENDOR latest action shows gained, spent and returned token colors and counts", () => {
+  const s=playing();
+  s.game.feedback={playerId:s.game.playerStates[1]!.playerId,kind:"TAKE",at:s.serverTime,points:0,
+    tokenMovement:{gained:{...zeroTokens(),RED:2},spent:zeroTokens(),returned:{...zeroTokens(),BLUE:1}}};
+  const html=render(s);
+  assert.match(html,/최근 행동의 토큰 변화/);
+  assert.match(html,/aria-label="가져옴"/);
+  assert.match(html,/루비 \+2/);
+  assert.match(html,/aria-label="반환"/);
+  assert.match(html,/사파이어 1/);
+  assert.doesNotMatch(html,/aria-label="사용"/);
+});

@@ -1470,7 +1470,7 @@
 }
 @media (max-width: 800px) {
   .splendor-screen .sp-table-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .splendor-screen .sp-bank {
     display: grid;
@@ -1895,7 +1895,8 @@
 .splendor-screen .sp-edition-picker button:disabled { opacity: 1; cursor: default; }
 .splendor-screen .sp-edition-check { position: absolute; right: 9px; top: 9px; width: 20px; height: 20px; border-radius: 50%; border: 1px solid #d4c39d80; background: #0a252a88; text-align: center; color: #e8cb8b; }
 .splendor-screen .sp-edition-picker > p { font-size: 11px; line-height: 1.6; color: #adc3b7; margin: 10px 0 0; }
-.splendor-screen .sp-city-table { min-width: 0; }
+.splendor-screen .sp-table,
+.splendor-screen .sp-bank { min-width: 0; }
 .splendor-screen .sp-cities { display: flex; justify-content: center; gap: 16px; min-height: 106px; margin-bottom: 24px; }
 .splendor-screen .sp-city {
   position: relative; isolation: isolate; width: 180px; height: 106px; flex-shrink: 1; min-width: 0;
@@ -1940,4 +1941,25 @@
   .splendor-screen .sp-cities .sp-city-price .sp-token-badge b { font-size: 9px; }
   .splendor-screen .sp-cities .sp-city-claimed { top: 40%; font-size: 9px; left: 4px; right: 4px; }
   .splendor-screen .sp-edition-badge { margin-left: 3px; font-size: 9px; padding: 3px 4px; }
+}
+
+/* Keep public holdings visible at every width, including a collapsed merchant. */
+.splendor-screen .sp-player summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; }
+.splendor-screen .sp-player-holdings {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; min-width: 0;
+}
+.splendor-screen .sp-holdings-label { font-size: 10px; color: var(--sp-muted); margin-right: 3px; }
+.splendor-screen .sp-player-holdings .sp-token-badge { gap: 3px; padding: 2px 5px 2px 3px; }
+.splendor-screen .sp-player-holdings .sp-gem { width: 19px; height: 19px; }
+.splendor-screen .sp-player-holdings b { font-size: 12px; }
+.splendor-screen .sp-token-movement { display: grid; gap: 8px; margin-top: 10px; }
+.splendor-screen .sp-token-movement > div { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.splendor-screen .sp-token-movement > div > span:first-child { font-size: 11px; color: var(--sp-muted); margin-right: 3px; }
+.splendor-screen .sp-token-movement .sp-gem { width: 20px; height: 20px; }
+@media (max-width: 600px) {
+  .splendor-screen .sp-player-holdings { gap: 4px; }
+  .splendor-screen .sp-player-holdings .sp-token-badge { padding: 2px 4px 2px 2px; gap: 2px; }
+  .splendor-screen .sp-player-holdings .sp-gem { width: 16px; height: 16px; }
+  .splendor-screen .sp-player-holdings b { font-size: 11px; }
+  .splendor-screen .sp-player-name { flex-wrap: wrap; }
 }

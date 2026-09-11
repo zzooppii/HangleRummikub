@@ -586,18 +586,19 @@ export function SplendorScreen(props: Props) {
                             : `예약 ${p.reservedCount}장`}
                       </small>
                     </span>
-                    <span className="sp-player-bonuses">
-                      {SPLENDOR_COLORS.map((k) => (
-                        <TokenBadge key={k} color={k} count={p.bonuses[k]} />
-                      ))}
-                    </span>
                     <strong className="sp-player-score">{p.cities.length > 0 && <span className="sp-city-seal" aria-label="도시 획득">♜</span>} ✦ {p.score}</strong>
-                  </summary>
-                  <div className="sp-player-detail">
-                    <span>보유 보석</span>
-                    <div className="sp-inline-tokens">
+                    <span className="sp-player-holdings" aria-label={`${name(p.playerId)} 보유 토큰`}>
+                      <span className="sp-holdings-label">보유</span>
                       {SPLENDOR_TOKENS.map((k) => (
                         <TokenBadge key={k} color={k} count={p.tokens[k]} />
+                      ))}
+                    </span>
+                  </summary>
+                  <div className="sp-player-detail">
+                    <span>영구 할인 · 보유 토큰과 별개</span>
+                    <div className="sp-inline-tokens" aria-label={`${name(p.playerId)} 영구 할인`}>
+                      {SPLENDOR_COLORS.map((k) => (
+                        <TokenBadge key={k} color={k} count={p.bonuses[k]} />
                       ))}
                     </div>
                     <span>
@@ -802,6 +803,17 @@ export function SplendorScreen(props: Props) {
               >
                 <span>테이블 소식</span>
                 <p>{feedbackText}</p>
+                {feedback?.tokenMovement && <div className="sp-token-movement" aria-label="최근 행동의 토큰 변화">
+                  {([
+                    ["gained", "가져옴"], ["spent", "사용"], ["returned", "반환"],
+                  ] as const).map(([kind, label]) => {
+                    const tokens = feedback.tokenMovement![kind];
+                    const colors = SPLENDOR_TOKENS.filter(k => tokens[k] > 0);
+                    return colors.length > 0 && <div key={kind} aria-label={label}>
+                      <span>{label}</span>{colors.map(k => <TokenBadge key={k} color={k} count={tokens[k]} plus={kind === "gained"}/>)}
+                    </div>;
+                  })}
+                </div>}
               </div>
               {noMainAction && (
                 <button
@@ -844,7 +856,7 @@ export function SplendorScreen(props: Props) {
                           className="sp-discount"
                           aria-label={`${TOKEN_LABELS[k]} 영구 할인 ${mine.bonuses[k]}`}
                         >
-                          ▱ {mine.bonuses[k]}
+                          할인 {mine.bonuses[k]}
                         </span>
                       ) : (
                         <span className="sp-discount">만능</span>
