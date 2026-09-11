@@ -5,6 +5,7 @@ import { JaipurPlayingProjectionSchema, JaipurFinishedProjectionSchema, jaipurPr
 import { LoveLetterPlayingProjectionSchema, LoveLetterFinishedProjectionSchema, loveLetterProjectionIsConsistent } from "../games/love-letter/contracts.js";
 import { GuryongtuPlayingProjectionSchema, GuryongtuFinishedProjectionSchema, guryongtuProjectionIsConsistent } from "../games/guryongtu/contracts.js";
 import { AzulPlayingProjectionSchema, AzulFinishedProjectionSchema, azulProjectionIsConsistent } from "../games/azul/contracts.js";
+import { VegasPlayingProjectionSchema, VegasFinishedProjectionSchema, vegasProjectionIsConsistent } from "../games/vegas/contracts.js";
 import { CarcassonnePlayingProjectionSchema, CarcassonneFinishedProjectionSchema, carcassonneProjectionIsConsistent } from "../games/carcassonne/contracts.js";
 import { CluePlayingProjectionSchema, ClueFinishedProjectionSchema, clueProjectionIsConsistent } from "../games/clue/contracts.js";
 import { DuetPlayingProjectionSchema, DuetFinishedProjectionSchema, duetProjectionIsConsistent } from "../games/word-duet/contracts.js";
@@ -403,6 +404,23 @@ export const AzulLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, AzulLob
 export const AzulPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, AzulPlayingPlatformSnapshotV2> = AzulPlayingRaw;
 export const AzulFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, AzulFinishedPlatformSnapshotV2> = AzulFinishedRaw;
 
+const VegasOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const VegasRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("VEGAS") };
+const VegasPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(5));
+const VegasLobbyRaw = v.pipe(v.strictObject({ ...VegasOuter, room: v.strictObject({ ...VegasRoom, phase: v.literal("LOBBY"),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)) }), game: v.null() }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
+const VegasPlayingRaw = v.pipe(v.strictObject({ ...VegasOuter, room: v.strictObject({ ...VegasRoom, phase: v.literal("PLAYING"), players: VegasPlayers }), game: VegasPlayingProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => vegasProjectionIsConsistent(s.game) && s.game.viewerPlayerId === s.self.playerId));
+const VegasFinishedRaw = v.pipe(v.strictObject({ ...VegasOuter, room: v.strictObject({ ...VegasRoom, phase: v.literal("FINISHED"), players: VegasPlayers }), game: VegasFinishedProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => vegasProjectionIsConsistent(s.game) && s.game.viewerPlayerId === s.self.playerId));
+export type VegasLobbyPlatformSnapshotV2 = v.InferOutput<typeof VegasLobbyRaw>;
+export type VegasPlayingPlatformSnapshotV2 = v.InferOutput<typeof VegasPlayingRaw>;
+export type VegasFinishedPlatformSnapshotV2 = v.InferOutput<typeof VegasFinishedRaw>;
+export const VegasLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, VegasLobbyPlatformSnapshotV2> = VegasLobbyRaw;
+export const VegasPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, VegasPlayingPlatformSnapshotV2> = VegasPlayingRaw;
+export const VegasFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, VegasFinishedPlatformSnapshotV2> = VegasFinishedRaw;
+
 const CarcassonneOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
 const CarcassonneRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("CARCASSONNE") };
 const CarcassonnePlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(5));
@@ -563,6 +581,7 @@ export const LobbyPlatformSnapshotV2Schema = v.union([
   LoveLetterLobbyPlatformSnapshotV2Schema,
   GuryongtuLobbyPlatformSnapshotV2Schema,
   AzulLobbyPlatformSnapshotV2Schema,
+  VegasLobbyPlatformSnapshotV2Schema,
   CarcassonneLobbyPlatformSnapshotV2Schema,
   ClueLobbyPlatformSnapshotV2Schema,
   DuetLobbyPlatformSnapshotV2Schema,
@@ -718,6 +737,7 @@ export const PlayingPlatformSnapshotV2Schema = v.union([
   LoveLetterPlayingPlatformSnapshotV2Schema,
   GuryongtuPlayingPlatformSnapshotV2Schema,
   AzulPlayingPlatformSnapshotV2Schema,
+  VegasPlayingPlatformSnapshotV2Schema,
   CarcassonnePlayingPlatformSnapshotV2Schema,
   CluePlayingPlatformSnapshotV2Schema,
   DuetPlayingPlatformSnapshotV2Schema,
@@ -873,6 +893,7 @@ export const FinishedPlatformSnapshotV2Schema = v.union([
   LoveLetterFinishedPlatformSnapshotV2Schema,
   GuryongtuFinishedPlatformSnapshotV2Schema,
   AzulFinishedPlatformSnapshotV2Schema,
+  VegasFinishedPlatformSnapshotV2Schema,
   CarcassonneFinishedPlatformSnapshotV2Schema,
   ClueFinishedPlatformSnapshotV2Schema,
   DuetFinishedPlatformSnapshotV2Schema,

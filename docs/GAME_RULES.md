@@ -52,6 +52,10 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 
 # CONFIRMED
 
+### 라스베이거스 추가 — 2026-09-11
+
+사용자의 기본판 개발 승인에 따라 [VEGAS_GAME_RULES.md](./VEGAS_GAME_RULES.md)의 2–5인·4라운드·30초 턴·개인 금액 비공개 정책을 확정한다. 기존 한글 게임 미확정 규칙은 그대로 유지한다.
+
 ### 카르카손 추가 — 2026-09-11
 
 사용자의 전체 개발·일러스트·UI·효과음 요청에 따라 [CARCASSONNE_GAME_RULES.md](./CARCASSONNE_GAME_RULES.md)의 2–5인 기본판과 농부, 90초 턴 및 온라인 정책을 확정한다. 기존 미확정 항목은 유지한다.

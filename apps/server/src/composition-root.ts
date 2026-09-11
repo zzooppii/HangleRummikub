@@ -5,6 +5,7 @@ import { JaipurHostSuccession } from "./games/jaipur/application/host-succession
 import { LoveLetterHostSuccession } from "./games/love-letter/application/host-succession.js";
 import { GuryongtuHostSuccession } from "./games/guryongtu/application/host-succession.js";
 import { AzulHostSuccession } from "./games/azul/application/host-succession.js";
+import { VegasHostSuccession } from "./games/vegas/application/host-succession.js";
 import { CarcassonneHostSuccession } from "./games/carcassonne/application/host-succession.js";
 import { ClueHostSuccession } from "./games/clue/application/host-succession.js";
 import { DuetHostSuccession } from "./games/word-duet/application/host-succession.js";
@@ -20,6 +21,7 @@ import { JaipurService } from "./games/jaipur/application/service.js";
 import { LoveLetterService } from "./games/love-letter/application/service.js";
 import { GuryongtuService } from "./games/guryongtu/application/service.js";
 import { AzulService } from "./games/azul/application/service.js";
+import { VegasService } from "./games/vegas/application/service.js";
 import { CarcassonneService } from "./games/carcassonne/application/service.js";
 import { ClueService } from "./games/clue/application/service.js";
 import { DuetService } from "./games/word-duet/application/service.js";
@@ -35,6 +37,7 @@ import { createJaipurLifecycle } from "./games/jaipur/application/lifecycle.js";
 import { createLoveLetterLifecycle } from "./games/love-letter/application/lifecycle.js";
 import { createGuryongtuLifecycle } from "./games/guryongtu/application/lifecycle.js";
 import { createAzulLifecycle } from "./games/azul/application/lifecycle.js";
+import { createVegasLifecycle } from "./games/vegas/application/lifecycle.js";
 import { createCarcassonneLifecycle } from "./games/carcassonne/application/lifecycle.js";
 import { createClueLifecycle } from "./games/clue/application/lifecycle.js";
 import { createDuetLifecycle } from "./games/word-duet/application/lifecycle.js";
@@ -163,6 +166,7 @@ export type ApplicationRuntime = Readonly<{
   loveLetterService?: LoveLetterService;
   guryongtuService?: GuryongtuService;
   azulService?: AzulService;
+  vegasService?: VegasService;
   carcassonneService?: CarcassonneService;
   clueService?: ClueService;
   duetService?: DuetService;
@@ -178,6 +182,7 @@ export type ApplicationRuntime = Readonly<{
   loveLetterHostSuccession?: LoveLetterHostSuccession;
   guryongtuHostSuccession?: GuryongtuHostSuccession;
   azulHostSuccession?: AzulHostSuccession;
+  vegasHostSuccession?: VegasHostSuccession;
   carcassonneHostSuccession?: CarcassonneHostSuccession;
   clueHostSuccession?: ClueHostSuccession;
   duetHostSuccession?: DuetHostSuccession;
@@ -296,6 +301,7 @@ export function createApplicationRuntime(
       { gameType: "LOVE_LETTER" },
       { gameType: "GURYONGTU" },
       { gameType: "AZUL" },
+      { gameType: "VEGAS" },
       { gameType: "CARCASSONNE" },
       { gameType: "CLUE" },
       { gameType: "WORD_DUET" },
@@ -339,6 +345,7 @@ export function createApplicationRuntime(
     loveLetter: createLoveLetterLifecycle(),
     guryongtu: createGuryongtuLifecycle(),
     azul: createAzulLifecycle(),
+    vegas: createVegasLifecycle(),
     carcassonne: createCarcassonneLifecycle(),
     clue: createClueLifecycle(),
     duet: createDuetLifecycle(),
@@ -652,6 +659,14 @@ export function createApplicationRuntime(
     if (room?.gameType === "AZUL" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
   });
 
+  const vegasService = new VegasService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
+    roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource, turnScheduler });
+  const vegasHostSuccession = new VegasHostSuccession(vegasService.deps, roomId => vegasService.notify(roomId));
+  vegasService.subscribe(async roomId => {
+    const room = await persistence.findById(roomId);
+    if (room?.gameType === "VEGAS" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
+  });
+
   const carcassonneService = new CarcassonneService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
     roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource, turnScheduler });
   const carcassonneHostSuccession = new CarcassonneHostSuccession(carcassonneService.deps, roomId => carcassonneService.notify(roomId));
@@ -791,6 +806,7 @@ export function createApplicationRuntime(
     loveLetter: { gameType: "LOVE_LETTER", start: input => loveLetterService.start(input) },
     guryongtu: { gameType: "GURYONGTU", start: input => guryongtuService.start(input) },
     azul: { gameType: "AZUL", start: input => azulService.start(input) },
+    vegas: { gameType: "VEGAS", start: input => vegasService.start(input) },
     carcassonne: { gameType: "CARCASSONNE", start: input => carcassonneService.start(input) },
     clue: { gameType: "CLUE", start: input => clueService.start(input) },
     duet: { gameType: "WORD_DUET", start: input => duetService.start(input) },
@@ -916,6 +932,7 @@ export function createApplicationRuntime(
   scheduledTurnRouter = new ScheduledTurnRouter({
     lostCities: {gameType:"LOST_CITIES", handleTurnTimeout: input => lostCitiesService.timeout(input)},
     azul: {gameType:"AZUL", handleTurnTimeout: input => azulService.timeout(input)},
+    vegas: {gameType:"VEGAS", handleTurnTimeout: input => vegasService.timeout(input)},
     carcassonne: {gameType:"CARCASSONNE", handleTurnTimeout: input => carcassonneService.timeout(input)},
     saboteur: {gameType:"SABOTEUR", handleTurnTimeout: input => saboteurService.timeout(input)},
     drawRelay: { gameType: "DRAW_RELAY", handleTurnTimeout: input => drawRelayService.timeout(input) },
@@ -999,6 +1016,7 @@ export function createApplicationRuntime(
     loveLetterService,
     guryongtuService,
     azulService,
+    vegasService,
     carcassonneService,
     clueService,
     duetService,
@@ -1014,6 +1032,7 @@ export function createApplicationRuntime(
     loveLetterHostSuccession,
     guryongtuHostSuccession,
     azulHostSuccession,
+    vegasHostSuccession,
     carcassonneHostSuccession,
     clueHostSuccession,
     duetHostSuccession,
@@ -1078,6 +1097,7 @@ export function createApplicationRuntime(
       loveLetterHostSuccession.start();
       guryongtuHostSuccession.start();
       azulHostSuccession.start();
+      vegasHostSuccession.start();
       carcassonneHostSuccession.start();
       clueHostSuccession.start();
       duetHostSuccession.start();
@@ -1110,6 +1130,7 @@ export function createApplicationRuntime(
       loveLetterHostSuccession.stop();
       guryongtuHostSuccession.stop();
       azulHostSuccession.stop();
+      vegasHostSuccession.stop();
       carcassonneHostSuccession.stop();
       clueHostSuccession.stop();
       duetHostSuccession.stop();

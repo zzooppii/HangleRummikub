@@ -3,6 +3,7 @@ import { JaipurActionSchema } from "./games/jaipur/actions.js";
 import { LoveLetterActionSchema } from "./games/love-letter/actions.js";
 import { GuryongtuActionSchema } from "./games/guryongtu/actions.js";
 import { AzulActionSchema } from "./games/azul/actions.js";
+import { VegasActionSchema } from "./games/vegas/actions.js";
 import { CarcassonneActionSchema } from "./games/carcassonne/actions.js";
 import { ClueActionSchema } from "./games/clue/actions.js";
 import { DuetActionSchema } from "./games/word-duet/actions.js";
@@ -339,6 +340,7 @@ const JaipurIdentity = { protocolVersion: ProtocolVersionSchema, requestId: Requ
 const LoveLetterIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 const GuryongtuIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 const AzulIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
+const VegasIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 const CarcassonneIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 const ClueIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 const DuetIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
@@ -347,6 +349,7 @@ export const JaipurActCommandSchema = v.strictObject({ ...JaipurIdentity, kind: 
 export const LoveLetterActCommandSchema = v.strictObject({ ...LoveLetterIdentity, kind: v.literal("loveLetter:act"), turnId: TurnIdSchema, payload: LoveLetterActionSchema });
 export const GuryongtuActCommandSchema = v.strictObject({ ...GuryongtuIdentity, kind: v.literal("guryongtu:act"), turnId: TurnIdSchema, payload: GuryongtuActionSchema });
 export const AzulActCommandSchema = v.strictObject({ ...AzulIdentity, kind: v.literal("azul:act"), turnId: TurnIdSchema, payload: AzulActionSchema });
+export const VegasActCommandSchema = v.strictObject({ ...VegasIdentity, kind: v.literal("vegas:act"), turnId: TurnIdSchema, payload: VegasActionSchema });
 export const CarcassonneActCommandSchema = v.strictObject({ ...CarcassonneIdentity, kind: v.literal("carcassonne:act"), turnId: TurnIdSchema, payload: CarcassonneActionSchema });
 export const ClueActCommandSchema = v.strictObject({ ...ClueIdentity, kind: v.literal("clue:act"), turnId: TurnIdSchema, payload: ClueActionSchema });
 export const DuetActCommandSchema = v.strictObject({ ...DuetIdentity, kind: v.literal("duet:act"), turnId: TurnIdSchema, payload: DuetActionSchema });
@@ -364,9 +367,11 @@ export type JaipurClientCommand = v.InferOutput<typeof JaipurClientCommandSchema
 export type LoveLetterClientCommand = v.InferOutput<typeof LoveLetterClientCommandSchema>;
 export type GuryongtuClientCommand = v.InferOutput<typeof GuryongtuClientCommandSchema>;
 export const AzulClientCommandSchema = AzulActCommandSchema;
+export const VegasClientCommandSchema = VegasActCommandSchema;
 export const CarcassonneClientCommandSchema = CarcassonneActCommandSchema;
 export const ClueClientCommandSchema = ClueActCommandSchema;
 export type AzulClientCommand = v.InferOutput<typeof AzulClientCommandSchema>;
+export type VegasClientCommand = v.InferOutput<typeof VegasClientCommandSchema>;
 export type CarcassonneClientCommand = v.InferOutput<typeof CarcassonneClientCommandSchema>;
 export type ClueClientCommand = v.InferOutput<typeof ClueClientCommandSchema>;
 export type LostCitiesClientCommand = v.InferOutput<typeof LostCitiesClientCommandSchema>;

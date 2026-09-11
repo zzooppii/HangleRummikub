@@ -1344,6 +1344,7 @@ function registerResumeHandler(
         runtime.loveLetterHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.guryongtuHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.azulHostSuccession?.resumed(result.data.roomId, result.data.playerId);
+        runtime.vegasHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.carcassonneHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.clueHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.duetHostSuccession?.resumed(result.data.roomId, result.data.playerId);
@@ -2812,6 +2813,7 @@ function registerGuryongtuHandlers(socket: RealtimeSocket, runtime: ApplicationR
 }
 
 import { AzulClientCommandSchema } from "@hangul-rummikub/shared";
+import { VegasClientCommandSchema } from "@hangul-rummikub/shared";
 function registerAzulHandlers(socket: RealtimeSocket, runtime: ApplicationRuntime): void {
   for (const event of ["azul:act"] as const) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
     const receivedAt = runtime.clock.now(), command = parseNumberRematch(AzulClientCommandSchema, raw);
@@ -2824,6 +2826,27 @@ function registerAzulHandlers(socket: RealtimeSocket, runtime: ApplicationRuntim
       }
       if (!runtime.azulService) { acknowledgeIfPresent(acknowledge, failureAck(raw, INTERNAL_ERROR, receivedAt)); return; }
       const result = await runtime.azulService.command({roomId:binding.roomId,actorPlayerId:binding.playerId,command:command.output,receivedAt,
+        authorization:{isCurrent:()=>socket.connected && isCurrentBinding(runtime,binding)}});
+      if (!result.ok) { acknowledgeIfPresent(acknowledge, failureAck(raw,result.error,receivedAt)); return; }
+      const loaded = await loadSnapshotForSocket(runtime,socket,binding.roomId,binding.playerId);
+      if (loaded && socket.connected && isCurrentBinding(runtime,binding)) acknowledgeIfPresent(acknowledge,snapshotSuccessAck(command.output.requestId,loaded.metadata,loaded.wireSnapshot));
+    })().catch(()=>acknowledgeIfPresent(acknowledge,failureAck(raw,INTERNAL_ERROR,receivedAt)));
+  });
+}
+
+
+function registerVegasHandlers(socket: RealtimeSocket, runtime: ApplicationRuntime): void {
+  for (const event of ["vegas:act"] as const) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
+    const receivedAt = runtime.clock.now(), command = parseNumberRematch(VegasClientCommandSchema, raw);
+    if (!command.success || command.output.kind !== event) { acknowledgeIfPresent(acknowledge, failureAck(raw, INVALID_PAYLOAD_ERROR, receivedAt)); return; }
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(createSocketId(socket.id));
+      if (!binding) { acknowledgeIfPresent(acknowledge, failureAck(raw, UNAUTHENTICATED_ERROR, receivedAt)); return; }
+      if (!isRoomAdmissionCompatible("VEGAS", socketAdmissionCapabilities(socket))) {
+        acknowledgeIfPresent(acknowledge, failureAck(raw, {code:"INCOMPATIBLE_GAME_CAPABILITY",message:"VEGAS requires V2 capability.",recoverable:false}, receivedAt)); return;
+      }
+      if (!runtime.vegasService) { acknowledgeIfPresent(acknowledge, failureAck(raw, INTERNAL_ERROR, receivedAt)); return; }
+      const result = await runtime.vegasService.command({roomId:binding.roomId,actorPlayerId:binding.playerId,command:command.output,receivedAt,
         authorization:{isCurrent:()=>socket.connected && isCurrentBinding(runtime,binding)}});
       if (!result.ok) { acknowledgeIfPresent(acknowledge, failureAck(raw,result.error,receivedAt)); return; }
       const loaded = await loadSnapshotForSocket(runtime,socket,binding.roomId,binding.playerId);
@@ -3326,6 +3349,7 @@ function registerDisconnectHandler(
     runtime.loveLetterHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.guryongtuHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.azulHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
+    runtime.vegasHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.carcassonneHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.clueHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.duetHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
@@ -3419,6 +3443,7 @@ export function registerSocketIoHandlers(
   const unsubscribeLoveLetter = runtime.loveLetterService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeGuryongtu = runtime.guryongtuService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeAzul = runtime.azulService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
+  const unsubscribeVegas = runtime.vegasService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeCarcassonne = runtime.carcassonneService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeClue = runtime.clueService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeDuet = runtime.duetService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
@@ -3483,6 +3508,7 @@ export function registerSocketIoHandlers(
     registerLoveLetterHandlers(socket, runtime);
     registerGuryongtuHandlers(socket, runtime);
     registerAzulHandlers(socket, runtime);
+    registerVegasHandlers(socket, runtime);
     registerCarcassonneHandlers(socket, runtime);
     registerClueHandlers(socket, runtime);
     registerDuetHandlers(socket, runtime);
@@ -3516,6 +3542,7 @@ export function registerSocketIoHandlers(
     unsubscribeLoveLetter?.();
     unsubscribeGuryongtu?.();
     unsubscribeAzul?.();
+    unsubscribeVegas?.();
     unsubscribeCarcassonne?.();
     unsubscribeClue?.();
     unsubscribeDuet?.();

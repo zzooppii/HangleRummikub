@@ -1,5 +1,7 @@
 # Multi-game Platform Specification
 
+2026-09-11 라스베이거스 추가: [VEGAS_ARCHITECTURE.md](./VEGAS_ARCHITECTURE.md)의 2–5인 주사위·카지노 정산·개인별 금액·자체 일러스트/소리 경계를 따른다.
+
 > **2026-09-10 방 유지·게임 교체:** 현재 정책은 [ROOM_GAME_SWITCH.md](./ROOM_GAME_SWITCH.md)를 따른다. 아래 과거 checkpoint의 방 생애 전체 gameType 불변·rematch 제외 정책은 이 기능에 대해 대체된다. 게임 한 판의 종류는 고정하며, 방장만 대기실 또는 종료 후 전용 명령으로 다음 게임을 선택한다. 방 코드·참가자·세션은 유지한다.
 
 > 상태: P11C SOURCE COMPLETE / P12 COMPLETE / THREE-GAME PLATFORM V1 VERIFIED
