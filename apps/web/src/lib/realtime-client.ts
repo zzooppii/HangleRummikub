@@ -7,6 +7,7 @@ import { CityExpansionClientCommandSchema, type CityExpansionClientCommand } fro
 import { IslandClientCommandSchema, type IslandClientCommand } from "@hangul-rummikub/shared";
 import { HalliClientCommandSchema, type HalliClientCommand } from "@hangul-rummikub/shared";
 import { WolfClientCommandSchema, type WolfClientCommand } from "@hangul-rummikub/shared";
+import { LiarClientCommandSchema, type LiarClientCommand } from "@hangul-rummikub/shared";
 import { DrawClientCommandSchema, type DrawClientCommand } from "@hangul-rummikub/shared";
 import { SneakyClientCommandSchema, type SneakyClientCommand } from "@hangul-rummikub/shared";
 import { safeParse as parseRematch } from "valibot";
@@ -755,6 +756,18 @@ export class RealtimeClient {
         case "wolf:vote": this.#socket.emit("wolf:vote", command, acknowledge); break;
         case "wolf:say": this.#socket.emit("wolf:say", command, acknowledge); break;
         case "wolf:rematch": this.#socket.emit("wolf:rematch", command, acknowledge); break;
+      }
+    }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
+  }
+  actLiar(command: LiarClientCommand): Promise<StateSyncWireAck> {
+    if (!parseRematch(LiarClientCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {
+      switch (command.kind) {
+        case "liar:configure": this.#socket.emit("liar:configure", command, acknowledge); break;
+                case "liar:clue": this.#socket.emit("liar:clue", command, acknowledge); break;
+        case "liar:vote": this.#socket.emit("liar:vote", command, acknowledge); break;
+        case "liar:say": this.#socket.emit("liar:say", command, acknowledge); break;
+        case "liar:guess": this.#socket.emit("liar:guess", command, acknowledge); break;
       }
     }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
   }

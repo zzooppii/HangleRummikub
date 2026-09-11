@@ -1345,6 +1345,7 @@ function registerResumeHandler(
         runtime.lostCitiesHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.halliHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.wolfHostSuccession?.resumed(result.data.roomId, result.data.playerId);
+        runtime.liarHostSuccession?.resumed(result.data.roomId, result.data.playerId);
         runtime.sneakyLunchPresence?.resumed(result.data.roomId, result.data.playerId);
         const resumePolicyFollowUp =
           runtime.roomPresencePolicyService.onResume(
@@ -2845,6 +2846,27 @@ function registerWolfHandlers(socket: RealtimeSocket, runtime: ApplicationRuntim
   });
 }
 
+import { LiarClientCommandSchema } from "@hangul-rummikub/shared";
+function registerLiarHandlers(socket: RealtimeSocket, runtime: ApplicationRuntime): void {
+  for (const event of ["liar:configure", "liar:clue", "liar:vote", "liar:say", "liar:guess"] as const) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
+    const receivedAt = runtime.clock.now(), command = parseNumberRematch(LiarClientCommandSchema, raw);
+    if (!command.success || command.output.kind !== event) { acknowledgeIfPresent(acknowledge, failureAck(raw, INVALID_PAYLOAD_ERROR, receivedAt)); return; }
+    void (async () => {
+      const binding = runtime.connectionRegistry.getAuthenticatedBinding(createSocketId(socket.id));
+      if (!binding) { acknowledgeIfPresent(acknowledge, failureAck(raw, UNAUTHENTICATED_ERROR, receivedAt)); return; }
+      if (!isRoomAdmissionCompatible("LIAR_GAME", socketAdmissionCapabilities(socket))) {
+        acknowledgeIfPresent(acknowledge, failureAck(raw, {code:"INCOMPATIBLE_GAME_CAPABILITY",message:"LIAR requires V2 capability.",recoverable:false}, receivedAt)); return;
+      }
+      if (!runtime.liarService) { acknowledgeIfPresent(acknowledge, failureAck(raw, INTERNAL_ERROR, receivedAt)); return; }
+      const result = await runtime.liarService.command({roomId:binding.roomId,actorPlayerId:binding.playerId,command:command.output,receivedAt,
+        authorization:{isCurrent:()=>socket.connected && isCurrentBinding(runtime,binding)}});
+      if (!result.ok) { acknowledgeIfPresent(acknowledge, failureAck(raw,result.error,receivedAt)); return; }
+      const loaded = await loadSnapshotForSocket(runtime,socket,binding.roomId,binding.playerId);
+      if (loaded && socket.connected && isCurrentBinding(runtime,binding)) acknowledgeIfPresent(acknowledge,snapshotSuccessAck(command.output.requestId,loaded.metadata,loaded.wireSnapshot));
+    })().catch(()=>acknowledgeIfPresent(acknowledge,failureAck(raw,INTERNAL_ERROR,receivedAt)));
+  });
+}
+
 import { SneakyClientCommandSchema } from "@hangul-rummikub/shared";
 function registerSneakyHandlers(socket: RealtimeSocket, runtime: ApplicationRuntime): void {
   for (const event of ["sneaky:configure", "sneaky:eat", "sneaky:rematch"] as const) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
@@ -3148,6 +3170,7 @@ function registerDisconnectHandler(
     runtime.lostCitiesHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.halliHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.wolfHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
+    runtime.liarHostSuccession?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     runtime.sneakyLunchPresence?.disconnected(binding.roomId, binding.playerId, disconnectedAt);
     void runtime.roomPresencePolicyService
       .onCurrentDisconnect({
@@ -3233,6 +3256,7 @@ export function registerSocketIoHandlers(
   const unsubscribeLostCities = runtime.lostCitiesService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeHalli = runtime.halliService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeWolf = runtime.wolfService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
+  const unsubscribeLiar = runtime.liarService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeSneaky = runtime.sneakyLunchService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeDrawRelay = runtime.drawRelayService?.subscribe(roomId => fanOutRoomSnapshots(io, runtime, roomId));
   const unsubscribeCityRoleTimeoutApplied = runtime.subscribeCityRoleTimeoutApplied(async data => {
@@ -3289,6 +3313,7 @@ export function registerSocketIoHandlers(
     registerLostCitiesHandlers(socket, runtime);
     registerHalliHandlers(socket, runtime);
     registerWolfHandlers(socket, runtime);
+    registerLiarHandlers(socket, runtime);
     registerSneakyHandlers(socket, runtime);
     registerNumberSubmitHandler(io, socket, runtime);
     registerNumberDrawHandler(io, socket, runtime);
@@ -3314,6 +3339,7 @@ export function registerSocketIoHandlers(
     unsubscribeLostCities?.();
     unsubscribeHalli?.();
     unsubscribeWolf?.();
+    unsubscribeLiar?.();
     unsubscribeSneaky?.();
     unsubscribeGameDeadlineApplied();
   };

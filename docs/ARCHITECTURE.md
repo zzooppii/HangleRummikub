@@ -1,5 +1,7 @@
 # 시스템 아키텍처
 
+2026-09-11 라이어게임 추가: [LIAR_GAME_ARCHITECTURE.md](./LIAR_GAME_ARCHITECTURE.md)의 서버 비공개 제시어·설명·투표·추측 경계를 따른다.
+
 2026-09-11 사보타지 추가: [SABOTEUR_ARCHITECTURE.md](./SABOTEUR_ARCHITECTURE.md)의 3–10인 비밀 역할·통로 보드·3라운드 경계를 따른다. 기존 공통 서버 권위형 경계는 유지한다.
 
 

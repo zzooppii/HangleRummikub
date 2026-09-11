@@ -397,6 +397,23 @@ export const WolfLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, WolfLob
 export const WolfPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, WolfPlayingPlatformSnapshotV2> = WolfPlayingRaw;
 export const WolfFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, WolfFinishedPlatformSnapshotV2> = WolfFinishedRaw;
 
+const LiarOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const LiarRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("LIAR_GAME") };
+const LiarPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(4), v.maxLength(8));
+const LiarLobbyRaw = v.pipe(v.strictObject({ ...LiarOuter, room: v.strictObject({ ...LiarRoom, phase: v.literal("LOBBY"),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)), settings: LiarSettingsSchema }), game: v.null() }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
+const LiarPlayingRaw = v.pipe(v.strictObject({ ...LiarOuter, room: v.strictObject({ ...LiarRoom, phase: v.literal("PLAYING"), players: LiarPlayers }), game: LiarPlayingProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateView.playerId === s.self.playerId));
+const LiarFinishedRaw = v.pipe(v.strictObject({ ...LiarOuter, room: v.strictObject({ ...LiarRoom, phase: v.literal("FINISHED"), players: LiarPlayers }), game: LiarFinishedProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)));
+export type LiarLobbyPlatformSnapshotV2 = v.InferOutput<typeof LiarLobbyRaw>;
+export type LiarPlayingPlatformSnapshotV2 = v.InferOutput<typeof LiarPlayingRaw>;
+export type LiarFinishedPlatformSnapshotV2 = v.InferOutput<typeof LiarFinishedRaw>;
+export const LiarLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, LiarLobbyPlatformSnapshotV2> = LiarLobbyRaw;
+export const LiarPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, LiarPlayingPlatformSnapshotV2> = LiarPlayingRaw;
+export const LiarFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, LiarFinishedPlatformSnapshotV2> = LiarFinishedRaw;
+
 const SneakyOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
 const SneakyRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("SNEAKY_LUNCH") };
 const SneakyPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(8));
@@ -422,6 +439,7 @@ export const LobbyPlatformSnapshotV2Schema = v.union([
   LostCitiesLobbyPlatformSnapshotV2Schema,
   HalliLobbyPlatformSnapshotV2Schema,
   WolfLobbyPlatformSnapshotV2Schema,
+  LiarLobbyPlatformSnapshotV2Schema,
   SneakyLobbyPlatformSnapshotV2Schema,
   DrawRelayLobbyPlatformSnapshotV2Schema,
   HangulTileLobbyPlatformSnapshotV2Schema,
@@ -569,6 +587,7 @@ export const PlayingPlatformSnapshotV2Schema = v.union([
   LostCitiesPlayingPlatformSnapshotV2Schema,
   HalliPlayingPlatformSnapshotV2Schema,
   WolfPlayingPlatformSnapshotV2Schema,
+  LiarPlayingPlatformSnapshotV2Schema,
   DrawRelayPlayingPlatformSnapshotV2Schema,
   SneakyPlayingPlatformSnapshotV2Schema,
   HangulTilePlayingPlatformSnapshotV2Schema,
@@ -716,6 +735,7 @@ export const FinishedPlatformSnapshotV2Schema = v.union([
   LostCitiesFinishedPlatformSnapshotV2Schema,
   HalliFinishedPlatformSnapshotV2Schema,
   WolfFinishedPlatformSnapshotV2Schema,
+  LiarFinishedPlatformSnapshotV2Schema,
   DrawRelayFinishedPlatformSnapshotV2Schema,
   SneakyFinishedPlatformSnapshotV2Schema,
   HangulTileFinishedPlatformSnapshotV2Schema,
@@ -742,3 +762,6 @@ import { SneakyPlayingProjectionSchema, SneakyFinishedProjectionSchema } from ".
 
 import { WolfSettingsSchema } from "../games/wolf-night/contracts.js";
 import { WolfPlayingProjectionSchema, WolfFinishedProjectionSchema } from "../games/wolf-night/v2-projection-contracts.js";
+
+import { LiarSettingsSchema } from "../games/liar-game/contracts.js";
+import { LiarPlayingProjectionSchema, LiarFinishedProjectionSchema } from "../games/liar-game/v2-projection-contracts.js";

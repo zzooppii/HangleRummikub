@@ -1,3 +1,4 @@
+import { CuratedLiarPrompts } from "./games/liar-game/domain/prompts.js";
 import { IslandHostSuccession } from "./games/island/application/host-succession.js";
 import { SplendorHostSuccession } from "./games/splendor/application/host-succession.js";
 import { JaipurHostSuccession } from "./games/jaipur/application/host-succession.js";
@@ -5,6 +6,7 @@ import { SaboteurHostSuccession } from "./games/saboteur/application/host-succes
 import { LostCitiesHostSuccession } from "./games/lost-cities/application/host-succession.js";
 import { HalliHostSuccession } from "./games/halli-galli/application/host-succession.js";
 import { WolfHostSuccession } from "./games/wolf-night/application/host-succession.js";
+import { LiarHostSuccession } from "./games/liar-game/application/host-succession.js";
 import { IslandService } from "./games/island/application/service.js";
 import { SplendorService } from "./games/splendor/application/service.js";
 import { JaipurService } from "./games/jaipur/application/service.js";
@@ -12,6 +14,7 @@ import { SaboteurService } from "./games/saboteur/application/service.js";
 import { LostCitiesService } from "./games/lost-cities/application/service.js";
 import { HalliService } from "./games/halli-galli/application/service.js";
 import { WolfService } from "./games/wolf-night/application/service.js";
+import { LiarService } from "./games/liar-game/application/service.js";
 import { createIslandLifecycle } from "./games/island/application/lifecycle.js";
 import { createSplendorLifecycle } from "./games/splendor/application/lifecycle.js";
 import { createJaipurLifecycle } from "./games/jaipur/application/lifecycle.js";
@@ -19,6 +22,7 @@ import { createSaboteurLifecycle } from "./games/saboteur/application/lifecycle.
 import { createLostCitiesLifecycle } from "./games/lost-cities/application/lifecycle.js";
 import { createHalliLifecycle } from "./games/halli-galli/application/lifecycle.js";
 import { createWolfLifecycle } from "./games/wolf-night/application/lifecycle.js";
+import { createLiarLifecycle } from "./games/liar-game/application/lifecycle.js";
 import { SneakyLunchService } from "./games/sneaky-lunch/application/service.js";
 import { SneakyLunchPresence } from "./games/sneaky-lunch/application/presence.js";
 import { createSneakyLifecycle } from "./games/sneaky-lunch/application/lifecycle.js";
@@ -139,6 +143,7 @@ export type ApplicationRuntime = Readonly<{
   lostCitiesService?: LostCitiesService;
   halliService?: HalliService;
   wolfService?: WolfService;
+  liarService?: LiarService;
   islandHostSuccession?: IslandHostSuccession;
   splendorHostSuccession?: SplendorHostSuccession;
   jaipurHostSuccession?: JaipurHostSuccession;
@@ -146,6 +151,7 @@ export type ApplicationRuntime = Readonly<{
   lostCitiesHostSuccession?: LostCitiesHostSuccession;
   halliHostSuccession?: HalliHostSuccession;
   wolfHostSuccession?: WolfHostSuccession;
+  liarHostSuccession?: LiarHostSuccession;
   sneakyLunchService?: SneakyLunchService;
   sneakyLunchPresence?: SneakyLunchPresence;
   drawRelayService?: DrawRelayService;
@@ -256,6 +262,7 @@ export function createApplicationRuntime(
       { gameType: "LOST_CITIES" },
       { gameType: "HALLI_GALLI" },
       { gameType: "WOLF_NIGHT" },
+      { gameType: "LIAR_GAME" },
     ],
   );
   gameRegistry.getRequired(LEGACY_V1_DEFAULT_GAME_TYPE);
@@ -291,6 +298,7 @@ export function createApplicationRuntime(
     lostCities: createLostCitiesLifecycle(),
     halli: createHalliLifecycle(),
     wolf: createWolfLifecycle(),
+    liar: createLiarLifecycle(),
     sneaky: createSneakyLifecycle(),
   });
   const roomCodeGenerator = new RandomRoomCodeGenerator(randomSource);
@@ -602,6 +610,13 @@ export function createApplicationRuntime(
     const room = await persistence.findById(roomId);
     if (room?.gameType === "WOLF_NIGHT" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
   });
+  const liarService = new LiarService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
+    roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource, turnScheduler, prompts: new CuratedLiarPrompts() });
+  const liarHostSuccession = new LiarHostSuccession(liarService.deps, roomId => liarService.notify(roomId));
+  liarService.subscribe(async roomId => {
+    const room = await persistence.findById(roomId);
+    if (room?.gameType === "LIAR_GAME" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
+  });
   const sneakyLunchService = new SneakyLunchService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
     roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource, turnScheduler });
   const sneakyLunchPresence = new SneakyLunchPresence(sneakyLunchService);
@@ -677,6 +692,7 @@ export function createApplicationRuntime(
     lostCities: { gameType: "LOST_CITIES", start: input => lostCitiesService.start(input) },
     halli: { gameType: "HALLI_GALLI", start: input => halliService.start(input) },
     wolf: { gameType: "WOLF_NIGHT", start: input => wolfService.start(input) },
+    liar: { gameType: "LIAR_GAME", start: input => liarService.start(input) },
     sneaky: { gameType: "SNEAKY_LUNCH", start: input => sneakyLunchService.start(input) },
     cityRole: { gameType: "CITY_ROLE", start: input => cityRoleStartService.start(input) },
     gemCard: { gameType: "GEM_CARD", start: input => gemCardStartService.start(input) },
@@ -796,6 +812,7 @@ export function createApplicationRuntime(
     splendor: { gameType: "SPLENDOR", handleTurnTimeout: input => splendorService.timeout(input) },
     halli: { gameType: "HALLI_GALLI", handleTurnTimeout: input => halliService.timeout(input) },
     wolf: { gameType: "WOLF_NIGHT", handleTurnTimeout: input => wolfService.timeout(input) },
+    liar: { gameType: "LIAR_GAME", handleTurnTimeout: input => liarService.timeout(input) },
     sneaky: { gameType: "SNEAKY_LUNCH", handleTurnTimeout: input => sneakyLunchService.timeout(input) },
     cityRole: { gameType: "CITY_ROLE", handleTurnTimeout: input => cityRoleTimeoutService.timeout(input) },
     gemCard: { gameType: "GEM_CARD", handleTurnTimeout: input => gemCardTimeoutService.timeout(input) },
@@ -871,6 +888,7 @@ export function createApplicationRuntime(
     lostCitiesService,
     halliService,
     wolfService,
+    liarService,
     islandHostSuccession,
     splendorHostSuccession,
     jaipurHostSuccession,
@@ -878,6 +896,7 @@ export function createApplicationRuntime(
     lostCitiesHostSuccession,
     halliHostSuccession,
     wolfHostSuccession,
+    liarHostSuccession,
     sneakyLunchService,
     sneakyLunchPresence,
     subscribeCityRoleTimeoutApplied(listener) { return cityRoleTimeoutService.subscribeApplied(listener); },
@@ -934,6 +953,7 @@ export function createApplicationRuntime(
       lostCitiesHostSuccession.start();
       halliHostSuccession.start();
       wolfHostSuccession.start();
+      liarHostSuccession.start();
       roomPolicyScheduler.start();
       turnScheduler.start();
       gameDeadlineScheduler.start();
@@ -958,6 +978,7 @@ export function createApplicationRuntime(
       lostCitiesHostSuccession.stop();
       halliHostSuccession.stop();
       wolfHostSuccession.stop();
+      liarHostSuccession.stop();
       roomPolicyScheduler.stop();
       overdueTurnSweeper.stop();
       overdueGameDeadlineSweeper.stop();

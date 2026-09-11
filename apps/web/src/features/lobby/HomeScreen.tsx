@@ -1,3 +1,4 @@
+import { LiarEmblem } from "../liar-game/LiarGameScreen.js";
 import { IslandEmblem } from "../island/art.js";
 import { HalliBellArt } from "../halli-galli/art.js";
 import { WolfEmblem } from "../wolf-night/art.js";
@@ -182,6 +183,7 @@ export function HomeScreen(props: HomeScreenProps) {
                             {game.gameType === "SPLENDOR" ? <img src="/assets/splendor/gems.jpg" alt="스플렌더의 다채로운 보석" style={{ width: 125, height: 84, objectFit: "cover", borderRadius: 10 }}/> : null}
                             {game.gameType === "HALLI_GALLI" ? <span style={{ display: "block", width: 90 }}><HalliBellArt/></span> : null}
                             {game.gameType === "WOLF_NIGHT" ? <WolfEmblem/> : null}
+                            {game.gameType === "LIAR_GAME" ? <LiarEmblem/> : null}
                             {game.gameType === "SNEAKY_LUNCH" ? <LunchboxArt small/> : null}
                             <span className="game-option-heading">
                               <strong>{game.displayName}</strong>

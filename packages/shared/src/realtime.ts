@@ -565,6 +565,11 @@ export interface SnapshotWireClientToServerEvents {
   "halli:flip": (command: Extract<HalliClientCommand,{kind:"halli:flip"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "halli:bell": (command: Extract<HalliClientCommand,{kind:"halli:bell"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "halli:rematch": (command: Extract<HalliClientCommand,{kind:"halli:rematch"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "liar:configure": (command: Extract<LiarClientCommand,{kind:"liar:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "liar:clue": (command: Extract<LiarClientCommand,{kind:"liar:clue"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "liar:vote": (command: Extract<LiarClientCommand,{kind:"liar:vote"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "liar:say": (command: Extract<LiarClientCommand,{kind:"liar:say"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "liar:guess": (command: Extract<LiarClientCommand,{kind:"liar:guess"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "wolf:configure": (command: Extract<WolfClientCommand,{kind:"wolf:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "wolf:act": (command: Extract<WolfClientCommand,{kind:"wolf:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "wolf:vote": (command: Extract<WolfClientCommand,{kind:"wolf:vote"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
@@ -649,3 +654,5 @@ import type { DrawClientCommand } from "./protocol.js";
 import type { SneakyClientCommand } from "./protocol.js";
 
 import type { WolfClientCommand } from "./protocol.js";
+
+import type { LiarClientCommand } from "./protocol.js";

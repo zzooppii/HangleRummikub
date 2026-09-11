@@ -47,3 +47,6 @@ export * from "./games/lost-cities/contracts.js";
 export * from "./games/saboteur/actions.js";
 export * from "./games/saboteur/contracts.js";
 export * from "./games/saboteur/geometry.js";
+
+export * from "./games/liar-game/contracts.js";
+export * from "./games/liar-game/v2-projection-contracts.js";

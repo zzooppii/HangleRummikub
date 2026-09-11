@@ -354,6 +354,17 @@ export const HalliRematchCommandSchema = v.strictObject({ ...HalliIdentity, kind
 export const HalliClientCommandSchema = v.variant("kind", [HalliFlipCommandSchema, HalliBellCommandSchema, HalliRematchCommandSchema]);
 export type HalliClientCommand = v.InferOutput<typeof HalliClientCommandSchema>;
 
+
+const LiarIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema };
+const LiarGameIdentity = { ...LiarIdentity, gameId: GameIdSchema, phaseId: TurnIdSchema };
+export const LiarConfigureCommandSchema = v.strictObject({ ...LiarIdentity, kind: v.literal("liar:configure"), expectedRoomRevision: RoomRevisionSchema, payload: LiarSettingsSchema });
+export const LiarClueCommandSchema = v.strictObject({ ...LiarGameIdentity, kind: v.literal("liar:clue"), payload: v.strictObject({ text: LiarClueSchema }) });
+export const LiarVoteCommandSchema = v.strictObject({ ...LiarGameIdentity, kind: v.literal("liar:vote"), payload: v.strictObject({ playerId: PlayerIdSchema }) });
+export const LiarSayCommandSchema = v.strictObject({ ...LiarGameIdentity, kind: v.literal("liar:say"), payload: v.strictObject({ text: LiarTextSchema }) });
+export const LiarGuessCommandSchema = v.strictObject({ ...LiarGameIdentity, kind: v.literal("liar:guess"), payload: v.strictObject({ text: LiarClueSchema }) });
+export const LiarClientCommandSchema = v.variant("kind", [LiarConfigureCommandSchema, LiarClueCommandSchema, LiarVoteCommandSchema, LiarSayCommandSchema, LiarGuessCommandSchema]);
+export type LiarClientCommand = v.InferOutput<typeof LiarClientCommandSchema>;
+
 const WolfIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema };
 const WolfGameIdentity = { ...WolfIdentity, gameId: GameIdSchema, phaseId: TurnIdSchema };
 export const WolfConfigureCommandSchema = v.strictObject({ ...WolfIdentity, kind: v.literal("wolf:configure"), expectedRoomRevision: RoomRevisionSchema, payload: WolfSettingsSchema });
@@ -511,6 +522,7 @@ export type Phase2ClientCommand = v.InferOutput<
 >;
 
 export const ClientCommandSchema = v.variant("kind", [
+  LiarConfigureCommandSchema, LiarClueCommandSchema, LiarVoteCommandSchema, LiarSayCommandSchema, LiarGuessCommandSchema,
   WolfConfigureCommandSchema, WolfActCommandSchema, WolfVoteCommandSchema, WolfSayCommandSchema, WolfRematchCommandSchema,
   SneakyConfigureCommandSchema, SneakyEatCommandSchema, SneakyRematchCommandSchema,
   DrawDraftSaveCommandSchema, DrawSubmitDrawingCommandSchema, DrawSubmitGuessCommandSchema, DrawRevealNextCommandSchema, DrawRematchCommandSchema, DrawConfigureCommandSchema,
@@ -666,3 +678,5 @@ export const SaboteurNextRoundCommandSchema=v.strictObject({...SaboteurIdentity,
 export const SaboteurSayCommandSchema=v.strictObject({...SaboteurIdentity,kind:v.literal('saboteur:say'),roundId:TurnIdSchema,payload:v.strictObject({text:v.pipe(v.string(),v.minLength(1),v.maxLength(240)),sequence:v.pipe(v.number(),v.safeInteger(),v.minValue(0))})});
 export const SaboteurClientCommandSchema=v.variant('kind',[SaboteurActCommandSchema,SaboteurNextRoundCommandSchema,SaboteurSayCommandSchema]);
 export type SaboteurClientCommand=v.InferOutput<typeof SaboteurClientCommandSchema>;
+
+import { LiarSettingsSchema, LiarClueSchema, LiarTextSchema } from "./games/liar-game/contracts.js";

@@ -5,6 +5,7 @@ import type { SaboteurWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { LostCitiesWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { HalliWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { WolfWebSnapshot } from "./snapshot-wire-decoder.js";
+import type { LiarWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { DrawRelayWebSnapshot, SneakyWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { LegacyHangulRoomView } from "./legacy-hangul-room-view.js";
 import { resolveLegacyHangulRoomView } from "./legacy-hangul-room-view.js";
@@ -55,6 +56,7 @@ export type RoomSnapshotView =
   | Readonly<{ kind: "LOST_CITIES"; snapshot: LostCitiesWebSnapshot }>
   | Readonly<{ kind: "HALLI_GALLI"; snapshot: HalliWebSnapshot }>
   | Readonly<{ kind: "WOLF_NIGHT"; snapshot: WolfWebSnapshot }>
+  | Readonly<{ kind: "LIAR_GAME"; snapshot: LiarWebSnapshot }>
   | Readonly<{ kind: "SNEAKY_LUNCH"; snapshot: SneakyWebSnapshot }>
   | Readonly<{ kind: "DRAW_RELAY"; snapshot: DrawRelayWebSnapshot }>
   | LegacyHangulRoomView
@@ -103,6 +105,7 @@ export function resolveRoomSnapshotView(
   if (decoded.kind === "PLATFORM_V2_LOST_CITIES") return { kind: "LOST_CITIES", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "PLATFORM_V2_HALLI_GALLI") return { kind: "HALLI_GALLI", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "PLATFORM_V2_WOLF_NIGHT") return { kind: "WOLF_NIGHT", snapshot: decoded.platformSnapshot };
+  if (decoded.kind === "PLATFORM_V2_LIAR_GAME") return { kind: "LIAR_GAME", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "PLATFORM_V2_SNEAKY_LUNCH") return { kind: "SNEAKY_LUNCH", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "LEGACY_HANGUL_V1") {
     return resolveLegacyHangulRoomView(decoded.legacySnapshot);
