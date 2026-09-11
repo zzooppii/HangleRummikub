@@ -97,6 +97,38 @@ test("ISLAND terrain has a recognizable resource object and a visible name on ev
   for (const name of ["목재", "벽돌", "양모", "곡물", "광석", "사막"]) assert.match(html, new RegExp('font-weight="800">' + name + '</text>'));
   for (const resource of ISLAND_RESOURCES) assert.ok(html.includes('data-resource="' + resource + '"'));
 });
+test("ISLAND road previews follow the actual built edge in all three directions", () => {
+  const game = playing().game;
+  const directions = new Set<string>();
+  for (const edge of ISLAND_BOARD.edges) {
+    const a = ISLAND_BOARD.vertices[edge.a]!, b = ISLAND_BOARD.vertices[edge.b]!;
+    directions.add(Math.abs(a.x - b.x) < .01 ? "vertical" : (a.x - b.x) * (a.y - b.y) > 0 ? "down" : "up");
+    const target = { kind: "edge", id: edge.id } as const;
+    const html = renderToStaticMarkup(createElement(IslandBoard, {
+      game: { ...game, roads: [{ edge: edge.id, playerId: game.activePlayerId }] },
+      targets: [target], selected: target, enabled: true,
+    }));
+    const preview = html.match(/class="island-road-preview" (x1="[^"]+" y1="[^"]+" x2="[^"]+" y2="[^"]+")/)?.[1];
+    assert.ok(preview);
+    assert.ok(html.includes('<line ' + preview + ' stroke="#df6b43"'), "preview endpoints must equal the built road endpoints");
+    assert.match(html, /class="island-road-option"/);
+    assert.match(html, new RegExp('aria-label="도로 ' + (edge.id + 1) + ' 선택" aria-pressed="true"'));
+  }
+  assert.equal(directions.size, 3);
+});
+test("ISLAND settlement selection is centered on the same vertex as the building", () => {
+  const game = playing().game;
+  for (const vertex of ISLAND_BOARD.vertices) {
+    const target = { kind: "vertex", id: vertex.id } as const;
+    const html = renderToStaticMarkup(createElement(IslandBoard, {
+      game: { ...game, buildings: [{ vertex: vertex.id, kind: "SETTLEMENT", playerId: game.activePlayerId }] },
+      targets: [target], selected: target, enabled: true,
+    }));
+    const location = html.match(/class="island-location-preview" transform="(translate\([^)]+\))/)?.[1];
+    assert.ok(location);
+    assert.ok(html.includes('transform="' + location + ' scale(1.1)"'));
+  }
+});
 test("ISLAND player panels expose each opponent's exact resource breakdown, including zero", () => {
   const s = playing();
   s.game.playerStates[1]!.resources = { WOOD: 3, BRICK: 2, WOOL: 0, GRAIN: 1, ORE: 4 };

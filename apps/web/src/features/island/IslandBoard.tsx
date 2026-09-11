@@ -54,7 +54,20 @@ export function IslandBoard({ game, targets = [], selected = null, onSelect, ena
           })}
           {game.roads.map(road => { const edge = ISLAND_BOARD.edges[road.edge]!, a = ISLAND_BOARD.vertices[edge.a]!, b = ISLAND_BOARD.vertices[edge.b]!, [x1, y1] = point(a.x, a.y), [x2, y2] = point(b.x, b.y); return <g key={road.edge}><line x1={x1} y1={y1 + 3} x2={x2} y2={y2 + 3} stroke="#273d35" strokeWidth="11" strokeLinecap="round"/><line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color(road.playerId)} strokeWidth="9" strokeLinecap="round"/><line x1={x1} y1={y1 - 2} x2={x2} y2={y2 - 2} stroke="#fff" opacity=".22" strokeWidth="2"/></g>; })}
           {game.buildings.map(b => { const vertex = ISLAND_BOARD.vertices[b.vertex]!, [x, y] = point(vertex.x, vertex.y); return <g key={b.vertex} transform={"translate(" + x + " " + y + ") scale(1.1)"}><BuildingArt city={b.kind === "CITY"} color={color(b.playerId)}/></g>; })}
-          {selected && (() => { const [x, y] = targetXY(selected); return <g transform={"translate(" + x + " " + y + ")"}><circle r="25" stroke="#fff4bb" fill="#ffffff22" strokeWidth="3" strokeDasharray="5 3"/><circle r="4" fill="#fff4bb"/></g>; })()}
+          {targets.filter(t => t.kind === "edge").map(t => {
+            const edge = ISLAND_BOARD.edges[t.id]!, a = ISLAND_BOARD.vertices[edge.a]!, b = ISLAND_BOARD.vertices[edge.b]!;
+            const [x1, y1] = point(a.x, a.y), [x2, y2] = point(b.x, b.y);
+            return <line key={t.id} className="island-road-option" x1={x1} y1={y1} x2={x2} y2={y2}/>;
+          })}
+          {selected && (() => {
+            if (selected.kind === "edge") {
+              const edge = ISLAND_BOARD.edges[selected.id]!, a = ISLAND_BOARD.vertices[edge.a]!, b = ISLAND_BOARD.vertices[edge.b]!;
+              const [x1, y1] = point(a.x, a.y), [x2, y2] = point(b.x, b.y);
+              return <line className="island-road-preview" x1={x1} y1={y1} x2={x2} y2={y2}><title>선택한 도로 · 이 선을 따라 설치됩니다</title></line>;
+            }
+            const [x, y] = targetXY(selected);
+            return <g className="island-location-preview" transform={"translate(" + x + " " + y + ")"}><circle r={selected.kind === "vertex" ? 18 : 25} stroke="#fff4bb" fill="#ffffff22" strokeWidth="3" strokeDasharray="5 3"/><circle r="4" fill="#fff4bb"/></g>;
+          })()}
         </svg>
         {targets.map(t => { const [x, y] = targetXY(t), chosen = selected?.kind === t.kind && selected.id === t.id;
           return <button key={t.kind + t.id} type="button" className={"island-map-target " + t.kind + (chosen ? " selected" : "")} style={{ left: x / 740 * 100 + "%", top: y / 660 * 100 + "%" }}

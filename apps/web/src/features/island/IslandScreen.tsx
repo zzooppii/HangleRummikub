@@ -93,7 +93,7 @@ export function IslandScreen(props: Props) {
     }
     if (await act(action)) { setCardId(null); setChoice(emptyIslandResources()); }
   }
-  return <main className="island-screen">
+  return <main className={"island-screen" + (game?.phase === "PLAYING" ? " island-playing" : "")}>
     <header className="island-header"><div className="island-brand"><span className="island-brand-mark" aria-hidden="true">⬡</span><div><span className="island-eyebrow">ISLAND SETTLERS</span><h1>섬 개척</h1></div></div><div className="island-room-tools"><span>{props.connectionLabel} · {s.room.roomCode}</span><button onClick={props.onCopy} type="button">초대 링크</button><button type="button" onClick={props.onLeave} disabled={props.pending}>나가기</button></div></header>
     {(error || props.error) && <p className="island-error" role="alert">{error || props.error}</p>}
     {!props.connected && <p className="island-error" role="status">연결을 복구하고 있습니다. 재접속하면 같은 패와 보드로 이어집니다. 차례의 2분은 계속 흐릅니다.</p>}
@@ -110,7 +110,6 @@ export function IslandScreen(props: Props) {
       <div className="island-game-layout">
         <div className="island-board-column">
           <IslandBoard game={game} targets={targets} selected={validSelection ? selected : null} onSelect={setSelected} enabled={enabled}/>
-          <section className="island-hand" aria-label="내 자원"><div className="island-section-label"><h2>내 자원</h2><span>모든 참가자에게 공개됩니다</span></div><div className="island-resource-hand">{ISLAND_RESOURCES.map(r => <div className={"island-hand-card resource-" + r.toLowerCase()} key={r}><ResourceArt resource={r}/><div><span>{ISLAND_LABELS[r]}</span><strong>{game.privateState.resources[r]}</strong></div></div>)}</div><div className="island-supply"><span>남은 내 기물</span><span>도로 <b>{myState?.remainingRoads}</b></span><span>마을 <b>{myState?.remainingSettlements}</b></span><span>도시 <b>{myState?.remainingCities}</b></span></div></section>
         </div>
         <aside className="island-action-panel">
           <div className="island-action-heading"><span className="island-eyebrow">YOUR NEXT MOVE</span><h2>{mine ? "나의 다음 한 수" : "테이블에 함께하기"}</h2></div>
@@ -147,6 +146,7 @@ export function IslandScreen(props: Props) {
             <div className="island-buy-card"><p>양모 1 + 곡물 1 + 광석 1</p><button type="button" disabled={!enabled || !game.legalActions.canBuyCard} onClick={() => void act({ type: "BUY_CARD" })}>발전 카드 구입 · {game.developmentCount}장 남음</button><small>산 차례에는 사용할 수 없습니다.<br/>행동 카드는 차례당 1장, 승점은 자동 반영됩니다.</small></div>
           </section>}
           {game.stage.kind === "ACTION" && mine && <button type="button" className="island-end-turn" disabled={!enabled} onClick={() => void act({ type: "END_TURN" })}>차례 마치기 <span>→</span></button>}
+          <section className="island-hand" aria-label="내 자원"><div className="island-section-label"><h2>내 자원</h2><span>모든 참가자에게 공개됩니다</span></div><div className="island-resource-hand">{ISLAND_RESOURCES.map(r => <div className={"island-hand-card resource-" + r.toLowerCase()} key={r}><ResourceArt resource={r}/><div><span>{ISLAND_LABELS[r]}</span><strong>{game.privateState.resources[r]}</strong></div></div>)}</div><div className="island-supply"><span>남은 내 기물</span><span>도로 <b>{myState?.remainingRoads}</b></span><span>마을 <b>{myState?.remainingSettlements}</b></span><span>도시 <b>{myState?.remainingCities}</b></span></div></section>
           <details className="island-bank-inventory"><summary>은행에 남은 자원</summary><ResourceSummary resources={game.bank}/></details>
         </aside>
       </div>
