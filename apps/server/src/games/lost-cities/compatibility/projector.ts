@@ -10,5 +10,5 @@ export function projectLostCities(game:LostCitiesStoredGame,viewer:PlayerId) {
       expeditions:p.expeditions.map(e=>{const cards=e.cards.map(id=>lostCitiesCard(s,id));return {suit:e.suit,cards,score:scoreLostCitiesExpedition(e.suit,cards)};})})),
     privateState:{playerId:viewer,hand:p.hand.map(id=>lostCitiesCard(s,id))},roundResults:s.roundResults,feedback:s.feedback};
   if(s.phase==='FINISHED')return parse(LostCitiesFinishedProjectionSchema,{...base,phase:'FINISHED',result:s.result});
-  return parse(LostCitiesPlayingProjectionSchema,s.phase==='PLAYING'?{...base,phase:'PLAYING',turnId:s.transitionId,activePlayerId:s.activePlayerId}:{...base,phase:'ROUND_RESULT',confirmedPlayerIds:s.confirmedPlayerIds});
+  return parse(LostCitiesPlayingProjectionSchema,s.phase==='PLAYING'?{...base,phase:'PLAYING',turnId:s.transitionId,activePlayerId:s.activePlayerId,deadlineAt:s.deadlineAt}:{...base,phase:'ROUND_RESULT',confirmedPlayerIds:s.confirmedPlayerIds});
 }

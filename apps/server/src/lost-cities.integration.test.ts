@@ -3,7 +3,7 @@ import test, { type TestContext } from "node:test";
 import { io, type Socket } from "socket.io-client";
 import * as v from "valibot";
 import {
-  SUPPORTED_GAME_TYPES, PlatformSnapshotV2Schema, SessionBootstrapAckSchema,
+  ServerTimeSchema, SUPPORTED_GAME_TYPES, PlatformSnapshotV2Schema, SessionBootstrapAckSchema,
   StateSyncWireAckSchema, RoomLeaveAckSchema, type GameType, type PlatformSnapshotV2,
 } from "@hangul-rummikub/shared";
 import { createHttpServer } from "./server.js";
@@ -66,11 +66,11 @@ type Harness=Awaited<ReturnType<typeof harness>>;
 async function start(h:Harness){const s=await h.sync();return h.success(await h.call(h.host,'game:start',{}, {expectedRoomRevision:s.versions.roomRevision}));}
 function action(h:Harness,s:PlatformSnapshotV2,payload:unknown){const g=lostCities(s);if(g.phase!=='PLAYING')throw new Error('Expected playing LostCities.');return h.request('lostCities:act',payload,{gameId:g.gameId,expectedGameRevision:g.gameRevision,turnId:g.turnId});}
 function move(g:LostCitiesPlayingProjection):LostCitiesAction {return {kind:'DISCARD',cardId:g.privateState.hand[0]!.cardId,draw:{kind:'DECK'}};}
-test('LOST_CITIES admission: two players only, incompatible client rejected and no active deadline',async t=>{
+test('LOST_CITIES admission: two players only, incompatible client rejected and a 60-second active deadline',async t=>{
   const one=await harness(t,1),l=await one.sync();assert.equal(one.failure(await one.call(one.host,'game:start',{}, {expectedRoomRevision:l.versions.roomRevision})),'NOT_ENOUGH_PLAYERS');
   const h=await harness(t),third=await h.connect(),token=await h.bootstrap(third);
   assert.equal(h.failure(await h.call(third,'room:join',{bootstrapCredential:token,nickname:'세번째',roomCode:h.lobby.room.roomCode})),'ROOM_FULL');
-  const started=await start(h);assert.equal(lostCities(started).playerStates.length,2);assert.equal((await h.server.runtime.persistence.listActiveTurnDeadlines()).some(d=>d.roomId===started.room.roomId),false);
+  const started=await start(h);assert.equal(lostCities(started).playerStates.length,2);assert.equal((await h.server.runtime.persistence.listActiveTurnDeadlines()).some(d=>d.roomId===started.room.roomId),true);
   const old=await h.connect(['JAIPUR']),oldToken=await h.bootstrap(old);assert.equal(h.failure(await h.call(old,'room:join',{bootstrapCredential:oldToken,nickname:'이전버전',roomCode:h.lobby.room.roomCode})),'INCOMPATIBLE_GAME_CAPABILITY');
   const large=await harness(t,3),selected=large.success(await large.send(large.host,large.selection(await large.sync(),'LOST_CITIES')));assert.equal(selected.room.players.length,3);assert.equal(large.failure(await large.call(large.host,'game:start',{}, {expectedRoomRevision:selected.versions.roomRevision})),'NOT_ENOUGH_PLAYERS');
 });
@@ -147,4 +147,41 @@ test('LOST_CITIES host settings enforce authorization, revision, replay, persist
   s=await start(h);assert.equal(lostCities(s).deckCount,44);assert.equal(lostCities(s).discards.length,5);
   assert.equal(h.failure(await h.call(h.host,'lostCities:configure',{mode:'SIX_EXPEDITIONS'},{expectedRoomRevision:s.versions.roomRevision})),'INVALID_PHASE');
   assert.equal(lostCities(await h.sync()).settings?.mode,'BASE');
+});
+
+test('LOST_CITIES deadline survives sync and competing timeout/manual commands commit only once',async t=>{
+  const h=await harness(t),started=await start(h),g=lostCities(started);if(g.phase!=='PLAYING')throw new Error();
+  const runtime=h.server.runtime,service=runtime.lostCitiesService!;
+  const actor=h.members.find(p=>p.playerId===g.activePlayerId)!,s=await h.sync(actor.client),own=lostCities(s);
+  if(own.phase!=='PLAYING')throw new Error();assert.equal(own.deadlineAt,g.deadlineAt);
+  const deadline=(await runtime.persistence.listActiveTurnDeadlines()).find(d=>d.roomId===s.room.roomId)!;
+  assert.equal(deadline.deadlineAt,g.deadlineAt);assert.equal((await service.timeout(deadline)).status,'NO_OP');
+  let now=v.parse(ServerTimeSchema,g.deadlineAt);t.mock.method(runtime.clock,'now',()=>now);
+  const before=await runtime.persistence.findById(s.room.roomId);
+  assert.equal(h.failure(await h.send(actor.client,action(h,s,move(own)))),'TURN_EXPIRED');
+  assert.deepEqual(await runtime.persistence.findById(s.room.roomId),before);
+  const results=await Promise.all([service.timeout(deadline),service.timeout(deadline),h.send(actor.client,action(h,s,move(own)))]);
+  assert.deepEqual(results.slice(0,2),[{status:'APPLIED'},{status:'NO_OP'}]);
+  const after=lostCities(await h.sync(actor.client));if(after.phase!=='PLAYING')throw new Error();
+  assert.equal(after.gameRevision,own.gameRevision+1);assert.equal(after.deckCount,own.deckCount-1);
+  assert.equal(after.feedback?.card.cardId,own.privateState.hand[0]!.cardId);assert.equal(after.activePlayerId,h.members.find(p=>p!==actor)!.playerId);
+  assert.equal(after.deadlineAt,now+60_000);assert.equal((await service.timeout(deadline)).status,'NO_OP');
+  now=v.parse(ServerTimeSchema,after.deadlineAt);
+  const latest=(await runtime.persistence.listActiveTurnDeadlines()).find(d=>d.roomId===s.room.roomId)!;
+  assert.equal((await service.timeout({...latest,expectedGameRevision:own.gameRevision})).status,'NO_OP');
+  assert.equal((await service.timeout(latest)).status,'APPLIED');
+});
+
+test('LOST_CITIES scheduler failure recovers through shared overdue sweeper and cancels on leave',async t=>{
+  const h=await harness(t),runtime=h.server.runtime;
+  const diagnostic=t.mock.method(console,'error',()=>undefined);
+  const schedule=t.mock.method(runtime.turnScheduler,'scheduleTimeout',async()=>{throw new Error('test schedule failure');});
+  const started=await start(h),g=lostCities(started);if(g.phase!=='PLAYING')throw new Error();
+  assert.equal(diagnostic.mock.callCount(),1);schedule.mock.restore();
+  t.mock.method(runtime.clock,'now',()=>v.parse(ServerTimeSchema,g.deadlineAt));
+  assert.equal(await runtime.overdueTurnSweeper.sweepOnce(),1);
+  const s=await h.sync(),after=lostCities(s);assert.equal(after.gameRevision,g.gameRevision+1);assert.equal(runtime.turnScheduler.scheduledCount,1);
+  const left=v.parse(RoomLeaveAckSchema,await h.call(h.host,'room:leave',{}, {expectedRoomRevision:s.versions.roomRevision,expectedGameRevision:after.gameRevision}));
+  assert.ok(left.ok);assert.equal(runtime.turnScheduler.scheduledCount,0);
+  assert.equal((await runtime.persistence.listActiveTurnDeadlines()).length,0);
 });

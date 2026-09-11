@@ -1,8 +1,8 @@
-import { GameIdSchema, GameRevisionSchema, ServerTimeSchema, type GameId, type GameRevision, type ServerTime } from "@hangul-rummikub/shared";
+import { GameIdSchema, GameRevisionSchema, ServerTimeSchema, type GameId, type GameRevision, type ServerTime, type TurnId } from "@hangul-rummikub/shared";
 import { parse } from "valibot";
 import { parseLostCitiesState, type LostCitiesState } from "../domain/game.js";
 export type LostCitiesStoredGame=Readonly<{gameId:GameId;gameRevision:GameRevision;startedAt:ServerTime;finishedAt:ServerTime|null;state:LostCitiesState}>;
-export type LostCitiesLifecycle=Readonly<{lifecycle:'RUNNING';gameId:GameId;gameRevision:GameRevision;activeTurn:null}>|Readonly<{lifecycle:'FINISHED';gameId:GameId;finishedAt:ServerTime}>;
+export type LostCitiesLifecycle=Readonly<{lifecycle:'RUNNING';gameId:GameId;gameRevision:GameRevision;activeTurn:Readonly<{turnId:TurnId;deadlineAt:ServerTime}>|null}>|Readonly<{lifecycle:'FINISHED';gameId:GameId;finishedAt:ServerTime}>;
 export class LostCitiesGameStateAdapter {
   cloneAndValidate(game:LostCitiesStoredGame):LostCitiesStoredGame {
     const state=parseLostCitiesState(game.state),gameId=parse(GameIdSchema,game.gameId),gameRevision=parse(GameRevisionSchema,game.gameRevision),startedAt=parse(ServerTimeSchema,game.startedAt);
@@ -11,6 +11,6 @@ export class LostCitiesGameStateAdapter {
   }
   inspectLifecycle(game:LostCitiesStoredGame):LostCitiesLifecycle {
     if(game.state.phase==='FINISHED'){if(game.finishedAt===null)throw new Error('LostCities finish time missing.');return {lifecycle:'FINISHED',gameId:game.gameId,finishedAt:game.finishedAt};}
-    return {lifecycle:'RUNNING',gameId:game.gameId,gameRevision:game.gameRevision,activeTurn:null};
+    return {lifecycle:'RUNNING',gameId:game.gameId,gameRevision:game.gameRevision,activeTurn:game.state.phase==='PLAYING'&&game.state.deadlineAt!==null?{turnId:game.state.transitionId,deadlineAt:game.state.deadlineAt}:null};
   }
 }

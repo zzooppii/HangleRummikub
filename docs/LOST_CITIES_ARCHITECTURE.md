@@ -5,7 +5,7 @@
 - shared games/lost-cities: opaque card ID, 카드·한 턴 행동·개인별 projection과 strict runtime schema.
 - server games/lost-cities/domain: 모드별 60/72장 보존, 투자·숫자 배치, 원자적 후보 상태, 점수와 3라운드 매치. 시간·난수·ID는 입력으로 받는다.
 - application: 인증 actor, room/game phase·revision, turn/round identity 검증. 행동/퇴장/라운드 전환을 방 단위로 직렬화하고 성공 상태와 idempotency 영수증을 함께 commit. 비인가 카드와 존재하지 않는 ID는 같은 외부 오류.
-- compatibility: concrete 저장 adapter와 per-viewer whitelist projector. activeTurn deadline은 null이며 이전 게임 타이머는 사용하지 않는다.
+- compatibility: concrete 저장 adapter와 per-viewer whitelist projector. PLAYING에서는 activeTurn의 turnId·deadlineAt을 공통 scheduler와 overdue sweeper에 제공한다. ROUND_RESULT에서는 activeTurn이 null이다.
 - web features/lost-cities: 일러스트 카드, 모드별 다섯/여섯 탐험 열, 중앙 버림 더미, 하단 손패와 로컬 선택. 서버 응답 전 실제 보드를 변경하지 않는다. 응답 유실은 같은 requestId로 재확인한다.
 - 내부 phase는 PLAYING/ROUND_RESULT/FINISHED. ROUND_RESULT 동안 room은 PLAYING. 매치 gameId를 유지하며 새 라운드에는 새 roundId·카드 ID, 매 턴 새 turnId를 사용한다.
 - 공용 목록·인원·capability·start/lifecycle/projector·decoder/renderer의 필요한 연결만 추가한다. 기존 게임 일반화와 새 dependency는 없다.
@@ -27,7 +27,7 @@
 - 새 web 테스트: 대기실·플레이·라운드 결과·최종 결과 렌더링, 카드 선택·행동 미리보기, 정렬·배치 가능 여부, strict 계약 검사.
 - 두 독립 브라우저로 방 생성·참가·시작, 투자/숫자 놓기, 버리기·덱 가져오기·공용 카드 가져오기, 실시간 턴 동기화를 확인했다. 새로고침 후 같은 손패 8장과 덱 잔량·턴이 복구됐다. 390 px와 320 px viewport에서 가로 넘침 없이 보드 5열과 손패가 표시됐다.
 
-실물 휴대폰 테스트와 공개 배포는 수행하지 않았다. 서버 재시작 후 복구, AI·관전·타이머는 [후속 미확정 범위](./LOST_CITIES_GAME_RULES.md#to_be_confirmed--후속-범위)다.
+실물 휴대폰 테스트와 공개 배포는 수행하지 않았다. 서버 재시작 후 복구, AI·관전·선택형 시간 설정은 [후속 미확정 범위](./LOST_CITIES_GAME_RULES.md#to_be_confirmed--후속-범위)다.
 
 ## 주요 변경 파일
 
@@ -53,3 +53,23 @@
 - 390px/320px에서 문서 전체 가로 넘침 없이 보드 영역만 스크롤하며, 손패 8장과 보라색 카드를 선택해 턴을 확정할 수 있다. 검증 후 viewport를 복원했다. 실물 휴대폰 검증은 별도다.
 - Vite의 500 kB 초과 번들 경고는 유지된다. 현재 JS 951.61 kB(gzip 269.46 kB). 공개 배포는 수행하지 않았다.
 - 새 자산은 [canyon.png](../apps/web/public/images/lost-cities/canyon.png)이며 내장 image_gen 도구를 사용했다. 최종 프롬프트는 [자산 README](../apps/web/public/images/lost-cities/README.md)에 기록했다.
+
+## 60초 턴과 상호작용 피드백 (2026-09-11)
+
+사용자의 60초 제한·초과 시 자동 버리기/덱 가져오기 결정은 [규칙 문서](./LOST_CITIES_GAME_RULES.md)에 기록했다.
+
+- domain state는 nullable `deadlineAt`을 소유한다. 시작·정상 턴 완료·자동 턴 완료·다음 라운드 배분은 서버 입력 `now + 60,000ms`를 저장한다. 정산·취소·종료에는 마감을 제거한다. 수동 행동은 `now >= deadlineAt`이면 원본 변경 없이 TURN_EXPIRED로 거절한다.
+- timeout은 서버 손패 배열 첫 카드로 DISCARD + DECK 후보를 만든다. 수동 제출과 같은 원자적 카드 보존·정산 경로를 사용한다. 로컬 카드 정렬·선택은 자동 행동에 영향을 주지 않는다.
+- application timeout은 방 mutation lane에서 room/game phase, gameId, gameRevision, turnId, deadlineAt과 Clock을 재검증한다. commit 뒤 이전 timer를 취소하고 다음 timer를 등록한다. 등록 실패는 공통 overdue sweeper가 복구한다. 결과 확인 중에는 타이머가 없고 연결 끊김은 마감을 연장하지 않는다.
+- PLAYING projection에 필수 `deadlineAt`을 공개한다. 구형 화면/서버의 strict contract는 호환되지 않으므로 서버와 web을 함께 빌드·배포한다.
+- web은 snapshot serverTime과 monotonic elapsed로 카운트다운을 표시한다. 0초에서 입력을 잠그고 서버 결과를 기다리며 클라이언트가 자동 행동을 제출하지 않는다. 보드 위 차례 배너, 하단 차례 표시, 시간 막대와 10초 이하 강조를 제공한다.
+- 자체 합성 효과음은 카드/행동/가져올 곳 선택, 서버 확정 놓기·버리기·가져오기, 내 차례 시작, 라운드/승리/종료, 오류, 내 차례 10초·5초 경고를 구분한다. 브라우저 사용자 제스처로 AudioContext를 활성화하고 소리 켜기/끄기를 저장한다. 초기 snapshot의 과거 행동과 중복 snapshot은 재생하지 않는다. 소리 비활성/장치 실패는 게임에 영향을 주지 않는다.
+
+이번 변경 검증:
+
+- root `npm run typecheck`, `npm run build`, `git diff --check` 통과.
+- root `npm test`: shared 124 + web 601 + server 1,626 = **2,351개 통과**, 실패·skip 0. 최초 sandbox 실행은 loopback listen EPERM으로 실패했고, 로컬 포트가 허용된 실행으로 전체 통과를 확인했다.
+- 60초 직전/정각 수동 제출, 자동 행동의 원본 불변·카드 보존·다음 마감, 마지막 덱 카드 정산, 결과 확인 중 타이머 중지, 중복 timeout·수동 제출 경합, 오래된 revision 거절, scheduler 등록 실패의 overdue 복구, 퇴장 시 timer 해제를 검증했다.
+- 실제 React 화면을 사용하는 로컬 검증 fixture에서 데스크톱·390px·320px 차례/시간 표시와 카드 선택→버리기→덱 선택→턴 확정 활성화를 확인했다. 320px에서 문서 가로 넘침이 없었다. 검증 fixture와 임시 서버는 정리했다. 실물 기기 음량·청취 검증과 공개 배포는 수행하지 않았다.
+- Vite의 500 kB 초과 번들 경고는 유지된다. web JS 1,082.65 kB(gzip 305.30 kB).
+- 새 클라이언트 파일: [효과음과 전환 판별](../apps/web/src/features/lost-cities/sound.ts), [표시용 카운트다운](../apps/web/src/features/lost-cities/turn-timer.ts). 기존 화면·CSS, 서버 domain/application·adapter/projector, 공통 scheduled-turn router·composition root, shared projection과 관련 테스트를 갱신했다.

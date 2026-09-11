@@ -3,7 +3,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parse, safeParse } from "valibot";
-import { LOST_CITIES_SUITS, LostCitiesCardSchema, LostCitiesLobbyPlatformSnapshotV2Schema, LostCitiesPlayingPlatformSnapshotV2Schema, LostCitiesFinishedPlatformSnapshotV2Schema, LostCitiesClientCommandSchema, GAME_PLAYER_LIMITS, type LostCitiesSuit } from "@hangul-rummikub/shared";
+import { GameRevisionSchema, TurnIdSchema, PlayerIdSchema, LOST_CITIES_SUITS, LostCitiesCardSchema, LostCitiesLobbyPlatformSnapshotV2Schema, LostCitiesPlayingPlatformSnapshotV2Schema, LostCitiesFinishedPlatformSnapshotV2Schema, LostCitiesClientCommandSchema, GAME_PLAYER_LIMITS, type LostCitiesSuit } from "@hangul-rummikub/shared";
 import { LostCitiesScreen } from "../features/lost-cities/LostCitiesScreen.js";
 import { canPlaceLostCities, emptyLostCitiesDraft, previewLostCities, sortLostCitiesHand } from "../features/lost-cities/ui.js";
 import { decodeWebSnapshot, type LostCitiesWebSnapshot } from "./snapshot-wire-decoder.js";
@@ -13,11 +13,11 @@ const card=(suit:LostCitiesSuit,id:string,value:number|'I')=>parse(LostCitiesCar
 const players=[{playerId:'a',nickname:'하비',isHost:true,connectionStatus:'CONNECTED'},{playerId:'b',nickname:'친구',isHost:false,connectionStatus:'CONNECTED'}];
 function lobby(n=2){return parse(LostCitiesLobbyPlatformSnapshotV2Schema,{snapshotVersion:2,versions:{roomRevision:1,presenceVersion:1},serverTime:1000,self:{playerId:'a'},room:{roomId:'lc-room',roomCode:'BCDFGH',gameType:'LOST_CITIES',phase:'LOBBY',players:players.slice(0,n)},game:null});}
 const emptyScore=(suit:LostCitiesSuit)=>({suit,cardCount:0,sum:0,cost:0,multiplier:1,bonus:0,total:0});
-function playing(){const l=lobby();return parse(LostCitiesPlayingPlatformSnapshotV2Schema,{...l,room:{...l.room,phase:'PLAYING'},game:{gameType:'LOST_CITIES',gameId:'lc-game',gameRevision:0,rulesVersion:'lost-cities-base-v1',round:1,roundId:'r1',phase:'PLAYING',turnId:'t1',activePlayerId:'a',deckCount:44,
+function playing(){const l=lobby();return parse(LostCitiesPlayingPlatformSnapshotV2Schema,{...l,room:{...l.room,phase:'PLAYING'},game:{gameType:'LOST_CITIES',gameId:'lc-game',gameRevision:0,rulesVersion:'lost-cities-base-v1',round:1,roundId:'r1',phase:'PLAYING',turnId:'t1',activePlayerId:'a',deadlineAt:61000,deckCount:44,
   discards:LOST_CITIES_SUITS.map(suit=>({suit,count:0,top:null})),playerStates:players.map(p=>({playerId:p.playerId,handCount:8,cumulative:0,expeditions:LOST_CITIES_SUITS.map(suit=>({suit,cards:[],score:emptyScore(suit)}))})),
   privateState:{playerId:'a',hand:[card('DESERT','h1',2),card('DESERT','h2',4),card('JUNGLE','h3','I'),card('JUNGLE','h4',3),card('OCEAN','h5',6),card('OCEAN','h6',8),card('VOLCANO','h7',10),card('SNOW','h8','I')]},roundResults:[],feedback:null}});}
 const render=(snapshot:LostCitiesWebSnapshot)=>renderToStaticMarkup(createElement(LostCitiesScreen,{snapshot,connected:true,pending:false,error:null,connectionLabel:'접속 중',onCommand:async()=>{},onRematch:()=>{},onStart:()=>{},onLeave:()=>{},onCopy:()=>{}}));
-function ended(){const p=playing();if(p.game.phase!=='PLAYING')throw new Error();const {turnId:_turn,activePlayerId:_active,...g}=p.game;return {...p,game:{...g,phase:'ROUND_RESULT',deckCount:0,confirmedPlayerIds:[],
+function ended(){const p=playing();if(p.game.phase!=='PLAYING')throw new Error();const {turnId:_turn,activePlayerId:_active,deadlineAt:_deadline,...g}=p.game;return {...p,game:{...g,phase:'ROUND_RESULT',deckCount:0,confirmedPlayerIds:[],
   discards:LOST_CITIES_SUITS.map((suit,i)=>({suit,count:i===0?8:9,top:card(suit,`discard-${i}`,9)})),roundResults:[{round:1,scores:players.map(p=>({playerId:p.playerId,expeditions:LOST_CITIES_SUITS.map(emptyScore),total:0,cumulative:0}))}]}};}
 test('Lost Cities UI decodes lobby and renders illustration cards, five lanes and hand privacy',()=>{
   for(const s of [lobby(),playing()]){const d=decodeWebSnapshot(s);assert.equal(d.kind,'COMPATIBLE');if(d.kind!=='COMPATIBLE')throw new Error();assert.equal(resolveRoomSnapshotView(d.value).kind,'LOST_CITIES');assert.match(render(s),/LOST CITIES/);}
@@ -71,4 +71,34 @@ test('Lost Cities configure command accepts only explicit modes and a room revis
   const c={kind:'lostCities:configure',protocolVersion:1,requestId:'configure',expectedRoomRevision:3,payload:{mode:'SIX_EXPEDITIONS'}};
   assert.equal(safeParse(LostCitiesClientCommandSchema,c).success,true);
   for(const invalid of [{...c,payload:{mode:'EXPANSION'}},{...c,payload:{mode:'BASE',cards:72}},{...c,expectedRoomRevision:undefined}])assert.equal(safeParse(LostCitiesClientCommandSchema,invalid).success,false);
+});
+
+import { LostCitiesAudio, lostCitiesTransitionCues } from "../features/lost-cities/sound.js";
+import { lostCitiesSecondsLeft } from "../features/lost-cities/turn-timer.js";
+test('Lost Cities turn banner and timer distinguish ownership, expiry and round results',()=>{
+  const p=playing();if(p.game.phase!=='PLAYING')throw new Error();assert.match(render(p),/당신의 차례/);assert.match(render(p),/01:00/);assert.match(render(p),/소리 켜짐/);assert.match(render(p),/lc-turn-mine/);
+  p.game.activePlayerId=parse(PlayerIdSchema,'b');assert.match(render(p),/친구의 차례/);assert.match(render(p),/lc-turn-other/);
+  p.serverTime=p.game.deadlineAt;const expired=render(p);assert.match(expired,/00:00/);assert.match(expired,/자동 행동을 기다립니다/);
+  assert.doesNotMatch(render(parse(LostCitiesPlayingPlatformSnapshotV2Schema,ended())),/role="timer"/);
+});
+test('Lost Cities countdown uses server time, clamps expiry and accounts for suspended-tab elapsed time',()=>{
+  assert.equal(lostCitiesSecondsLeft(61000,1000),60);assert.equal(lostCitiesSecondsLeft(61000,1000,50500),10);
+  assert.equal(lostCitiesSecondsLeft(61000,1000,60000),0);assert.equal(lostCitiesSecondsLeft(61000,1000,300000),0);
+  assert.equal(lostCitiesSecondsLeft(null,1000),0);
+});
+test('Lost Cities sound observes accepted transitions once and never replays old feedback on sync',()=>{
+  const g=playing().game;if(g.phase!=='PLAYING')throw new Error();assert.deepEqual(lostCitiesTransitionCues(null,g,'a'),['TURN']);
+  const next=structuredClone(g);next.gameRevision=parse(GameRevisionSchema,1);next.turnId=parse(TurnIdSchema,'t2');next.activePlayerId=parse(PlayerIdSchema,'b');
+  next.feedback={playerId:g.activePlayerId,kind:'DISCARD',card:g.privateState.hand[0]!,draw:{kind:'DECK'},at:playing().serverTime};
+  assert.deepEqual(lostCitiesTransitionCues(g,next,'a'),['DISCARD','DRAW']);
+  assert.deepEqual(lostCitiesTransitionCues(g,next,'b'),['DISCARD','DRAW','TURN']);
+  assert.deepEqual(lostCitiesTransitionCues(next,structuredClone(next),'a'),[]);
+  assert.deepEqual(lostCitiesTransitionCues(null,next,'a'),[]);
+  const result=parse(LostCitiesPlayingPlatformSnapshotV2Schema,ended()).game;result.gameRevision=parse(GameRevisionSchema,2);
+  assert.deepEqual(lostCitiesTransitionCues(next,result,'a'),['ROUND']);
+  assert.deepEqual(lostCitiesTransitionCues(null,result,'a'),[]);
+});
+test('Lost Cities unavailable or blocked audio never prevents gameplay',()=>{
+  const absent=new LostCitiesAudio(()=>null);assert.doesNotThrow(()=>{absent.unlock();absent.play(['TURN']);absent.dispose();});
+  const blocked=new LostCitiesAudio(()=>{throw new Error('Device blocked');});assert.doesNotThrow(()=>{blocked.unlock();blocked.play(['SELECT']);blocked.dispose();});
 });

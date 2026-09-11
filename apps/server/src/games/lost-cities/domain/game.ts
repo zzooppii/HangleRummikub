@@ -13,7 +13,7 @@ const State = v.strictObject({
   gameId:GameIdSchema, settings:v.optional(LostCitiesSettingsSchema,()=>({mode:'BASE'})), rulesVersion:v.picklist(['lost-cities-base-v1','lost-cities-six-v1']), revision:GameRevisionSchema,
   phase:v.picklist(['PLAYING','ROUND_RESULT','FINISHED']), startedAt:ServerTimeSchema, finishedAt:v.nullable(ServerTimeSchema),
   round:v.pipe(v.number(),v.safeInteger(),v.minValue(1),v.maxValue(3)), roundId:TurnIdSchema, transitionId:TurnIdSchema,
-  activePlayerId:PlayerIdSchema, startingPlayerId:PlayerIdSchema,
+  activePlayerId:PlayerIdSchema, startingPlayerId:PlayerIdSchema, deadlineAt:v.nullable(ServerTimeSchema),
   cards:v.pipe(v.array(LostCitiesCardSchema),v.minLength(60),v.maxLength(72)), deck:ids, discards:zones,
   players:v.pipe(v.array(v.strictObject({playerId:PlayerIdSchema,hand:v.pipe(ids,v.length(8)),expeditions:zones})),v.length(2)),
   confirmedPlayerIds:v.pipe(v.array(PlayerIdSchema),v.maxLength(1)),
@@ -49,6 +49,7 @@ export function parseLostCitiesState(input:unknown):LostCitiesState {
   for(const d of s.discards)if(d.cards.some(id=>lostCitiesCard(s,id).suit!==d.suit))throw new Error('Invalid Lost Cities discard suit.');
   for(const p of s.players)for(const e of p.expeditions)if(!lostCitiesCardsAreOrdered(e.cards.map(id=>lostCitiesCard(s,id)),e.suit))throw new Error('Invalid Lost Cities expedition.');
   if((s.phase==='FINISHED')!==(s.result!==null&&s.finishedAt!==null)||(s.phase!=='FINISHED'&&(s.result!==null||s.finishedAt!==null))||s.finishedAt!==null&&s.finishedAt<s.startedAt)throw new Error('Invalid Lost Cities finish.');
+  if((s.phase==='PLAYING')!==(s.deadlineAt!==null)||s.deadlineAt!==null&&s.deadlineAt<s.startedAt)throw new Error('Invalid Lost Cities deadline.');
   if(s.phase==='PLAYING'&&(s.deck.length===0||s.confirmedPlayerIds.length!==0||s.roundResults.length!==s.round-1))throw new Error('Invalid Lost Cities playing phase.');
   if(s.phase==='ROUND_RESULT'&&(s.round===3||s.deck.length!==0||s.roundResults.length!==s.round))throw new Error('Invalid Lost Cities round result phase.');
   if(s.phase==='FINISHED'&&s.confirmedPlayerIds.length!==0)throw new Error('Unexpected result confirmations.');
@@ -75,18 +76,22 @@ function deal(s:LostCitiesState,setup:LostCitiesRoundSetup):void {
 export function createLostCitiesGame(input:Identity & LostCitiesRoundSetup):LostCitiesState {
   if(input.playerIds.length!==2||new Set(input.playerIds).size!==2||![0,1].includes(input.starter))throw new Error('Lost Cities requires two players.');
   const starter=input.playerIds[input.starter]!;
-  const s:LostCitiesState={gameId:input.gameId,settings:input.settings??{mode:'BASE'},rulesVersion:lostCitiesRulesVersion(input.settings?.mode??'BASE'),revision:v.parse(GameRevisionSchema,0),phase:'PLAYING',startedAt:input.now,finishedAt:null,round:1,roundId:input.transitionId,transitionId:input.transitionId,activePlayerId:starter,startingPlayerId:starter,cards:[],deck:[],discards:[],players:input.playerIds.map(playerId=>({playerId,hand:[],expeditions:[]})),confirmedPlayerIds:[],roundResults:[],result:null,feedback:null};
+  const s:LostCitiesState={gameId:input.gameId,settings:input.settings??{mode:'BASE'},rulesVersion:lostCitiesRulesVersion(input.settings?.mode??'BASE'),revision:v.parse(GameRevisionSchema,0),phase:'PLAYING',startedAt:input.now,finishedAt:null,deadlineAt:v.parse(ServerTimeSchema,input.now+60_000),round:1,roundId:input.transitionId,transitionId:input.transitionId,activePlayerId:starter,startingPlayerId:starter,cards:[],deck:[],discards:[],players:input.playerIds.map(playerId=>({playerId,hand:[],expeditions:[]})),confirmedPlayerIds:[],roundResults:[],result:null,feedback:null};
   deal(s,input);return parseLostCitiesState(s);
 }
 function endRound(s:LostCitiesState,now:LostCitiesState['startedAt']):void {
   const scores=s.players.map(p=>{const expeditions=p.expeditions.map(e=>scoreLostCitiesExpedition(e.suit,e.cards.map(id=>lostCitiesCard(s,id)))),total=expeditions.reduce((n,e)=>n+e.total,0);return {playerId:p.playerId,expeditions,total,cumulative:lostCitiesCumulative(s,p.playerId)+total};});
-  s.roundResults.push({round:s.round,scores});s.phase='ROUND_RESULT';
+  s.roundResults.push({round:s.round,scores});s.phase='ROUND_RESULT';s.deadlineAt=null;
   if(s.round===3){const best=Math.max(...scores.map(p=>p.cumulative));s.phase='FINISHED';s.finishedAt=now;s.result={reason:'THREE_ROUNDS',winnerPlayerIds:scores.filter(p=>p.cumulative===best).map(p=>p.playerId)};}
 }
-type Outcome={ok:true;state:LostCitiesState}|{ok:false;reason:'INVALID_ACTION'|'NOT_YOUR_TURN'|'INVALID_PHASE'};
+type Outcome={ok:true;state:LostCitiesState}|{ok:false;reason:'INVALID_ACTION'|'NOT_YOUR_TURN'|'INVALID_PHASE'|'TURN_EXPIRED'};
 export function applyLostCitiesAction(input:LostCitiesState,actor:PlayerId,actionInput:unknown,now:LostCitiesState['startedAt'],nextId:LostCitiesState['transitionId']):Outcome {
   if(input.phase!=='PLAYING')return {ok:false,reason:'INVALID_PHASE'};
   if(input.activePlayerId!==actor)return {ok:false,reason:'NOT_YOUR_TURN'};
+  if(input.deadlineAt===null||now>=input.deadlineAt)return {ok:false,reason:'TURN_EXPIRED'};
+  return commitLostCitiesAction(input,actor,actionInput,now,nextId);
+}
+function commitLostCitiesAction(input:LostCitiesState,actor:PlayerId,actionInput:unknown,now:LostCitiesState['startedAt'],nextId:LostCitiesState['transitionId']):Outcome {
   const parsed=v.safeParse(LostCitiesActionSchema,actionInput),fail:Outcome={ok:false,reason:'INVALID_ACTION'};
   if(!parsed.success)return fail;
   const a=parsed.output,s=structuredClone(input),p=s.players.find(p=>p.playerId===actor);
@@ -102,10 +107,10 @@ export function applyLostCitiesAction(input:LostCitiesState,actor:PlayerId,actio
   const drawn=a.draw.kind==='DECK'?source.shift()!:source.pop()!;p.hand.push(drawn);
   s.revision=v.parse(GameRevisionSchema,s.revision+1);s.transitionId=nextId;
   s.feedback={playerId:actor,kind:a.kind,card,draw:a.draw.kind==='DECK'?{kind:'DECK'}:{kind:'DISCARD',card:lostCitiesCard(s,drawn)},at:now};
-  if(s.deck.length===0)endRound(s,now);else s.activePlayerId=s.players.find(q=>q.playerId!==actor)!.playerId;
+  if(s.deck.length===0)endRound(s,now);else {s.activePlayerId=s.players.find(q=>q.playerId!==actor)!.playerId;s.deadlineAt=v.parse(ServerTimeSchema,now+60_000);}
   return {ok:true,state:parseLostCitiesState(s)};
 }
-export function confirmLostCitiesRound(input:LostCitiesState,actor:PlayerId,setup:LostCitiesRoundSetup|null,nextId:LostCitiesState['transitionId']):Outcome {
+export function confirmLostCitiesRound(input:LostCitiesState,actor:PlayerId,setup:LostCitiesRoundSetup|null,nextId:LostCitiesState['transitionId'],now:LostCitiesState['startedAt']):Outcome {
   if(input.phase!=='ROUND_RESULT'||!input.players.some(p=>p.playerId===actor)||input.confirmedPlayerIds.includes(actor))return {ok:false,reason:'INVALID_PHASE'};
   const s=structuredClone(input);s.revision=v.parse(GameRevisionSchema,s.revision+1);
   if(s.confirmedPlayerIds.length===0)s.confirmedPlayerIds.push(actor);
@@ -114,11 +119,17 @@ export function confirmLostCitiesRound(input:LostCitiesState,actor:PlayerId,setu
     const [a,b]=s.players;if(!a||!b)throw new Error('Missing Lost Cities players.');
     const delta=lostCitiesCumulative(s,a.playerId)-lostCitiesCumulative(s,b.playerId);
     s.startingPlayerId=delta>0?a.playerId:delta<0?b.playerId:s.startingPlayerId===a.playerId?b.playerId:a.playerId;
-    s.activePlayerId=s.startingPlayerId;s.round++;s.roundId=nextId;s.transitionId=nextId;s.phase='PLAYING';s.confirmedPlayerIds=[];s.feedback=null;deal(s,setup);
+    s.activePlayerId=s.startingPlayerId;s.round++;s.roundId=nextId;s.transitionId=nextId;s.phase='PLAYING';s.deadlineAt=v.parse(ServerTimeSchema,now+60_000);s.confirmedPlayerIds=[];s.feedback=null;deal(s,setup);
   }
   return {ok:true,state:parseLostCitiesState(s)};
 }
 export function cancelLostCities(input:LostCitiesState,now:LostCitiesState['startedAt']):LostCitiesState {
   if(input.phase==='FINISHED')return parseLostCitiesState(input);
-  return parseLostCitiesState({...input,revision:v.parse(GameRevisionSchema,input.revision+1),phase:'FINISHED',finishedAt:now,result:{reason:'CANCELLED',winnerPlayerIds:[]},confirmedPlayerIds:[]});
+  return parseLostCitiesState({...input,revision:v.parse(GameRevisionSchema,input.revision+1),phase:'FINISHED',deadlineAt:null,finishedAt:now,result:{reason:'CANCELLED',winnerPlayerIds:[]},confirmedPlayerIds:[]});
+}
+
+export function timeoutLostCities(input:LostCitiesState,now:LostCitiesState['startedAt'],nextId:LostCitiesState['transitionId']):Outcome {
+  if(input.phase!=='PLAYING'||input.deadlineAt===null||now<input.deadlineAt)return {ok:false,reason:'INVALID_PHASE'};
+  const cardId=input.players.find(p=>p.playerId===input.activePlayerId)!.hand[0]!;
+  return commitLostCitiesAction(input,input.activePlayerId,{kind:'DISCARD',cardId,draw:{kind:'DECK'}},now,nextId);
 }

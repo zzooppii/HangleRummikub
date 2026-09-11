@@ -7,7 +7,7 @@ export type ScheduledTurnDispatchResult =
   | Readonly<{ status: "FAILED" }>;
 
 type ScheduledTurnCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPLENDOR" | "HALLI_GALLI" | "ISLAND_SETTLERS" | "SABOTEUR",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPLENDOR" | "HALLI_GALLI" | "ISLAND_SETTLERS" | "SABOTEUR" | "LOST_CITIES",
 > = Readonly<{
   gameType: TGameType;
   handleTurnTimeout(
@@ -28,6 +28,7 @@ export type ScheduledTurnRouterDependencies = Readonly<{
   numberTile: NumberTileScheduledTurnCapability;
   gemCard: GemCardScheduledTurnCapability;
   cityRole: CityRoleScheduledTurnCapability;
+  lostCities?: ScheduledTurnCapability<"LOST_CITIES">;
   saboteur?: ScheduledTurnCapability<"SABOTEUR">;
   island?: ScheduledTurnCapability<"ISLAND_SETTLERS">;
   splendor?: ScheduledTurnCapability<"SPLENDOR">;
@@ -43,7 +44,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function isCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPLENDOR" | "HALLI_GALLI" | "ISLAND_SETTLERS" | "SABOTEUR",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPLENDOR" | "HALLI_GALLI" | "ISLAND_SETTLERS" | "SABOTEUR" | "LOST_CITIES",
 >(
   value: unknown,
   gameType: TGameType,
@@ -56,7 +57,7 @@ function isCapability<
 }
 
 function requireCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPLENDOR" | "HALLI_GALLI" | "ISLAND_SETTLERS" | "SABOTEUR",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPLENDOR" | "HALLI_GALLI" | "ISLAND_SETTLERS" | "SABOTEUR" | "LOST_CITIES",
 >(
   value: unknown,
   gameType: TGameType,
@@ -77,6 +78,7 @@ export class ScheduledTurnRouter {
   readonly #numberTile: NumberTileScheduledTurnCapability;
   readonly #gemCard: GemCardScheduledTurnCapability;
   readonly #cityRole: CityRoleScheduledTurnCapability;
+  readonly #lostCities: ScheduledTurnCapability<"LOST_CITIES"> | undefined;
   readonly #saboteur: ScheduledTurnCapability<"SABOTEUR"> | undefined;
   readonly #island: ScheduledTurnCapability<"ISLAND_SETTLERS"> | undefined;
   readonly #splendor: ScheduledTurnCapability<"SPLENDOR"> | undefined;
@@ -88,6 +90,7 @@ export class ScheduledTurnRouter {
 
   constructor(dependencies: ScheduledTurnRouterDependencies) {
     this.#roomRepository = dependencies.roomRepository;
+    this.#lostCities = dependencies.lostCities;
     this.#saboteur = dependencies.saboteur;
     this.#island = dependencies.island;
     this.#splendor = dependencies.splendor;
@@ -119,7 +122,7 @@ export class ScheduledTurnRouter {
         case "AZUL": return { status: "NO_OP" };
         case "WORD_DUET": return { status: "NO_OP" };
         case "SABOTEUR": return this.#saboteur ? await this.#saboteur.handleTurnTimeout(input) : {status:"FAILED"};
-        case "LOST_CITIES": return { status: "NO_OP" };
+        case "LOST_CITIES": return this.#lostCities ? await this.#lostCities.handleTurnTimeout(input) : {status:"FAILED"};
         case "HANGUL_TILE":
           return await this.#hangul.handleTurnTimeout(input);
         case "GEM_CARD":

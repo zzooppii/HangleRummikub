@@ -3,7 +3,7 @@ import test from "node:test";
 import { parse } from "valibot";
 import { GameIdSchema, PlayerIdSchema, ServerTimeSchema, TurnIdSchema, LOST_CITIES_SUITS, type LostCitiesCard, type LostCitiesSuit } from "@hangul-rummikub/shared";
 import { makeLostCitiesCards } from "./games/lost-cities/domain/catalog.js";
-import { applyLostCitiesAction, cancelLostCities, confirmLostCitiesRound, createLostCitiesGame, lostCitiesCard, parseLostCitiesState, scoreLostCitiesExpedition, type LostCitiesState } from "./games/lost-cities/domain/game.js";
+import { timeoutLostCities, applyLostCitiesAction, cancelLostCities, confirmLostCitiesRound, createLostCitiesGame, lostCitiesCard, parseLostCitiesState, scoreLostCitiesExpedition, type LostCitiesState } from "./games/lost-cities/domain/game.js";
 import { projectLostCities } from "./games/lost-cities/compatibility/projector.js";
 import { shuffleFrozen } from "./domain/frozen-fisher-yates.js";
 let seq=0;
@@ -59,9 +59,9 @@ test('Lost Cities last deck card settles immediately; two confirmations deal fre
   const ended=accept(applyLostCitiesAction(s,a,{kind:'DISCARD',cardId:p.hand[0],draw:{kind:'DECK'}},at,next()));
   assert.equal(ended.phase,'ROUND_RESULT');assert.equal(ended.deck.length,0);assert.ok(ended.players[0]!.hand.includes(draw));assert.equal(ended.roundResults.length,1);
   assert.equal(applyLostCitiesAction(ended,b,{kind:'DISCARD',cardId:ended.players[1]!.hand[0],draw:{kind:'DECK'}},at,next()).ok,false);
-  const first=accept(confirmLostCitiesRound(ended,a,null,next()));assert.equal(first.phase,'ROUND_RESULT');assert.deepEqual(first.players,ended.players);
-  assert.equal(confirmLostCitiesRound(first,a,setup(),next()).ok,false);
-  const second=accept(confirmLostCitiesRound(first,b,setup(),next()));assert.equal(second.phase,'PLAYING');assert.equal(second.round,2);assert.equal(second.startingPlayerId,b);assert.equal(second.deck.length,44);assert.ok(second.cards.every(c=>!oldIds.has(c.cardId)));assert.notEqual(second.roundId,ended.roundId);
+  const first=accept(confirmLostCitiesRound(ended,a,null,next(),at));assert.equal(first.phase,'ROUND_RESULT');assert.deepEqual(first.players,ended.players);
+  assert.equal(confirmLostCitiesRound(first,a,setup(),next(),at).ok,false);
+  const second=accept(confirmLostCitiesRound(first,b,setup(),next(),at));assert.equal(second.phase,'PLAYING');assert.equal(second.round,2);assert.equal(second.startingPlayerId,b);assert.equal(second.deck.length,44);assert.ok(second.cards.every(c=>!oldIds.has(c.cardId)));assert.notEqual(second.roundId,ended.roundId);
 });
 test('Lost Cities three rounds use cumulative scores; drawn cards stay private in every projection',()=>{
   for(let seed=0;seed<20;seed++){
@@ -74,7 +74,7 @@ test('Lost Cities three rounds use cumulative scores; drawn cards stay private i
         for(const viewer of [a,b]){const projected=projectLostCities({gameId:s.gameId,gameRevision:s.revision,startedAt:s.startedAt,finishedAt:s.finishedAt,state:s},viewer),other=s.players.find(p=>p.playerId!==viewer)!;for(const id of [...s.deck,...other.hand])assert.equal(JSON.stringify(projected).includes(`"${id}"`),false);}
       }
       assert.equal(s.roundResults.length,round);
-      if(round<3){s=accept(confirmLostCitiesRound(s,a,null,next()));s=accept(confirmLostCitiesRound(s,b,setup(seed+round),next()));}
+      if(round<3){s=accept(confirmLostCitiesRound(s,a,null,next(),at));s=accept(confirmLostCitiesRound(s,b,setup(seed+round),next(),at));}
     }
     assert.equal(s.phase,'FINISHED');assert.equal(s.result?.reason,'THREE_ROUNDS');
     const scores=s.players.map(p=>({id:p.playerId,total:s.roundResults.reduce((n,r)=>n+r.scores.find(x=>x.playerId===p.playerId)!.total,0)})),best=Math.max(...scores.map(p=>p.total));
@@ -82,7 +82,7 @@ test('Lost Cities three rounds use cumulative scores; drawn cards stay private i
   }
 });
 test('Lost Cities full tie is joint victory; cancellation preserves cards and awards no winner',()=>{
-  let s=game();for(let i=0;i<3;i++){s=finishRound(s);if(i<2){s=accept(confirmLostCitiesRound(s,a,null,next()));s=accept(confirmLostCitiesRound(s,b,setup(i),next()));}}
+  let s=game();for(let i=0;i<3;i++){s=finishRound(s);if(i<2){s=accept(confirmLostCitiesRound(s,a,null,next(),at));s=accept(confirmLostCitiesRound(s,b,setup(i),next(),at));}}
   assert.deepEqual(s.result?.winnerPlayerIds,[a,b]);
   const active=game(),cancelled=cancelLostCities(active,at);assert.equal(cancelled.result?.reason,'CANCELLED');assert.deepEqual(cancelled.result?.winnerPlayerIds,[]);assert.deepEqual(cancelled.players,active.players);assert.equal(active.phase,'PLAYING');
 });
@@ -108,7 +108,7 @@ test('six expeditions conserve 72 cards and preserve mode through three complete
       assert.equal(projected.discards.length,6);assert.equal(s.cards.length,72);
     }
     assert.equal(s.roundResults.at(-1)?.scores[0]?.expeditions.length,6);
-    if(round<3){s=accept(confirmLostCitiesRound(s,a,null,next()));s=accept(confirmLostCitiesRound(s,b,expansionSetup(),next()));}
+    if(round<3){s=accept(confirmLostCitiesRound(s,a,null,next(),at));s=accept(confirmLostCitiesRound(s,b,expansionSetup(),next(),at));}
   }
   assert.equal(s.phase,'FINISHED');assert.equal(s.result?.winnerPlayerIds.length,2);
   assert.throws(()=>parseLostCitiesState({...s,settings:{mode:'BASE'}}));
@@ -118,4 +118,29 @@ test('base rejects expansion-only draw source atomically; expansion requires com
   const result=applyLostCitiesAction(s,a,{kind:'DISCARD',cardId:s.players[0]!.hand[0],draw:{kind:'DISCARD',suit:'CANYON'}},at,next());
   assert.deepEqual(result,{ok:false,reason:'INVALID_ACTION'});assert.deepEqual(s,before);
   assert.throws(()=>createLostCitiesGame({...setup(),settings:{mode:'SIX_EXPEDITIONS'},gameId:s.gameId,playerIds:[a,b],now:at,transitionId:next(),starter:0}));
+});
+
+test('Lost Cities 60-second boundary rejects manual actions and atomically auto-discards the first server hand card',()=>{
+  const s=game(),before=structuredClone(s),first=s.players[0]!.hand[0]!,drawn=s.deck[0]!;
+  assert.equal(s.deadlineAt,at+60_000);
+  const deadline=parse(ServerTimeSchema,s.deadlineAt),early=parse(ServerTimeSchema,deadline-1);
+  assert.equal(timeoutLostCities(s,early,next()).ok,false);
+  assert.equal(applyLostCitiesAction(s,a,{kind:'DISCARD',cardId:first,draw:{kind:'DECK'}},early,next()).ok,true);
+  assert.deepEqual(applyLostCitiesAction(s,a,{kind:'DISCARD',cardId:first,draw:{kind:'DECK'}},deadline,next()),{ok:false,reason:'TURN_EXPIRED'});
+  const result=accept(timeoutLostCities(s,deadline,next()));
+  assert.deepEqual(s,before);assert.equal(result.revision,s.revision+1);assert.equal(result.activePlayerId,b);
+  assert.equal(result.feedback?.card.cardId,first);assert.equal(result.feedback?.kind,'DISCARD');assert.deepEqual(result.feedback?.draw,{kind:'DECK'});
+  assert.ok(result.players[0]!.hand.includes(drawn));assert.equal(result.deadlineAt,deadline+60_000);
+  assert.equal(result.deck.length,s.deck.length-1);assert.equal(result.players[0]!.hand.length,8);
+  assert.equal(timeoutLostCities(result,deadline,next()).ok,false);
+  assert.equal(cancelLostCities(result,deadline).deadlineAt,null);
+});
+test('Lost Cities timeout on last deck card settles, pauses the clock, then starts a fresh 60-second round',()=>{
+  let s=game();while(s.deck.length>1){const id=s.deck.shift()!,c=lostCitiesCard(s,id);s.discards.find(d=>d.suit===c.suit)!.cards.push(id);}s=parseLostCitiesState(s);
+  const deadline=parse(ServerTimeSchema,s.deadlineAt),ended=accept(timeoutLostCities(s,deadline,next()));
+  assert.equal(ended.phase,'ROUND_RESULT');assert.equal(ended.deadlineAt,null);assert.equal(ended.roundResults.length,1);
+  const later=parse(ServerTimeSchema,deadline+300_000),first=accept(confirmLostCitiesRound(ended,a,null,next(),later));
+  assert.equal(first.deadlineAt,null);
+  const second=accept(confirmLostCitiesRound(first,b,setup(),next(),later));assert.equal(second.deadlineAt,later+60_000);
+  assert.throws(()=>parseLostCitiesState({...second,deadlineAt:null}));
 });

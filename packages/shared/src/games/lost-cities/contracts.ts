@@ -32,7 +32,7 @@ const Base = {
   roundResults: v.pipe(v.array(LostCitiesRoundResultSchema), v.maxLength(3)), feedback: LostCitiesFeedbackSchema,
 };
 export const LostCitiesPlayingProjectionSchema = v.variant("phase", [
-  v.strictObject({ ...Base, phase: v.literal("PLAYING"), turnId: TurnIdSchema, activePlayerId: PlayerIdSchema }),
+  v.strictObject({ ...Base, phase: v.literal("PLAYING"), turnId: TurnIdSchema, activePlayerId: PlayerIdSchema, deadlineAt: ServerTimeSchema }),
   v.strictObject({ ...Base, phase: v.literal("ROUND_RESULT"), confirmedPlayerIds: v.pipe(v.array(PlayerIdSchema), v.maxLength(1)) }),
 ]);
 export const LostCitiesFinishedProjectionSchema = v.strictObject({ ...Base, phase: v.literal("FINISHED"), result: LostCitiesResultSchema });

@@ -618,7 +618,7 @@ export function createApplicationRuntime(
   });
 
   const lostCitiesService = new LostCitiesService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
-    roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource });
+    roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource, turnScheduler });
   const lostCitiesHostSuccession = new LostCitiesHostSuccession(lostCitiesService.deps, roomId => lostCitiesService.notify(roomId));
   lostCitiesService.subscribe(async roomId => {
     const room = await persistence.findById(roomId);
@@ -837,6 +837,7 @@ export function createApplicationRuntime(
     onGameFinished, presenceLeaseReader: presenceReader,
   });
   scheduledTurnRouter = new ScheduledTurnRouter({
+    lostCities: {gameType:"LOST_CITIES", handleTurnTimeout: input => lostCitiesService.timeout(input)},
     saboteur: {gameType:"SABOTEUR", handleTurnTimeout: input => saboteurService.timeout(input)},
     drawRelay: { gameType: "DRAW_RELAY", handleTurnTimeout: input => drawRelayService.timeout(input) },
     island: { gameType: "ISLAND_SETTLERS", handleTurnTimeout: input => islandService.timeout(input) },
