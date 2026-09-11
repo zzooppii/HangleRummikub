@@ -1222,8 +1222,8 @@ test("Room phase와 session replacement notification은 exhaustive shape를 가�
   );
 });
 
-test("GameType runtime contract는 정확히 열다섯 개의 구현된 게임을 지원한다", () => {
-  assert.deepEqual(SUPPORTED_GAME_TYPES, ["HANGUL_TILE", "NUMBER_TILE", "GEM_CARD", "CITY_ROLE", "DRAW_RELAY", "SNEAKY_LUNCH", "WOLF_NIGHT", "HALLI_GALLI", "ISLAND_SETTLERS", "SPLENDOR", "JAIPUR", "GURYONGTU", "WORD_DUET", "LOST_CITIES", "SABOTEUR", "LIAR_GAME", "AZUL"]);
+test("GameType runtime contract는 정확히 열여덟 개의 구현된 게임을 지원한다", () => {
+  assert.deepEqual(SUPPORTED_GAME_TYPES, ["HANGUL_TILE", "NUMBER_TILE", "GEM_CARD", "CITY_ROLE", "DRAW_RELAY", "SNEAKY_LUNCH", "WOLF_NIGHT", "HALLI_GALLI", "ISLAND_SETTLERS", "SPLENDOR", "JAIPUR", "GURYONGTU", "WORD_DUET", "LOST_CITIES", "SABOTEUR", "LIAR_GAME", "AZUL", "CLUE"]);
   assert.equal(Object.isFrozen(SUPPORTED_GAME_TYPES), true);
 
   const hangul = v.safeParse(GameTypeSchema, "HANGUL_TILE");
@@ -4626,6 +4626,7 @@ test("runtime Socket.IO map은 Number events를 additive하게 제공하고 lega
     | "saboteur:say"
     | "duet:act"
     | "azul:act"
+    | "clue:act"
     | "guryongtu:act"
     | "guryongtu:nextRound"
     | "jaipur:act"

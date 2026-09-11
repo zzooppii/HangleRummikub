@@ -5,6 +5,7 @@ import { SplendorGameStateAdapter, type SplendorLifecycle } from "../games/splen
 import { JaipurGameStateAdapter, type JaipurLifecycle } from "../games/jaipur/compatibility/adapter.js";
 import { GuryongtuGameStateAdapter, type GuryongtuLifecycle } from "../games/guryongtu/compatibility/adapter.js";
 import { AzulGameStateAdapter, type AzulLifecycle } from "../games/azul/compatibility/adapter.js";
+import { ClueGameStateAdapter, type ClueLifecycle } from "../games/clue/compatibility/adapter.js";
 import { DuetGameStateAdapter, type DuetLifecycle } from "../games/word-duet/compatibility/adapter.js";
 import { SaboteurGameStateAdapter, type SaboteurLifecycle } from "../games/saboteur/compatibility/adapter.js";
 import { LostCitiesGameStateAdapter, type LostCitiesLifecycle } from "../games/lost-cities/compatibility/adapter.js";
@@ -123,6 +124,7 @@ type RoomGameLifecycleInspection =
   | Readonly<{gameType:"JAIPUR";inspection:JaipurLifecycle}>
   | Readonly<{gameType:"GURYONGTU";inspection:GuryongtuLifecycle}>
   | Readonly<{gameType:"AZUL";inspection:AzulLifecycle}>
+  | Readonly<{gameType:"CLUE";inspection:ClueLifecycle}>
   | Readonly<{gameType:"WORD_DUET";inspection:DuetLifecycle}>
   | Readonly<{gameType:"SABOTEUR";inspection:SaboteurLifecycle}>
   | Readonly<{gameType:"LOST_CITIES";inspection:LostCitiesLifecycle}>
@@ -288,6 +290,13 @@ function cloneRoomWriteCandidate(
       const departedPlayerIds = Object.freeze([...(candidate.departedPlayerIds ?? [])]);
       if (new Set(departedPlayerIds).size !== departedPlayerIds.length || departedPlayerIds.some(id => !shell.players.some(p => p.playerId === id)) || shell.phase === "LOBBY" && departedPlayerIds.length > 0) throw new Error("Invalid departed AZUL roster.");
       return Object.freeze({...shell, gameType:"AZUL", game, departedPlayerIds});
+    }
+    case "CLUE": {
+      const adapter = new ClueGameStateAdapter(), game = candidate.game === null ? null : adapter.cloneAndValidate(candidate.game);
+      validateRoomGameCoherence(shell.phase, shell.players, game, () => game === null ? null : adapter.inspectLifecycle(game));
+      const departedPlayerIds = Object.freeze([...(candidate.departedPlayerIds ?? [])]);
+      if (new Set(departedPlayerIds).size !== departedPlayerIds.length || departedPlayerIds.some(id => !shell.players.some(p => p.playerId === id)) || shell.phase === "LOBBY" && departedPlayerIds.length > 0) throw new Error("Invalid departed CLUE roster.");
+      return Object.freeze({...shell, gameType:"CLUE", game, departedPlayerIds});
     }
     case "WORD_DUET": {
       const adapter = new DuetGameStateAdapter(), game = candidate.game === null ? null : adapter.cloneAndValidate(candidate.game);
@@ -472,6 +481,7 @@ function persistRoom(
     case "JAIPUR":
     case "GURYONGTU":
     case "AZUL":
+    case "CLUE":
     case "WORD_DUET":
     case "SABOTEUR":
     case "LOST_CITIES":
@@ -503,6 +513,7 @@ function inspectRoomGame(
     case "JAIPUR": return {gameType:"JAIPUR",inspection:new JaipurGameStateAdapter().inspectLifecycle(room.game)};
     case "GURYONGTU": return {gameType:"GURYONGTU",inspection:new GuryongtuGameStateAdapter().inspectLifecycle(room.game)};
     case "AZUL": return {gameType:"AZUL",inspection:new AzulGameStateAdapter().inspectLifecycle(room.game)};
+    case "CLUE": return {gameType:"CLUE",inspection:new ClueGameStateAdapter().inspectLifecycle(room.game)};
     case "WORD_DUET": return {gameType:"WORD_DUET",inspection:new DuetGameStateAdapter().inspectLifecycle(room.game)};
     case "SABOTEUR": return {gameType:"SABOTEUR",inspection:new SaboteurGameStateAdapter().inspectLifecycle(room.game)};
     case "LOST_CITIES": return {gameType:"LOST_CITIES",inspection:new LostCitiesGameStateAdapter().inspectLifecycle(room.game)};

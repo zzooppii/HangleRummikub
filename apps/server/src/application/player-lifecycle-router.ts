@@ -3,6 +3,7 @@ import type { createSplendorLifecycle } from "../games/splendor/application/life
 import type { createJaipurLifecycle } from "../games/jaipur/application/lifecycle.js";
 import type { createGuryongtuLifecycle } from "../games/guryongtu/application/lifecycle.js";
 import type { createAzulLifecycle } from "../games/azul/application/lifecycle.js";
+import type { createClueLifecycle } from "../games/clue/application/lifecycle.js";
 import type { createDuetLifecycle } from "../games/word-duet/application/lifecycle.js";
 import type { createSaboteurLifecycle } from "../games/saboteur/application/lifecycle.js";
 import type { createLostCitiesLifecycle } from "../games/lost-cities/application/lifecycle.js";
@@ -74,6 +75,7 @@ export type PlayerLifecycleRouterDependencies = Readonly<{
   jaipur?: ReturnType<typeof createJaipurLifecycle>;
   guryongtu?: ReturnType<typeof createGuryongtuLifecycle>;
   azul?: ReturnType<typeof createAzulLifecycle>;
+  clue?: ReturnType<typeof createClueLifecycle>;
   duet?: ReturnType<typeof createDuetLifecycle>;
   saboteur?: ReturnType<typeof createSaboteurLifecycle>;
   lostCities?: ReturnType<typeof createLostCitiesLifecycle>;
@@ -107,6 +109,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
   readonly #jaipur: ReturnType<typeof createJaipurLifecycle> | undefined;
   readonly #guryongtu: ReturnType<typeof createGuryongtuLifecycle> | undefined;
   readonly #azul: ReturnType<typeof createAzulLifecycle> | undefined;
+  readonly #clue: ReturnType<typeof createClueLifecycle> | undefined;
   readonly #duet: ReturnType<typeof createDuetLifecycle> | undefined;
   readonly #saboteur: ReturnType<typeof createSaboteurLifecycle> | undefined;
   readonly #lostCities: ReturnType<typeof createLostCitiesLifecycle> | undefined;
@@ -132,6 +135,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
     this.#jaipur = dependencies.jaipur;
     this.#guryongtu = dependencies.guryongtu;
     this.#azul = dependencies.azul;
+    this.#clue = dependencies.clue;
     this.#duet = dependencies.duet;
     this.#saboteur = dependencies.saboteur;
     this.#lostCities = dependencies.lostCities;
@@ -173,6 +177,9 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
       case "AZUL":
         if (!this.#azul) throw new Error("AZUL lifecycle missing.");
         return this.#azul.applyPlayingLeave(input);
+      case "CLUE":
+        if (!this.#clue) throw new Error("CLUE lifecycle missing.");
+        return this.#clue.applyPlayingLeave(input);
       case "WORD_DUET":
         if (!this.#duet) throw new Error("WORD_DUET lifecycle missing.");
         return this.#duet.applyPlayingLeave(input);
@@ -215,6 +222,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
       case "JAIPUR": return {status:"NO_CHANGE"};
       case "GURYONGTU": return {status:"NO_CHANGE"};
       case "AZUL": return {status:"NO_CHANGE"};
+      case "CLUE": return {status:"NO_CHANGE"};
       case "WORD_DUET": return {status:"NO_CHANGE"};
       case "SABOTEUR": return {status:"NO_CHANGE"};
       case "LOST_CITIES": return {status:"NO_CHANGE"};

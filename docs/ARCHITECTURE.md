@@ -1,5 +1,7 @@
 # 시스템 아키텍처
 
+2026-09-11 클루 추가: [CLUE_ARCHITECTURE.md](./CLUE_ARCHITECTURE.md)의 3–6인 추리·개인별 카드/증거·오리지널 저택 지도 경계를 따른다. 상위 Room/Session/직렬화 경계는 유지한다.
+
 2026-09-11 구룡투 추가: [GURYONGTU_ARCHITECTURE.md](./GURYONGTU_ARCHITECTURE.md)의 2인 비밀 타일·서버 판정·2승 선취 경계를 따른다.
 
 2026-09-11 아줄 추가: [AZUL_ARCHITECTURE.md](./AZUL_ARCHITECTURE.md)의 2–4인 기본판, 타일 보존·서버 자동 정산·공개 보드와 독립 React 화면 경계를 따른다. 상위 Room/Session/직렬화 경계는 유지한다.

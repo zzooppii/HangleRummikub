@@ -124,6 +124,7 @@ export class ScheduledTurnRouter {
         case "JAIPUR": return { status: "NO_OP" };
         case "GURYONGTU": return { status: "NO_OP" };
         case "AZUL": return this.#azul ? await this.#azul.handleTurnTimeout(input) : {status:"FAILED"};
+        case "CLUE": return { status: "NO_OP" };
         case "WORD_DUET": return { status: "NO_OP" };
         case "SABOTEUR": return this.#saboteur ? await this.#saboteur.handleTurnTimeout(input) : {status:"FAILED"};
         case "LOST_CITIES": return this.#lostCities ? await this.#lostCities.handleTurnTimeout(input) : {status:"FAILED"};

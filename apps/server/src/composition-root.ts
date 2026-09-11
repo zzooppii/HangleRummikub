@@ -4,6 +4,7 @@ import { SplendorHostSuccession } from "./games/splendor/application/host-succes
 import { JaipurHostSuccession } from "./games/jaipur/application/host-succession.js";
 import { GuryongtuHostSuccession } from "./games/guryongtu/application/host-succession.js";
 import { AzulHostSuccession } from "./games/azul/application/host-succession.js";
+import { ClueHostSuccession } from "./games/clue/application/host-succession.js";
 import { DuetHostSuccession } from "./games/word-duet/application/host-succession.js";
 import { SaboteurHostSuccession } from "./games/saboteur/application/host-succession.js";
 import { LostCitiesHostSuccession } from "./games/lost-cities/application/host-succession.js";
@@ -15,6 +16,7 @@ import { SplendorService } from "./games/splendor/application/service.js";
 import { JaipurService } from "./games/jaipur/application/service.js";
 import { GuryongtuService } from "./games/guryongtu/application/service.js";
 import { AzulService } from "./games/azul/application/service.js";
+import { ClueService } from "./games/clue/application/service.js";
 import { DuetService } from "./games/word-duet/application/service.js";
 import { SaboteurService } from "./games/saboteur/application/service.js";
 import { LostCitiesService } from "./games/lost-cities/application/service.js";
@@ -26,6 +28,7 @@ import { createSplendorLifecycle } from "./games/splendor/application/lifecycle.
 import { createJaipurLifecycle } from "./games/jaipur/application/lifecycle.js";
 import { createGuryongtuLifecycle } from "./games/guryongtu/application/lifecycle.js";
 import { createAzulLifecycle } from "./games/azul/application/lifecycle.js";
+import { createClueLifecycle } from "./games/clue/application/lifecycle.js";
 import { createDuetLifecycle } from "./games/word-duet/application/lifecycle.js";
 import { createSaboteurLifecycle } from "./games/saboteur/application/lifecycle.js";
 import { createLostCitiesLifecycle } from "./games/lost-cities/application/lifecycle.js";
@@ -150,6 +153,7 @@ export type ApplicationRuntime = Readonly<{
   jaipurService?: JaipurService;
   guryongtuService?: GuryongtuService;
   azulService?: AzulService;
+  clueService?: ClueService;
   duetService?: DuetService;
   saboteurService?: SaboteurService;
   lostCitiesService?: LostCitiesService;
@@ -161,6 +165,7 @@ export type ApplicationRuntime = Readonly<{
   jaipurHostSuccession?: JaipurHostSuccession;
   guryongtuHostSuccession?: GuryongtuHostSuccession;
   azulHostSuccession?: AzulHostSuccession;
+  clueHostSuccession?: ClueHostSuccession;
   duetHostSuccession?: DuetHostSuccession;
   saboteurHostSuccession?: SaboteurHostSuccession;
   lostCitiesHostSuccession?: LostCitiesHostSuccession;
@@ -275,6 +280,7 @@ export function createApplicationRuntime(
       { gameType: "JAIPUR" },
       { gameType: "GURYONGTU" },
       { gameType: "AZUL" },
+      { gameType: "CLUE" },
       { gameType: "WORD_DUET" },
       { gameType: "SABOTEUR" },
       { gameType: "LOST_CITIES" },
@@ -314,6 +320,7 @@ export function createApplicationRuntime(
     jaipur: createJaipurLifecycle(),
     guryongtu: createGuryongtuLifecycle(),
     azul: createAzulLifecycle(),
+    clue: createClueLifecycle(),
     duet: createDuetLifecycle(),
     saboteur: createSaboteurLifecycle(),
     lostCities: createLostCitiesLifecycle(),
@@ -616,6 +623,14 @@ export function createApplicationRuntime(
     const room = await persistence.findById(roomId);
     if (room?.gameType === "AZUL" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
   });
+
+  const clueService = new ClueService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
+    roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource });
+  const clueHostSuccession = new ClueHostSuccession(clueService.deps, roomId => clueService.notify(roomId));
+  clueService.subscribe(async roomId => {
+    const room = await persistence.findById(roomId);
+    if (room?.gameType === "CLUE" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
+  });
   const duetService = new DuetService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
     roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource });
   const duetHostSuccession = new DuetHostSuccession(duetService.deps, roomId => duetService.notify(roomId));
@@ -732,6 +747,7 @@ export function createApplicationRuntime(
     jaipur: { gameType: "JAIPUR", start: input => jaipurService.start(input) },
     guryongtu: { gameType: "GURYONGTU", start: input => guryongtuService.start(input) },
     azul: { gameType: "AZUL", start: input => azulService.start(input) },
+    clue: { gameType: "CLUE", start: input => clueService.start(input) },
     duet: { gameType: "WORD_DUET", start: input => duetService.start(input) },
     saboteur: { gameType: "SABOTEUR", start: input => saboteurService.start(input) },
     lostCities: { gameType: "LOST_CITIES", start: input => lostCitiesService.start(input) },
@@ -934,6 +950,7 @@ export function createApplicationRuntime(
     jaipurService,
     guryongtuService,
     azulService,
+    clueService,
     duetService,
     saboteurService,
     lostCitiesService,
@@ -945,6 +962,7 @@ export function createApplicationRuntime(
     jaipurHostSuccession,
     guryongtuHostSuccession,
     azulHostSuccession,
+    clueHostSuccession,
     duetHostSuccession,
     saboteurHostSuccession,
     lostCitiesHostSuccession,
@@ -1005,6 +1023,7 @@ export function createApplicationRuntime(
       jaipurHostSuccession.start();
       guryongtuHostSuccession.start();
       azulHostSuccession.start();
+      clueHostSuccession.start();
       duetHostSuccession.start();
       saboteurHostSuccession.start();
       lostCitiesHostSuccession.start();
@@ -1033,6 +1052,7 @@ export function createApplicationRuntime(
       jaipurHostSuccession.stop();
       guryongtuHostSuccession.stop();
       azulHostSuccession.stop();
+      clueHostSuccession.stop();
       duetHostSuccession.stop();
       saboteurHostSuccession.stop();
       lostCitiesHostSuccession.stop();

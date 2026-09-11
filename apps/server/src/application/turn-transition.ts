@@ -2,6 +2,7 @@ import type { SplendorStoredGame } from "../games/splendor/compatibility/adapter
 import type { JaipurStoredGame } from "../games/jaipur/compatibility/adapter.js";
 import type { GuryongtuStoredGame } from "../games/guryongtu/compatibility/adapter.js";
 import type { AzulStoredGame } from "../games/azul/compatibility/adapter.js";
+import type { ClueStoredGame } from "../games/clue/compatibility/adapter.js";
 import type { DuetStoredGame } from "../games/word-duet/compatibility/adapter.js";
 import type { SaboteurStoredGame } from "../games/saboteur/compatibility/adapter.js";
 import type { LostCitiesStoredGame } from "../games/lost-cities/compatibility/adapter.js";
@@ -81,7 +82,7 @@ export function createNextTurn(
 
 export function toScheduledTurnDeadline(
   roomId: RoomId,
-  game: PlayingGameState | PlayingNumberTileGameState | PlayingGemGameState | CityRoleStoredGame | DrawRelayStoredGame | SneakyLunchStoredGame | WolfStoredGame | LiarStoredGame | DuetStoredGame | JaipurStoredGame | GuryongtuStoredGame | AzulStoredGame | SaboteurStoredGame | LostCitiesStoredGame | SplendorStoredGame | HalliStoredGame | IslandStoredGame,
+  game: PlayingGameState | PlayingNumberTileGameState | PlayingGemGameState | CityRoleStoredGame | DrawRelayStoredGame | SneakyLunchStoredGame | WolfStoredGame | LiarStoredGame | DuetStoredGame | JaipurStoredGame | GuryongtuStoredGame | AzulStoredGame | ClueStoredGame | SaboteurStoredGame | LostCitiesStoredGame | SplendorStoredGame | HalliStoredGame | IslandStoredGame,
 ): ScheduledTurnDeadline {
   if ("state" in game && !("windowStartedAt" in game)) {
     if (game.state.rulesVersion === "duet-2025-ko-v1") throw new Error("Duet has no turn deadline.");
@@ -91,6 +92,7 @@ export function toScheduledTurnDeadline(
       if (game.state.deadlineAt === null) throw new Error("Azul deadline missing.");
       return {roomId,gameId:game.gameId,expectedGameRevision:game.gameRevision,turnId:game.state.transitionId,deadlineAt:game.state.deadlineAt};
     }
+    if (game.state.rulesVersion === "clue-classic-manor-v1") throw new Error("Clue has no turn deadline.");
     if (game.state.rulesVersion === "saboteur-base-2025-v1") {
       if (game.state.deadlineAt === null) throw new Error("Saboteur deadline missing.");
       return {roomId,gameId:game.gameId,expectedGameRevision:game.gameRevision,turnId:game.state.transitionId,deadlineAt:game.state.deadlineAt};
@@ -177,6 +179,7 @@ export async function scheduleCurrentTurnBestEffort(
       if (game.state.rulesVersion === "duet-2025-ko-v1") return false;
       if (game.state.rulesVersion === "jaipur-base-v1") return false;
       if (game.state.rulesVersion === "guryongtu-base-v1") return false;
+      if (game.state.rulesVersion === "clue-classic-manor-v1") return false;
       if (game.state.rulesVersion === "saboteur-base-2025-v1" || game.state.rulesVersion === "azul-base-v1") {
         if (game.state.deadlineAt === null || game.state.transitionId !== identity.turnId) return false;
       } else if ("startingPlayerId" in game.state) return false;
