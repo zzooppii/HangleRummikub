@@ -12,6 +12,7 @@ export const SUPPORTED_GAME_TYPES = Object.freeze([
   "ISLAND_SETTLERS",
   "SPLENDOR",
   "JAIPUR",
+  "LOVE_LETTER",
   "GURYONGTU",
   "WORD_DUET",
   "LOST_CITIES",
@@ -36,5 +37,5 @@ export const GAME_PLAYER_LIMITS = Object.freeze({
   SPYFALL: { min: 3, max: 8 },
   SABOTEUR: { min: 3, max: 10 },
   WORD_DUET: { min: 2, max: 2 },
-  SPLENDOR: { min: 2, max: 4 }, JAIPUR: { min: 2, max: 2 }, LOST_CITIES: { min: 2, max: 2 },
+  SPLENDOR: { min: 2, max: 4 }, JAIPUR: { min: 2, max: 2 }, LOVE_LETTER: { min: 2, max: 6 }, LOST_CITIES: { min: 2, max: 2 },
 } as const satisfies Record<GameType, Readonly<{ min: number; max: number }>>);

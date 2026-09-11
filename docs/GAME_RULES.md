@@ -52,6 +52,10 @@ S-03의 1쪽은 ordinary Tile에 각 bag 소속 Joker 1개를 더해 자음군 9
 
 # CONFIRMED
 
+### 러브레터 추가 — 2026-09-11
+
+사용자의 전체 개발 및 일러스트·효과음 요청에 따라 [LOVE_LETTER_GAME_RULES.md](./LOVE_LETTER_GAME_RULES.md)의 21장 판본과 온라인 정책을 확정한다. 기존 미확정 항목은 유지한다.
+
 ### 클루 추가 — 2026-09-11
 
 사용자의 전체 개발 및 일러스트 중심 UI 승인에 따라 3–6인 클래식 추리와 오리지널 저택 지도, 시간 제한 없는 온라인 정책을 [CLUE_GAME_RULES.md](./CLUE_GAME_RULES.md)에 확정한다. 기존 게임 미확정 항목은 유지한다.

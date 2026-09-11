@@ -2,6 +2,7 @@ import { CuratedLiarPrompts } from "./games/liar-game/domain/prompts.js";
 import { IslandHostSuccession } from "./games/island/application/host-succession.js";
 import { SplendorHostSuccession } from "./games/splendor/application/host-succession.js";
 import { JaipurHostSuccession } from "./games/jaipur/application/host-succession.js";
+import { LoveLetterHostSuccession } from "./games/love-letter/application/host-succession.js";
 import { GuryongtuHostSuccession } from "./games/guryongtu/application/host-succession.js";
 import { AzulHostSuccession } from "./games/azul/application/host-succession.js";
 import { ClueHostSuccession } from "./games/clue/application/host-succession.js";
@@ -15,6 +16,7 @@ import { SpyfallHostSuccession } from "./games/spyfall/application/host-successi
 import { IslandService } from "./games/island/application/service.js";
 import { SplendorService } from "./games/splendor/application/service.js";
 import { JaipurService } from "./games/jaipur/application/service.js";
+import { LoveLetterService } from "./games/love-letter/application/service.js";
 import { GuryongtuService } from "./games/guryongtu/application/service.js";
 import { AzulService } from "./games/azul/application/service.js";
 import { ClueService } from "./games/clue/application/service.js";
@@ -28,6 +30,7 @@ import { SpyfallService } from "./games/spyfall/application/service.js";
 import { createIslandLifecycle } from "./games/island/application/lifecycle.js";
 import { createSplendorLifecycle } from "./games/splendor/application/lifecycle.js";
 import { createJaipurLifecycle } from "./games/jaipur/application/lifecycle.js";
+import { createLoveLetterLifecycle } from "./games/love-letter/application/lifecycle.js";
 import { createGuryongtuLifecycle } from "./games/guryongtu/application/lifecycle.js";
 import { createAzulLifecycle } from "./games/azul/application/lifecycle.js";
 import { createClueLifecycle } from "./games/clue/application/lifecycle.js";
@@ -154,6 +157,7 @@ export type ApplicationRuntime = Readonly<{
   islandService?: IslandService;
   splendorService?: SplendorService;
   jaipurService?: JaipurService;
+  loveLetterService?: LoveLetterService;
   guryongtuService?: GuryongtuService;
   azulService?: AzulService;
   clueService?: ClueService;
@@ -167,6 +171,7 @@ export type ApplicationRuntime = Readonly<{
   islandHostSuccession?: IslandHostSuccession;
   splendorHostSuccession?: SplendorHostSuccession;
   jaipurHostSuccession?: JaipurHostSuccession;
+  loveLetterHostSuccession?: LoveLetterHostSuccession;
   guryongtuHostSuccession?: GuryongtuHostSuccession;
   azulHostSuccession?: AzulHostSuccession;
   clueHostSuccession?: ClueHostSuccession;
@@ -283,6 +288,7 @@ export function createApplicationRuntime(
       { gameType: "ISLAND_SETTLERS" },
       { gameType: "SPLENDOR" },
       { gameType: "JAIPUR" },
+      { gameType: "LOVE_LETTER" },
       { gameType: "GURYONGTU" },
       { gameType: "AZUL" },
       { gameType: "CLUE" },
@@ -324,6 +330,7 @@ export function createApplicationRuntime(
     island: createIslandLifecycle(),
     splendor: createSplendorLifecycle(),
     jaipur: createJaipurLifecycle(),
+    loveLetter: createLoveLetterLifecycle(),
     guryongtu: createGuryongtuLifecycle(),
     azul: createAzulLifecycle(),
     clue: createClueLifecycle(),
@@ -616,6 +623,13 @@ export function createApplicationRuntime(
     const room = await persistence.findById(roomId);
     if (room?.gameType === "JAIPUR" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
   });
+  const loveLetterService = new LoveLetterService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
+    roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource });
+  const loveLetterHostSuccession = new LoveLetterHostSuccession(loveLetterService.deps, roomId => loveLetterService.notify(roomId));
+  loveLetterService.subscribe(async roomId => {
+    const room = await persistence.findById(roomId);
+    if (room?.gameType === "LOVE_LETTER" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
+  });
   const guryongtuService = new GuryongtuService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
     roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource });
   const guryongtuHostSuccession = new GuryongtuHostSuccession(guryongtuService.deps, roomId => guryongtuService.notify(roomId));
@@ -759,6 +773,7 @@ export function createApplicationRuntime(
     island: { gameType: "ISLAND_SETTLERS", start: input => islandService.start(input) },
     splendor: { gameType: "SPLENDOR", start: input => splendorService.start(input) },
     jaipur: { gameType: "JAIPUR", start: input => jaipurService.start(input) },
+    loveLetter: { gameType: "LOVE_LETTER", start: input => loveLetterService.start(input) },
     guryongtu: { gameType: "GURYONGTU", start: input => guryongtuService.start(input) },
     azul: { gameType: "AZUL", start: input => azulService.start(input) },
     clue: { gameType: "CLUE", start: input => clueService.start(input) },
@@ -964,6 +979,7 @@ export function createApplicationRuntime(
     islandService,
     splendorService,
     jaipurService,
+    loveLetterService,
     guryongtuService,
     azulService,
     clueService,
@@ -977,6 +993,7 @@ export function createApplicationRuntime(
     islandHostSuccession,
     splendorHostSuccession,
     jaipurHostSuccession,
+    loveLetterHostSuccession,
     guryongtuHostSuccession,
     azulHostSuccession,
     clueHostSuccession,
@@ -1039,6 +1056,7 @@ export function createApplicationRuntime(
       islandHostSuccession.start();
       splendorHostSuccession.start();
       jaipurHostSuccession.start();
+      loveLetterHostSuccession.start();
       guryongtuHostSuccession.start();
       azulHostSuccession.start();
       clueHostSuccession.start();
@@ -1069,6 +1087,7 @@ export function createApplicationRuntime(
       islandHostSuccession.stop();
       splendorHostSuccession.stop();
       jaipurHostSuccession.stop();
+      loveLetterHostSuccession.stop();
       guryongtuHostSuccession.stop();
       azulHostSuccession.stop();
       clueHostSuccession.stop();

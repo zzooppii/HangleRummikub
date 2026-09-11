@@ -2,6 +2,7 @@ import { SaboteurPlayingProjectionSchema, SaboteurFinishedProjectionSchema, sabo
 import { ISLAND_RESOURCES } from "../games/island/actions.js";
 import { SplendorPlayingProjectionSchema, SplendorFinishedProjectionSchema, splendorProjectionIsConsistent } from "../games/splendor/contracts.js";
 import { JaipurPlayingProjectionSchema, JaipurFinishedProjectionSchema, jaipurProjectionIsConsistent } from "../games/jaipur/contracts.js";
+import { LoveLetterPlayingProjectionSchema, LoveLetterFinishedProjectionSchema, loveLetterProjectionIsConsistent } from "../games/love-letter/contracts.js";
 import { GuryongtuPlayingProjectionSchema, GuryongtuFinishedProjectionSchema, guryongtuProjectionIsConsistent } from "../games/guryongtu/contracts.js";
 import { AzulPlayingProjectionSchema, AzulFinishedProjectionSchema, azulProjectionIsConsistent } from "../games/azul/contracts.js";
 import { CluePlayingProjectionSchema, ClueFinishedProjectionSchema, clueProjectionIsConsistent } from "../games/clue/contracts.js";
@@ -352,6 +353,22 @@ export type JaipurFinishedPlatformSnapshotV2 = v.InferOutput<typeof JaipurFinish
 export const JaipurLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, JaipurLobbyPlatformSnapshotV2> = JaipurLobbyRaw;
 export const JaipurPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, JaipurPlayingPlatformSnapshotV2> = JaipurPlayingRaw;
 export const JaipurFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, JaipurFinishedPlatformSnapshotV2> = JaipurFinishedRaw;
+const LoveLetterOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const LoveLetterRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("LOVE_LETTER") };
+const LoveLetterPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(6));
+const LoveLetterLobbyRaw = v.pipe(v.strictObject({ ...LoveLetterOuter, room: v.strictObject({ ...LoveLetterRoom, phase: v.literal("LOBBY"),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)) }), game: v.null() }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
+const LoveLetterPlayingRaw = v.pipe(v.strictObject({ ...LoveLetterOuter, room: v.strictObject({ ...LoveLetterRoom, phase: v.literal("PLAYING"), players: LoveLetterPlayers }), game: LoveLetterPlayingProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.hand.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.handCount), v.check(s => loveLetterProjectionIsConsistent(s.game)));
+const LoveLetterFinishedRaw = v.pipe(v.strictObject({ ...LoveLetterOuter, room: v.strictObject({ ...LoveLetterRoom, phase: v.literal("FINISHED"), players: LoveLetterPlayers }), game: LoveLetterFinishedProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.hand.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.handCount), v.check(s => loveLetterProjectionIsConsistent(s.game)));
+export type LoveLetterLobbyPlatformSnapshotV2 = v.InferOutput<typeof LoveLetterLobbyRaw>;
+export type LoveLetterPlayingPlatformSnapshotV2 = v.InferOutput<typeof LoveLetterPlayingRaw>;
+export type LoveLetterFinishedPlatformSnapshotV2 = v.InferOutput<typeof LoveLetterFinishedRaw>;
+export const LoveLetterLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, LoveLetterLobbyPlatformSnapshotV2> = LoveLetterLobbyRaw;
+export const LoveLetterPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, LoveLetterPlayingPlatformSnapshotV2> = LoveLetterPlayingRaw;
+export const LoveLetterFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, LoveLetterFinishedPlatformSnapshotV2> = LoveLetterFinishedRaw;
 const GuryongtuOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
 const GuryongtuRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("GURYONGTU") };
 const GuryongtuPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.length(2));
@@ -525,6 +542,7 @@ export const LobbyPlatformSnapshotV2Schema = v.union([
   IslandLobbyPlatformSnapshotV2Schema,
   SplendorLobbyPlatformSnapshotV2Schema,
   JaipurLobbyPlatformSnapshotV2Schema,
+  LoveLetterLobbyPlatformSnapshotV2Schema,
   GuryongtuLobbyPlatformSnapshotV2Schema,
   AzulLobbyPlatformSnapshotV2Schema,
   ClueLobbyPlatformSnapshotV2Schema,
@@ -678,6 +696,7 @@ export const PlayingPlatformSnapshotV2Schema = v.union([
   IslandPlayingPlatformSnapshotV2Schema,
   SplendorPlayingPlatformSnapshotV2Schema,
   JaipurPlayingPlatformSnapshotV2Schema,
+  LoveLetterPlayingPlatformSnapshotV2Schema,
   GuryongtuPlayingPlatformSnapshotV2Schema,
   AzulPlayingPlatformSnapshotV2Schema,
   CluePlayingPlatformSnapshotV2Schema,
@@ -831,6 +850,7 @@ export const FinishedPlatformSnapshotV2Schema = v.union([
   IslandFinishedPlatformSnapshotV2Schema,
   SplendorFinishedPlatformSnapshotV2Schema,
   JaipurFinishedPlatformSnapshotV2Schema,
+  LoveLetterFinishedPlatformSnapshotV2Schema,
   GuryongtuFinishedPlatformSnapshotV2Schema,
   AzulFinishedPlatformSnapshotV2Schema,
   ClueFinishedPlatformSnapshotV2Schema,

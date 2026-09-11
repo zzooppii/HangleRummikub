@@ -125,6 +125,7 @@ export class ScheduledTurnRouter {
       }
       switch (room.gameType) {
         case "JAIPUR": return { status: "NO_OP" };
+        case "LOVE_LETTER": return { status: "NO_OP" };
         case "GURYONGTU": return { status: "NO_OP" };
         case "AZUL": return this.#azul ? await this.#azul.handleTurnTimeout(input) : {status:"FAILED"};
         case "CLUE": return { status: "NO_OP" };

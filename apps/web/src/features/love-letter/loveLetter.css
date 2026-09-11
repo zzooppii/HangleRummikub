@@ -1,0 +1,1056 @@
+.ll-game {
+  --ll-gold: #d9b77b;
+  --ll-cream: #fff3db;
+  --ll-muted: #c5b6a5;
+  --ll-line: #c19a6444;
+  --ll-rose: #efb5b8;
+  color: var(--ll-cream);
+  background: radial-gradient(ellipse at 50% 24%,#682736 0,#3d1826 45%,#21151e 90%);
+  border: 1px solid #a7845355;
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow: 0 22px 65px #120b1840;
+  font-family: inherit;
+  isolation: isolate;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+.ll-game * {
+  box-sizing: border-box;
+}
+.ll-game button,.ll-game input {
+  font: inherit;
+}
+.ll-game button {
+  cursor: pointer;
+  color: inherit;
+  border: 1px solid var(--ll-line);
+  border-radius: 8px;
+  background: #291a26;
+  padding: 9px 14px;
+  min-height: 42px;
+}
+.ll-game button:disabled {
+  cursor: default;
+}
+.ll-game button:focus-visible,.ll-game summary:focus-visible,.ll-game input:focus-visible {
+  outline: 3px solid #ffe9a5;
+  outline-offset: 4px;
+}
+.ll-game small {
+  font-size: 12px;
+  color: var(--ll-muted);
+}
+.ll-game h1,.ll-game h2,.ll-game h3,.ll-game p {
+  margin: 0;
+}
+.ll-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 22px 30px;
+  background: #20151be8;
+  border-bottom: 1px solid var(--ll-line);
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.ll-wordmark {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+.ll-wordmark small {
+  letter-spacing: 3px;
+  font-size: 10px;
+  color: var(--ll-gold);
+}
+.ll-wordmark h1 {
+  color: var(--ll-cream);
+  font-family: Georgia,'Batang',serif;
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: 3px;
+  margin-top: 3px;
+}
+.ll-seal,.ll-result-seal {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 3px double #b87d72;
+  background: radial-gradient(circle at 30% 25%,#c56a68,#822d42 65%,#471c2e);
+  box-shadow: 2px 5px 9px #09050c66,inset 0 0 0 3px #632539;
+  font: italic 25px Georgia;
+  color: #f2cda6;
+}
+.ll-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ll-header-tools button,.ll-header-tools summary {
+  font-size: 12px;
+  color: #e3d3bf;
+}
+.ll-room-code {
+  font-size: 13px;
+  letter-spacing: 2px;
+  color: var(--ll-gold);
+  padding: 0 10px;
+}
+.ll-audio {
+  position: relative;
+}
+.ll-audio summary {
+  cursor: pointer;
+  list-style: none;
+  border: 1px solid var(--ll-line);
+  border-radius: 8px;
+  padding: 10px;
+  min-height: 42px;
+}
+.ll-audio>div {
+  position: absolute;
+  right: 0;
+  top: 48px;
+  width: 200px;
+  padding: 16px;
+  background: #251822;
+  border: 1px solid var(--ll-gold);
+  z-index: 10;
+  border-radius: 10px;
+  box-shadow: 0 8px 30px #0006;
+}
+.ll-audio label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 12px;
+}
+.ll-audio input {
+  max-width: 100%;
+  accent-color: var(--ll-gold);
+}
+.ll-table-content {
+  padding: 30px 36px 24px;
+}
+.ll-table-heading {
+  text-align: center;
+  margin-bottom: 26px;
+}
+.ll-table-heading>span {
+  color: var(--ll-gold);
+  font-size: 10px;
+  letter-spacing: 4px;
+}
+.ll-table-heading h2 {
+  font-family: Georgia,'Batang',serif;
+  font-size: 26px;
+  letter-spacing: 1px;
+  margin: 8px 0;
+}
+.ll-table-heading p {
+  color: #d2bbb9;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.ll-seats {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 14px;
+  max-width: 1000px;
+  margin: auto;
+}
+.ll-seats[data-count="2"],.ll-seats[data-count="4"] {
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  max-width: 760px;
+}
+.ll-seat {
+  min-width: 0;
+  background: #22181fc2;
+  border: 1px solid #b58b5b55;
+  border-radius: 12px;
+  padding: 12px;
+  transition: border-color .2s,box-shadow .2s;
+}
+.ll-seat.ll-active {
+  border-color: #ddba80;
+  box-shadow: 0 0 0 1px #ddba8044,0 0 22px #d9aa5b12;
+}
+.ll-seat.ll-target {
+  border: 2px solid #f4c997;
+  background: #532a35;
+  padding: 11px;
+  box-shadow: 0 0 24px #f7a8bc22;
+}
+.ll-seat.ll-protected {
+  border-color: #83b9b4;
+}
+.ll-seat.ll-eliminated {
+  opacity: .55;
+}
+.ll-game .ll-seat-pick {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  min-height: 42px;
+}
+.ll-seat-pick:disabled {
+  opacity: 1;
+}
+.ll-seat-pick:enabled:hover .ll-avatar {
+  background: #964756;
+}
+.ll-seat-pick strong {
+  font-size: 14px;
+  display: block;
+  overflow-wrap: anywhere;
+}
+.ll-seat-pick small {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+}
+.ll-avatar {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--ll-line);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #57303b;
+  color: #f4dfbb;
+}
+.ll-token-count {
+  margin-left: auto;
+  white-space: nowrap;
+  color: #eab2a3;
+  font: 16px Georgia;
+}
+.ll-seat-cards {
+  display: flex;
+  gap: 5px;
+  min-height: 57px;
+  margin-top: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.ll-discard {
+  width: 35px;
+  height: 52px;
+  position: relative;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 4px;
+  border: 1px solid #c59a69;
+  box-shadow: 1px 2px 3px #0006;
+}
+.ll-portrait {
+  display: block;
+  background-image: url('/images/love-letter/court.png');
+  background-size: 500% 200%;
+  background-repeat: no-repeat;
+  background-color: #463032;
+}
+.ll-discard .ll-portrait {
+  height: 100%;
+  width: 100%;
+}
+.ll-discard b {
+  position: absolute;
+  top: 1px;
+  left: 2px;
+  font: 13px Georgia;
+  color: #fff4d6;
+  text-shadow: 0 1px 3px #000;
+}
+.ll-discard small {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #221522e6;
+  font-size: 8px;
+  text-align: center;
+  color: #fff0d4;
+  padding: 2px 0;
+}
+.ll-mini-back {
+  width: 35px;
+  height: 52px;
+  flex-shrink: 0;
+  display: grid;
+  place-content: center;
+  border: 2px double #c59a69;
+  border-radius: 4px;
+  background: repeating-linear-gradient(45deg,#713445 0 2px,#602838 2px 8px);
+  color: #efd0a0;
+  text-align: center;
+}
+.ll-mini-back small {
+  font-size: 9px;
+}
+.ll-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 35px;
+  min-height: 185px;
+  padding: 24px 0;
+}
+.ll-deck {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.ll-card-back {
+  height: 104px;
+  width: 72px;
+  outline: 1px solid #caad79;
+  outline-offset: -5px;
+  border: 1px solid #dfc38d;
+  border-radius: 7px;
+  background: repeating-linear-gradient(45deg,#723345 0 2px,#64283b 2px 10px);
+  box-shadow: 3px 3px #eee0c4,4px 4px #835342,6px 6px #e3cfb0,8px 8px 12px #11081088;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  transform: rotate(-7deg);
+}
+.ll-card-back span {
+  font-size: 26px;
+  color: var(--ll-gold);
+}
+.ll-card-back b {
+  font: 10px Georgia;
+  letter-spacing: 2px;
+  text-align: center;
+}
+.ll-deck>div+div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ll-deck strong {
+  font: 34px Georgia;
+  color: var(--ll-gold);
+}
+.ll-deck strong small {
+  font: 12px system-ui;
+  margin-left: 4px;
+}
+.ll-deck>div+div>span {
+  font-size: 11px;
+  color: var(--ll-muted);
+}
+.ll-announcement {
+  max-width: 450px;
+  text-align: center;
+  animation: ll-arrive .35s ease-out;
+}
+.ll-announcement p {
+  font-size: 14px;
+  line-height: 1.8;
+  margin: 8px 0;
+}
+.ll-ornament {
+  color: var(--ll-gold);
+  font-size: 21px;
+}
+.ll-excluded {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  color: #deccbb;
+}
+.ll-hand-area {
+  border-top: 1px solid var(--ll-line);
+  background: radial-gradient(ellipse at 50% 90%,#b9916b12,transparent 75%);
+  padding: 20px 0;
+}
+.ll-hand-heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.ll-hand-heading h3 {
+  font-size: 16px;
+  font-weight: 500;
+}
+.ll-hand-heading>span {
+  font-size: 11px;
+  color: var(--ll-muted);
+}
+.ll-hand-heading button {
+  font-size: 12px;
+}
+.ll-hand {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 20px;
+  padding: 30px 5px 22px;
+  min-height: 310px;
+}
+.ll-game .ll-card {
+  position: relative;
+  isolation: isolate;
+  width: 174px;
+  aspect-ratio: .63;
+  border: 2px solid #d7b47b;
+  border-radius: 10px;
+  overflow: hidden;
+  padding: 0;
+  flex-shrink: 0;
+  text-align: left;
+  background: #34252b;
+  box-shadow: 0 12px 25px #0f071b66,inset 0 0 0 3px #fff4d71a;
+  transition: transform .22s,box-shadow .22s,border-color .22s;
+}
+.ll-card .ll-portrait {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.ll-card:after {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border: 1px solid #efdab055;
+  pointer-events: none;
+  border-radius: 5px;
+}
+.ll-card-number {
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  width: 29px;
+  height: 37px;
+  display: grid;
+  place-items: center;
+  background: #fff0cf;
+  color: #542a37;
+  border-radius: 4px 4px 14px 14px;
+  box-shadow: 0 2px 8px #0005;
+  font: bold 24px Georgia;
+}
+.ll-card-copy {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 44px 12px 13px;
+  background: linear-gradient(transparent,#241923 32%);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.ll-card-copy small {
+  font: 8px Georgia;
+  letter-spacing: 1.6px;
+  color: #e5c598;
+}
+.ll-card-copy strong {
+  font: 600 19px Georgia,'Batang',serif;
+  color: #fff0d1;
+}
+.ll-card-copy>span {
+  font-size: 11px;
+  line-height: 1.65;
+  color: #e6d9c9;
+  min-height: 37px;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.ll-card:enabled:hover {
+  transform: translateY(-7px) rotate(-1deg);
+  box-shadow: 0 16px 28px #100714aa;
+}
+.ll-game .ll-card[aria-pressed=true] {
+  transform: translateY(-12px);
+  border-color: #ffebba;
+  box-shadow: 0 0 0 3px #e9b58955,0 18px 35px #130b1999;
+}
+.ll-chosen {
+  position: absolute;
+  right: 8px;
+  top: 12px;
+  background: #fff0cf;
+  color: #552638;
+  border-radius: 12px;
+  padding: 3px 7px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.ll-hand .ll-card:disabled {
+  filter: saturate(.8);
+  opacity: .9;
+}
+.ll-hand-active .ll-card:disabled {
+  opacity: .5;
+}
+.ll-private-hint {
+  text-align: center;
+  font-size: 12px;
+  color: #efc5b2;
+  margin-top: 16px!important;
+}
+.ll-private-note {
+  max-width: 500px;
+  margin: 16px auto 0;
+  padding: 18px;
+  background: #f1e2c6;
+  color: #4a2a3a;
+  border: 1px solid #e7c898;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px #11081a44;
+  animation: ll-arrive .3s ease;
+}
+.ll-private-note strong {
+  font-family: Georgia,'Batang',serif;
+}
+.ll-private-note p {
+  font-size: 13px;
+  margin: 10px 0;
+}
+.ll-private-note small {
+  color: #76545f;
+  display: block;
+  margin: 10px 0;
+}
+.ll-private-note button {
+  font-size: 12px;
+}
+.ll-selection {
+  max-width: 660px;
+  margin: 0 auto 18px;
+  text-align: center;
+}
+.ll-selection strong {
+  color: #f0d5a7;
+  font-size: 14px;
+}
+.ll-selection p {
+  font-size: 12px;
+  color: #d9c1b8;
+  line-height: 1.7;
+  margin-top: 8px;
+}
+.ll-guesses {
+  border: 0;
+  padding: 14px 0 0;
+  margin: 0;
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.ll-guesses legend {
+  font-size: 12px;
+  color: #e5c598;
+  margin-bottom: 8px;
+}
+.ll-guesses button {
+  font-size: 12px;
+  min-width: 71px;
+  padding: 8px;
+}
+.ll-guesses b {
+  color: var(--ll-gold);
+  margin-right: 3px;
+}
+.ll-game button[aria-pressed=true]:not(.ll-card):not(.ll-seat-pick) {
+  background: #f2d3a4;
+  color: #4d2637;
+}
+.ll-game button[aria-pressed=true] b {
+  color: inherit;
+}
+.ll-commit {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.ll-commit>span {
+  font-size: 12px;
+  color: #cbb5ae;
+}
+.ll-game .ll-primary {
+  color: #442234;
+  background: linear-gradient(135deg,#f4ddac,#cba171);
+  border: 1px solid #e3c899;
+  padding: 13px 25px;
+  font-weight: 700;
+  box-shadow: 0 4px 14px #12081844;
+  font-size: 14px;
+  min-height: 48px;
+}
+.ll-game .ll-primary:enabled:hover {
+  background: #f9e3b9;
+  transform: translateY(-1px);
+}
+.ll-game .ll-primary:disabled {
+  background: #54404a;
+  color: #b1a098;
+  border-color: #796356;
+  box-shadow: none;
+}
+.ll-empty-hand {
+  color: #c7b4ae;
+  text-align: center;
+  line-height: 1.8;
+  padding: 30px;
+}
+.ll-round-result {
+  text-align: center;
+  padding: 30px 0;
+}
+.ll-result-seal {
+  margin: 0 auto 18px;
+  width: 60px;
+  height: 60px;
+  font-size: 26px;
+}
+.ll-round-result h2 {
+  font: 24px Georgia,'Batang',serif;
+  color: #f4dbaa;
+}
+.ll-round-result p {
+  font-size: 13px;
+  margin: 12px 0 20px;
+  line-height: 1.7;
+  color: #d6bfb2;
+}
+.ll-reveals {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 22px 0 30px;
+}
+.ll-reveals .ll-card {
+  width: 130px;
+}
+.ll-reveals .ll-card-copy>span {
+  display: none;
+}
+.ll-reveals strong {
+  display: block;
+  margin-top: 10px;
+  font-size: 13px;
+}
+.ll-reveals .ll-card-copy strong {
+  margin: 0;
+}
+.ll-reference {
+  border-top: 1px solid var(--ll-line);
+  padding-top: 6px;
+  margin-top: 10px;
+}
+.ll-reference details {
+  border-bottom: 1px solid #ad886122;
+  padding: 14px 0;
+}
+.ll-reference summary {
+  font-size: 13px;
+  cursor: pointer;
+  color: #dcc49f;
+  min-height: 24px;
+}
+.ll-reference details>p,.ll-reference li {
+  font-size: 12px;
+  line-height: 1.9;
+  margin-top: 10px;
+  color: #d1bfb5;
+}
+.ll-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 18px;
+  margin-top: 18px;
+}
+.ll-guide-person {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.ll-guide-person>.ll-portrait {
+  width: 48px;
+  height: 68px;
+  flex-shrink: 0;
+  border: 1px solid #c5a169;
+  border-radius: 5px;
+}
+.ll-guide-person strong {
+  font-size: 13px;
+}
+.ll-guide-person strong small {
+  font-weight: 400;
+  margin-left: 6px;
+  font-size: 10px;
+}
+.ll-guide-person p {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #c5b5aa;
+  margin-top: 6px;
+}
+.ll-welcome {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 60px;
+  padding: 55px 0;
+}
+.ll-showcase {
+  display: flex;
+  align-items: center;
+  min-width: 320px;
+  height: 300px;
+  position: relative;
+}
+.ll-showcase .ll-card {
+  position: absolute;
+  width: 155px;
+}
+.ll-showcase .ll-card:first-child {
+  left: 0;
+  transform: rotate(-14deg);
+}
+.ll-showcase .ll-card:nth-child(2) {
+  left: 82px;
+  z-index: 2;
+  transform: translateY(-18px);
+}
+.ll-showcase .ll-card:last-child {
+  left: 163px;
+  transform: rotate(14deg);
+}
+.ll-showcase .ll-card-copy>span {
+  display: none;
+}
+.ll-welcome-copy {
+  max-width: 340px;
+}
+.ll-welcome-copy>small {
+  letter-spacing: 2px;
+  font-size: 10px;
+  color: #d6b78f;
+}
+.ll-welcome-copy h2 {
+  font: 32px/1.5 Georgia,'Batang',serif;
+  letter-spacing: 1px;
+  margin: 16px 0;
+}
+.ll-welcome-copy p {
+  font-size: 13px;
+  line-height: 1.9;
+  color: #d5bdad;
+  margin: 14px 0;
+}
+.ll-error {
+  padding: 14px;
+  margin: 14px;
+  border: 1px solid #f0b394;
+  border-radius: 9px;
+  color: #ffe4cb;
+  background: #713d42;
+  font-size: 13px;
+}
+.ll-error button {
+  margin-top: 8px;
+}
+@keyframes ll-arrive {
+  from {
+    transform: translateY(7px);
+    opacity: .5;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@media(max-width:800px) {
+  .ll-table-content {
+    padding: 24px 20px;
+  }
+  .ll-header {
+    padding: 18px 20px;
+  }
+  .ll-seats {
+    grid-template-columns: repeat(2,minmax(0,1fr));
+  }
+  .ll-center {
+    gap: 22px;
+  }
+  .ll-welcome {
+    gap: 24px;
+  }
+  .ll-welcome-copy h2 {
+    font-size: 25px;
+  }
+  .ll-welcome .ll-showcase {
+    transform: scale(.9);
+    min-width: 285px;
+  }
+  .ll-commit {
+    flex-direction: column;
+  }
+  .ll-guide-grid {
+    gap: 16px;
+  }
+}
+@media(max-width:540px) {
+  .ll-game {
+    border-radius: 14px;
+  }
+  .ll-header {
+    padding: 15px;
+    gap: 14px;
+  }
+  .ll-header-tools {
+    gap: 5px;
+    width: 100%;
+  }
+  .ll-header-tools button,.ll-header-tools summary {
+    font-size: 11px;
+    padding: 9px;
+  }
+  .ll-room-code {
+    padding: 0 5px;
+    font-size: 11px;
+  }
+  .ll-table-content {
+    padding: 22px 12px 18px;
+  }
+  .ll-table-heading h2 {
+    font-size: 22px;
+  }
+  .ll-table-heading p {
+    font-size: 12px;
+  }
+  .ll-seats {
+    gap: 8px;
+  }
+  .ll-seat {
+    padding: 8px;
+  }
+  .ll-seat.ll-target {
+    padding: 7px;
+  }
+  .ll-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 12px;
+  }
+  .ll-seat-pick {
+    gap: 6px!important;
+  }
+  .ll-seat-pick strong {
+    font-size: 11px;
+  }
+  .ll-seat-pick small {
+    font-size: 9px;
+  }
+  .ll-token-count {
+    font-size: 12px;
+  }
+  .ll-seat-cards {
+    margin-top: 8px;
+    min-height: 46px;
+  }
+  .ll-mini-back,.ll-discard {
+    height: 42px;
+    width: 28px;
+  }
+  .ll-discard small {
+    font-size: 7px;
+  }
+  .ll-center {
+    min-height: 154px;
+    gap: 18px;
+    flex-wrap: wrap;
+    padding: 22px 5px;
+  }
+  .ll-deck {
+    gap: 12px;
+  }
+  .ll-card-back {
+    width: 49px;
+    height: 73px;
+  }
+  .ll-card-back b {
+    font-size: 7px;
+  }
+  .ll-card-back span {
+    font-size: 20px;
+  }
+  .ll-deck strong {
+    font-size: 27px;
+  }
+  .ll-announcement {
+    max-width: 190px;
+    flex: 1;
+    min-width: 110px;
+  }
+  .ll-announcement p {
+    font-size: 12px;
+  }
+  .ll-announcement small {
+    font-size: 10px;
+  }
+  .ll-excluded {
+    flex-direction: row;
+    justify-content: center;
+    width: 100%;
+    font-size: 10px;
+    gap: 8px;
+  }
+  .ll-hand {
+    gap: 12px;
+    padding: 25px 0 12px;
+    min-height: 250px;
+  }
+  .ll-game .ll-hand .ll-card {
+    width: calc((100vw - 90px)/2);
+    max-width: 155px;
+    flex-shrink: 1;
+    min-width: 0;
+  }
+  .ll-hand:has(.ll-card:nth-child(3)) {
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .ll-hand:has(.ll-card:nth-child(3)) .ll-card {
+    width: 130px;
+  }
+  .ll-card-copy {
+    padding: 35px 9px 11px;
+    gap: 4px;
+  }
+  .ll-card-copy strong {
+    font-size: 17px;
+  }
+  .ll-card-copy small {
+    font-size: 7px;
+    letter-spacing: 1px;
+  }
+  .ll-card-copy>span {
+    font-size: 11px;
+    min-height: 36px;
+    line-height: 1.6;
+  }
+  .ll-hand-heading {
+    gap: 8px;
+  }
+  .ll-hand-heading h3 {
+    font-size: 15px;
+  }
+  .ll-card-number {
+    width: 24px;
+    height: 30px;
+    font-size: 21px;
+    top: 7px;
+    left: 7px;
+  }
+  .ll-chosen {
+    right: 7px;
+    top: 9px;
+    font-size: 9px;
+    padding: 3px 5px;
+  }
+  .ll-commit {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    background: #301d28f5;
+    border-top: 1px solid var(--ll-line);
+    padding: 14px 8px;
+    margin: 0 -12px -20px;
+    gap: 9px;
+    backdrop-filter: blur(8px);
+  }
+  .ll-commit .ll-primary {
+    width: 100%;
+    max-width: 330px;
+  }
+  .ll-selection {
+    margin: 16px 0;
+  }
+  .ll-guide-grid {
+    grid-template-columns: 1fr;
+  }
+  .ll-round-result h2 {
+    font-size: 21px;
+    line-height: 1.6;
+  }
+  .ll-reveals {
+    gap: 12px;
+  }
+  .ll-reveals .ll-card {
+    width: 112px;
+  }
+  .ll-reveals .ll-card-copy small {
+    font-size: 6px;
+  }
+  .ll-welcome {
+    flex-direction: column;
+    padding: 26px 0;
+    gap: 5px;
+  }
+  .ll-welcome .ll-showcase {
+    width: 320px;
+    min-width: 0;
+    max-width: 100%;
+    height: 265px;
+    transform: scale(.86);
+  }
+  .ll-showcase .ll-card:last-child {
+    left: 145px;
+  }
+  .ll-showcase .ll-card:nth-child(2) {
+    left: 72px;
+  }
+  .ll-welcome-copy {
+    text-align: center;
+  }
+  .ll-welcome-copy h2 {
+    font-size: 29px;
+  }
+  .ll-guesses button {
+    min-width: 62px;
+    font-size: 11px;
+  }
+}
+@media(prefers-reduced-motion:reduce) {
+  .ll-game * {
+    animation: none!important;
+    transition: none!important;
+    scroll-behavior: auto!important;
+  }
+  .ll-card:enabled:hover {
+    transform: none;
+  }
+  .ll-game .ll-card[aria-pressed=true] {
+    transform: none;
+  }
+}
