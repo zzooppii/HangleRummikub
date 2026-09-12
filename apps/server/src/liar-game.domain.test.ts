@@ -95,7 +95,7 @@ test("LIAR cancellation never awards points and stored adapter rejects invalid m
 test("LIAR curated prompt source covers six categories and never requires a network", () => {
   const source = new CuratedLiarPrompts();
   for (const category of ["FOOD", "ANIMAL", "PLACE", "OBJECT", "JOB", "HOBBY"] as const) {
-    const count = category === "FOOD" || category === "ANIMAL" ? 50 : 20;
+    const count = 50;
     const found = new Set<string>();
     const answers = new Set<string>();
     for (let i = 0; i < count; i++) {
@@ -117,7 +117,7 @@ test("LIAR prompt cycles exhaust each category, avoid boundary repeats and exclu
   const source = new CuratedLiarPrompts(), random = { nextInt: () => 0 };
   for (const category of ["FOOD", "ANIMAL", "PLACE", "OBJECT", "JOB", "HOBBY"] as const) {
     let history: LiarPromptHistory = [];
-    const count = category === "FOOD" || category === "ANIMAL" ? 50 : 20, firstCycle = new Set<string>();
+    const count = 50, firstCycle = new Set<string>();
     for (let i = 0; i < count; i++) {
       const prompt = source.choose(category, random, history); firstCycle.add(prompt.word);
       history = rememberLiarPrompt(history, prompt);
@@ -179,4 +179,20 @@ test("LIAR role weighting favors fewer prior assignments while every player rema
     assert.deepEqual([...roster.playerIds].sort(), [...ids].sort());
   }
   assert.deepEqual(ids.map(id => drawn.get(id)), [2, 2, 2, 1]);
+});
+
+test("LIAR all six complete category histories fit and a new cycle preserves other categories", () => {
+  const source = new CuratedLiarPrompts(), random = { nextInt: () => 0 };
+  let history: LiarPromptHistory = [];
+  for (const category of ["FOOD", "ANIMAL", "PLACE", "OBJECT", "JOB", "HOBBY"] as const) {
+    for (let i = 0; i < 50; i++) history = rememberLiarPrompt(history, source.choose(category, random, history));
+  }
+  assert.equal(history.length, 300);
+  const others = history.filter(p => p.category !== "PLACE"), previous = history.filter(p => p.category === "PLACE").at(-1)!;
+  const prompt = source.choose("PLACE", random, history);
+  assert.notEqual(prompt.word, previous.word);
+  const renewed = rememberLiarPrompt(history, prompt);
+  assert.equal(renewed.length, 251);
+  assert.deepEqual(renewed.filter(p => p.category !== "PLACE"), others);
+  assert.equal(history.length, 300);
 });
