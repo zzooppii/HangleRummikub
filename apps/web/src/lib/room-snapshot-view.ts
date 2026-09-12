@@ -7,6 +7,7 @@ import type { LoveLetterWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { GuryongtuWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { AzulWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { VegasWebSnapshot } from "./snapshot-wire-decoder.js";
+import type { BurgundyWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { CarcassonneWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { ClueWebSnapshot } from "./snapshot-wire-decoder.js";
 import type { DuetWebSnapshot } from "./snapshot-wire-decoder.js";
@@ -68,6 +69,7 @@ export type RoomSnapshotView =
   | Readonly<{ kind: "GURYONGTU"; snapshot: GuryongtuWebSnapshot }>
   | Readonly<{ kind: "AZUL"; snapshot: AzulWebSnapshot }>
   | Readonly<{ kind: "VEGAS"; snapshot: VegasWebSnapshot }>
+  | Readonly<{ kind: "BURGUNDY"; snapshot: BurgundyWebSnapshot }>
   | Readonly<{ kind: "CARCASSONNE"; snapshot: CarcassonneWebSnapshot }>
   | Readonly<{ kind: "CLUE"; snapshot: ClueWebSnapshot }>
   | Readonly<{ kind: "WORD_DUET"; snapshot: DuetWebSnapshot }>
@@ -127,6 +129,7 @@ export function resolveRoomSnapshotView(
   if (decoded.kind === "PLATFORM_V2_GURYONGTU") return { kind: "GURYONGTU", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "PLATFORM_V2_AZUL") return { kind: "AZUL", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "PLATFORM_V2_VEGAS") return { kind: "VEGAS", snapshot: decoded.platformSnapshot };
+  if (decoded.kind === "PLATFORM_V2_BURGUNDY") return { kind: "BURGUNDY", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "PLATFORM_V2_CARCASSONNE") return { kind: "CARCASSONNE", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "PLATFORM_V2_CLUE") return { kind: "CLUE", snapshot: decoded.platformSnapshot };
   if (decoded.kind === "PLATFORM_V2_WORD_DUET") return { kind: "WORD_DUET", snapshot: decoded.platformSnapshot };

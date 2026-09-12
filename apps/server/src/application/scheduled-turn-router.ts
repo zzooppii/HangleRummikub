@@ -7,7 +7,7 @@ export type ScheduledTurnDispatchResult =
   | Readonly<{ status: "FAILED" }>;
 
 type ScheduledTurnCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "HALLI_GALLI" | "ISLAND_SETTLERS" | "SABOTEUR" | "LOST_CITIES" | "AZUL" | "VEGAS" | "CARCASSONNE",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "HALLI_GALLI" | "ISLAND_SETTLERS" | "SABOTEUR" | "LOST_CITIES" | "AZUL" | "VEGAS" | "BURGUNDY" | "CARCASSONNE",
 > = Readonly<{
   gameType: TGameType;
   handleTurnTimeout(
@@ -30,6 +30,7 @@ export type ScheduledTurnRouterDependencies = Readonly<{
   cityRole: CityRoleScheduledTurnCapability;
   azul?: ScheduledTurnCapability<"AZUL">;
   vegas?: ScheduledTurnCapability<"VEGAS">;
+  burgundy?: ScheduledTurnCapability<"BURGUNDY">;
   carcassonne?: ScheduledTurnCapability<"CARCASSONNE">;
   lostCities?: ScheduledTurnCapability<"LOST_CITIES">;
   saboteur?: ScheduledTurnCapability<"SABOTEUR">;
@@ -48,7 +49,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function isCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "HALLI_GALLI" | "ISLAND_SETTLERS" | "SABOTEUR" | "LOST_CITIES" | "AZUL" | "VEGAS" | "CARCASSONNE",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "HALLI_GALLI" | "ISLAND_SETTLERS" | "SABOTEUR" | "LOST_CITIES" | "AZUL" | "VEGAS" | "BURGUNDY" | "CARCASSONNE",
 >(
   value: unknown,
   gameType: TGameType,
@@ -61,7 +62,7 @@ function isCapability<
 }
 
 function requireCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "HALLI_GALLI" | "ISLAND_SETTLERS" | "SABOTEUR" | "LOST_CITIES" | "AZUL" | "VEGAS" | "CARCASSONNE",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "HALLI_GALLI" | "ISLAND_SETTLERS" | "SABOTEUR" | "LOST_CITIES" | "AZUL" | "VEGAS" | "BURGUNDY" | "CARCASSONNE",
 >(
   value: unknown,
   gameType: TGameType,
@@ -84,6 +85,7 @@ export class ScheduledTurnRouter {
   readonly #cityRole: CityRoleScheduledTurnCapability;
   readonly #azul: ScheduledTurnCapability<"AZUL"> | undefined;
   readonly #vegas: ScheduledTurnCapability<"VEGAS"> | undefined;
+  readonly #burgundy: ScheduledTurnCapability<"BURGUNDY"> | undefined;
   readonly #carcassonne: ScheduledTurnCapability<"CARCASSONNE"> | undefined;
   readonly #lostCities: ScheduledTurnCapability<"LOST_CITIES"> | undefined;
   readonly #saboteur: ScheduledTurnCapability<"SABOTEUR"> | undefined;
@@ -100,6 +102,7 @@ export class ScheduledTurnRouter {
     this.#roomRepository = dependencies.roomRepository;
     this.#azul = dependencies.azul;
     this.#vegas = dependencies.vegas;
+    this.#burgundy = dependencies.burgundy;
     this.#carcassonne = dependencies.carcassonne;
     this.#lostCities = dependencies.lostCities;
     this.#saboteur = dependencies.saboteur;
@@ -137,6 +140,7 @@ export class ScheduledTurnRouter {
         case "GURYONGTU": return { status: "NO_OP" };
         case "AZUL": return this.#azul ? await this.#azul.handleTurnTimeout(input) : {status:"FAILED"};
         case "VEGAS": return this.#vegas ? await this.#vegas.handleTurnTimeout(input) : {status:"FAILED"};
+        case "BURGUNDY": return this.#burgundy ? await this.#burgundy.handleTurnTimeout(input) : {status:"FAILED"};
         case "CARCASSONNE": return this.#carcassonne ? await this.#carcassonne.handleTurnTimeout(input) : {status:"FAILED"};
         case "CLUE": return { status: "NO_OP" };
         case "WORD_DUET": return { status: "NO_OP" };

@@ -1,3 +1,4 @@
+import { BurgundySettingsSchema, BURGUNDY_DEFAULT_SETTINGS } from "@hangul-rummikub/shared";
 import { TrainGameStateAdapter, type TrainLifecycle } from "../games/train/compatibility/adapter.js";
 import { CenturyGameStateAdapter, type CenturyLifecycle } from "../games/century/compatibility/adapter.js";
 import { LostCitiesSettingsSchema, CityExpansionSettingsSchema } from "@hangul-rummikub/shared";
@@ -9,6 +10,7 @@ import { LoveLetterGameStateAdapter, type LoveLetterLifecycle } from "../games/l
 import { GuryongtuGameStateAdapter, type GuryongtuLifecycle } from "../games/guryongtu/compatibility/adapter.js";
 import { AzulGameStateAdapter, type AzulLifecycle } from "../games/azul/compatibility/adapter.js";
 import { VegasGameStateAdapter, type VegasLifecycle } from "../games/vegas/compatibility/adapter.js";
+import { BurgundyGameStateAdapter, type BurgundyLifecycle } from "../games/burgundy/compatibility/adapter.js";
 import { CarcassonneGameStateAdapter, type CarcassonneLifecycle } from "../games/carcassonne/compatibility/adapter.js";
 import { ClueGameStateAdapter, type ClueLifecycle } from "../games/clue/compatibility/adapter.js";
 import { DuetGameStateAdapter, type DuetLifecycle } from "../games/word-duet/compatibility/adapter.js";
@@ -135,6 +137,7 @@ type RoomGameLifecycleInspection =
   | Readonly<{gameType:"GURYONGTU";inspection:GuryongtuLifecycle}>
   | Readonly<{gameType:"AZUL";inspection:AzulLifecycle}>
   | Readonly<{gameType:"VEGAS";inspection:VegasLifecycle}>
+  | Readonly<{gameType:"BURGUNDY";inspection:BurgundyLifecycle}>
   | Readonly<{gameType:"CARCASSONNE";inspection:CarcassonneLifecycle}>
   | Readonly<{gameType:"CLUE";inspection:ClueLifecycle}>
   | Readonly<{gameType:"WORD_DUET";inspection:DuetLifecycle}>
@@ -331,6 +334,14 @@ function cloneRoomWriteCandidate(
       const departedPlayerIds = Object.freeze([...(candidate.departedPlayerIds ?? [])]);
       if (new Set(departedPlayerIds).size !== departedPlayerIds.length || departedPlayerIds.some(id => !shell.players.some(p => p.playerId === id)) || shell.phase === "LOBBY" && departedPlayerIds.length > 0) throw new Error("Invalid departed VEGAS roster.");
       return Object.freeze({...shell, gameType:"VEGAS", game, departedPlayerIds});
+    }
+    case "BURGUNDY": {
+      const adapter = new BurgundyGameStateAdapter(), game = candidate.game === null ? null : adapter.cloneAndValidate(candidate.game);
+      validateRoomGameCoherence(shell.phase, shell.players, game, () => game === null ? null : adapter.inspectLifecycle(game));
+      const departedPlayerIds = Object.freeze([...(candidate.departedPlayerIds ?? [])]);
+      if (new Set(departedPlayerIds).size !== departedPlayerIds.length || departedPlayerIds.some(id => !shell.players.some(p => p.playerId === id)) || shell.phase === "LOBBY" && departedPlayerIds.length > 0) throw new Error("Invalid departed BURGUNDY roster.");
+      const settings = v.parse(BurgundySettingsSchema, candidate.settings ?? BURGUNDY_DEFAULT_SETTINGS);
+      return Object.freeze({...shell, gameType:"BURGUNDY", settings, game, departedPlayerIds});
     }
     case "CARCASSONNE": {
       const adapter = new CarcassonneGameStateAdapter(), game = candidate.game === null ? null : adapter.cloneAndValidate(candidate.game);
@@ -543,6 +554,7 @@ function persistRoom(
     case "GURYONGTU":
     case "AZUL":
     case "VEGAS":
+    case "BURGUNDY":
     case "CARCASSONNE":
     case "CLUE":
     case "WORD_DUET":
@@ -581,6 +593,7 @@ function inspectRoomGame(
     case "GURYONGTU": return {gameType:"GURYONGTU",inspection:new GuryongtuGameStateAdapter().inspectLifecycle(room.game)};
     case "AZUL": return {gameType:"AZUL",inspection:new AzulGameStateAdapter().inspectLifecycle(room.game)};
     case "VEGAS": return {gameType:"VEGAS",inspection:new VegasGameStateAdapter().inspectLifecycle(room.game)};
+    case "BURGUNDY": return {gameType:"BURGUNDY",inspection:new BurgundyGameStateAdapter().inspectLifecycle(room.game)};
     case "CARCASSONNE": return {gameType:"CARCASSONNE",inspection:new CarcassonneGameStateAdapter().inspectLifecycle(room.game)};
     case "CLUE": return {gameType:"CLUE",inspection:new ClueGameStateAdapter().inspectLifecycle(room.game)};
     case "WORD_DUET": return {gameType:"WORD_DUET",inspection:new DuetGameStateAdapter().inspectLifecycle(room.game)};

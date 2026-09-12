@@ -7,6 +7,7 @@ import type { createLoveLetterLifecycle } from "../games/love-letter/application
 import type { createGuryongtuLifecycle } from "../games/guryongtu/application/lifecycle.js";
 import type { createAzulLifecycle } from "../games/azul/application/lifecycle.js";
 import type { createVegasLifecycle } from "../games/vegas/application/lifecycle.js";
+import type { createBurgundyLifecycle } from "../games/burgundy/application/lifecycle.js";
 import type { createCarcassonneLifecycle } from "../games/carcassonne/application/lifecycle.js";
 import type { createClueLifecycle } from "../games/clue/application/lifecycle.js";
 import type { createDuetLifecycle } from "../games/word-duet/application/lifecycle.js";
@@ -85,6 +86,7 @@ export type PlayerLifecycleRouterDependencies = Readonly<{
   guryongtu?: ReturnType<typeof createGuryongtuLifecycle>;
   azul?: ReturnType<typeof createAzulLifecycle>;
   vegas?: ReturnType<typeof createVegasLifecycle>;
+  burgundy?: ReturnType<typeof createBurgundyLifecycle>;
   carcassonne?: ReturnType<typeof createCarcassonneLifecycle>;
   clue?: ReturnType<typeof createClueLifecycle>;
   duet?: ReturnType<typeof createDuetLifecycle>;
@@ -125,6 +127,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
   readonly #guryongtu: ReturnType<typeof createGuryongtuLifecycle> | undefined;
   readonly #azul: ReturnType<typeof createAzulLifecycle> | undefined;
   readonly #vegas: ReturnType<typeof createVegasLifecycle> | undefined;
+  readonly #burgundy: ReturnType<typeof createBurgundyLifecycle> | undefined;
   readonly #carcassonne: ReturnType<typeof createCarcassonneLifecycle> | undefined;
   readonly #clue: ReturnType<typeof createClueLifecycle> | undefined;
   readonly #duet: ReturnType<typeof createDuetLifecycle> | undefined;
@@ -157,6 +160,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
     this.#guryongtu = dependencies.guryongtu;
     this.#azul = dependencies.azul;
     this.#vegas = dependencies.vegas;
+    this.#burgundy = dependencies.burgundy;
     this.#carcassonne = dependencies.carcassonne;
     this.#clue = dependencies.clue;
     this.#duet = dependencies.duet;
@@ -213,6 +217,9 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
       case "VEGAS":
         if (!this.#vegas) throw new Error("VEGAS lifecycle missing.");
         return this.#vegas.applyPlayingLeave(input);
+      case "BURGUNDY":
+        if (!this.#burgundy) throw new Error("BURGUNDY lifecycle missing.");
+        return this.#burgundy.applyPlayingLeave(input);
       case "CARCASSONNE":
         if (!this.#carcassonne) throw new Error("CARCASSONNE lifecycle missing.");
         return this.#carcassonne.applyPlayingLeave(input);
@@ -268,6 +275,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
       case "GURYONGTU": return {status:"NO_CHANGE"};
       case "AZUL": return {status:"NO_CHANGE"};
       case "VEGAS": return {status:"NO_CHANGE"};
+      case "BURGUNDY": return {status:"NO_CHANGE"};
       case "CARCASSONNE": return {status:"NO_CHANGE"};
       case "CLUE": return {status:"NO_CHANGE"};
       case "WORD_DUET": return {status:"NO_CHANGE"};

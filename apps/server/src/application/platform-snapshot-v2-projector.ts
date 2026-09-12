@@ -1,3 +1,4 @@
+import { BURGUNDY_DEFAULT_SETTINGS } from "@hangul-rummikub/shared";
 import { CITY_DEFAULT_SETTINGS } from "@hangul-rummikub/shared";
 import { projectIsland } from "../games/island/compatibility/projector.js";
 import { projectSplendor } from "../games/splendor/compatibility/projector.js";
@@ -8,6 +9,7 @@ import { projectLoveLetter } from "../games/love-letter/compatibility/projector.
 import { projectGuryongtu } from "../games/guryongtu/compatibility/projector.js";
 import { projectAzul } from "../games/azul/compatibility/projector.js";
 import { projectVegas } from "../games/vegas/compatibility/projector.js";
+import { projectBurgundy } from "../games/burgundy/compatibility/projector.js";
 import { projectCarcassonne } from "../games/carcassonne/compatibility/projector.js";
 import { projectClue } from "../games/clue/compatibility/projector.js";
 import { projectDuet } from "../games/word-duet/compatibility/projector.js";
@@ -124,7 +126,7 @@ export class PlatformSnapshotV2Projector {
       }
       return v.parse(PlatformSnapshotV2Schema, {
         ...base,
-        room: { ...base.room, phase: "LOBBY", ...(input.room.gameType === "LIAR_GAME" ? { settings: input.room.settings ?? { category: "RANDOM", discussionSeconds: 90 } } : {}), ...(input.room.gameType === "SPYFALL" ? { settings: input.room.settings ?? { roundSeconds: 480, useRoles: false, locationPack: "ALL" } } : {}), ...(input.room.gameType === "SPLENDOR" ? {settings:input.room.settings??{mode:"BASE"}} : {}), ...(input.room.gameType === "LOST_CITIES" ? {settings:input.room.settings??{mode:"BASE"}} : {}), ...(input.room.gameType === "CITY_ROLE" ? { settings: input.room.settings ?? CITY_DEFAULT_SETTINGS } : {}), ...(input.room.gameType === "WOLF_NIGHT" ? { settings: input.room.settings ?? { roles: null, discussionSeconds: 180 } } : {}), ...(input.room.gameType === "SNEAKY_LUNCH" ? { settings: input.room.settings ?? { lunchboxCount: 3, difficulty: "NORMAL" } } : {}), ...(input.room.gameType === "DRAW_RELAY" ? {promptMode:input.room.promptMode ?? "MIXED",drawSeconds:input.room.drawSeconds ?? 90} : {}) },
+        room: { ...base.room, phase: "LOBBY", ...(input.room.gameType === "BURGUNDY" ? {settings:input.room.settings??BURGUNDY_DEFAULT_SETTINGS} : {}), ...(input.room.gameType === "LIAR_GAME" ? { settings: input.room.settings ?? { category: "RANDOM", discussionSeconds: 90 } } : {}), ...(input.room.gameType === "SPYFALL" ? { settings: input.room.settings ?? { roundSeconds: 480, useRoles: false, locationPack: "ALL" } } : {}), ...(input.room.gameType === "SPLENDOR" ? {settings:input.room.settings??{mode:"BASE"}} : {}), ...(input.room.gameType === "LOST_CITIES" ? {settings:input.room.settings??{mode:"BASE"}} : {}), ...(input.room.gameType === "CITY_ROLE" ? { settings: input.room.settings ?? CITY_DEFAULT_SETTINGS } : {}), ...(input.room.gameType === "WOLF_NIGHT" ? { settings: input.room.settings ?? { roles: null, discussionSeconds: 180 } } : {}), ...(input.room.gameType === "SNEAKY_LUNCH" ? { settings: input.room.settings ?? { lunchboxCount: 3, difficulty: "NORMAL" } } : {}), ...(input.room.gameType === "DRAW_RELAY" ? {promptMode:input.room.promptMode ?? "MIXED",drawSeconds:input.room.drawSeconds ?? 90} : {}) },
         game: null,
       });
     }
@@ -143,6 +145,7 @@ export class PlatformSnapshotV2Projector {
     if(input.room.gameType === "GURYONGTU") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectGuryongtu(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "AZUL") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectAzul(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "VEGAS") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectVegas(input.room.game,input.selfPlayerId)});
+    if(input.room.gameType === "BURGUNDY") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase,settings:input.room.settings??BURGUNDY_DEFAULT_SETTINGS},game:projectBurgundy(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "CARCASSONNE") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectCarcassonne(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "CLUE") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectClue(input.room.game,input.selfPlayerId)});
     if(input.room.gameType === "WORD_DUET") return v.parse(PlatformSnapshotV2Schema, {...base,room:{...base.room,phase:input.room.phase},game:projectDuet(input.room.game,input.selfPlayerId)});

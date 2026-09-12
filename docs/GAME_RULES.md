@@ -1071,3 +1071,5 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 
 
 2026-09-12 클루 보너스 저택판 CONFIRMED: 사용자 보드/카드 사진과 공개 카드 2장 요청에 따라 [CLUE_GAME_RULES.md](./CLUE_GAME_RULES.md)의 새 지도와 6종·17장 보너스를 적용한다. 루미큐브 TO_BE_CONFIRMED 항목은 변경하지 않는다.
+
+2026-09-12 버건디의 성 20주년판 CONFIRMED: 2–4인 개인전, 방장 선택 확장과 30/60/90초, 시간 초과 시 남은 주사위의 일꾼 획득. [규칙과 자료 검증 범위](./BURGUNDY_GAME_RULES.md)를 따른다. 한글 타일의 미확정 규칙은 변경하지 않는다.

@@ -6,6 +6,7 @@ import type { LoveLetterClientCommand } from "./protocol.js";
 import type { GuryongtuClientCommand } from "./protocol.js";
 import type { AzulClientCommand } from "./protocol.js";
 import type { VegasClientCommand } from "./protocol.js";
+import type { BurgundyClientCommand } from "./protocol.js";
 import type { CarcassonneClientCommand } from "./protocol.js";
 import type { ClueClientCommand } from "./protocol.js";
 import type { DuetClientCommand } from "./protocol.js";
@@ -570,6 +571,8 @@ export interface SnapshotWireClientToServerEvents {
   "guryongtu:act": (command: Extract<GuryongtuClientCommand,{kind:"guryongtu:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "azul:act": (command: Extract<AzulClientCommand,{kind:"azul:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "vegas:act": (command: Extract<VegasClientCommand,{kind:"vegas:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "burgundy:configure": (command: Extract<BurgundyClientCommand,{kind:"burgundy:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "burgundy:act": (command: Extract<BurgundyClientCommand,{kind:"burgundy:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "carcassonne:act": (command: Extract<CarcassonneClientCommand,{kind:"carcassonne:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "clue:act": (command: Extract<ClueClientCommand,{kind:"clue:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "duet:act": (command: Extract<DuetClientCommand,{kind:"duet:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;

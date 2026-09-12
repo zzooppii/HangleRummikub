@@ -1,3 +1,5 @@
+import { BurgundyScreen } from "./features/burgundy/BurgundyScreen.js";
+import "./features/burgundy/burgundy.css";
 import { LiarGameScreen } from "./features/liar-game/LiarGameScreen.js";
 import { SpyfallGameScreen } from "./features/spyfall/SpyfallGameScreen.js";
 import "./features/liar-game/liar-game.css";
@@ -446,6 +448,13 @@ export function App() {
     if (roomView.kind === "CARCASSONNE") {
       return <ReconnectBoundary {...recovery}><CarcassonneScreen snapshot={roomView.snapshot}
         connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={app.actCarcassonne} onRematch={() => app.selectRoomGame("CARCASSONNE")}
+        onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
+        pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
+        error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;
+    }
+    if (roomView.kind === "BURGUNDY") {
+      return <ReconnectBoundary {...recovery}><BurgundyScreen snapshot={roomView.snapshot}
+        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded} onCommand={app.actBurgundy} onRematch={() => app.selectRoomGame("BURGUNDY")}
         onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
         pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
         error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;

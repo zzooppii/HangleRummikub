@@ -23,6 +23,7 @@ export const SUPPORTED_GAME_TYPES = Object.freeze([
   "SPYFALL",
   "AZUL",
   "VEGAS",
+  "BURGUNDY",
   "CARCASSONNE",
   "CLUE",
 ] as const);
@@ -36,6 +37,7 @@ export const GAME_PLAYER_LIMITS = Object.freeze({
   GURYONGTU: { min: 2, max: 2 },
   AZUL: { min: 2, max: 4 },
   VEGAS: { min: 2, max: 5 },
+  BURGUNDY: { min: 2, max: 4 },
   CARCASSONNE: { min: 2, max: 5 },
   CLUE: { min: 3, max: 6 },
   HANGUL_TILE: { min: 2, max: 4 }, NUMBER_TILE: { min: 2, max: 4 }, GEM_CARD: { min: 2, max: 4 },

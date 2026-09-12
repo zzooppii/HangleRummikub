@@ -6,7 +6,7 @@ import type {
   StartGameInput,
 } from "./game-start-service.js";
 
-type StartCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "WORD_DUET" | "TRAIN" | "CENTURY" | "JAIPUR" | "LOVE_LETTER" | "GURYONGTU" | "AZUL" | "VEGAS" | "CARCASSONNE" | "CLUE" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS"> =
+type StartCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "WORD_DUET" | "TRAIN" | "CENTURY" | "JAIPUR" | "LOVE_LETTER" | "GURYONGTU" | "AZUL" | "VEGAS" | "BURGUNDY" | "CARCASSONNE" | "CLUE" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS"> =
   Readonly<{
     gameType: TGameType;
     start(input: StartGameInput): Promise<GameStartResult>;
@@ -32,6 +32,7 @@ export type GameStartRouterDependencies = Readonly<{
   guryongtu?: StartCapability<"GURYONGTU">;
   azul?: StartCapability<"AZUL">;
   vegas?: StartCapability<"VEGAS">;
+  burgundy?: StartCapability<"BURGUNDY">;
   carcassonne?: StartCapability<"CARCASSONNE">;
   clue?: StartCapability<"CLUE">;
   duet?: StartCapability<"WORD_DUET">;
@@ -66,7 +67,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function isStartCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "WORD_DUET" | "TRAIN" | "CENTURY" | "JAIPUR" | "LOVE_LETTER" | "GURYONGTU" | "AZUL" | "VEGAS" | "CARCASSONNE" | "CLUE" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "WORD_DUET" | "TRAIN" | "CENTURY" | "JAIPUR" | "LOVE_LETTER" | "GURYONGTU" | "AZUL" | "VEGAS" | "BURGUNDY" | "CARCASSONNE" | "CLUE" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS",
 >(
   value: unknown,
   gameType: TGameType,
@@ -78,7 +79,7 @@ function isStartCapability<
   );
 }
 
-function requireCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "WORD_DUET" | "TRAIN" | "CENTURY" | "JAIPUR" | "LOVE_LETTER" | "GURYONGTU" | "AZUL" | "VEGAS" | "CARCASSONNE" | "CLUE" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS">(
+function requireCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "WORD_DUET" | "TRAIN" | "CENTURY" | "JAIPUR" | "LOVE_LETTER" | "GURYONGTU" | "AZUL" | "VEGAS" | "BURGUNDY" | "CARCASSONNE" | "CLUE" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS">(
   value: unknown,
   gameType: TGameType,
 ): StartCapability<TGameType> {
@@ -108,6 +109,7 @@ export class GameStartRouter implements GameStartRouting {
   readonly #guryongtu: StartCapability<"GURYONGTU"> | undefined;
   readonly #azul: StartCapability<"AZUL"> | undefined;
   readonly #vegas: StartCapability<"VEGAS"> | undefined;
+  readonly #burgundy: StartCapability<"BURGUNDY"> | undefined;
   readonly #carcassonne: StartCapability<"CARCASSONNE"> | undefined;
   readonly #clue: StartCapability<"CLUE"> | undefined;
   readonly #duet: StartCapability<"WORD_DUET"> | undefined;
@@ -131,6 +133,7 @@ export class GameStartRouter implements GameStartRouting {
     this.#guryongtu = dependencies.guryongtu;
     this.#azul = dependencies.azul;
     this.#vegas = dependencies.vegas;
+    this.#burgundy = dependencies.burgundy;
     this.#carcassonne = dependencies.carcassonne;
     this.#clue = dependencies.clue;
     this.#duet = dependencies.duet;
@@ -173,6 +176,7 @@ export class GameStartRouter implements GameStartRouting {
         case "GURYONGTU": return this.#guryongtu ? await this.#guryongtu.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "AZUL": return this.#azul ? await this.#azul.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "VEGAS": return this.#vegas ? await this.#vegas.start(input) : {ok:false,error:INTERNAL_ERROR};
+        case "BURGUNDY": return this.#burgundy ? await this.#burgundy.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "CARCASSONNE": return this.#carcassonne ? await this.#carcassonne.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "CLUE": return this.#clue ? await this.#clue.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "WORD_DUET": return this.#duet ? await this.#duet.start(input) : {ok:false,error:INTERNAL_ERROR};

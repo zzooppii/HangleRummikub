@@ -6,6 +6,7 @@ import { LoveLetterActionSchema } from "./games/love-letter/actions.js";
 import { GuryongtuActionSchema } from "./games/guryongtu/actions.js";
 import { AzulActionSchema } from "./games/azul/actions.js";
 import { VegasActionSchema } from "./games/vegas/actions.js";
+import { BurgundyActionSchema, BurgundySettingsSchema } from "./games/burgundy/actions.js";
 import { CarcassonneActionSchema } from "./games/carcassonne/actions.js";
 import { ClueActionSchema } from "./games/clue/actions.js";
 import { DuetActionSchema } from "./games/word-duet/actions.js";
@@ -343,6 +344,7 @@ const LoveLetterIdentity = { protocolVersion: ProtocolVersionSchema, requestId: 
 const GuryongtuIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 const AzulIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 const VegasIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
+const BurgundyIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 const CarcassonneIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 const ClueIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
 const DuetIdentity = { protocolVersion: ProtocolVersionSchema, requestId: RequestIdSchema, gameId: GameIdSchema, expectedGameRevision: GameRevisionSchema };
@@ -352,6 +354,7 @@ export const LoveLetterActCommandSchema = v.strictObject({ ...LoveLetterIdentity
 export const GuryongtuActCommandSchema = v.strictObject({ ...GuryongtuIdentity, kind: v.literal("guryongtu:act"), turnId: TurnIdSchema, payload: GuryongtuActionSchema });
 export const AzulActCommandSchema = v.strictObject({ ...AzulIdentity, kind: v.literal("azul:act"), turnId: TurnIdSchema, payload: AzulActionSchema });
 export const VegasActCommandSchema = v.strictObject({ ...VegasIdentity, kind: v.literal("vegas:act"), turnId: TurnIdSchema, payload: VegasActionSchema });
+export const BurgundyActCommandSchema = v.strictObject({ ...BurgundyIdentity, kind: v.literal("burgundy:act"), turnId: TurnIdSchema, payload: BurgundyActionSchema });
 export const CarcassonneActCommandSchema = v.strictObject({ ...CarcassonneIdentity, kind: v.literal("carcassonne:act"), turnId: TurnIdSchema, payload: CarcassonneActionSchema });
 export const ClueActCommandSchema = v.strictObject({ ...ClueIdentity, kind: v.literal("clue:act"), turnId: TurnIdSchema, payload: ClueActionSchema });
 export const DuetActCommandSchema = v.strictObject({ ...DuetIdentity, kind: v.literal("duet:act"), turnId: TurnIdSchema, payload: DuetActionSchema });
@@ -370,10 +373,13 @@ export type LoveLetterClientCommand = v.InferOutput<typeof LoveLetterClientComma
 export type GuryongtuClientCommand = v.InferOutput<typeof GuryongtuClientCommandSchema>;
 export const AzulClientCommandSchema = AzulActCommandSchema;
 export const VegasClientCommandSchema = VegasActCommandSchema;
+export const BurgundyConfigureCommandSchema = v.strictObject({protocolVersion:ProtocolVersionSchema,requestId:RequestIdSchema,kind:v.literal("burgundy:configure"),expectedRoomRevision:RoomRevisionSchema,payload:BurgundySettingsSchema});
+export const BurgundyClientCommandSchema = v.variant("kind",[BurgundyActCommandSchema,BurgundyConfigureCommandSchema]);
 export const CarcassonneClientCommandSchema = CarcassonneActCommandSchema;
 export const ClueClientCommandSchema = ClueActCommandSchema;
 export type AzulClientCommand = v.InferOutput<typeof AzulClientCommandSchema>;
 export type VegasClientCommand = v.InferOutput<typeof VegasClientCommandSchema>;
+export type BurgundyClientCommand = v.InferOutput<typeof BurgundyClientCommandSchema>;
 export type CarcassonneClientCommand = v.InferOutput<typeof CarcassonneClientCommandSchema>;
 export type ClueClientCommand = v.InferOutput<typeof ClueClientCommandSchema>;
 export type LostCitiesClientCommand = v.InferOutput<typeof LostCitiesClientCommandSchema>;

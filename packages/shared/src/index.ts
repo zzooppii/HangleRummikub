@@ -78,3 +78,13 @@ export * from "./games/carcassonne/geometry.js";
 export * from "./games/carcassonne/contracts.js";
 
 export * from "./games/train/catalog.js";
+
+export * from "./games/burgundy/actions.js";
+export * from "./games/burgundy/catalog.js";
+export * from "./games/burgundy/boards.js";
+export * from "./games/burgundy/geometry.js";
+export * from "./games/burgundy/contracts.js";
+
+export * from "./games/burgundy/expansion-contracts.js";
+
+export * from "./games/burgundy/expansion-data.js";

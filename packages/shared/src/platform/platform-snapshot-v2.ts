@@ -1,3 +1,5 @@
+import { BurgundySettingsSchema } from "../games/burgundy/actions.js";
+import { BurgundyPlayingProjectionSchema, BurgundyFinishedProjectionSchema, burgundyProjectionIsConsistent } from "../games/burgundy/contracts.js";
 import { TrainPlayingProjectionSchema, TrainFinishedProjectionSchema, trainProjectionIsConsistent } from "../games/train/contracts.js";
 import { CenturyPlayingProjectionSchema, CenturyFinishedProjectionSchema, centuryProjectionIsConsistent } from "../games/century/contracts.js";
 import { SaboteurPlayingProjectionSchema, SaboteurFinishedProjectionSchema, saboteurProjectionIsConsistent } from "../games/saboteur/contracts.js";
@@ -455,6 +457,23 @@ export const VegasLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, VegasL
 export const VegasPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, VegasPlayingPlatformSnapshotV2> = VegasPlayingRaw;
 export const VegasFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, VegasFinishedPlatformSnapshotV2> = VegasFinishedRaw;
 
+const BurgundyOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const BurgundyRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("BURGUNDY"), settings: BurgundySettingsSchema };
+const BurgundyPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(4));
+const BurgundyLobbyRaw = v.pipe(v.strictObject({ ...BurgundyOuter, room: v.strictObject({ ...BurgundyRoom, phase: v.literal("LOBBY"),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)) }), game: v.null() }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
+const BurgundyPlayingRaw = v.pipe(v.strictObject({ ...BurgundyOuter, room: v.strictObject({ ...BurgundyRoom, phase: v.literal("PLAYING"), players: BurgundyPlayers }), game: BurgundyPlayingProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => burgundyProjectionIsConsistent(s.game)));
+const BurgundyFinishedRaw = v.pipe(v.strictObject({ ...BurgundyOuter, room: v.strictObject({ ...BurgundyRoom, phase: v.literal("FINISHED"), players: BurgundyPlayers }), game: BurgundyFinishedProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => burgundyProjectionIsConsistent(s.game)));
+export type BurgundyLobbyPlatformSnapshotV2 = v.InferOutput<typeof BurgundyLobbyRaw>;
+export type BurgundyPlayingPlatformSnapshotV2 = v.InferOutput<typeof BurgundyPlayingRaw>;
+export type BurgundyFinishedPlatformSnapshotV2 = v.InferOutput<typeof BurgundyFinishedRaw>;
+export const BurgundyLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, BurgundyLobbyPlatformSnapshotV2> = BurgundyLobbyRaw;
+export const BurgundyPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, BurgundyPlayingPlatformSnapshotV2> = BurgundyPlayingRaw;
+export const BurgundyFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, BurgundyFinishedPlatformSnapshotV2> = BurgundyFinishedRaw;
+
 const CarcassonneOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
 const CarcassonneRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("CARCASSONNE") };
 const CarcassonnePlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(5));
@@ -618,6 +637,7 @@ export const LobbyPlatformSnapshotV2Schema = v.union([
   GuryongtuLobbyPlatformSnapshotV2Schema,
   AzulLobbyPlatformSnapshotV2Schema,
   VegasLobbyPlatformSnapshotV2Schema,
+  BurgundyLobbyPlatformSnapshotV2Schema,
   CarcassonneLobbyPlatformSnapshotV2Schema,
   ClueLobbyPlatformSnapshotV2Schema,
   DuetLobbyPlatformSnapshotV2Schema,
@@ -776,6 +796,7 @@ export const PlayingPlatformSnapshotV2Schema = v.union([
   GuryongtuPlayingPlatformSnapshotV2Schema,
   AzulPlayingPlatformSnapshotV2Schema,
   VegasPlayingPlatformSnapshotV2Schema,
+  BurgundyPlayingPlatformSnapshotV2Schema,
   CarcassonnePlayingPlatformSnapshotV2Schema,
   CluePlayingPlatformSnapshotV2Schema,
   DuetPlayingPlatformSnapshotV2Schema,
@@ -934,6 +955,7 @@ export const FinishedPlatformSnapshotV2Schema = v.union([
   GuryongtuFinishedPlatformSnapshotV2Schema,
   AzulFinishedPlatformSnapshotV2Schema,
   VegasFinishedPlatformSnapshotV2Schema,
+  BurgundyFinishedPlatformSnapshotV2Schema,
   CarcassonneFinishedPlatformSnapshotV2Schema,
   ClueFinishedPlatformSnapshotV2Schema,
   DuetFinishedPlatformSnapshotV2Schema,

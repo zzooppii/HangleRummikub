@@ -7,6 +7,7 @@ import { LoveLetterClientCommandSchema, type LoveLetterClientCommand } from "@ha
 import { GuryongtuClientCommandSchema, type GuryongtuClientCommand } from "@hangul-rummikub/shared";
 import { AzulClientCommandSchema, type AzulClientCommand } from "@hangul-rummikub/shared";
 import { VegasClientCommandSchema, type VegasClientCommand } from "@hangul-rummikub/shared";
+import { BurgundyClientCommandSchema, type BurgundyClientCommand } from "@hangul-rummikub/shared";
 import { CarcassonneClientCommandSchema, type CarcassonneClientCommand } from "@hangul-rummikub/shared";
 import { ClueClientCommandSchema, type ClueClientCommand } from "@hangul-rummikub/shared";
 import { DuetClientCommandSchema, type DuetClientCommand } from "@hangul-rummikub/shared";
@@ -775,6 +776,15 @@ export class RealtimeClient {
     return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {
       switch (command.kind) {
         case "vegas:act": this.#socket.emit("vegas:act", command, acknowledge); break;
+      }
+    }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
+  }
+  actBurgundy(command: BurgundyClientCommand): Promise<StateSyncWireAck> {
+    if (!parseRematch(BurgundyClientCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {
+      switch (command.kind) {
+        case "burgundy:configure": this.#socket.emit("burgundy:configure", command, acknowledge); break;
+        case "burgundy:act": this.#socket.emit("burgundy:act", command, acknowledge); break;
       }
     }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
   }
