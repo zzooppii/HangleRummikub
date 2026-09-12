@@ -43,7 +43,13 @@ for (const count of [3, 4, 8]) test(`SPYFALL ${count} clients: full questioning,
   const accuser = h.members.find(m => m.playerId !== spy)!;
   h.success(await h.call(accuser.client, "spyfall:accuse", { playerId: spy }, scope())); s = (await h.stored()).game!.state;
   const replies = await Promise.all(h.members.filter(m => m.playerId !== accuser.playerId && m.playerId !== spy).map(m => h.call(m.client, "spyfall:vote", { agree: true }, scope()))); replies.forEach(h.success);
-  const finish = parse(SpyfallFinishedPlatformSnapshotV2Schema, await h.sync()); assert.equal(finish.game.result.reason, "SPY_CAUGHT"); assert.equal(h.server.runtime.turnScheduler.scheduledCount, 0);
+  s = (await h.stored()).game!.state;
+  const spyClient = h.members.find(m => m.playerId === spy)!.client;
+  const chance = parse(SpyfallPlayingPlatformSnapshotV2Schema, await h.sync(spyClient));
+  assert.equal(chance.game.stage, "GUESS"); assert.equal(chance.game.revealedSpyId, spy);
+  assert.ok(!JSON.stringify(chance).includes('"location":'));
+  h.success(await h.call(spyClient, "spyfall:guess", { location: s.location === "HOSPITAL" ? "SCHOOL" : "HOSPITAL" }, scope()));
+  const finish = parse(SpyfallFinishedPlatformSnapshotV2Schema, await h.sync()); assert.equal(finish.game.result.reason, "GUESS_WRONG"); assert.equal(h.server.runtime.turnScheduler.scheduledCount, 0);
   const reset = h.request("room:selectGame", { gameType: "SPYFALL", gameId: s.gameId }, { expectedRoomRevision: finish.versions.roomRevision, expectedGameRevision: finish.game.gameRevision });
   const lobby = parse(SpyfallLobbyPlatformSnapshotV2Schema, h.success(await h.send(h.members[0]!.client, reset)));
   h.success(await h.send(h.members[0]!.client, reset)); assert.equal(lobby.room.roomCode, first.room.roomCode);
@@ -92,4 +98,26 @@ test("SPYFALL host configuration, incapable clients, leave cancellation and time
   const current = await h.stored();
   const left = parse(RoomLeaveAckSchema, await h.call(other.client, "room:leave", {}, { expectedRoomRevision: current.roomRevision, expectedGameRevision: current.game!.gameRevision })); assert.ok(left.ok, left.ok ? "" : left.error.code);
   const ended = parse(SpyfallFinishedPlatformSnapshotV2Schema, await h.sync()); assert.equal(ended.game.result.reason, "CANCELLED"); assert.deepEqual(ended.game.result.winnerPlayerIds, []);
+});
+
+test("SPYFALL final conviction keeps the answer private through reconnect and accepts one winning guess", async t => {
+  const h = await harness(t, 3); await h.stage("FINAL_ACCUSATION");
+  let s = (await h.stored()).game!.state;
+  const spy = h.members.find(m => m.playerId === s.spyPlayerId)!, accuser = h.members.find(m => m.playerId === s.players[s.finalIndex]!.playerId)!;
+  h.success(await h.call(accuser.client, "spyfall:accuse", { playerId: spy.playerId }, { gameId: s.gameId, phaseId: s.transitionId }));
+  s = (await h.stored()).game!.state;
+  const voter = h.members.find(m => m !== spy && m !== accuser)!;
+  h.success(await h.call(voter.client, "spyfall:vote", { agree: true }, { gameId: s.gameId, phaseId: s.transitionId }));
+  s = (await h.stored()).game!.state;
+  assert.equal(s.stage, "GUESS"); assert.equal(s.voteRounds.at(-1)?.final, true);
+  const replacement = await h.connect();
+  const resumed = parse(SpyfallPlayingPlatformSnapshotV2Schema, h.success(await h.call(replacement, "session:resume", { credential: { ...spy.credential, roomCode: h.lobby.room.roomCode }, lastSeenVersions: null })));
+  assert.equal(resumed.game.deadlineAt, s.nextTransitionAt); assert.equal(resumed.game.stage, "GUESS");
+  for (const secret of ['"location":', '"job":', '"ballots":', '"result":']) assert.ok(!JSON.stringify(resumed).includes(secret), secret);
+  const guess = h.request("spyfall:guess", { location: s.location }, { gameId: s.gameId, phaseId: s.transitionId });
+  assert.equal(h.failure(await h.send(accuser.client, guess)), "INVALID_PAYLOAD");
+  const finish = parse(SpyfallFinishedPlatformSnapshotV2Schema, h.success(await h.send(replacement, guess)));
+  assert.equal(finish.game.result.reason, "GUESS_CORRECT"); assert.deepEqual(finish.game.result.winnerPlayerIds, [spy.playerId]);
+  h.success(await h.send(replacement, guess)); assert.equal((await h.stored()).game!.gameRevision, finish.game.gameRevision);
+  assert.equal(h.server.runtime.turnScheduler.scheduledCount, 0);
 });

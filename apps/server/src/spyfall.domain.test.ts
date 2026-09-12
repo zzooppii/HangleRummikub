@@ -54,12 +54,40 @@ test("SPYFALL accusation pauses both deadlines; failed vote restores remaining a
   const strangerView = projected(first, spy); assert.equal(strangerView.phase, "PLAYING"); if (strangerView.phase === "PLAYING") assert.equal(strangerView.privateView.vote, null);
   assert.ok(!JSON.stringify(strangerView).includes('"ballots"'));
 });
-for (const wrong of [false, true]) test(`SPYFALL unanimous conviction resolves ${wrong ? "innocent" : "spy"} without a last-chance guess`, () => {
-  let s = start(), accuser = s.players[0]!.playerId, suspect = wrong ? s.players[1]!.playerId : s.spyPlayerId;
+test("SPYFALL innocent conviction still ends immediately with a spy victory", () => {
+  let s = start(); const accuser = s.players[0]!.playerId, suspect = s.players[1]!.playerId;
   s = cmd(s, accuser, "accuse", { playerId: suspect })!;
   for (const p of s.players.filter(p => p.playerId !== accuser && p.playerId !== suspect)) s = cmd(s, p.playerId, "vote", { agree: true })!;
-  assert.equal(s.phase, "FINISHED"); assert.equal(s.result?.reason, wrong ? "MISIDENTIFIED" : "SPY_CAUGHT");
-  assert.equal(cmd(s, s.spyPlayerId, "reveal"), null); assert.equal(s.result?.voteRounds[0]?.convicted, true); assert.doesNotThrow(() => projected(s, accuser));
+  assert.equal(s.phase, "FINISHED"); assert.equal(s.result?.reason, "MISIDENTIFIED");
+  assert.equal(cmd(s, s.spyPlayerId, "reveal"), null); assert.equal(s.result?.voteRounds[0]?.convicted, true);
+  assert.doesNotThrow(() => projected(s, accuser));
+});
+for (const final of [false, true]) for (const mode of ["correct", "wrong", "timeout"] as const) test(`SPYFALL ${final ? "final" : "midround"} spy conviction offers one private last guess: ${mode}`, () => {
+  let s = start(); let now = 16_001;
+  if (final) { now = s.roundDeadlineAt!; s = advanceSpyfall(s, now, id())!; }
+  const accuser = s.players[0]!.playerId, spy = s.spyPlayerId;
+  s = cmd(s, accuser, "accuse", { playerId: spy }, now)!;
+  const votePhase = s.transitionId;
+  for (const p of s.players.filter(p => p.playerId !== accuser && p.playerId !== spy)) s = cmd(s, p.playerId, "vote", { agree: true }, now)!;
+  assert.equal(s.phase, "PLAYING"); assert.equal(s.stage, "GUESS"); assert.equal(s.result, null);
+  assert.notEqual(s.transitionId, votePhase); assert.equal(s.nextTransitionAt, now + 20_000);
+  assert.equal(s.roundDeadlineAt, null); assert.equal(s.voteRounds.at(-1)?.final, final);
+  assert.equal(s.voteRounds.at(-1)?.convicted, true);
+  const wire = projected(s, spy); assert.equal(wire.phase, "PLAYING");
+  if (wire.phase === "PLAYING") { assert.equal(wire.revealedSpyId, spy); assert.equal(wire.privateView.role, "SPY"); assert.equal(wire.finalAccuserId, null); }
+  for (const secret of ['"HOSPITAL"', '"job"', '"result"', '"ballots"']) assert.ok(!JSON.stringify(wire).includes(secret), secret);
+  assert.doesNotThrow(() => projected(s, accuser));
+  assert.equal(cmd(s, accuser, "guess", { location: "HOSPITAL" }, now), null);
+  assert.equal(cmd(s, spy, "reveal", {}, now), null);
+  assert.equal(cmd(s, spy, "guess", { location: "HOSPITAL" }, s.nextTransitionAt!), null);
+  const before = structuredClone(s);
+  const end = mode === "timeout" ? advanceSpyfall(s, s.nextTransitionAt!, id())! : cmd(s, spy, "guess", { location: mode === "correct" ? "HOSPITAL" : "SCHOOL" }, now + 1)!;
+  assert.deepEqual(s, before);
+  assert.equal(end.result?.reason, mode === "correct" ? "GUESS_CORRECT" : mode === "wrong" ? "GUESS_WRONG" : "GUESS_TIMEOUT");
+  assert.deepEqual(end.result?.winnerPlayerIds, mode === "correct" ? [spy] : s.players.filter(p => p.playerId !== spy).map(p => p.playerId));
+  assert.equal(end.result?.voteRounds.at(-1)?.convicted, true);
+  assert.equal(cmd(end, spy, "guess", { location: "HOSPITAL" }, now + 2), null);
+  assert.doesNotThrow(() => projected(end, spy));
 });
 for (const mode of ["correct", "wrong", "timeout"] as const) test(`SPYFALL voluntary spy reveal and ${mode} guess`, () => {
   let s = start(); assert.equal(cmd(s, s.players[0]!.playerId, "reveal"), null);

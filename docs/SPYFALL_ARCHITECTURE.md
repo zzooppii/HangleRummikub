@@ -3,9 +3,9 @@
 [게임 규칙](SPYFALL_GAME_RULES.md), [공통 방](ROOM_GAME_SWITCH.md), [상위 아키텍처](ARCHITECTURE.md)를 따른다. SPYFALL은 기존 게임과 독립된 concrete game이다. 공통 게임 엔진/새 dependency를 추가하지 않는다.
 
 - Shared: 설정, 공개 장소 후보, 단계·명령 DTO, strict 개인별 projection 및 일관성 검사. 실제 장소 선택·스파이 식별자·직업 배정·투표 원장은 서버 전용 상태다.
-- Domain: `REVEAL → QUESTION ↔ ANSWER`; 도중 `ACCUSATION` 실패 시 같은 질문/답변과 남은 두 타이머로 복원한다. 질문 마감 후 `FINAL_ACCUSATION → ACCUSATION`을 순차 처리한다. 스파이만 흐르는 질문 단계에서 `GUESS`에 진입한다. 모든 전이는 clone candidate를 검증한 뒤 반환한다.
+- Domain: `REVEAL → QUESTION ↔ ANSWER`; 도중 `ACCUSATION` 실패 시 같은 질문/답변과 남은 두 타이머로 복원한다. 질문 마감 후 `FINAL_ACCUSATION → ACCUSATION`을 순차 처리한다. 스파이가 질문 도중 자발적으로 공개하거나, 도중/최종 투표에서 스파이를 정확히 지목하면 `GUESS`로 진입한다. 지목 성공 뒤에도 20초 동안 결과와 정답 공개를 보류하고, 정답/오답/시간 초과로 최종 승패를 결정한다. 투표 기록은 보존하고 활성 투표와 최종 지목 커서는 닫는다. 모든 전이는 clone candidate를 검증한 뒤 반환한다.
 - Application: current-primary actor, membership, room/game/phase scope, 서버 마감, 차례, 본인 투표, 최종 지목 자격을 검증한다. Room lane/UoW에서 상태와 멱등 receipt를 함께 commit한다. 동시 투표는 같은 phaseId에서 각자 제출 가능하며 다른 사람 투표의 gameRevision 증가 때문에 거부되지 않는다. 타이머는 game/phase/deadline으로 식별하고 overdue sweeper가 등록 실패를 복구한다.
-- Projection: 방장도 본인 카드만 받는다. 스파이 projection에는 선택된 location/job/다른 표가 없다. 장소 후보와 그림은 의도된 공개 콘텐츠이므로 모든 사용자에게 같은 atlas를 제공한다. GUESS에서는 자발적으로 공개된 스파이만 공개 필드로 제공한다. 결과에서 정답과 표를 공개한다.
+- Projection: 방장도 본인 카드만 받는다. 스파이 projection에는 선택된 location/job/다른 표가 없다. 장소 후보와 그림은 의도된 공개 콘텐츠이므로 모든 사용자에게 같은 atlas를 제공한다. GUESS에서는 자발적 공개 또는 투표로 확인된 스파이 식별자만 공개 필드로 제공한다. 스파이의 정답 비공개는 추측이 끝날 때까지 유지한다. 결과에서 정답과 표를 공개한다.
 - Platform: Room union, storage clone/validation, start/leave/timer/retention, registry, transport, capability와 웹 decoder/controller를 기존 방식으로 additive 연결한다. 게임 교체와 재경기는 공통 명령을 사용한다. 종료 후 60초 오프라인 방장 승계는 기존 라이어 패턴을 독립 적용한다.
 - Web: 빈티지 첩보 테이블, 개인 임무 카드, 24칸 장소 수첩, 단계별 행동. 모바일에는 개인 카드와 현재 행동을 우선 배치한다. 테이블은 좁은 화면에서 참가자 카드 그리드로 변환한다. 재접속·탭 숨김·단계 전환 시 개인 카드를 가린다. 제외 메모는 로컬이며 새 판에서 초기화한다.
 - Audio: 새 dependency 없이 Web Audio 합성. 역할 중립적인 카드 효과음, 선택, 본인 차례, 지목, 10초 경고, 승패. 사용자 제스처로 unlock하며 음량/음소거를 로컬 저장한다. 과거 snapshot·중복 revision·비활성 탭에서는 단계 효과음을 재생하지 않는다. 오디오 장치 실패는 게임을 방해하지 않는다.
@@ -21,6 +21,14 @@
 - Shared 계약 / 서버 domain·Socket.IO / Web 렌더·효과음 테스트.
 
 ## 검증
+
+2026-09-12 마지막 추측 규칙 변경:
+
+- Root `npm run typecheck`, `npm test`, `npm run build`: 통과. Shared 126 / Web 647 / Server 1,857, 총 2,630개 테스트 통과(실패·skip 0).
+- 도중/최종 지목 각각의 마지막 추측 정답·오답·시간 초과, 잘못된 시민 지목, 투표 기록 보존, 추측 전 정답 비공개, 다른 사람의 추측 거부, 마감 입력 거부, 중복 추측 방지를 검증했다. 3/4/8인 Socket.IO 진행과 최종 지목 후 재접속·추측 역전승도 통과했다.
+- 실제 Chrome에서 투표 성공 후 결과 화면을 보류하고 마지막 추측 화면을 표시하는 것을 확인했다. 스파이 새로고침 후 추측 제출과 시민 승리, 기존 자발적 추측·재경기·음소거·8인 반응형 화면도 통과했다.
+- Vite의 기존 공통 번들 500 kB 경고는 남는다(현재 JS 1,457.62 kB / gzip 409.41 kB). 브라우저는 기존 favicon 404 외 JavaScript/게임 리소스 오류가 없다.
+- `git diff --check`, 문서 상대 링크: 통과. 공개 배포는 수행하지 않았다. 이번 수정의 로컬 미리보기는 `http://localhost:4178`이다.
 
 2026-09-11 검증:
 

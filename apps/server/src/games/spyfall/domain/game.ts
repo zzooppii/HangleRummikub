@@ -93,7 +93,14 @@ function finalAccusation(s: SpyfallState, now: number, id: string): void {
 function resolveVotes(s: SpyfallState, now: number, id: string): void {
   const suspect = s.suspectId!, convicted = s.players.filter(p => p.playerId !== suspect).every(p => p.vote === true);
   s.voteRounds.push({ accuserId: s.accuserId!, suspectId: suspect, final: s.finalIndex >= 0, convicted, ballots: s.players.map(p => ({ playerId: p.playerId, agree: p.vote })) });
-  if (convicted) { finish(s, suspect === s.spyPlayerId ? "SPY_CAUGHT" : "MISIDENTIFIED", now); return; }
+  if (convicted) {
+    if (suspect !== s.spyPlayerId) { finish(s, "MISIDENTIFIED", now); return; }
+    // Keep the completed ballot record, but close voting before the spy's last guess.
+    s.accuserId = null; s.suspectId = null; s.finalIndex = -1;
+    for (const p of s.players) p.vote = null;
+    enter(s, "GUESS", now, id, 20_000);
+    return;
+  }
   s.accuserId = null; s.suspectId = null; for (const p of s.players) p.vote = null;
   if (s.finalIndex >= 0) finalAccusation(s, now, id);
   else { s.roundDeadlineAt = v.parse(ServerTimeSchema, now + s.remainingMs); timedQuestion(s, now, id, s.resumeStage, s.actionRemainingMs); }

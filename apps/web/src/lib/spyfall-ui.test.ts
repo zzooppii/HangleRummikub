@@ -54,3 +54,13 @@ test("SPYFALL audio is role-neutral, ignores duplicate/initial snapshots, and do
   const broken = new SpyfallAudio(() => { throw new Error("audio unavailable"); }); assert.doesNotThrow(() => broken.unlock());
   assert.ok(Object.values(SPYFALL_SCORE).every(score => score.every(n => n.duration < 1 && n.at < 1)));
 });
+
+test("SPYFALL last guess explains the reversal and waits to show results and play victory audio", () => {
+  const before = playing("ACCUSATION").game, chance = playing("GUESS", true);
+  chance.game.gameRevision = parse(GameRevisionSchema, before.gameRevision + 1);
+  const html = render(chance);
+  assert.match(html, /스파이의 마지막 추리/); assert.match(html, /20초 안에 장소를 한 번 맞히면 스파이 승리/);
+  assert.doesNotMatch(html, /같은 방에서 다시 하기|class="spy-result/);
+  assert.match(render(playing("GUESS")), /아직 장소를 말하지 마세요/);
+  assert.equal(spyfallTransitionCue(before, chance.game, "a"), "VOTE");
+});
