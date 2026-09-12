@@ -6,3 +6,5 @@
 @media(prefers-reduced-motion:reduce){.century-screen *{animation:none!important;transition:none!important;scroll-behavior:auto!important}.century-screen .ct-card:not(:disabled):hover{transform:none}}
 
 .century-screen h1,.century-screen h2{color:var(--ct-ink)}
+
+.ct-hand-section>details>summary{font-size:13px}
