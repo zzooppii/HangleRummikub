@@ -5,7 +5,7 @@ import * as v from "valibot";
 import {
   SUPPORTED_GAME_TYPES, PlatformSnapshotV2Schema, SessionBootstrapAckSchema,
   StateSyncWireAckSchema, RoomLeaveAckSchema, type GameType, type PlatformSnapshotV2,
-  ServerTimeSchema,
+  RequestIdSchema, ServerTimeSchema,
 } from "@hangul-rummikub/shared";
 import { createHttpServer } from "./server.js";
 import { clueReachablePaths, isClueRoom, CLUE_SUSPECTS, CLUE_WEAPONS, type ClueCard } from "@hangul-rummikub/shared";
@@ -109,4 +109,23 @@ test("CLUE socket: solved result, host succession and fresh same-room game rejec
 });
 test("CLUE socket: explicit leave cancels, then game switch preserves remaining room membership",async t=>{
   const h=await harness(t),s=await start(h);const ack=v.parse(RoomLeaveAckSchema,await h.call(h.members[1]!.client,"room:leave",{},{expectedRoomRevision:s.versions.roomRevision,expectedGameRevision:clue(s).gameRevision}));assert.ok(ack.ok);const end=await h.sync(),g=clue(end);assert.equal(g.phase,"FINISHED");if(g.phase!=="FINISHED")throw new Error();assert.equal(g.result.reason,"CANCELLED");const lobby=h.success(await h.send(h.host,h.selection(end,"NUMBER_TILE")));assert.equal(lobby.room.roomCode,s.room.roomCode);assert.equal(lobby.room.players.length,2);
+});
+
+
+test("CLUE bonus socket: one landing draw under retry, reveal actor and private state survive reconnect",async t=>{
+  const h=await harness(t);let s=await start(h);
+  const stored=await h.server.runtime.persistence.findById(s.room.roomId);assert.ok(stored?.gameType==='CLUE'&&stored.game);
+  // Arrange a deterministic destination and next card; all mutations under test use real sockets.
+  const state=stored.game.state,index=state.bonus.deck.indexOf('PUBLIC_REVEAL');state.bonus.deck.splice(index,1);state.bonus.deck.push('PUBLIC_REVEAL');state.tokens[0]!.location='C:10:15';state.phase='MOVE';state.die=6;
+  const setup=await h.server.runtime.persistence.commit({roomMutation:{kind:'REPLACE',candidate:{...stored,game:{...stored.game,state}},expectedRoomRevision:stored.roomRevision,expectedStorageRevision:stored.storageRevision},sessionMutation:{kind:'NONE'},idempotency:{scopeKey:'clue-bonus-fixture',requestId:v.parse(RequestIdSchema,'setup-bonus'),payloadFingerprint:'setup',terminalResult:{ok:true},createdAt:state.startedAt}});assert.equal(setup.status,'COMMITTED');
+  s=await h.sync();const move=action(h,s,{type:'MOVE',destination:'C:11:15'});
+  s=h.success(await h.send(h.host,move));assert.equal(clue(s).phase,'BONUS');assert.equal(clue(s).bonus.deckCount,16);
+  h.success(await h.send(h.host,move));assert.equal(clue(await h.sync()).bonus.deckCount,16);
+  const target=h.members[1]!;s=h.success(await h.send(h.host,action(h,s,{type:'BONUS_TARGET',playerId:target.playerId})));
+  const view=clue(await h.sync(target.client)),card=view.privateState.hand[0]!;
+  assert.equal(h.failure(await h.send(h.host,action(h,s,{type:'BONUS_REVEAL',cardId:card.cardId}))),'NOT_YOUR_TURN');
+  assert.equal(h.failure(await h.send(target.client,action(h,s,{type:'BONUS_REVEAL',cardId:'unknown'}))),'RULE_VIOLATION');
+  const replacement=await h.connect();const resumed=h.success(await h.call(replacement,'session:resume',{credential:{...target.credential,roomCode:s.room.roomCode},lastSeenVersions:null}));assert.deepEqual(clue(resumed),view);
+  h.success(await h.send(replacement,action(h,resumed,{type:'BONUS_REVEAL',cardId:card.cardId})));
+  const observed=clue(await h.sync(h.members[2]!.client));assert.equal(observed.phase,'END_TURN');assert.deepEqual(observed.bonus.publicEvidence,[{playerId:target.playerId,card}]);for(const other of view.privateState.hand.slice(1))assert.equal(JSON.stringify(observed).includes(other.cardId),false);
 });

@@ -1066,3 +1066,6 @@ Dedicated Tile이 있는 ㅐ, ㅔ, ㅒ, ㅖ는 arbitrary component 합성으로 
 사용자가 일반판/확장판의 방장 선택을 요청했다. 대기실에서 5색 60장 또는 6색 72장을 선택하며 손패 8장과 3라운드 규칙은 동일하다. 모드는 시작 후 고정하고 재접속·라운드 전환·동일 게임 재시작에 유지한다. 근거와 상세 정책은 [LOST_CITIES_GAME_RULES.md](./LOST_CITIES_GAME_RULES.md)에 기록한다.
 
 사보타지 시간 정책 추가 확정: 행동·금 선택 30초, 결과 확인 최대 60초(전원 확인 시 즉시 진행), 시간 초과 시 서버 자동 버리기/보충·금 선택·다음 라운드 진행. 사용자 후속 승인 근거와 상세 경계는 [SABOTEUR_GAME_RULES.md](./SABOTEUR_GAME_RULES.md)를 따른다.
+
+
+2026-09-12 클루 보너스 저택판 CONFIRMED: 사용자 보드/카드 사진과 공개 카드 2장 요청에 따라 [CLUE_GAME_RULES.md](./CLUE_GAME_RULES.md)의 새 지도와 6종·17장 보너스를 적용한다. 루미큐브 TO_BE_CONFIRMED 항목은 변경하지 않는다.

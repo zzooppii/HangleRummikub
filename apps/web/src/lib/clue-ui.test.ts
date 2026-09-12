@@ -3,7 +3,7 @@ import test from "node:test";
 import {createElement} from "react";
 import {renderToStaticMarkup} from "react-dom/server";
 import {parse,safeParse} from "valibot";
-import {CLUE_CARD_KEYS,CLUE_SUSPECTS,CLUE_WEAPONS,CLUE_ROOMS,CLUE_STARTS,ClueLobbyPlatformSnapshotV2Schema,CluePlayingPlatformSnapshotV2Schema,ClueFinishedPlatformSnapshotV2Schema,ClueClientCommandSchema} from "@hangul-rummikub/shared";
+import {ClueCardSchema,CLUE_CARD_KEYS,CLUE_SUSPECTS,CLUE_WEAPONS,CLUE_ROOMS,CLUE_STARTS,ClueLobbyPlatformSnapshotV2Schema,CluePlayingPlatformSnapshotV2Schema,ClueFinishedPlatformSnapshotV2Schema,ClueClientCommandSchema} from "@hangul-rummikub/shared";
 import {ClueScreen} from "../features/clue/ClueScreen.js";
 import {clueControls,clueKnownOwner,clueNoteStorageKey,parseClueNotes} from "../features/clue/ui.js";
 import {decodeWebSnapshot,type ClueWebSnapshot} from "./snapshot-wire-decoder.js";
@@ -13,13 +13,13 @@ const players=[{playerId:"a",nickname:"하비",isHost:true,connectionStatus:"CON
 const solution={suspect:"PEACOCK",weapon:"REVOLVER",room:"STUDY"};
 const hands=players.map((p,i)=>({playerId:p.playerId,hand:CLUE_CARD_KEYS.filter(k=>![solution.suspect,solution.weapon,solution.room].includes(k)).filter((_,j)=>j%3===i).map(key=>({key,cardId:"fixture-"+key}))}));
 function lobby(){return parse(ClueLobbyPlatformSnapshotV2Schema,{snapshotVersion:2,versions:{roomRevision:1,presenceVersion:1},serverTime:1000,self:{playerId:"a"},room:{roomId:"clue-room",roomCode:"ABCDEF",gameType:"CLUE",phase:"LOBBY",players},game:null});}
-function playing(){const l=lobby();return parse(CluePlayingPlatformSnapshotV2Schema,{...l,room:{...l.room,phase:"PLAYING"},game:{gameType:"CLUE",gameId:"clue-game",gameRevision:0,rulesVersion:"clue-classic-manor-v1",phase:"TURN_START",turnId:"turn-1",turnPlayerId:"a",turnNumber:1,die:null,suggestion:null,history:[],playerStates:players.map((p,i)=>({playerId:p.playerId,suspect:CLUE_SUSPECTS[i],eliminated:false,summoned:false,cardCount:6})),tokens:CLUE_SUSPECTS.map(suspect=>({suspect,location:CLUE_STARTS[suspect]})),weapons:CLUE_WEAPONS.map((weapon,i)=>({weapon,room:CLUE_ROOMS[i]})),privateState:{playerId:"a",hand:hands[0]!.hand,evidence:[],caseFile:null}}});}
+function playing(){const l=lobby();return parse(CluePlayingPlatformSnapshotV2Schema,{...l,room:{...l.room,phase:"PLAYING"},game:{gameType:"CLUE",gameId:"clue-game",gameRevision:0,rulesVersion:"clue-bonus-manor-v2",phase:"TURN_START",turnId:"turn-1",turnPlayerId:"a",turnNumber:1,die:null,suggestion:null,history:[],playerStates:players.map((p,i)=>({playerId:p.playerId,suspect:CLUE_SUSPECTS[i],eliminated:false,summoned:false,cardCount:6})),tokens:CLUE_SUSPECTS.map(suspect=>({suspect,location:CLUE_STARTS[suspect]})),weapons:CLUE_WEAPONS.map((weapon,i)=>({weapon,room:CLUE_ROOMS[i]})),bonus:{deckCount:17,discardCount:0,pending:null,extraTurn:false,peekPlayerIds:[],publicEvidence:[],justDrewPlusSix:false},privateState:{bonusHand:[],playerId:"a",hand:hands[0]!.hand,evidence:[],caseFile:null}}});}
 function render(snapshot:ClueWebSnapshot){return renderToStaticMarkup(createElement(ClueScreen,{snapshot,connected:true,pending:false,error:null,connectionLabel:"서버 연결됨",onCommand:async()=>{},onRematch(){},onStart(){},onLeave(){},onCopy(){}}));}
 test("Clue UI: lobby, playing and finished use concrete renderer and original illustrated assets",()=>{
   const l=lobby(),p=playing(),{phase:_phase,turnId:_turn,...base}=p.game;
   const f=parse(ClueFinishedPlatformSnapshotV2Schema,{...p,room:{...p.room,phase:"FINISHED"},game:{...base,phase:"FINISHED",privateState:{...base.privateState,caseFile:solution},solution,result:{reason:"SOLVED",winnerPlayerIds:["a"]},revealedHands:hands}});
   for(const s of [l,p,f]){const d=decodeWebSnapshot(s);assert.equal(d.kind,"COMPATIBLE");if(d.kind!=="COMPATIBLE")throw new Error();assert.equal(resolveRoomSnapshotView(d.value).kind,"CLUE");assert.match(render(s),/클루/);}
-  assert.equal(getGameStartControl(l,false).canStart,true);assert.match(render(l),/저택에 입장하기/);const html=render(p);assert.match(html,/\/images\/clue\/rooms.webp/);assert.match(html,/\/images\/clue\/suspects.webp/);assert.match(html,/\/images\/clue\/objects.webp/);assert.match(html,/주사위 굴리기/);assert.match(render(f),/하비님이 사건을 해결했습니다/);
+  assert.equal(getGameStartControl(l,false).canStart,true);assert.match(render(l),/저택에 입장하기/);const html=render(p);assert.match(html,/\/images\/clue\/rooms-bonus.webp/);assert.match(html,/\/images\/clue\/suspects.webp/);assert.match(html,/\/images\/clue\/objects.webp/);assert.match(html,/주사위 굴리기/);assert.match(render(f),/하비님이 사건을 해결했습니다/);
 });
 test("Clue UI: turn owner differs from responder, eliminated player can respond and only selected hand matches",()=>{
   const g=playing().game;assert.equal(clueControls(g,"a").roll,true);assert.equal(clueControls(g,"b").roll,false);
@@ -36,4 +36,17 @@ test("Clue DTO: hidden fields, wrong viewer, duplicate hands, forged dice and un
   const s=playing(),g=s.game;
   for(const bad of [{...g,solution},{...g,privateState:{...g.privateState,playerId:"b"}},{...g,privateState:{...g.privateState,caseFile:solution}},{...g,privateState:{...g.privateState,hand:Array(6).fill(g.privateState.hand[0])}},{...g,privateState:{...g.privateState,evidence:[{suggestionId:1,fromPlayerId:"b",toPlayerId:"c",card:hands[1]!.hand[0]}]}}])assert.equal(safeParse(CluePlayingPlatformSnapshotV2Schema,{...s,game:bad}).success,false);
   const c={kind:"clue:act",protocolVersion:1,requestId:"req",gameId:"game",expectedGameRevision:0,turnId:"turn",payload:{type:"ROLL"}};assert.equal(safeParse(ClueClientCommandSchema,c).success,true);for(const bad of [{...c,payload:{type:"ROLL",die:6}},{...c,actorPlayerId:"a"},{...c,turnId:undefined},{...c,payload:{type:"MOVE",destination:"C:99:0"}}])assert.equal(safeParse(ClueClientCommandSchema,bad).success,false);
+});
+
+test('Clue bonus UI: question cells, six-card guide and held cards render with phase-specific controls',()=>{
+  const s=playing(),g=s.game;g.privateState.bonusHand=['PLUS_SIX','PEEK','EXTRA_TURN'];g.bonus.deckCount=14;
+  const html=render(s);assert.equal((html.match(/cl-question/g)??[]).length,6);assert.match(html,/내 보관 카드 3장 펼치기/);assert.match(html,/총 17장/);
+  assert.equal(clueControls(g,'a').plusSix,false);assert.equal(clueControls(g,'a').extraTurn,true);
+  g.phase='MOVE';g.die=6;assert.equal(clueControls(g,'a').plusSix,true);assert.equal(clueControls(g,'b').plusSix,false);
+  g.phase='BONUS';g.bonus.pending={kind:'EXTRA_SUGGEST',targetPlayerId:null};assert.equal(clueControls(g,'a').bonusSuggest,true);assert.equal(clueControls(g,'a').accuse,false);assert.equal(clueControls(g,'a').extraTurn,false);assert.match(render(s),/추리할 장소 고르기/);
+});
+test('Clue bonus DTO: public facts update notebook, malformed bonus stages and deck leaks fail closed',()=>{
+  const s=playing(),g=s.game,owner=g.playerStates[1]!.playerId;
+  const foreign=hands[1]!.hand[0]!;g.bonus.publicEvidence=[{playerId:owner,card:parse(ClueCardSchema,foreign)}];assert.equal(clueKnownOwner(g,foreign.key),owner);
+  for(const bonus of [{...g.bonus,deck:['PEEK']},{...g.bonus,deckCount:18},{...g.bonus,pending:{kind:'TELEPORT',targetPlayerId:null}},{...g.bonus,peekPlayerIds:[owner]}])assert.equal(safeParse(CluePlayingPlatformSnapshotV2Schema,{...s,game:{...g,bonus}}).success,false);
 });

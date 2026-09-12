@@ -5,10 +5,14 @@ export function clueControls(g:ClueProjection,viewer:string){
   const mine=g.phase!=="FINISHED"&&g.turnPlayerId===viewer&&!player?.eliminated;
   const paths=clueReachablePaths(location,g.phase==="MOVE"?g.die??0:6,g.tokens.filter(t=>t.suspect!==player?.suspect).map(t=>t.location));
   const passage=isClueRoom(location)?CLUE_PASSAGES[location]:undefined;
-  return {location,paths,roll:mine&&g.phase==="TURN_START",move:mine&&g.phase==="MOVE",passage:mine&&g.phase==="TURN_START"?passage:undefined,
+  const free=mine&&g.phase!=="BONUS"&&g.phase!=="PEEK"&&g.phase!=="RESPOND";
+  return {bonusSuggest:mine&&g.phase==="BONUS"&&g.bonus.pending?.kind==="EXTRA_SUGGEST",
+    plusSix:free&&(g.phase==="MOVE"&&(g.die??0)<=18||g.phase==="END_TURN"&&g.bonus.justDrewPlusSix),
+    extraTurn:free&&!g.bonus.extraTurn,peek:g.phase==="PEEK"&&g.bonus.peekPlayerIds[0]===viewer,
+    location,paths,roll:mine&&g.phase==="TURN_START",move:mine&&g.phase==="MOVE",passage:mine&&g.phase==="TURN_START"?passage:undefined,
     suggest:mine&&isClueRoom(location)&&(g.phase==="SUGGEST"||g.phase==="TURN_START"&&Boolean(player?.summoned)),
     respond:g.phase==="RESPOND"&&g.suggestion?.responderPlayerId===viewer,
-    accuse:mine&&g.phase!=="RESPOND",end:mine&&(g.phase==="SUGGEST"||g.phase==="END_TURN"||(g.phase==="MOVE"||g.phase==="TURN_START"&&!passage)&&paths.size===0)};
+    accuse:free,end:mine&&(g.phase==="SUGGEST"||g.phase==="END_TURN"||(g.phase==="MOVE"||g.phase==="TURN_START"&&!passage)&&paths.size===0)};
 }
 export type ClueNoteMark="?"|"×"|"✓";
 export type ClueNotes={marks:Record<string,ClueNoteMark>;text:string};
@@ -20,6 +24,7 @@ export function parseClueNotes(raw:unknown,playerIds:readonly string[]):ClueNote
 }
 export function clueKnownOwner(g:ClueProjection,key:ClueCardKey):string|null {
   if(g.privateState.hand.some(c=>c.key===key))return g.privateState.playerId;
+  const publicOwner=g.bonus.publicEvidence.find(e=>e.card.key===key)?.playerId;if(publicOwner)return publicOwner;
   return g.privateState.evidence.find(e=>e.toPlayerId===g.privateState.playerId&&e.card.key===key)?.fromPlayerId??null;
 }
 export function clueNoteStorageKey(gameId:string,playerId:string):string{return "clue-notes:v1:"+gameId+":"+playerId;}

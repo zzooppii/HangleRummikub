@@ -10,3 +10,38 @@
 @media(max-width:760px){.cl-layout{display:grid;grid-template-columns:minmax(0,1fr)}.cl-sidebar{display:contents}.cl-action-panel{grid-row:1}.cl-map-column,.cl-notebook-panel{grid-row:2}.cl-selection-pair{max-width:250px;margin-inline:auto}.cl-selection-pair .cl-unknown-card{max-width:100px}.cl-mobile-confirm{position:fixed;bottom:0;left:0;right:0;z-index:12;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:#183c30f5;border-top:1px solid #cbb477;box-shadow:0 -5px 20px #06181166;font-size:12px}.cl-mobile-confirm button{font-size:12px}.cl-game:has(.cl-mobile-confirm){padding-bottom:95px}.cl-weapon-piece{width:16px;height:16px}}
 
 .cl-modal h2,.cl-lobby h2,.cl-result h2{word-break:keep-all}
+
+/* Bonus edition: central tiled passage and six marked destinations. */
+.cl-board{background:radial-gradient(ellipse at 50% 0,#274137,#101e1b 72%)}
+.clue-screen .cl-cell{background:linear-gradient(135deg,#c2cbca,#82999c);border-color:#61797c;box-shadow:inset 0 0 0 1px #dbe6e533}
+.clue-screen .cl-bonus-cell{background:radial-gradient(circle,#f7dfbd,#c4b9a2);border-color:#a96b55}
+.cl-question{color:#b12e3c;font:bold clamp(12px,2vw,28px)/1 Georgia,serif;text-shadow:0 1px #fff2c7;display:block}
+.cl-bonus-legend{color:#f2bd99}.cl-envelope{left:44%;top:52%;width:16%;height:12%;gap:2px}.cl-envelope>span,.cl-envelope>small{display:none}.cl-envelope-paper{height:50%}.cl-envelope>b{font-size:clamp(6px,.8vw,11px)}
+.cl-bonus-inventory{margin-top:20px;padding-top:16px;border-top:1px solid #ad956b66}.cl-bonus-inventory h3{font-size:16px;margin:0}.cl-bonus-inventory summary{cursor:pointer;font-size:12px;color:#ddc494;padding-top:14px}
+.cl-bonus-card{position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:center;text-align:center;padding:16px 12px;background:radial-gradient(ellipse at 50% 35%,#682b38,#291820 76%);border:1px solid #d4aa6b;border-radius:10px;box-shadow:inset 0 0 0 4px #321e27,inset 0 0 0 5px #a178494f,0 6px 12px #08171255;color:#f4e6cd;min-width:0}
+.cl-bonus-card>.cl-eyebrow{font-size:7px;letter-spacing:1.5px;color:#c9a877}.cl-bonus-symbol{display:flex;align-items:center;justify-content:center;width:62px;height:62px;margin:15px 0;border:1px solid #be965666;border-radius:50%;box-shadow:0 0 0 5px #bd914b0d;color:#eac486;font:36px Georgia,serif}
+.cl-bonus-card>strong{font-size:15px;line-height:1.5;word-break:keep-all}.cl-bonus-card>p{color:#d7c3af;font-size:11px;line-height:1.7;margin:10px 0 14px}.cl-bonus-card>small{margin-top:auto;font-size:10px;color:#e2bd7d;border-top:1px solid #b78b4744;padding-top:8px;width:100%}
+.cl-bonus-hand,.cl-bonus-catalog{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}.cl-bonus-hand>div{display:flex;flex-direction:column;gap:8px}.cl-bonus-hand .cl-bonus-card{flex:1}.cl-bonus-count,.cl-bonus-catalog small{text-align:center;font-size:11px;color:#d9c9aa}.cl-bonus-resolution{margin:15px 0}.cl-bonus-resolution>.cl-bonus-card{max-width:265px;margin:0 auto 18px;animation:cl-card-reveal .3s ease-out}
+.cl-bonus-rooms{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.cl-bonus-rooms>button{padding:0;border:0;background:none}.cl-bonus-targets{display:flex;flex-wrap:wrap;gap:8px}.cl-bonus-targets>button{flex:1 1 80px;font-size:12px}.cl-bonus-targets .cl-art{width:50px;margin:0 auto 8px;border-radius:50%}.cl-bonus-resolution .cl-response-cards{flex-wrap:wrap}.cl-bonus-resolution .cl-response-cards>button{flex:1 1 70px}.cl-peek-prompt{border:1px solid #b79763;padding:14px;border-radius:8px;margin-top:16px;background:#514228}.cl-peek-prompt h3{margin:0;font-size:16px}.cl-peek-prompt button{margin:6px 5px 0 0}
+@media(max-width:760px){.cl-question{font-size:clamp(12px,3.4vw,24px)}.cl-bonus-card{padding:14px 10px}.cl-bonus-card>strong{font-size:13px}.cl-bonus-symbol{width:48px;height:48px;font-size:30px;margin:12px 0}.cl-bonus-card>p{font-size:11px}.cl-bonus-hand{gap:8px}.cl-envelope>b{font-size:7px}}
+.cl-held-bonus>summary{border:1px solid #b79a6266;padding:12px;border-radius:7px;background:#163b2d}.cl-bonus-notice{border-left:3px solid #d4a66b;padding:9px 12px;background:#9d78441f;color:#f1d4a3!important}
+.cl-map-stairs,.cl-map-bedroom-wing{position:absolute;z-index:1;border:2px solid #a88457;pointer-events:none}.cl-map-stairs{background:repeating-linear-gradient(0deg,#743c38 0,#743c38 10%,#bb6b59 11%,#bb6b59 15%,#4c2828 16%);display:flex;align-items:center;justify-content:center}.cl-map-stairs span{color:#fff1d8;font-size:11px;text-shadow:0 1px 3px #241617;background:#42272399;padding:2px 5px}.cl-map-bedroom-wing{background:linear-gradient(90deg,#60492f,#967349,#493a29)}
+
+.cl-map-wall{position:absolute;z-index:5;background:#664a30;border-block:1px solid #dab782;pointer-events:none;box-shadow:0 1px 3px #101b16}.cl-room-link{box-shadow:0 0 0 1px #574027,0 0 5px #f5cd6b99}
+
+/* Worn octagonal stone slabs; the full square remains the pointer target. */
+.clue-screen .cl-cell,.clue-screen .cl-cell.cl-bonus-cell,.clue-screen .cl-cell.cl-reachable,.clue-screen .cl-cell.cl-path{background-color:#1a1e22;background-image:none;border:0;border-radius:0;box-shadow:none;isolation:isolate;overflow:visible}
+.clue-screen .cl-cell::before{content:"";position:absolute;inset:1px;z-index:0;pointer-events:none;clip-path:polygon(13% 0,87% 0,100% 13%,100% 87%,87% 100%,13% 100%,0 87%,0 13%);background-color:#55545b;background-image:linear-gradient(135deg,var(--cl-stone-wash,#c9c4da20),#080d164d),url("/images/clue/corridor-stone.webp");background-size:100% 100%,400% 400%;background-position:inherit;box-shadow:inset 1px 1px 1px #dbd6d13d,inset -1px -2px 2px #070c149c;filter:brightness(.94);transition:filter .15s,box-shadow .15s}
+.clue-screen .cl-cell:nth-child(4n)::before{filter:brightness(.83)}
+.clue-screen .cl-cell:nth-child(7n)::before{filter:brightness(1.06)}
+.clue-screen .cl-cell.cl-reachable{--cl-stone-wash:#b3d29866}
+.clue-screen .cl-cell.cl-reachable::before{filter:brightness(1.17);box-shadow:inset 0 0 0 1.5px #c3d8a7b3,inset 0 0 8px #bcd09933}
+.clue-screen .cl-cell.cl-path{--cl-stone-wash:#efc15aaa}
+.clue-screen .cl-cell.cl-path::before{filter:brightness(1.2);box-shadow:inset 0 0 0 2px #f5cd79}
+.clue-screen .cl-cell[aria-pressed=true]::before{box-shadow:inset 0 0 0 3px #ffe4a1;filter:brightness(1.3)}
+.clue-screen .cl-cell:focus-visible{outline:2px solid #ffe4a1;outline-offset:1px;z-index:6}
+.clue-screen .cl-cell.cl-reachable:hover::before{filter:brightness(1.35)}
+.clue-screen .cl-cell .cl-question{position:relative;z-index:1;color:#ed5359;text-shadow:0 1px 1px #25090d,0 0 3px #190b12;font-weight:900;transform:rotate(-6deg)}
+.clue-screen .cl-cell.cl-path .cl-question{color:#9d2533;text-shadow:0 1px #f9daa4}
+.cl-board-legend i{background:#53604e;border:1px solid #c3d8a7}
+@media(prefers-reduced-motion:reduce){.clue-screen .cl-cell::before{transition:none}}

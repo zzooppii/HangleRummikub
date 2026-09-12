@@ -6,6 +6,7 @@ export function projectClue(game:ClueStoredGame,viewer:PlayerId){
   const base={gameType:"CLUE",gameId:game.gameId,gameRevision:game.gameRevision,rulesVersion:s.rulesVersion,
     playerStates:s.players.map(({playerId,suspect,eliminated,summoned,cardCount})=>({playerId,suspect,eliminated,summoned,cardCount})),tokens:s.tokens,weapons:s.weapons,
     turnPlayerId:s.players[s.turnIndex]!.playerId,turnNumber:s.turnNumber,die:s.die,suggestion:s.suggestion,history:s.history,
-    privateState:{playerId:viewer,hand:me.hand,evidence:s.evidence.filter(e=>e.fromPlayerId===viewer||e.toPlayerId===viewer),caseFile:me.eliminated||s.phase==="FINISHED"?s.solution:null}};
+    bonus:{deckCount:s.bonus.deck.length,discardCount:s.bonus.discard.length,pending:s.bonus.pending,extraTurn:s.bonus.extraTurn,peekPlayerIds:s.bonus.peekPlayerIds,publicEvidence:s.bonus.publicEvidence,justDrewPlusSix:s.bonus.justDrewPlusSix},
+    privateState:{bonusHand:me.bonusHand,playerId:viewer,hand:me.hand,evidence:s.evidence.filter(e=>e.fromPlayerId===viewer||e.toPlayerId===viewer),caseFile:me.eliminated||s.phase==="FINISHED"?s.solution:null}};
   return s.phase==="FINISHED"?parse(ClueFinishedProjectionSchema,{...base,phase:s.phase,result:s.result,solution:s.solution,revealedHands:s.players.map(p=>({playerId:p.playerId,hand:p.hand}))}):parse(CluePlayingProjectionSchema,{...base,phase:s.phase,turnId:s.transitionId});
 }

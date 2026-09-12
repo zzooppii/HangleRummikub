@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import type { ClueProjection } from "@hangul-rummikub/shared";
 
 type ClueStrike = Readonly<{ frequency: number; at: number; duration: number; type: OscillatorType }>;
-export type ClueCue = "SELECT" | "MOVE" | "ROLL" | "SUGGEST" | "RESPOND" | "ACCUSE" | "TURN" | "WIN" | "END" | "ERROR";
+export type ClueCue = "BONUS" | "SELECT" | "MOVE" | "ROLL" | "SUGGEST" | "RESPOND" | "ACCUSE" | "TURN" | "WIN" | "END" | "ERROR";
 
 const note = (frequency: number, at = 0, duration = 0.1, type: OscillatorType = "sine"): ClueStrike => ({ frequency, at, duration, type });
 
 export const CLUE_CUE_SCORE: Readonly<Record<ClueCue, readonly ClueStrike[]>> = {
+  BONUS: [note(523,0,.12,"triangle"),note(784,.12,.15),note(1047,.25,.25,"triangle")],
   SELECT: [note(540, 0, 0.045, "triangle")],
   MOVE: [note(430), note(600, 0.045)],
   ROLL: [note(320, 0, 0.08), note(420, 0.08, 0.08, "triangle"), note(530, 0.15, 0.1)],
@@ -36,7 +37,9 @@ export function clueTransitionCues(previous: ClueProjection | null, next: CluePr
 
   const nextLast = next.history.at(-1);
   if (nextLast && next.history.length > previous.history.length) {
-    if (nextLast.type === "ROLL") cues.push("ROLL");
+    if (nextLast.type === "BONUS_DRAW" || nextLast.type === "BONUS_USE") cues.push("BONUS");
+    else if (nextLast.type === "PUBLIC_REVEAL") cues.push("RESPOND");
+    else if (nextLast.type === "ROLL") cues.push("ROLL");
     else if (nextLast.type === "MOVE") cues.push("MOVE");
     else if (nextLast.type === "SUGGEST") cues.push("SUGGEST");
     else if (nextLast.type === "ACCUSE") cues.push(nextLast.correct ? "WIN" : "END");
