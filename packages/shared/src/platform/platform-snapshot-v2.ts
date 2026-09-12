@@ -1,3 +1,4 @@
+import { TrainPlayingProjectionSchema, TrainFinishedProjectionSchema, trainProjectionIsConsistent } from "../games/train/contracts.js";
 import { CenturyPlayingProjectionSchema, CenturyFinishedProjectionSchema, centuryProjectionIsConsistent } from "../games/century/contracts.js";
 import { SaboteurPlayingProjectionSchema, SaboteurFinishedProjectionSchema, saboteurProjectionIsConsistent } from "../games/saboteur/contracts.js";
 import { ISLAND_RESOURCES } from "../games/island/actions.js";
@@ -340,6 +341,22 @@ export const SaboteurLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, Sab
 export const SaboteurPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, SaboteurPlayingPlatformSnapshotV2> = SaboteurPlayingRaw;
 export const SaboteurFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, SaboteurFinishedPlatformSnapshotV2> = SaboteurFinishedRaw;
 
+const TrainOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const TrainRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("TRAIN") };
+const TrainPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(5));
+const TrainLobbyRaw = v.pipe(v.strictObject({ ...TrainOuter, room: v.strictObject({ ...TrainRoom, phase: v.literal("LOBBY"),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)) }), game: v.null() }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
+const TrainPlayingRaw = v.pipe(v.strictObject({ ...TrainOuter, room: v.strictObject({ ...TrainRoom, phase: v.literal("PLAYING"), players: TrainPlayers }), game: TrainPlayingProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.hand.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.handCount), v.check(s => trainProjectionIsConsistent(s.game)));
+const TrainFinishedRaw = v.pipe(v.strictObject({ ...TrainOuter, room: v.strictObject({ ...TrainRoom, phase: v.literal("FINISHED"), players: TrainPlayers }), game: TrainFinishedProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.hand.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.handCount), v.check(s => trainProjectionIsConsistent(s.game)));
+export type TrainLobbyPlatformSnapshotV2 = v.InferOutput<typeof TrainLobbyRaw>;
+export type TrainPlayingPlatformSnapshotV2 = v.InferOutput<typeof TrainPlayingRaw>;
+export type TrainFinishedPlatformSnapshotV2 = v.InferOutput<typeof TrainFinishedRaw>;
+export const TrainLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, TrainLobbyPlatformSnapshotV2> = TrainLobbyRaw;
+export const TrainPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, TrainPlayingPlatformSnapshotV2> = TrainPlayingRaw;
+export const TrainFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, TrainFinishedPlatformSnapshotV2> = TrainFinishedRaw;
 const CenturyOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
 const CenturyRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("CENTURY") };
 const CenturyPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(2), v.maxLength(5));
@@ -594,6 +611,7 @@ export const SneakyFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, Sn
 export const LobbyPlatformSnapshotV2Schema = v.union([
   IslandLobbyPlatformSnapshotV2Schema,
   SplendorLobbyPlatformSnapshotV2Schema,
+  TrainLobbyPlatformSnapshotV2Schema,
   CenturyLobbyPlatformSnapshotV2Schema,
   JaipurLobbyPlatformSnapshotV2Schema,
   LoveLetterLobbyPlatformSnapshotV2Schema,
@@ -751,6 +769,7 @@ export type GemCardPlayingPlatformSnapshotV2 = v.InferOutput<
 export const PlayingPlatformSnapshotV2Schema = v.union([
   IslandPlayingPlatformSnapshotV2Schema,
   SplendorPlayingPlatformSnapshotV2Schema,
+  TrainPlayingPlatformSnapshotV2Schema,
   CenturyPlayingPlatformSnapshotV2Schema,
   JaipurPlayingPlatformSnapshotV2Schema,
   LoveLetterPlayingPlatformSnapshotV2Schema,
@@ -908,6 +927,7 @@ export type GemCardFinishedPlatformSnapshotV2 = v.InferOutput<
 export const FinishedPlatformSnapshotV2Schema = v.union([
   IslandFinishedPlatformSnapshotV2Schema,
   SplendorFinishedPlatformSnapshotV2Schema,
+  TrainFinishedPlatformSnapshotV2Schema,
   CenturyFinishedPlatformSnapshotV2Schema,
   JaipurFinishedPlatformSnapshotV2Schema,
   LoveLetterFinishedPlatformSnapshotV2Schema,

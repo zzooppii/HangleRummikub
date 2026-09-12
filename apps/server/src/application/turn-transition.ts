@@ -1,3 +1,4 @@
+import type { TrainStoredGame } from "../games/train/compatibility/adapter.js";
 import type { CenturyStoredGame } from "../games/century/compatibility/adapter.js";
 import type { SplendorStoredGame } from "../games/splendor/compatibility/adapter.js";
 import type { JaipurStoredGame } from "../games/jaipur/compatibility/adapter.js";
@@ -87,10 +88,11 @@ export function createNextTurn(
 
 export function toScheduledTurnDeadline(
   roomId: RoomId,
-  game: CenturyStoredGame | PlayingGameState | PlayingNumberTileGameState | PlayingGemGameState | CityRoleStoredGame | DrawRelayStoredGame | SneakyLunchStoredGame | WolfStoredGame | LiarStoredGame | SpyfallStoredGame | DuetStoredGame | JaipurStoredGame | LoveLetterStoredGame | GuryongtuStoredGame | AzulStoredGame | VegasStoredGame | CarcassonneStoredGame | ClueStoredGame | SaboteurStoredGame | LostCitiesStoredGame | SplendorStoredGame | HalliStoredGame | IslandStoredGame,
+  game: TrainStoredGame | CenturyStoredGame | PlayingGameState | PlayingNumberTileGameState | PlayingGemGameState | CityRoleStoredGame | DrawRelayStoredGame | SneakyLunchStoredGame | WolfStoredGame | LiarStoredGame | SpyfallStoredGame | DuetStoredGame | JaipurStoredGame | LoveLetterStoredGame | GuryongtuStoredGame | AzulStoredGame | VegasStoredGame | CarcassonneStoredGame | ClueStoredGame | SaboteurStoredGame | LostCitiesStoredGame | SplendorStoredGame | HalliStoredGame | IslandStoredGame,
 ): ScheduledTurnDeadline {
   if ("state" in game && !("windowStartedAt" in game)) {
     if (game.state.rulesVersion === "duet-2025-ko-v1") throw new Error("Duet has no turn deadline.");
+    if (game.state.rulesVersion === "train-usa-classic-v1") throw new Error("Train has no turn deadline.");
     if (game.state.rulesVersion === "century-spice-road-v1") throw new Error("Century has no turn deadline.");
     if (game.state.rulesVersion === "jaipur-base-v1") throw new Error("Jaipur has no turn deadline.");
     if (game.state.rulesVersion === "love-letter-21-v1") throw new Error("LoveLetter has no turn deadline.");
@@ -192,6 +194,7 @@ export async function scheduleCurrentTurnBestEffort(
 
     if ("state" in game && !("windowStartedAt" in game)) {
       if (game.state.rulesVersion === "duet-2025-ko-v1") return false;
+      if (game.state.rulesVersion === "train-usa-classic-v1") return false;
       if (game.state.rulesVersion === "century-spice-road-v1") return false;
       if (game.state.rulesVersion === "jaipur-base-v1") return false;
       if (game.state.rulesVersion === "love-letter-21-v1") return false;

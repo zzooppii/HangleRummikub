@@ -1,5 +1,7 @@
 # Multi-game Platform Architecture
 
+2026-09-12 티켓 투 라이드 추가: [TRAIN_GAME_RULES.md](./TRAIN_GAME_RULES.md)와 [TRAIN_ARCHITECTURE.md](./TRAIN_ARCHITECTURE.md)를 따른다. 미국 구판 2–5인, 시간 제한 없음, 서버 권위형 철도 연결과 개인별 카드 projection.
+
 2026-09-11 라스베이거스 추가: [VEGAS_ARCHITECTURE.md](./VEGAS_ARCHITECTURE.md)의 2–5인 주사위·카지노 정산·개인별 금액·자체 일러스트/소리 경계를 따른다.
 
 2026-09-11 카르카손 추가: [CARCASSONNE_ARCHITECTURE.md](./CARCASSONNE_ARCHITECTURE.md)의 2–5인 연결 보드·농부·서버 정산·자체 아트/효과음 경계를 따른다.

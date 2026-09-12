@@ -1,5 +1,7 @@
 # 한글 루미큐브 게임 규칙
 
+2026-09-12 티켓 투 라이드 추가: [TRAIN_GAME_RULES.md](./TRAIN_GAME_RULES.md)와 [TRAIN_ARCHITECTURE.md](./TRAIN_ARCHITECTURE.md)를 따른다. 미국 구판 2–5인, 시간 제한 없음, 서버 권위형 철도 연결과 개인별 카드 projection.
+
 2026-09-12 별도 게임 센추리의 규칙은 [CENTURY_GAME_RULES.md](./CENTURY_GAME_RULES.md)를 따른다. 기존 타일 게임의 규칙과 미확정 항목은 유지한다.
 
 ## 1. 문서 목적과 현재 상태

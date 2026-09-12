@@ -1,5 +1,6 @@
 import type { createIslandLifecycle } from "../games/island/application/lifecycle.js";
 import type { createSplendorLifecycle } from "../games/splendor/application/lifecycle.js";
+import type { createTrainLifecycle } from "../games/train/application/lifecycle.js";
 import type { createCenturyLifecycle } from "../games/century/application/lifecycle.js";
 import type { createJaipurLifecycle } from "../games/jaipur/application/lifecycle.js";
 import type { createLoveLetterLifecycle } from "../games/love-letter/application/lifecycle.js";
@@ -77,6 +78,7 @@ export type PresenceRestoredPlan =
 export type PlayerLifecycleRouterDependencies = Readonly<{
   island?: ReturnType<typeof createIslandLifecycle>;
   splendor?: ReturnType<typeof createSplendorLifecycle>;
+  train?: ReturnType<typeof createTrainLifecycle>;
   century?: ReturnType<typeof createCenturyLifecycle>;
   jaipur?: ReturnType<typeof createJaipurLifecycle>;
   loveLetter?: ReturnType<typeof createLoveLetterLifecycle>;
@@ -116,6 +118,7 @@ export interface PlayerLifecycleActionRouting {
 export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
   readonly #island: ReturnType<typeof createIslandLifecycle> | undefined;
   readonly #splendor: ReturnType<typeof createSplendorLifecycle> | undefined;
+  readonly #train: ReturnType<typeof createTrainLifecycle> | undefined;
   readonly #century: ReturnType<typeof createCenturyLifecycle> | undefined;
   readonly #jaipur: ReturnType<typeof createJaipurLifecycle> | undefined;
   readonly #loveLetter: ReturnType<typeof createLoveLetterLifecycle> | undefined;
@@ -147,6 +150,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
     }
     this.#island = dependencies.island;
     this.#splendor = dependencies.splendor;
+    this.#train = dependencies.train;
     this.#century = dependencies.century;
     this.#jaipur = dependencies.jaipur;
     this.#loveLetter = dependencies.loveLetter;
@@ -188,6 +192,9 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
       case "SABOTEUR":
         if (!this.#saboteur) throw new Error("SABOTEUR lifecycle missing.");
         return this.#saboteur.applyPlayingLeave(input);
+      case "TRAIN":
+        if (!this.#train) throw new Error("TRAIN lifecycle missing.");
+        return this.#train.applyPlayingLeave(input);
       case "CENTURY":
         if (!this.#century) throw new Error("CENTURY lifecycle missing.");
         return this.#century.applyPlayingLeave(input);
@@ -254,6 +261,7 @@ export class PlayerLifecycleRouter implements PlayerLifecycleActionRouting {
     switch (room.gameType) {
       case "ISLAND_SETTLERS": return {status:"NO_CHANGE"};
       case "SPLENDOR": return {status:"NO_CHANGE"};
+      case "TRAIN": return {status:"NO_CHANGE"};
       case "CENTURY": return {status:"NO_CHANGE"};
       case "JAIPUR": return {status:"NO_CHANGE"};
       case "LOVE_LETTER": return {status:"NO_CHANGE"};

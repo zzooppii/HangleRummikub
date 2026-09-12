@@ -1,5 +1,7 @@
 # 시스템 아키텍처
 
+2026-09-12 티켓 투 라이드 추가: [TRAIN_GAME_RULES.md](./TRAIN_GAME_RULES.md)와 [TRAIN_ARCHITECTURE.md](./TRAIN_ARCHITECTURE.md)를 따른다. 미국 구판 2–5인, 시간 제한 없음, 서버 권위형 철도 연결과 개인별 카드 projection.
+
 2026-09-12 센추리 추가: [CENTURY_ARCHITECTURE.md](./CENTURY_ARCHITECTURE.md)의 2–5인 향신료의 길 기본판, 서버 원자적 행동·비공개 손패·자체 아트/효과음 경계를 따른다.
 
 2026-09-11 라스베이거스 추가: [VEGAS_ARCHITECTURE.md](./VEGAS_ARCHITECTURE.md)의 2–5인 주사위·카지노 정산·개인별 금액·자체 일러스트/소리 경계를 따른다.

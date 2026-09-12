@@ -1,3 +1,4 @@
+import { TrainClientCommandSchema, type TrainClientCommand } from "@hangul-rummikub/shared";
 import { CenturyClientCommandSchema, type CenturyClientCommand } from "@hangul-rummikub/shared";
 import { RoomPreparationCommandSchema, type RoomPreparationCommand } from "@hangul-rummikub/shared";
 import { SplendorClientCommandSchema, type SplendorClientCommand } from "@hangul-rummikub/shared";
@@ -713,6 +714,15 @@ export class RealtimeClient {
       }
     }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
   }
+  actTrain(command: TrainClientCommand): Promise<StateSyncWireAck> {
+    if (!parseRematch(TrainClientCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {
+      switch (command.kind) {
+        case "train:act": this.#socket.emit("train:act", command, acknowledge); break;
+      }
+    }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
+  }
+
   actCentury(command: CenturyClientCommand): Promise<StateSyncWireAck> {
     if (!parseRematch(CenturyClientCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
     return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {

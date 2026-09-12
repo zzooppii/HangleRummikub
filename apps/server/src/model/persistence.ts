@@ -1,3 +1,4 @@
+import type { TrainStoredGame } from "../games/train/compatibility/adapter.js";
 import type { CenturyStoredGame } from "../games/century/compatibility/adapter.js";
 import type { SaboteurStoredGame } from "../games/saboteur/compatibility/adapter.js";
 import type { IslandStoredGame } from "../games/island/compatibility/adapter.js";
@@ -112,6 +113,7 @@ export type SpyfallRoomRecord = RoomRecordBase & Readonly<{ gameType: "SPYFALL";
 import type { SplendorSettings } from "@hangul-rummikub/shared";
 export type SplendorRoomRecord = RoomRecordBase & Readonly<{ gameType: "SPLENDOR"; settings?: SplendorSettings; game: SplendorStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
 export type GuryongtuRoomRecord = RoomRecordBase & Readonly<{ gameType: "GURYONGTU"; game: GuryongtuStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
+export type TrainRoomRecord = RoomRecordBase & Readonly<{ gameType: "TRAIN"; game: TrainStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
 export type CenturyRoomRecord = RoomRecordBase & Readonly<{ gameType: "CENTURY"; game: CenturyStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
 export type JaipurRoomRecord = RoomRecordBase & Readonly<{ gameType: "JAIPUR"; game: JaipurStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
 export type LoveLetterRoomRecord = RoomRecordBase & Readonly<{ gameType: "LOVE_LETTER"; game: LoveLetterStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
@@ -124,7 +126,7 @@ export type SaboteurRoomRecord = RoomRecordBase & Readonly<{ gameType: "SABOTEUR
 export type LostCitiesRoomRecord = RoomRecordBase & Readonly<{ gameType: "LOST_CITIES"; settings?: LostCitiesSettings; game: LostCitiesStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
 export type HalliRoomRecord = RoomRecordBase & Readonly<{ gameType: "HALLI_GALLI"; game: HalliStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
 export type IslandRoomRecord = RoomRecordBase & Readonly<{ gameType: "ISLAND_SETTLERS"; game: IslandStoredGame | null; departedPlayerIds?: readonly PlayerId[] }>;
-export type RoomRecord = CenturyRoomRecord | GuryongtuRoomRecord | AzulRoomRecord | VegasRoomRecord | CarcassonneRoomRecord | ClueRoomRecord | SaboteurRoomRecord | LostCitiesRoomRecord | DuetRoomRecord | JaipurRoomRecord | LoveLetterRoomRecord | SplendorRoomRecord | IslandRoomRecord | HalliRoomRecord | WolfRoomRecord | LiarRoomRecord | SpyfallRoomRecord | HangulRoomRecord | NumberTileRoomRecord | GemCardRoomRecord | CityRoleRoomRecord | DrawRelayRoomRecord | SneakyLunchRoomRecord;
+export type RoomRecord = TrainRoomRecord | CenturyRoomRecord | GuryongtuRoomRecord | AzulRoomRecord | VegasRoomRecord | CarcassonneRoomRecord | ClueRoomRecord | SaboteurRoomRecord | LostCitiesRoomRecord | DuetRoomRecord | JaipurRoomRecord | LoveLetterRoomRecord | SplendorRoomRecord | IslandRoomRecord | HalliRoomRecord | WolfRoomRecord | LiarRoomRecord | SpyfallRoomRecord | HangulRoomRecord | NumberTileRoomRecord | GemCardRoomRecord | CityRoleRoomRecord | DrawRelayRoomRecord | SneakyLunchRoomRecord;
 
 type WithoutStorageRevision<TRoom> = TRoom extends RoomRecord
   ? Omit<TRoom, "storageRevision">
