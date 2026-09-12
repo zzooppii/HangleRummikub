@@ -12,7 +12,7 @@
 | P1 Trick-taking Domain | 40장·3–5인 배분·사령관·follow suit·trump·보존 | PASS |
 | P2 Task/Mission primitives | 교신·task assignment·batch order·구조 신호·예외 primitive | PASS |
 | P3 Missions 1–10 | 조건/성공/실패/설정 테스트 | PASS |
-| P4 Missions 11–25 | 조건/성공/실패/설정 테스트 | NOT_STARTED |
+| P4 Missions 11–25 | 조건/성공/실패/설정 테스트 | PASS |
 | P5 Missions 26–50 | 조건/성공/실패/5인 특칙 테스트 | NOT_STARTED |
 | P6 Server/Shared | 인증·직렬화·private projection·campaign persistence·플랫폼 연결 | NOT_STARTED |
 | P7 Web | PC/mobile·Game Guide·독립 삽화·카드 조작·효과음 | NOT_STARTED |
@@ -73,3 +73,11 @@ P1 카드/트릭의 파일 경계·보존·원자성·3인 소진 테스트 설�
 - 전용28 tests PASS: definitions8, mission6, integration9, validation5. 통합 테스트는 미션1–10 × 3/4/5인 × 2개 seed의60시도를 포함한다.
 - root typecheck PASS; test shared127 + web649 + server1979 = **2755 PASS**, fail/cancel/skip0; build PASS(기존500kB chunk 경고 유지).
 - 독립 규칙/실행 계층 검토 및 diff-check PASS. commit/push 후 P4 진행. 플랫폼 연결·실제 브라우저 검증은 아직 P6 이후 작업이다.
+
+### P4 미션11–25
+
+교신 금지 지명·교신 재개 시점, 로켓별 승리,9 승리 금지와 목표 복합 판정, 비공개 일괄 지정/순차 배분, 토큰 교환,5인 목표 양도를 연결했다. 미션12는 공개 교신 카드를 보호한 동시 무작위 교환과 서버 전용 교환 기록을 추가했다. 난수 오류는 PLAY 전체를 거절하며 종료 후 재추첨하지 않는다.
+
+- P3/P4 전용49 tests PASS(이 단계21개 추가). 미션11–25 × 3/4/5인45개 시뮬레이션 및 별도 교환5개 검증 포함.
+- root typecheck PASS; test shared127 + web649 + server2001 = **2777 PASS**, fail/cancel/skip0; build PASS(기존500kB chunk 경고 유지). 검증 당시 별도 LIAR 작업의 새 테스트1개가 포함되어 있으며 해당 파일들은 Space Crew 커밋 범위에서 제외했다.
+- 독립 규칙/교환/실행 계층 검토 및 diff-check PASS. commit/push 후 P5 진행.

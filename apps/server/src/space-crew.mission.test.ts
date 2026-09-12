@@ -172,3 +172,42 @@ test("Space Crew mission: mission five permits self nomination despite others' G
   assert.deepEqual(state.failure, { kind: "OBJECTIVE", reason: "TOO_MANY_PLAYER_TRICKS" });
   assert.equal(state.tasks.lastEvaluatedTrick, 1);
 });
+
+test("Space Crew mission: mission eleven rejects a restored declaration by its muted nominee", () => {
+  let state = choose(create(11));
+  state = act(state, player(0), { kind: "SPECIAL_SELECT", playerId: player(1) });
+  const target = state.trick.cards.filter(item => item.suit === "PINK" && state.trick.players[0]?.hand.includes(item.cardId)).sort((a, b) => b.value - a.value)[0]; assert.ok(target);
+  state = act(state, player(0), { kind: "COMMUNICATE", cardId: target.cardId, mark: "HIGHEST" });
+  assert.throws(() => parseSpaceCrewMissionState({ ...state, special: { kind: "NO_COMMUNICATION_PLAYER", phase: "READY", playerId: player(0) } }));
+  rejected(state, player(1), { kind: "COMMUNICATE", cardId: "absent", mark: "ONLY" }, "COMMUNICATION_FORBIDDEN");
+});
+
+test("Space Crew mission: mission twenty-three accepts exactly one token transposition on restore", () => {
+  let state = create(23);
+  const first = state.tasks.tasks[0], second = state.tasks.tasks[1]; assert.ok(first && second);
+  state = act(state, player(0), { kind: "TASK", action: { kind: "SWAP_TOKENS", firstTaskId: first.id, secondTaskId: second.id } });
+  assert.equal(state.tasks.tokenEditUsed, true);
+  const forged = structuredClone(state);
+  const third = forged.tasks.tasks[2], fourth = forged.tasks.tasks[3]; assert.ok(third && fourth);
+  [third.token, fourth.token] = [fourth.token, third.token];
+  assert.throws(() => parseSpaceCrewMissionState(forged));
+  const pristine = create(23);
+  assert.throws(() => parseSpaceCrewMissionState({ ...pristine, revision: 1, tasks: { ...pristine.tasks, revision: 1, tokenEditUsed: true } }));
+});
+
+test("Space Crew mission: later communication does not rewrite mission twelve's protected-card snapshot", () => {
+  let state = choose(create(12, [[["PINK", 2]], [["BLUE", 2]], [["GREEN", 2]], [["YELLOW", 2]]], [["PINK", 9], ["BLUE", 9], ["GREEN", 9], ["YELLOW", 9]]));
+  state = playFaces(state, [["PINK", 2], ["BLUE", 2], ["GREEN", 2]]);
+  const before = structuredClone(state);
+  const exchanged = applySpaceCrewMissionAction(state, player(3), { kind: "PLAY", cardId: card(state, ["YELLOW", 2]).cardId, expectedRevision: state.revision }, { nextInt: () => 0 });
+  assert.ok(exchanged.ok, exchanged.ok ? "" : exchanged.reason);
+  assert.deepEqual(state, before); state = exchanged.state;
+  assert.ok(state.exchange); assert.deepEqual(state.exchange.protectedCardIds, []);
+  const received = state.exchange.moves[1]; assert.ok(received);
+  const receivedCard = state.trick.cards.find(item => item.cardId === received.cardId); assert.ok(receivedCard);
+  const owner = state.trick.players[2]; assert.ok(owner);
+  assert.equal(state.trick.cards.filter(item => item.suit === receivedCard.suit && owner.hand.includes(item.cardId)).length, 1);
+  state = act(state, player(2), { kind: "COMMUNICATE", cardId: received.cardId, mark: "ONLY" });
+  assert.deepEqual(state.exchange?.protectedCardIds, []);
+  assert.equal(state.communications.find(item => item.playerId === player(2))?.cardId, received.cardId);
+});

@@ -1,9 +1,11 @@
 import * as v from "valibot";
 import { PlayerIdSchema, type PlayerId } from "@hangul-rummikub/shared";
+import type { RandomSource } from "../../../ports/system.js";
 import { SpaceCrewCardIdSchema, dealSpaceCrewCards, type SpaceCrewCard } from "./cards.js";
-import { communicateSpaceCrew, createSpaceCrewCommunications, parseSpaceCrewCommunications, type SpaceCrewCommunications, type SpaceCrewCommunicationError } from "./communication.js";
+import { communicateSpaceCrew, createSpaceCrewCommunications, parseSpaceCrewCommunications, type SpaceCrewCommunications, type SpaceCrewCommunicationError, type SpaceCrewCommunicationRule } from "./communication.js";
 import { applySpaceCrewDistress, createSpaceCrewDistressState, parseSpaceCrewDistressState, type SpaceCrewDistressState } from "./distress.js";
-import { evaluateSpaceCrewPrimitive } from "./mission-primitives.js";
+import { evaluateSpaceCrewPrimitive, type SpaceCrewPrimitive } from "./mission-primitives.js";
+import { SpaceCrewMissionExchangeSchema, exchangeSpaceCrewAfterFirstTrick, parseSpaceCrewMissionExchange } from "./mission-exchange.js";
 import { getSpaceCrewMission, type SpaceCrewMissionDefinition } from "./missions.js";
 import { applySpaceCrewTaskAction, createSpaceCrewTaskState, evaluateSpaceCrewTaskBatch, parseSpaceCrewTaskState, type SpaceCrewTaskFace, type SpaceCrewTaskState, type SpaceCrewTaskError } from "./tasks.js";
 import { createSpaceCrewTrickState, parseSpaceCrewTrickState, playSpaceCrewCard, type SpaceCrewTrickState, type SpaceCrewTrickError } from "./trick.js";
@@ -14,6 +16,7 @@ const SpecialSchema = v.variant("kind", [
   v.strictObject({ kind: v.literal("NONE") }),
   v.strictObject({ kind: v.literal("NO_TRICKS_PLAYER"), phase: v.picklist(["RESPOND", "SELECT", "READY"]),
     responses: v.pipe(v.array(v.strictObject({ playerId: PlayerIdSchema, answer: Answer })), v.maxLength(4)), playerId: v.nullable(PlayerIdSchema) }),
+  v.strictObject({ kind: v.literal("NO_COMMUNICATION_PLAYER"), phase: v.picklist(["SELECT", "READY"]), playerId: v.nullable(PlayerIdSchema) }),
 ]);
 const FailureSchema = v.variant("kind", [
   v.strictObject({ kind: v.literal("TASK"), reason: v.picklist(["WRONG_OWNER", "TASK_ORDER"]), taskIds: v.array(v.string()) }),
@@ -24,6 +27,7 @@ const StateSchema = v.strictObject({
   missionNumber: v.pipe(Count, v.minValue(1), v.maxValue(50)), revision: Count,
   status: v.picklist(["SETUP", "ACTIVE", "SUCCESS", "FAILURE"]), failure: v.nullable(FailureSchema),
   trick: v.unknown(), tasks: v.unknown(), communications: v.unknown(), distress: v.unknown(), special: SpecialSchema,
+  exchange: v.nullable(SpaceCrewMissionExchangeSchema),
 });
 const CommandSchema = v.variant("kind", [
   v.strictObject({ kind: v.literal("PLAY"), cardId: SpaceCrewCardIdSchema, expectedRevision: Count }),
@@ -43,7 +47,7 @@ export type SpaceCrewMissionSetup = Readonly<{
   missionNumber: number; playerIds: readonly PlayerId[]; deck: readonly SpaceCrewCard[]; taskDeck: readonly SpaceCrewTaskFace[];
   attemptNumber?: number; previousDistress?: Pick<SpaceCrewDistressState, "active" | "history">;
 }>;
-export type SpaceCrewMissionError = SpaceCrewTaskError | SpaceCrewTrickError | SpaceCrewCommunicationError | "ALREADY_RESPONDED";
+export type SpaceCrewMissionError = SpaceCrewTaskError | SpaceCrewTrickError | SpaceCrewCommunicationError | "ALREADY_RESPONDED" | "INVALID_RANDOM";
 export type SpaceCrewMissionResult = { ok: true; state: SpaceCrewMissionState } | { ok: false; reason: SpaceCrewMissionError };
 
 function invalid(): never { throw new Error("Invalid Space Crew mission state."); }
@@ -58,27 +62,68 @@ function specialActor(state: SpaceCrewMissionState, responseIndex: number): Play
 }
 
 type Outcome = { status: SpaceCrewMissionState["status"]; failure: SpaceCrewMissionFailure | null };
+function primitiveForObjective(state: SpaceCrewMissionState, definition: SpaceCrewMissionDefinition): SpaceCrewPrimitive | null {
+  const objective = definition.objective;
+  switch (objective.kind) {
+    case "TASKS": return null;
+    case "COLOR_VALUE_WINS": return { type: "COLOR_VALUE_WINS", value: objective.value, count: objective.count };
+    case "ROCKET_WINS": return { type: "ROCKET_WINS", ascending: objective.ascending };
+    case "FORBID_WIN_VALUE":
+    case "TASKS_WITH_FORBID_WIN_VALUE": return { type: "FORBID_WIN_VALUE", value: objective.value };
+    case "NOMINEE_NO_TRICKS": {
+      if (state.special.kind !== "NO_TRICKS_PLAYER" || state.special.playerId === null) return invalid();
+      return { type: "PLAYER_TRICKS", playerId: state.special.playerId, requirement: { type: "COUNT", count: 0 } };
+    }
+  }
+}
+
+function communicationRule(state: SpaceCrewMissionState, definition: SpaceCrewMissionDefinition): SpaceCrewCommunicationRule {
+  if (definition.communicationRule.kind !== "FORBIDDEN_NOMINEE") return definition.communicationRule;
+  if (state.special.kind === "NO_COMMUNICATION_PLAYER" && state.special.playerId !== null) return { kind: "FORBIDDEN_PLAYER", playerId: state.special.playerId };
+  return { kind: "NORMAL" };
+}
+
 function objectiveOutcome(state: SpaceCrewMissionState, definition: SpaceCrewMissionDefinition, tasks: SpaceCrewTaskState, trickCount: number): Outcome {
   if (!ready(state)) return { status: "SETUP", failure: null };
   const exhausted = trickCount === state.trick.totalTricks;
-  let satisfied: boolean;
-  if (definition.objective.kind === "TASKS") satisfied = tasks.completedOrder.length === tasks.tasks.length;
-  else {
-    const objective = definition.objective;
-    const config = objective.kind === "COLOR_VALUE_WINS"
-      ? { type: "COLOR_VALUE_WINS", value: objective.value, count: objective.count }
-      : { type: "PLAYER_TRICKS", playerId: state.special.kind === "NO_TRICKS_PLAYER" ? state.special.playerId : null, requirement: { type: "COUNT", count: 0 } };
+  let satisfied = tasks.completedOrder.length === tasks.tasks.length;
+  const config = primitiveForObjective(state, definition);
+  if (config !== null) {
     const evaluation = evaluateSpaceCrewPrimitive(config, {
       cards: state.trick.cards, playerIds: state.trick.players.map(player => player.playerId), commanderId: state.trick.commanderId,
       totalTricks: state.trick.totalTricks, exhausted, completedTricks: state.trick.completedTricks.slice(0, trickCount),
     });
     if (!evaluation.ok) return invalid();
     if (evaluation.status === "FAILED") return { status: "FAILURE", failure: { kind: "OBJECTIVE", reason: evaluation.failure.reason } };
-    satisfied = evaluation.status === "SATISFIED";
+    satisfied = satisfied && evaluation.status === "SATISFIED";
   }
   if (satisfied && (definition.endPolicy === "OBJECTIVES" || exhausted)) return { status: "SUCCESS", failure: null };
   if (exhausted) return { status: "FAILURE", failure: { kind: "EXHAUSTED" } };
   return { status: "ACTIVE", failure: null };
+}
+
+function validateTaskDefinition(state: SpaceCrewMissionState, definition: SpaceCrewMissionDefinition): void {
+  const tasks = state.tasks;
+  if (tasks.tasks.length !== definition.taskCount || tasks.mode !== definition.taskMode || tasks.transfer !== null && state.missionNumber !== 25) return invalid();
+  const token = (index: number) => JSON.stringify(tasks.tasks[index]?.token ?? null);
+  const originalToken = (index: number) => JSON.stringify(definition.tokens[index] ?? null);
+  const changed = tasks.tasks.flatMap((_, index) => token(index) !== originalToken(index) ? [index] : []);
+  if (!tasks.tokenEditUsed) { if (changed.length !== 0) return invalid(); return; }
+  if (state.missionNumber !== 23 || changed.length !== 2) return invalid();
+  const first = changed[0], second = changed[1];
+  if (first === undefined || second === undefined || token(first) !== originalToken(second) || token(second) !== originalToken(first)) return invalid();
+}
+
+/** Rocket 4 establishes the original commander; mission 12 can subsequently move it. */
+function validateInitialCommander(state: SpaceCrewMissionState): void {
+  const rocket = state.trick.cards.find(card => card.kind === "ROCKET" && card.value === 4);
+  if (!rocket) return invalid();
+  const moved = state.exchange?.moves.find(move => move.cardId === rocket.cardId);
+  const plays = [...state.trick.completedTricks.flatMap(trick => trick.plays), ...state.trick.currentTrick];
+  const originalOwner = moved?.fromPlayerId
+    ?? state.trick.players.find(player => player.hand.includes(rocket.cardId))?.playerId
+    ?? plays.find(play => play.cardId === rocket.cardId)?.playerId;
+  if (originalOwner !== state.trick.commanderId) return invalid();
 }
 
 /** Replays public captures and objectives only; past private hands are never inferred. */
@@ -114,23 +159,35 @@ export function parseSpaceCrewMissionState(input: unknown): SpaceCrewMissionStat
   const state: SpaceCrewMissionState = { ...envelope.output, trick, tasks, communications, distress };
   const players = trick.players.map(player => player.playerId);
   if (tasks.missionNumber !== state.missionNumber || tasks.commanderId !== trick.commanderId || tasks.playerIds.length !== players.length || tasks.playerIds.some((id, index) => players[index] !== id)) return invalid();
-  if (tasks.tasks.length !== definition.taskCount || tasks.mode !== definition.taskMode || tasks.transfer !== null || tasks.tokenEditUsed) return invalid();
-  if (tasks.tasks.some((task, index) => JSON.stringify(task.token) !== JSON.stringify(definition.tokens[index] ?? null))) return invalid();
-  if (communications.some(item => item.used && (definition.communicationRule.kind === "DEAD_ZONE" ? item.mark !== null : item.mark === null))) return invalid();
-  if (definition.setup.kind === "NONE" ? state.special.kind !== "NONE" : state.special.kind !== "NO_TRICKS_PLAYER") return invalid();
+  validateTaskDefinition(state, definition);
+  const rule = communicationRule(state, definition);
+  if (communications.some(item => item.used && (rule.kind === "DEAD_ZONE" ? item.mark !== null : item.mark === null))) return invalid();
+  if (rule.kind === "FORBIDDEN_PLAYER" && communications.some(item => item.playerId === rule.playerId && item.used)) return invalid();
+  if (rule.kind === "DISRUPTION" && trick.completedTricks.length + 1 < rule.fromTrick && communications.some(item => item.used)) return invalid();
+  const specialKind = definition.setup.kind === "NONE" ? "NONE" : definition.setup.kind === "SELECT_NO_TRICKS_PLAYER" ? "NO_TRICKS_PLAYER" : "NO_COMMUNICATION_PLAYER";
+  if (state.special.kind !== specialKind) return invalid();
   if (state.special.kind === "NO_TRICKS_PLAYER") {
     const special = state.special;
     if (special.responses.some((response, index) => response.playerId !== specialActor(state, index))) return invalid();
     if (special.phase === "RESPOND" ? special.responses.length >= players.length - 1 : special.responses.length !== players.length - 1) return invalid();
     if (special.phase === "READY" ? special.playerId === null || !players.includes(special.playerId) : special.playerId !== null) return invalid();
   }
+  if (state.special.kind === "NO_COMMUNICATION_PLAYER") {
+    const special = state.special;
+    if (special.phase === "READY" ? special.playerId === null || !players.includes(special.playerId) : special.playerId !== null) return invalid();
+  }
   if (!ready(state) && (trick.currentTrick.length > 0 || trick.completedTricks.length > 0 || communications.some(item => item.used) || distress.phase !== "UNDECIDED")) return invalid();
   if (distressPending(state) && communications.some(item => item.used)) return invalid();
-  const specialRevision = state.special.kind === "NONE" ? 0 : state.special.responses.length + Number(state.special.phase === "READY");
+  const specialRevision = state.special.kind === "NONE" ? 0 : (state.special.kind === "NO_TRICKS_PLAYER" ? state.special.responses.length : 0) + Number(state.special.phase === "READY");
   const revision = trick.revision + tasks.revision - tasks.lastEvaluatedTrick + specialRevision;
   if (!Number.isSafeInteger(revision) || state.revision !== revision) return invalid();
   const replay = replayOutcome(state, definition);
   if (JSON.stringify(replay.tasks) !== JSON.stringify(tasks) || replay.outcome.status !== state.status || JSON.stringify(replay.outcome.failure) !== JSON.stringify(state.failure)) return invalid();
+  const exchanged = state.missionNumber === 12 && trick.completedTricks.length > 0
+    && !(trick.completedTricks.length === 1 && (state.status === "FAILURE" || state.status === "SUCCESS"));
+  if (exchanged !== (state.exchange !== null)) return invalid();
+  if (state.exchange !== null) state.exchange = parseSpaceCrewMissionExchange(state.exchange, trick, communications);
+  validateInitialCommander(state);
   return state;
 }
 
@@ -141,15 +198,16 @@ export function createSpaceCrewMissionState(input: SpaceCrewMissionSetup): Space
   const tasks = createSpaceCrewTaskState({ missionNumber: definition.missionNumber, playerIds: input.playerIds, commanderId: trick.commanderId,
     taskDeck: input.taskDeck, taskCount: definition.taskCount, tokens: definition.tokens, mode: definition.taskMode });
   const special: SpaceCrewMissionSpecial = definition.setup.kind === "NONE" ? { kind: "NONE" }
-    : { kind: "NO_TRICKS_PLAYER", phase: "RESPOND", responses: [], playerId: null };
+    : definition.setup.kind === "SELECT_NO_TRICKS_PLAYER" ? { kind: "NO_TRICKS_PLAYER", phase: "RESPOND", responses: [], playerId: null }
+      : { kind: "NO_COMMUNICATION_PLAYER", phase: "SELECT", playerId: null };
   return parseSpaceCrewMissionState({ missionNumber: definition.missionNumber, revision: 0,
     status: tasks.phase === "READY" && special.kind === "NONE" ? "ACTIVE" : "SETUP", failure: null,
-    trick, tasks, special, communications: createSpaceCrewCommunications(input.playerIds),
+    trick, tasks, special, exchange: null, communications: createSpaceCrewCommunications(input.playerIds),
     distress: createSpaceCrewDistressState(input.attemptNumber ?? 1, input.previousDistress) });
 }
 
 /** A single global revision guards every domain action; component revisions are server supplied. */
-export function applySpaceCrewMissionAction(input: SpaceCrewMissionState, actor: PlayerId, commandInput: unknown): SpaceCrewMissionResult {
+export function applySpaceCrewMissionAction(input: SpaceCrewMissionState, actor: PlayerId, commandInput: unknown, randomSource?: RandomSource): SpaceCrewMissionResult {
   let state: SpaceCrewMissionState;
   try { state = parseSpaceCrewMissionState(input); } catch { return { ok: false, reason: "INVALID_STATE" }; }
   const parsed = v.safeParse(CommandSchema, commandInput);
@@ -178,7 +236,7 @@ export function applySpaceCrewMissionAction(input: SpaceCrewMissionState, actor:
     }
     case "COMMUNICATE": {
       if (!ready(state) || distressPending(state)) return { ok: false, reason: "INVALID_PHASE" };
-      const result = communicateSpaceCrew({ trick: state.trick, communications: state.communications, assignmentComplete: ready(state), rule: definition.communicationRule }, actor,
+      const result = communicateSpaceCrew({ trick: state.trick, communications: state.communications, assignmentComplete: ready(state), rule: communicationRule(state, definition) }, actor,
         { cardId: command.cardId, mark: command.mark, expectedRevision: state.trick.revision });
       if (!result.ok) return result;
       state.trick = result.trick; state.communications = result.communications;
@@ -207,7 +265,7 @@ export function applySpaceCrewMissionAction(input: SpaceCrewMissionState, actor:
       break;
     }
     case "SPECIAL_SELECT": {
-      if (state.special.kind !== "NO_TRICKS_PLAYER" || state.special.phase !== "SELECT") return { ok: false, reason: "INVALID_PHASE" };
+      if (state.special.kind === "NONE" || state.special.phase !== "SELECT") return { ok: false, reason: "INVALID_PHASE" };
       if (actor !== state.trick.commanderId) return { ok: false, reason: "NOT_YOUR_TURN" };
       if (!state.trick.players.some(player => player.playerId === command.playerId)) return { ok: false, reason: "INVALID_RECIPIENT" };
       state.special.playerId = command.playerId; state.special.phase = "READY";
@@ -216,6 +274,11 @@ export function applySpaceCrewMissionAction(input: SpaceCrewMissionState, actor:
   }
   state.revision += 1;
   if (state.status !== "FAILURE") Object.assign(state, objectiveOutcome(state, definition, state.tasks, state.trick.completedTricks.length));
+  if (state.missionNumber === 12 && state.status === "ACTIVE" && state.trick.completedTricks.length === 1 && state.exchange === null) {
+    const result = exchangeSpaceCrewAfterFirstTrick(state.trick, state.communications, randomSource);
+    if (!result.ok) return result;
+    state.trick = result.trick; state.exchange = result.exchange;
+  }
   try { return { ok: true, state: parseSpaceCrewMissionState(state) }; }
   catch { return { ok: false, reason: "INVALID_STATE" }; }
 }

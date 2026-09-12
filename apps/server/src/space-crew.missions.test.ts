@@ -37,6 +37,54 @@ test("missions 1–10 match the independently transcribed audited logbook matrix
   assert.deepEqual(actual, expected);
 });
 
+test("missions 11–25 match audited counts, token graphics, communication and assignment modes", () => {
+  // K pp.7–12, separately transcribed from the audited mission table.
+  const expected = [
+    [11, 4, ["1"], "FORBIDDEN_NOMINEE", "CHOOSE", "OBJECTIVES"],
+    [12, 4, ["Ω"], "NORMAL", "CHOOSE", "OBJECTIVES"],
+    [13, 0, [], "NORMAL", "CHOOSE", "OBJECTIVES"],
+    [14, 4, [">", ">>", ">>>"], "DEAD_ZONE", "CHOOSE", "OBJECTIVES"],
+    [15, 4, ["1", "2", "3", "4"], "NORMAL", "CHOOSE", "OBJECTIVES"],
+    [16, 0, [], "NORMAL", "CHOOSE", "EXHAUSTION"],
+    [17, 2, [], "NORMAL", "CHOOSE", "OBJECTIVES"],
+    [18, 5, [], "D2", "CHOOSE", "OBJECTIVES"],
+    [19, 5, ["1"], "D3", "CHOOSE", "OBJECTIVES"],
+    [20, 2, [], "NORMAL", "COMMANDER_DECISION", "OBJECTIVES"],
+    [21, 5, ["1", "2"], "DEAD_ZONE", "CHOOSE", "OBJECTIVES"],
+    [22, 5, [">", ">>", ">>>", ">>>>"], "NORMAL", "CHOOSE", "OBJECTIVES"],
+    [23, 5, ["1", "2", "3", "4", "5"], "NORMAL", "CHOOSE", "OBJECTIVES"],
+    [24, 6, [], "NORMAL", "COMMANDER_DISTRIBUTION", "OBJECTIVES"],
+    [25, 6, [">", ">>"], "DEAD_ZONE", "CHOOSE", "OBJECTIVES"],
+  ];
+  const actual = Array.from({ length: 15 }, (_, index) => {
+    const definition = getSpaceCrewMission(index + 11);
+    return [definition.missionNumber, definition.taskCount,
+      definition.tokens.map(token => token.kind === "LAST" ? "Ω" : token.kind === "ABSOLUTE" ? String(token.position) : ">".repeat(token.position)),
+      definition.communicationRule.kind === "DISRUPTION" ? `D${definition.communicationRule.fromTrick}` : definition.communicationRule.kind,
+      definition.taskMode, definition.endPolicy];
+  });
+  assert.deepEqual(actual, expected);
+});
+
+test("mission 11 appoints a crew member including the commander without inventing a response step", () => {
+  const definition = getSpaceCrewMission(11);
+  assert.deepEqual(definition.setup, { kind: "SELECT_NO_COMMUNICATION_PLAYER", allowCommander: true });
+  assert.deepEqual(definition.communicationRule, { kind: "FORBIDDEN_NOMINEE" });
+  assert.deepEqual(definition.objective, { kind: "TASKS" });
+  assert.ok(Object.isFrozen(definition.setup));
+});
+
+test("missions 13, 16 and 17 distinguish immediate rocket completion from continuous forbidden-nine conditions", () => {
+  assert.deepEqual(getSpaceCrewMission(13).objective, { kind: "ROCKET_WINS", ascending: false });
+  assert.equal(getSpaceCrewMission(13).endPolicy, "OBJECTIVES");
+  assert.deepEqual(getSpaceCrewMission(16).objective, { kind: "FORBID_WIN_VALUE", value: 9 });
+  assert.equal(getSpaceCrewMission(16).endPolicy, "EXHAUSTION");
+  assert.deepEqual(getSpaceCrewMission(17).objective, { kind: "TASKS_WITH_FORBID_WIN_VALUE", value: 9 });
+  assert.equal(getSpaceCrewMission(17).endPolicy, "OBJECTIVES");
+  for (let number = 12; number <= 25; number += 1) assert.deepEqual(getSpaceCrewMission(number).setup, { kind: "NONE" });
+  for (const number of [12, 14, 15, 18, 19, 20, 21, 22, 23, 24, 25]) assert.deepEqual(getSpaceCrewMission(number).objective, { kind: "TASKS" });
+});
+
 test("mission 5 requires a good/bad report and nomination, permits commander, and waits for exhaustion", () => {
   const definition = getSpaceCrewMission(5);
   assert.deepEqual(definition.setup, { kind: "SELECT_NO_TRICKS_PLAYER", answers: ["GOOD", "BAD"], allowCommander: true });
@@ -57,7 +105,7 @@ test("mission 9 requires a winning color one and can finish before exhaustion", 
 });
 
 test("mission lookup rejects unsupported groups and input coercion, returning detached frozen definitions", () => {
-  for (const invalid of [0, -1, 11, 50, 1.5, "1", NaN, Infinity, null, undefined, {}, { missionNumber: 1 }]) {
+  for (const invalid of [0, -1, 26, 50, 1.5, "1", NaN, Infinity, null, undefined, {}, { missionNumber: 1 }]) {
     assert.throws(() => getSpaceCrewMission(invalid));
   }
   const first = getSpaceCrewMission(3), second = getSpaceCrewMission(3);
@@ -134,12 +182,12 @@ test("each definition creates the audited task prefix with order tokens on the f
   const playerIds = ["mission-a", "mission-b", "mission-c"].map(id => v.parse(PlayerIdSchema, id));
   const commanderId = playerIds[0];
   assert.ok(commanderId);
-  for (let number = 1; number <= 10; number += 1) {
+  for (let number = 1; number <= 25; number += 1) {
     const definition = getSpaceCrewMission(number);
     const state = createSpaceCrewTaskState({ missionNumber: number, taskDeck, playerIds, commanderId,
       taskCount: definition.taskCount, tokens: definition.tokens, mode: definition.taskMode });
     assert.deepEqual(state.tasks.map(task => task.id), taskDeck.slice(0, definition.taskCount).map(task => task.id));
     assert.deepEqual(state.tasks.map(task => task.token), state.tasks.map((_, index) => definition.tokens[index] ?? null));
-    assert.equal(state.phase, definition.taskCount === 0 ? "READY" : "CHOOSE");
+    assert.equal(state.phase, definition.taskCount === 0 ? "READY" : definition.taskMode === "CHOOSE" ? "CHOOSE" : "RESPOND");
   }
 });
