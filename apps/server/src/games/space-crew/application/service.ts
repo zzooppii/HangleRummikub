@@ -104,7 +104,8 @@ export class SpaceCrewService {
       roomMutation: { kind: "REPLACE", candidate, expectedRoomRevision: room.roomRevision, expectedStorageRevision: room.storageRevision },
       sessionMutation: { kind: "NONE" }, idempotency: { scopeKey: scopeFor(room.roomId, input.actorPlayerId), requestId, payloadFingerprint: fingerprint, terminalResult: data, createdAt: this.deps.clock.now() },
     }, { isSatisfied: () => input.authorization.isCurrent() && isCurrent() });
-    if (result.status !== "COMMITTED") return failure(input.authorization.isCurrent() ? "STALE_GAME_REVISION" : "UNAUTHENTICATED");
+    // The exact candidate remains pending; callers must retain and replay its envelope.
+    if (result.status !== "COMMITTED") return failure(input.authorization.isCurrent() ? "INTERNAL_ERROR" : "UNAUTHENTICATED");
     this.pending.delete(room.roomId);
     return { ok: true };
   }

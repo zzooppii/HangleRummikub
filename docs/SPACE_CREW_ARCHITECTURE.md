@@ -1,6 +1,6 @@
 # SPACE_CREW 구현 설계
 
-2026-09-12. 상태: P0–P6 통과, P7 대기. [게임 규칙](SPACE_CREW_GAME_RULES.md), [단계 기록](SPACE_CREW_DELIVERY.md)을 따른다. 아래는 설계이며 아직 구현 완료를 뜻하지 않는다.
+2026-09-12. 상태: P0–P7 통과, P8 검증 예정. [게임 규칙](SPACE_CREW_GAME_RULES.md), [단계 기록](SPACE_CREW_DELIVERY.md)을 따른다. 아래는 설계이며 아직 구현 완료를 뜻하지 않는다.
 
 ## 구조와 통합
 
@@ -128,3 +128,13 @@ P1 상태는 `BETWEEN_TRICKS / IN_TRICK / EXHAUSTED`로 구분하며 미션 SUCC
 미션50의 온라인 공동 결정은 다음 자체 절차로 구현한다. 이는 출판 규칙의 의미를 웹 명령에 옮긴 것이며 원문에 있는 세부 UI라고 표시하지 않는다. 사령관부터 각자 첫4/중간/마지막 중 선호를 말하고, 누구든 서로 다른 첫4 담당자와 마지막 담당자를 제안할 수 있다. 제안자의 동의를 포함해 전원이 동의하면 시작한다. 반대하면 제안·동의만 초기화하고 선호를 유지한다. 역할 선호는 실제 배정 자격을 강제하지 않으며 각 중간 담당자의 최소 승수도 추가하지 않는다. 전역 revision과 별도 특수 설정 revision으로 이전 제안에 대한 승인 재사용과 revision 감소를 막는다.
 
 미션29/34는 매 트릭의 승수 차를 검사한다.34의 사령관 첫·마지막 승리,44의 로켓1→4 순서,48의 Ω 마지막 트릭 달성은 각각 구체 조건으로 연결한다. 모든 미션은 게임 결과와 공개 실패 이유를 만들며 개인 승자를 만들지 않는다.
+
+## P7 브라우저 경계
+
+`features/space-crew`는 엄격하게 decode한 viewer DTO만 읽는다. `selectors.ts`는 현재 actor가 제출할 수 있는 유한한 선택지만 만들고 전략 순위·추론을 만들지 않는다. `mission-copy.ts`의 자체 한국어 설명은 서버 규칙을 변경하지 않는다. UI는 카드 선택과 확정, 공개된 설정 응답과 양도·토큰 변경을 전용 command에 연결한다.
+
+`campaign-storage.ts`는 새 캠페인 시작 전에 32-byte 브라우저 난수 복구 비밀과 파생 campaign ID를 저장하고 readback을 확인한다. 복구 비밀은 명시적인 가져오기/내보내기 UI와 start credential에만 사용하며 URL·일반 snapshot에 넣지 않는다. 서버 재시작 복구는 새 room의 새 시도다.
+
+`space-crew-outbox.ts`는 room/player로 범위를 제한한 전체 제출 envelope를 sessionStorage에 보관한다. 응답 불명·인증 연결 교체·서버의 보관 중 후보는 같은 request ID 재확인 대상으로 유지한다. 결과를 확정할 수 있는 명령 거절이나 성공만 outbox에서 제거한다. 서버가 후보를 보관한 뒤 room commit에 실패한 경우에는 `INTERNAL_ERROR`를 반환해 후보를 버린 stale command와 구별한다. 자동 재연결은 이미 제출된 동일 요청만 재확인하며 새 행동을 자동 생성하지 않는다.
+
+효과음은 사용자 제스처로 AudioContext를 연 뒤 자체 oscillator로 합성한다. 첫 snapshot·재접속 baseline·중복 및 건너뛴 revision은 무음으로 처리한다. 카드 삽화/기호는 자체 디자인이며 원작 시각 자료와 분리한다.

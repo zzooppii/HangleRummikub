@@ -83,6 +83,7 @@ export function roomLeaveConfirmationMessage(phase: RoomPhase, gameType?: GameTy
       if (gameType === "ISLAND_SETTLERS") return "나가면 모든 참가자의 이번 섬 개척 판이 취소됩니다. 잠시 자리를 비우려면 창만 닫고 같은 자리로 재접속할 수 있습니다. 방에서 나가시겠습니까?";
       if (gameType === "TRAIN") return "나가면 이번 티켓 투 라이드 게임이 취소됩니다. 잠시 자리를 비우려면 창을 닫고 재접속할 수 있습니다. 나가시겠습니까?";
       if (gameType === "CENTURY") return "나가면 이번 센추리 게임이 취소됩니다. 잠시 자리를 비우려면 창을 닫고 재접속할 수 있습니다. 나가시겠습니까?";
+      if (gameType === "SPACE_CREW") return "나가면 진행 중인 시도가 중단됩니다. 캠페인 진행과 시도·조난 이력은 보존되며, 새 방에서 복구할 수 있습니다. 잠시 자리를 비우려면 창을 닫고 같은 방에 재접속하세요. 나가시겠습니까?";
       if (gameType === "JAIPUR") return "나가면 이번 자이푸르 매치가 취소됩니다. 잠시 자리를 비우려면 창을 닫고 재접속할 수 있습니다. 방에서 나가시겠습니까?";
       if (gameType === "LOVE_LETTER") return "나가면 이번 러브레터 매치가 취소됩니다. 잠시 자리를 비우려면 창을 닫고 재접속할 수 있습니다. 방에서 나가시겠습니까?";
       if (gameType === "GURYONGTU") return "나가면 이번 구룡투 매치가 취소됩니다. 잠시 자리를 비우려면 창을 닫고 재접속할 수 있습니다. 방에서 나가시겠습니까?";

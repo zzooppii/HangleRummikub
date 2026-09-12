@@ -91,10 +91,17 @@ test("Space Crew service preserves one shuffled start across uncertain durable a
 
 test("Space Crew pending room commit protects its lease and current authorization without redealing", async () => {
   const h = await fixture(), room = await h.lobby(), input = { ...h.actor(room), command: h.startCommand(room) };
-  h.reject(true); assert.equal((await h.service.startConfigured(input)).ok, false); const calls = h.randomCalls();
+  h.reject(true);
+  const deferred = await h.service.startConfigured(input); assert.equal(deferred.ok, false);
+  if (deferred.ok) throw new Error("Expected pending commit");
+  assert.equal(deferred.error.code, "INTERNAL_ERROR");
+  const calls = h.randomCalls();
   const other = await h.lobby(), resume = v.parse(SpaceCrewStartCommandSchema, { ...h.startCommand(other, "recover"), payload: { kind: "RESUME", campaignId, recoveryToken: token } });
   assert.equal((await h.service.startConfigured({ ...h.actor(other), command: resume })).ok, false);
-  h.reject(false); h.authorize(false); assert.equal((await h.service.startConfigured(input)).ok, false);
+  h.reject(false); h.authorize(false);
+  const replaced = await h.service.startConfigured(input); assert.equal(replaced.ok, false);
+  if (replaced.ok) throw new Error("Expected replaced authorization");
+  assert.equal(replaced.error.code, "UNAUTHENTICATED");
   assert.deepEqual(await h.current(room.roomId), room); h.authorize(true);
   assert.ok((await h.service.startConfigured(input)).ok); assert.equal(h.randomCalls(), calls);
   assert.equal((await h.durable.read(campaignId))?.attempts.length, 1);
@@ -175,4 +182,25 @@ test("Space Crew practice recovery distinguishes a completed run from a later fa
     assert.equal(recovered?.attempts.length, failedRepeat ? 3 : 2);
     assert.deepEqual(recovered?.completedMissions, [1]);
   }
+});
+
+
+test("Space Crew pending action commit is uncertain while prevalidation revision rejection is definitive", async () => {
+  const h = await fixture(), lobby = await h.lobby();
+  assert.ok((await h.service.startConfigured({ ...h.actor(lobby), command: h.startCommand(lobby) })).ok);
+  const room = await h.current(lobby.roomId), command = h.chooseInput(room), calls = h.randomCalls();
+  h.reject(true);
+  const deferred = await h.service.command(command); assert.equal(deferred.ok, false);
+  if (deferred.ok) throw new Error("Expected pending action");
+  assert.equal(deferred.error.code, "INTERNAL_ERROR");
+  assert.deepEqual(await h.current(room.roomId), room);
+  h.reject(false); assert.ok((await h.service.command(command)).ok);
+  const committed = await h.current(room.roomId); assert.equal(committed.game?.gameRevision, (room.game?.gameRevision ?? 0) + 1);
+  assert.equal(committed.game?.state.mission.tasks.tasks[0]?.ownerId, command.actorPlayerId);
+  assert.equal(h.randomCalls(), calls);
+  assert.ok((await h.service.command(command)).ok); assert.deepEqual(await h.current(room.roomId), committed);
+  const stale = await h.service.command({ ...command, command: { ...command.command, requestId: v.parse(RequestIdSchema, "fresh-stale-request") } });
+  assert.equal(stale.ok, false); if (stale.ok) throw new Error("Expected stale revision");
+  assert.equal(stale.error.code, "STALE_GAME_REVISION");
+  assert.deepEqual(await h.current(room.roomId), committed);
 });

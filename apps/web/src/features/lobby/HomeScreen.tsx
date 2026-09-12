@@ -189,6 +189,7 @@ export function HomeScreen(props: HomeScreenProps) {
                             {game.gameType === "LOVE_LETTER" ? <span aria-hidden="true" style={{display:"block",width:90,height:90,borderRadius:12,backgroundImage:"url(/images/love-letter/court.png)",backgroundSize:"500% 200%",backgroundPosition:"100% 100%"}}/> : null}
                             {game.gameType === "TRAIN" ? <img src="/images/train/journey.jpg" alt="증기 기관차와 대륙 횡단 여행" loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : null}
                             {game.gameType === "CENTURY" ? <img src="/images/century/market.jpg" alt="향신료 시장과 상단" loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : null}
+                            {game.gameType === "SPACE_CREW" ? <span aria-hidden="true" style={{ fontSize: 52 }}>🚀</span> : null}
                             {game.gameType === "JAIPUR" ? <span aria-hidden="true" style={{ fontSize: 52 }}>🐪</span> : null}
                             {game.gameType === "SPLENDOR" ? <img src="/assets/splendor/gems.jpg" alt="스플렌더의 다채로운 보석" style={{ width: 125, height: 84, objectFit: "cover", borderRadius: 10 }}/> : null}
                             {game.gameType === "HALLI_GALLI" ? <span style={{ display: "block", width: 90 }}><HalliBellArt/></span> : null}

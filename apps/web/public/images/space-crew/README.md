@@ -1,0 +1,9 @@
+# Space Crew original illustration
+
+`cockpit.png` is an original generated illustration, created for this implementation with the built-in `image_gen` tool on 2026-09-13. No original The Crew artwork, logo, card illustrations or page design was supplied as a reference. Functional cards, suit symbols, panels and interaction layers are rendered in code. Sounds are original short Web Audio synth sequences in `features/space-crew/sound.ts`.
+
+Final generation prompt:
+
+> Use case: illustration. Asset type: original background illustration for a cooperative space exploration browser board game, desktop and mobile. Create a beautifully crafted wide cinematic illustration of the interior of a small exploration spacecraft cockpit looking out through a broad angular observation window into deep space, a distant icy blue planet and a delicate field of stars. Stylized painterly science fiction concept art with subtle screenprinted grain, precise machinery details, restrained warm amber console lights contrasting deep ink navy and atmospheric teal. The viewer is at the shared mission table. Keep the middle and lower central area dark, calm and uncluttered so interactive cards and readable UI can be overlaid in code. Cockpit structure frames the edges; the planet occupies the upper right quadrant and soft blue rim light defines the window. Horizontal landscape composition, approximately 2:1. Premium tangible tabletop atmosphere, exploratory and quiet. This must be a wholly original design, not any existing board game artwork. No people, no logos, no letters, no numbers, no typography, no UI text, no watermarks. Produce the illustration itself, not a screenshot, website mockup or device frame.
+
+The selected image is copied into the project; the application does not reference the generator's external working directory.

@@ -15,7 +15,7 @@
 | P4 Missions 11–25 | 조건/성공/실패/설정 테스트 | PASS |
 | P5 Missions 26–50 | 조건/성공/실패/5인 특칙 테스트 | PASS |
 | P6 Server/Shared | 인증·직렬화·private projection·campaign persistence·플랫폼 연결 | PASS |
-| P7 Web | PC/mobile·Game Guide·독립 삽화·카드 조작·효과음 | NOT_STARTED |
+| P7 Web | PC/mobile·Game Guide·독립 삽화·카드 조작·효과음 | PASS |
 | P8 E2E/Campaign | 실제3–5인·50미션 매핑·retry·reconnect·restart campaign·회귀 | NOT_STARTED |
 
 ## 결정 기록
@@ -101,3 +101,16 @@ P1 카드/트릭의 파일 경계·보존·원자성·3인 소진 테스트 설�
 - 전용 shared 계약4, projection13, campaign15, service7, socket8 테스트를 추가했다.
 - 최종 root typecheck PASS; test shared131 + web649 + server2069 = **2849 PASS**, fail/cancel/skip0; build PASS(기존500kB chunk 경고 유지).
 - 기존 전체 게임 시작 회귀는 SPACE_CREW 전용 시작 명령을 사용하도록 갱신했으며 권한·실제 PLAYING·퇴장/같은 방 복귀 검증을 유지했다. root 연결과 캠페인/서비스 독립 검토에서 추가 finding 없음. diff-check PASS. commit/push 후 P7 진행.
+
+### P7 웹 화면·상호작용
+
+카탈로그와 전용 decoder/실시간 명령을 연결하고, 독립 조종석 삽화·색/기호 카드·승무원 좌석·미션/목표/현재 및 직전 트릭·교신·구조 신호·5인 양도·특수 역할 선택을 구현했다. 선택 후 확정하는 카드 조작, 합법 행동 표시, Game Guide, 음량/음소거와 직접 합성한 효과음, reduced-motion 대응을 포함한다. 최초 진입·재접속·중복 revision에는 과거 효과음을 재생하지 않는다.
+
+캠페인 복구 정보를 시작 전에 브라우저에 저장·재확인하며, 내보내기/가져오기와 새 방 이어 하기를 제공한다. 제출한 전체 명령은 탭의 outbox에 보관하고 불확실한 결과는 같은 request ID로만 다시 확인한다. 이 경계를 연결하면서 서버의 후보 보관 후 room commit 실패가 잘못된 확정 stale 오류를 반환하던 문제를 `INTERNAL_ERROR`로 수정하고 회귀 테스트를 추가했다.
+
+실제 로컬 브라우저에서 3인 캠페인 시작, 구조 신호 왼쪽 제안·공동 동의·동시 교환, ONLY 교신, 선도 색에 따른 선택/제출, 트릭 승자/직전 트릭, 새로고침 후 같은 손패·공개 교신 복원을 확인했다. 기본 desktop와 320/390px에서 로비·손패·조작을 시각 확인했고 가로 넘침이 없었다. 공통 스타일의 어두운 제목과 구조 신호 방향 표시 누락을 보완했다. 브라우저 error/warn 로그 없음. 이 확인은 사람이 조작한 브라우저 1개와 독립 소켓 테스트 참가자 2명으로 수행했으며 3개 브라우저 자동화로 과장하지 않는다.
+
+원본 삽화와 생성 프롬프트/출처는 `apps/web/public/images/space-crew/README.md`에 기록했다. 원작 artwork는 포함하지 않는다. 최종 root 게이트 결과는 아래에 기록한다.
+
+- 최종 root typecheck PASS; test shared131 + web682 + server2070 = **2883 PASS**, fail/cancel/skip0; build PASS(기존500kB chunk 경고 유지, 웹 JS1,530.87kB/gzip430.44kB).
+- 웹 신규33 tests(선택지14·복구저장6·명령경계6·효과음7), 서버 후보 재전송 회귀1 추가. 독립 규칙/보안 검토 및 diff-check PASS. commit/push 후 P8 진행.

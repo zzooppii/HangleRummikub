@@ -1,3 +1,4 @@
+import { SpaceCrewScreen } from "./features/space-crew/SpaceCrewScreen.js";
 import { BurgundyScreen } from "./features/burgundy/BurgundyScreen.js";
 import "./features/burgundy/burgundy.css";
 import { LiarGameScreen } from "./features/liar-game/LiarGameScreen.js";
@@ -405,6 +406,16 @@ export function App() {
         onStart={app.startGame} onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
         pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending}
         error={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;
+    }
+
+    if (roomView.kind === "SPACE_CREW") {
+      return <ReconnectBoundary {...recovery}><SpaceCrewScreen snapshot={roomView.snapshot}
+        connected={app.connectionState === "CONNECTED" && !app.sessionReplaced && !app.resumePending && !app.reconnectNeeded}
+        pending={app.operationLabel !== null || app.roomLeavePending || app.gameStartPending || app.spaceCrewPending}
+        pendingRequest={app.spaceCrewPendingRequest} onRetryPending={app.retrySpaceCrewPending}
+        onStartConfigured={app.startSpaceCrewConfigured} onCommand={app.actSpaceCrew}
+        onLeave={app.leaveRoom} onCopy={() => app.copyInvitation(invitationUrl)}
+        errorMessage={app.errorMessage} connectionLabel={connectionLabel}/></ReconnectBoundary>;
     }
 
     if (roomView.kind === "JAIPUR") {

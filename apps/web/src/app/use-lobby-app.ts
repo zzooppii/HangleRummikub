@@ -1,3 +1,5 @@
+import { SpaceCrewOutbox, SpaceCrewCommandRejected, spaceCrewRejectionIsDefinitive, type SpaceCrewPendingCommand } from "../lib/space-crew-outbox.js";
+import type { SpaceCrewStartPayload, SpaceCrewClientCommand } from "@hangul-rummikub/shared";
 import { type RoomPreparationCommand, type GameType as SelectedGameType, GameIdSchema } from "@hangul-rummikub/shared";
 import { parse as parseGameIdentity } from "valibot";
 import { SplendorCommandRejected } from "../lib/splendor-command-error.js";
@@ -270,6 +272,11 @@ export type LobbyAppState = Readonly<{
   actSplendor: (command: SplendorClientCommand) => Promise<void>;
   actTrain: (command: TrainClientCommand) => Promise<void>;
   actCentury: (command: CenturyClientCommand) => Promise<void>;
+  startSpaceCrewConfigured(payload: SpaceCrewStartPayload): Promise<void>;
+  actSpaceCrew(command: SpaceCrewClientCommand): Promise<void>;
+  retrySpaceCrewPending(): Promise<void>;
+  spaceCrewPendingRequest: SpaceCrewPendingCommand | null;
+  spaceCrewPending: boolean;
   actJaipur: (command: JaipurClientCommand) => Promise<void>;
   actLoveLetter: (command: LoveLetterClientCommand) => Promise<void>;
   actGuryongtu: (command: GuryongtuClientCommand) => Promise<void>;
@@ -385,6 +392,10 @@ export function useLobbyApp(): LobbyAppState {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [sessionReplaced, setSessionReplaced] = useState(false);
+  const [spaceCrewPendingRequest, setSpaceCrewPendingRequest] = useState<SpaceCrewPendingCommand | null>(null);
+  const [spaceCrewPending, setSpaceCrewPending] = useState(false);
+  const spaceCrewFlightRef = useRef<Promise<void> | null>(null);
+  const spaceCrewAutoReplayRef = useRef<string | null>(null);
   const [gameStartPending, setGameStartPending] = useState(false);
   const [turnSubmitPending, setTurnSubmitPending] = useState(false);
   const [turnActionPending, setTurnActionPending] = useState(false);
@@ -495,7 +506,7 @@ export function useLobbyApp(): LobbyAppState {
   function currentLegacyHangulSnapshot(): StateSnapshot | null {
     const compatible = compatibleSnapshotRef.current;
     return compatible === null || compatible.kind === "PLATFORM_V2_NUMBER_TILE" ||
-      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY" || compatible.kind === "PLATFORM_V2_SNEAKY_LUNCH" || compatible.kind === "PLATFORM_V2_WOLF_NIGHT" || compatible.kind === "PLATFORM_V2_LIAR_GAME" || compatible.kind === "PLATFORM_V2_SPYFALL" || compatible.kind === "PLATFORM_V2_WORD_DUET" || compatible.kind === "PLATFORM_V2_TRAIN" || compatible.kind === "PLATFORM_V2_CENTURY" || compatible.kind === "PLATFORM_V2_JAIPUR" || compatible.kind === "PLATFORM_V2_LOVE_LETTER" || compatible.kind === "PLATFORM_V2_GURYONGTU" || compatible.kind === "PLATFORM_V2_AZUL" || compatible.kind === "PLATFORM_V2_VEGAS" || compatible.kind === "PLATFORM_V2_CARCASSONNE" || compatible.kind === "PLATFORM_V2_BURGUNDY" || compatible.kind === "PLATFORM_V2_CLUE" || compatible.kind === "PLATFORM_V2_SABOTEUR" || compatible.kind === "PLATFORM_V2_LOST_CITIES" || compatible.kind === "PLATFORM_V2_SPLENDOR" || compatible.kind === "PLATFORM_V2_HALLI_GALLI" || compatible.kind === "PLATFORM_V2_ISLAND_SETTLERS"
+      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY" || compatible.kind === "PLATFORM_V2_SNEAKY_LUNCH" || compatible.kind === "PLATFORM_V2_WOLF_NIGHT" || compatible.kind === "PLATFORM_V2_LIAR_GAME" || compatible.kind === "PLATFORM_V2_SPYFALL" || compatible.kind === "PLATFORM_V2_WORD_DUET" || compatible.kind === "PLATFORM_V2_TRAIN" || compatible.kind === "PLATFORM_V2_CENTURY" || compatible.kind === "PLATFORM_V2_SPACE_CREW" || compatible.kind === "PLATFORM_V2_JAIPUR" || compatible.kind === "PLATFORM_V2_LOVE_LETTER" || compatible.kind === "PLATFORM_V2_GURYONGTU" || compatible.kind === "PLATFORM_V2_AZUL" || compatible.kind === "PLATFORM_V2_VEGAS" || compatible.kind === "PLATFORM_V2_CARCASSONNE" || compatible.kind === "PLATFORM_V2_BURGUNDY" || compatible.kind === "PLATFORM_V2_CLUE" || compatible.kind === "PLATFORM_V2_SABOTEUR" || compatible.kind === "PLATFORM_V2_LOST_CITIES" || compatible.kind === "PLATFORM_V2_SPLENDOR" || compatible.kind === "PLATFORM_V2_HALLI_GALLI" || compatible.kind === "PLATFORM_V2_ISLAND_SETTLERS"
       ? null
       : compatible.legacySnapshot;
   }
@@ -561,6 +572,81 @@ export function useLobbyApp(): LobbyAppState {
     }
     applyWireSnapshot(ack.data.snapshot, session);
   }
+
+  function currentSpaceCrewScope() {
+    const compatible = compatibleSnapshotRef.current;
+    const session = storedSessionForCurrentRoute();
+    if (compatible?.kind !== "PLATFORM_V2_SPACE_CREW" || !session || sessionReplacedRef.current ||
+      compatible.platformSnapshot.self.playerId !== session.playerId || compatible.platformSnapshot.room.roomCode !== session.credential.roomCode) return null;
+    return { roomId: compatible.platformSnapshot.room.roomId, playerId: session.playerId };
+  }
+
+  async function executeSpaceCrew(command: SpaceCrewPendingCommand): Promise<void> {
+    if (spaceCrewFlightRef.current) return spaceCrewFlightRef.current;
+    const scope = currentSpaceCrewScope(), client = clientRef.current, session = storedSessionForCurrentRoute();
+    if (!scope || !client?.connected || !session || resumePending || reconnectNeeded || roomLeavePending) throw new Error("연결을 확인하고 다시 시도해주세요.");
+    const outbox = new SpaceCrewOutbox(window.sessionStorage);
+    outbox.save(scope, command);
+    setSpaceCrewPendingRequest(command); setSpaceCrewPending(true); setErrorMessage(null);
+    const flight = (async () => {
+      try {
+        const ack = await (command.kind === "spaceCrew:start" ? client.startSpaceCrew(command) : client.actSpaceCrew(command));
+        const current = currentSpaceCrewScope();
+        if (clientRef.current !== client || current?.roomId !== scope.roomId || current.playerId !== scope.playerId ||
+          storedSessionForCurrentRoute()?.credential.sessionToken !== session.credential.sessionToken) throw new Error("게임 연결이 변경되었습니다.");
+        if (!ack.ok) {
+          if (spaceCrewRejectionIsDefinitive(ack.error.code)) {
+            outbox.clear(scope, command.requestId); setSpaceCrewPendingRequest(null);
+            throw new SpaceCrewCommandRejected(getUserErrorMessage(ack.error.code));
+          }
+          throw new Error("요청 결과를 아직 확인하지 못했습니다. 같은 요청을 다시 확인해주세요.");
+        }
+        outbox.clear(scope, command.requestId); setSpaceCrewPendingRequest(null);
+        applyWireSnapshot(ack.data.snapshot, session);
+      } catch (error: unknown) {
+        setErrorMessage(error instanceof SpaceCrewCommandRejected ? error.message : "요청 결과를 확인하지 못했습니다. 같은 요청을 다시 확인해주세요.");
+        void requestLatestSnapshot();
+        throw error;
+      }
+    })();
+    spaceCrewFlightRef.current = flight;
+    try { await flight; } finally {
+      if (spaceCrewFlightRef.current === flight) { spaceCrewFlightRef.current = null; setSpaceCrewPending(false); }
+    }
+  }
+
+  async function startSpaceCrewConfigured(payload: SpaceCrewStartPayload): Promise<void> {
+    const compatible = compatibleSnapshotRef.current, scope = currentSpaceCrewScope();
+    if (compatible?.kind !== "PLATFORM_V2_SPACE_CREW" || !scope) throw new Error("현재 방을 확인해주세요.");
+    const pending = new SpaceCrewOutbox(window.sessionStorage).read(scope);
+    if (pending) {
+      if (pending.kind !== "spaceCrew:start" || JSON.stringify(pending.payload) !== JSON.stringify(payload)) throw new Error("이전 요청을 먼저 확인해주세요.");
+      return executeSpaceCrew(pending);
+    }
+    return executeSpaceCrew({ kind: "spaceCrew:start", protocolVersion: PROTOCOL_VERSION, requestId: createRequestId(),
+      expectedRoomRevision: compatible.platformSnapshot.versions.roomRevision, payload });
+  }
+  async function actSpaceCrew(command: SpaceCrewClientCommand): Promise<void> { return executeSpaceCrew(command); }
+  async function retrySpaceCrewPending(): Promise<void> {
+    const scope = currentSpaceCrewScope(); if (!scope) throw new Error("현재 방을 확인해주세요.");
+    const pending = new SpaceCrewOutbox(window.sessionStorage).read(scope);
+    if (pending) await executeSpaceCrew(pending);
+  }
+
+  useEffect(() => {
+    const scope = currentSpaceCrewScope();
+    if (!scope) { setSpaceCrewPendingRequest(null); spaceCrewAutoReplayRef.current = null; return; }
+    try {
+      const pending = new SpaceCrewOutbox(window.sessionStorage).read(scope);
+      setSpaceCrewPendingRequest(pending);
+      if (connectionState !== "CONNECTED" || sessionReplaced || resumePending || reconnectNeeded) { spaceCrewAutoReplayRef.current = null; return; }
+      const key = pending ? `${scope.roomId}:${scope.playerId}:${pending.requestId}` : null;
+      if (pending && key !== spaceCrewAutoReplayRef.current) {
+        spaceCrewAutoReplayRef.current = key;
+        void executeSpaceCrew(pending).catch(() => { setErrorMessage("이전 요청의 결과를 확인하지 못했습니다. 같은 요청을 다시 확인해주세요."); });
+      }
+    } catch { setErrorMessage("이 탭의 이전 요청을 확인할 수 없습니다. 저장 공간을 확인해주세요."); }
+  }, [compatibleSnapshot, connectionState, sessionReplaced, resumePending, reconnectNeeded]);
 
   async function actJaipur(command: JaipurClientCommand): Promise<void> {
     const client = clientRef.current, session = storedSessionForCurrentRoute();
@@ -1057,7 +1143,7 @@ export function useLobbyApp(): LobbyAppState {
     const incomingSnapshot = projectRoomSnapshotShell(compatible);
     const incomingLegacySnapshot =
       compatible.kind === "PLATFORM_V2_NUMBER_TILE" ||
-      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY" || compatible.kind === "PLATFORM_V2_SNEAKY_LUNCH" || compatible.kind === "PLATFORM_V2_WOLF_NIGHT" || compatible.kind === "PLATFORM_V2_LIAR_GAME" || compatible.kind === "PLATFORM_V2_SPYFALL" || compatible.kind === "PLATFORM_V2_WORD_DUET" || compatible.kind === "PLATFORM_V2_TRAIN" || compatible.kind === "PLATFORM_V2_CENTURY" || compatible.kind === "PLATFORM_V2_JAIPUR" || compatible.kind === "PLATFORM_V2_LOVE_LETTER" || compatible.kind === "PLATFORM_V2_GURYONGTU" || compatible.kind === "PLATFORM_V2_AZUL" || compatible.kind === "PLATFORM_V2_VEGAS" || compatible.kind === "PLATFORM_V2_CARCASSONNE" || compatible.kind === "PLATFORM_V2_BURGUNDY" || compatible.kind === "PLATFORM_V2_CLUE" || compatible.kind === "PLATFORM_V2_SABOTEUR" || compatible.kind === "PLATFORM_V2_LOST_CITIES" || compatible.kind === "PLATFORM_V2_SPLENDOR" || compatible.kind === "PLATFORM_V2_HALLI_GALLI" || compatible.kind === "PLATFORM_V2_ISLAND_SETTLERS"
+      compatible.kind === "PLATFORM_V2_GEM_CARD" || compatible.kind === "PLATFORM_V2_CITY_ROLE" || compatible.kind === "PLATFORM_V2_DRAW_RELAY" || compatible.kind === "PLATFORM_V2_SNEAKY_LUNCH" || compatible.kind === "PLATFORM_V2_WOLF_NIGHT" || compatible.kind === "PLATFORM_V2_LIAR_GAME" || compatible.kind === "PLATFORM_V2_SPYFALL" || compatible.kind === "PLATFORM_V2_WORD_DUET" || compatible.kind === "PLATFORM_V2_TRAIN" || compatible.kind === "PLATFORM_V2_CENTURY" || compatible.kind === "PLATFORM_V2_SPACE_CREW" || compatible.kind === "PLATFORM_V2_JAIPUR" || compatible.kind === "PLATFORM_V2_LOVE_LETTER" || compatible.kind === "PLATFORM_V2_GURYONGTU" || compatible.kind === "PLATFORM_V2_AZUL" || compatible.kind === "PLATFORM_V2_VEGAS" || compatible.kind === "PLATFORM_V2_CARCASSONNE" || compatible.kind === "PLATFORM_V2_BURGUNDY" || compatible.kind === "PLATFORM_V2_CLUE" || compatible.kind === "PLATFORM_V2_SABOTEUR" || compatible.kind === "PLATFORM_V2_LOST_CITIES" || compatible.kind === "PLATFORM_V2_SPLENDOR" || compatible.kind === "PLATFORM_V2_HALLI_GALLI" || compatible.kind === "PLATFORM_V2_ISLAND_SETTLERS"
         ? null
         : compatible.legacySnapshot;
     const incomingNumberSnapshot =
@@ -3293,6 +3379,11 @@ export function useLobbyApp(): LobbyAppState {
     actSplendor,
     actTrain,
     actCentury,
+    startSpaceCrewConfigured,
+    actSpaceCrew,
+    retrySpaceCrewPending,
+    spaceCrewPendingRequest,
+    spaceCrewPending,
     actJaipur,
     actLoveLetter,
     actGuryongtu,

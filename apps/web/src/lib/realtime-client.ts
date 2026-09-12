@@ -1,3 +1,4 @@
+import { SpaceCrewStartCommandSchema, SpaceCrewClientCommandSchema, type SpaceCrewStartCommand, type SpaceCrewClientCommand } from "@hangul-rummikub/shared";
 import { TrainClientCommandSchema, type TrainClientCommand } from "@hangul-rummikub/shared";
 import { CenturyClientCommandSchema, type CenturyClientCommand } from "@hangul-rummikub/shared";
 import { RoomPreparationCommandSchema, type RoomPreparationCommand } from "@hangul-rummikub/shared";
@@ -729,6 +730,24 @@ export class RealtimeClient {
     return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {
       switch (command.kind) {
         case "century:act": this.#socket.emit("century:act", command, acknowledge); break;
+      }
+    }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
+  }
+
+  startSpaceCrew(command: SpaceCrewStartCommand): Promise<StateSyncWireAck> {
+    if (!parseRematch(SpaceCrewStartCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => this.#socket.emit("spaceCrew:start", command, acknowledge),
+      validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
+  }
+
+  actSpaceCrew(command: SpaceCrewClientCommand): Promise<StateSyncWireAck> {
+    if (!parseRematch(SpaceCrewClientCommandSchema, command).success) return Promise.reject(new RealtimeClientError("INVALID_COMMAND"));
+    return this.#emitAcknowledged(command.kind, command.requestId, acknowledge => {
+      switch (command.kind) {
+        case "spaceCrew:act": this.#socket.emit("spaceCrew:act", command, acknowledge); break;
+        case "spaceCrew:retry": this.#socket.emit("spaceCrew:retry", command, acknowledge); break;
+        case "spaceCrew:next": this.#socket.emit("spaceCrew:next", command, acknowledge); break;
+        case "spaceCrew:practiceMission": this.#socket.emit("spaceCrew:practiceMission", command, acknowledge); break;
       }
     }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));
   }
