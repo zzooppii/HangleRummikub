@@ -9,7 +9,7 @@
 | 단계 | 작업 | 상태 |
 | --- | --- | --- |
 | P0 Rules Audit | 공식 규칙·50미션·토큰·구조 신호·5인·privacy·저장 범위 | PASS |
-| P1 Trick-taking Domain | 40장·3–5인 배분·대장·follow suit·trump·보존 | NOT_STARTED |
+| P1 Trick-taking Domain | 40장·3–5인 배분·사령관·follow suit·trump·보존 | PASS |
 | P2 Task/Mission primitives | 교신·task assignment·batch order·구조 신호·예외 primitive | NOT_STARTED |
 | P3 Missions 1–10 | 조건/성공/실패/설정 테스트 | NOT_STARTED |
 | P4 Missions 11–25 | 조건/성공/실패/설정 테스트 | NOT_STARTED |
@@ -49,3 +49,11 @@ P1 카드/트릭의 파일 경계·보존·원자성·3인 소진 테스트 설�
 2026-09-13 개발 계속 요청에 따라46의 최초 배분 기준 담당자 고정 해석을 채택했다. 별도 명시적 규칙 답변을 받았다고 기록하지 않는다. 50개 미션의 출판면 대조, 교신 예외, 종료 정책, 캠페인 저장 범위 및 P1 검증 설계가 완료됐다. 최종 root 검증 및 commit/push 후 P1에 진입한다.
 
 최종 검증: root typecheck PASS, test 2640 PASS(fail/cancel/skip0), build PASS(기존500kB chunk 경고 유지), 문서 링크 및 diff-check PASS. P0 통과; 해당 커밋 push 후 P1 구현을 시작한다.
+
+### P1 코어 엔진
+
+40장 생성·엄격한 inventory 검증·주입 난수 셔플·3–5인 배분, 최초 사령관, follow suit/로켓 우선, 승자와 다음 선두, 원자적 제출,3인13트릭 종료를 server-only 도메인으로 구현했다. create/parse는 참조를 분리하고 command는 actor/revision/소유권/합법 제출을 검증한다. 현재 트릭의 선도색 위반 및 조작된 최초 사령관 상태를 거절한다. 명시적인 플레이어별 공개 DTO·플랫폼 연결은 P6에서 구현한다.
+
+- 전용28 tests PASS: cards11, trick14, simulation3(3·4·5인 각각12개 seed).
+- root typecheck PASS; test shared127 + web649 + server1892 = **2668 PASS**, fail/cancel/skip0; build PASS(기존500kB chunk 경고 유지).
+- 독립 코드 검토 보완2건 반영, diff-check PASS. 새 dependency 없음. commit/push 후 P2 진행.

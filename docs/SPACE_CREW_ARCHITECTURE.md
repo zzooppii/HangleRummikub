@@ -49,7 +49,7 @@
 
 ## 화면·일러스트·상호작용·소리
 
-독립적인 우주 탐사/조종석 디자인. 어두운 우주 배경, 임무 제어판, 승무원 자리, 중앙 트릭, 읽기 쉬운 목표 카드와 대장/교신 표시를 사용한다. 원작 카드 그림·로고·외관을 복제하지 않는다. 장식은 정보보다 앞서지 않는다.
+독립적인 우주 탐사/조종석 디자인. 어두운 우주 배경, 임무 제어판, 승무원 자리, 중앙 트릭, 읽기 쉬운 목표 카드와 사령관/교신 표시를 사용한다. 원작 카드 그림·로고·외관을 복제하지 않는다. 장식은 정보보다 앞서지 않는다.
 
 Playing card는 색·기호·숫자/로켓·legal 표시·교신 표시를 함께 제공한다. PC는 테이블 중심, 390/320px은 손패와 행동이 읽히도록 재배치한다. 터치 선택→확정, 키보드와 focus, reduced-motion, 교신 단계 표시, 짧은 성공/실패 이유, Game Guide를 필수로 포함한다.
 
@@ -59,9 +59,9 @@ Web Audio의 자체 카드·교신·획득·임무 성공/실패 소리를 상�
 
 순수 domain 조건/보존 테스트, shared strict/privacy 테스트, 실제 socket actor/revision/중복/경합/reconnect, campaign 저장 실패/restart/replay 테스트, 실제 3–5인 browser 및 PC/390/320px E2E를 단계별로 수행한다. 모든 phase에서 root typecheck/test/build/diff-check 후 commit/push한다. 테스트 core 행동을 mock으로 우회하지 않는다. 서버 테스트는 기존 root `src/*.test.ts` glob에 포함시킨다.
 
-### P1 검증 설계 (구현 전)
+### P1 구현과 검증
 
-카드 생성·배분은 `domain/cards.ts`, 제출·트릭 진행은 `domain/trick.ts`, 직접 실행하는 회귀 검증은 server `src/space-crew.domain.test.ts`에 둔다. P1에서는 미션 성공을 판정하지 않는다. 모든 트릭 소진은 카드 진행의 종료이며 협동 SUCCESS와 다르다. 플랫폼 등록·공개 DTO·화면 연결은 P6/P7의 작업이다.
+카드 생성·배분은 `domain/cards.ts`, 제출·트릭 진행은 `domain/trick.ts`, 직접 실행하는 회귀 검증은 server `src/space-crew.cards.test.ts`, `src/space-crew.trick.test.ts`, `src/space-crew.simulation.test.ts`에 둔다. P1에서는 미션 성공을 판정하지 않는다. 모든 트릭 소진은 카드 진행의 종료이며 협동 SUCCESS와 다르다. 플랫폼 등록·공개 DTO·화면 연결은 P6/P7의 작업이다.
 
 기존 `ports/system.ts`의 `RandomSource`와 `domain/frozen-fisher-yates.ts`를 재사용한다. 카드 ID는 주입된 생성 함수에서 받고 application에서 기존 ID 생성기에 연결한다. 카드 면으로 ID를 만들지 않는다. 강제 턴 시간이 없으므로 순수 트릭 함수에는 Clock이나 scheduler를 주입하지 않는다.
 
@@ -76,4 +76,6 @@ Web Audio의 자체 카드·교신·획득·임무 성공/실패 소리를 상�
 | 성공과 보존 | 성공 시 한 장만 이동, 카드 소유·위치 zone 간 중복 없음, 매 제출 후 전체 40장 보존. 이력·표시용 참조는 보존 집계에서 제외 |
 | 끝까지 진행 | 3인13/4인10/5인8트릭, 3인 잔여 한 장 유지, 14번째 부분 트릭 금지, 소진을 미션 성공으로 오인하지 않음 |
 
-승자 기대값은 작은 수작업 사례로 정한다. 구현의 승자 함수를 다시 호출해 테스트의 정답을 만들지 않는다. 아직 위 테스트를 작성하거나 실행한 상태가 아니다.
+승자 기대값은 작은 수작업 사례로 정한다. 구현의 승자 함수를 다시 호출해 테스트의 정답을 만들지 않는다. 위 경계를 cards/trick 도메인과 전용 테스트로 구현했다. 3·4·5인 각각12개 셔플을 끝까지 진행하는 시뮬레이션에서도 별도 승자 계산과 매 제출40장 보존을 확인한다.
+
+P1 상태는 `BETWEEN_TRICKS / IN_TRICK / EXHAUSTED`로 구분하며 미션 SUCCESS를 뜻하지 않는다. 서버 내부 parser는40개 카드 위치, 현재 선도색 준수, 좌석 순환, 완료 트릭의 승자와 다음 선두,3인 잔여 한 장을 검증한다. 초기 로켓4 소유 검증은 첫 카드 제출 전까지만 적용해 미션12의 이후 교환과 양립한다. 카드 제출 command는 strict shape와 expectedRevision을 검증하고, 없는/타인/이미 사용한 카드 참조는 동일한 INVALID_CARD로 반환한다.
