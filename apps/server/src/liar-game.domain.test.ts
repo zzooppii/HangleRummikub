@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { parse } from "valibot";
 import { GameRevisionSchema, LiarClientCommandSchema, PlayerIdSchema, type LiarClientCommand } from "@hangul-rummikub/shared";
-import { createLiarGame, advanceLiar, commandLiar, cancelLiar, parseLiarState, type LiarState } from "./games/liar-game/domain/game.js";
+import { createLiarGame, advanceLiar, commandLiar, cancelLiar, parseLiarState, nextLiarRound, liarScores, liarMatchWinners, chooseLiarRoster, type LiarState } from "./games/liar-game/domain/game.js";
 import { projectLiar } from "./games/liar-game/compatibility/projector.js";
 import { LiarGameStateAdapter } from "./games/liar-game/compatibility/adapter.js";
-import { CuratedLiarPrompts, normalizeLiarAnswer } from "./games/liar-game/domain/prompts.js";
+import { CuratedLiarPrompts, normalizeLiarAnswer, rememberLiarPrompt, type LiarPromptHistory } from "./games/liar-game/domain/prompts.js";
 const ids = ["a", "b", "c", "d"].map(x => parse(PlayerIdSchema, x));
 let seq = 0;
 function create() { return createLiarGame({ gameId: "liar-game", playerIds: ids, liarPlayerId: ids[3]!, settings: { category: "FOOD", discussionSeconds: 90 }, prompt: { category: "FOOD", word: "돈가스", aliases: ["돈까스"] }, now: 1000, transitionId: "reveal" }); }
@@ -80,10 +80,10 @@ test("LIAR public projection has no answer or votes for liar; citizens only rece
   const s = stage("VOTE"), voted = act(s, 0, "liar:vote", { playerId: ids[3] }); assert.ok(voted);
   const liar = projectLiar(stored(voted), ids[3]!); assert.equal(liar.phase, "PLAYING");
   const wire = JSON.stringify(liar); for (const secret of ["돈가스", "돈까스", '"aliases"', '"voteRounds"', '"liarPlayerId"', '"lastSaidAt"']) assert.ok(!wire.includes(secret), secret);
-  if (liar.phase !== "PLAYING") throw new Error(); assert.deepEqual(liar.privateView, { playerId: ids[3], votedFor: null, role: "LIAR" });
-  const own = projectLiar(stored(voted), ids[0]!); assert.equal(own.phase, "PLAYING"); if (own.phase !== "PLAYING") throw new Error(); assert.equal(own.privateView.votedFor, ids[3]);
+  if (liar.phase !== "PLAYING" || liar.stage === "ROUND_RESULT") throw new Error(); assert.deepEqual(liar.privateView, { playerId: ids[3], votedFor: null, role: "LIAR" });
+  const own = projectLiar(stored(voted), ids[0]!); assert.equal(own.phase, "PLAYING"); if (own.phase !== "PLAYING" || own.stage === "ROUND_RESULT") throw new Error(); assert.equal(own.privateView.votedFor, ids[3]);
   assert.throws(() => projectLiar(stored(voted), parse(PlayerIdSchema, "unknown")));
-  const ended = projectLiar(stored(next(vote(s, [3, 3, 3, 0]))), ids[3]!); assert.equal(ended.phase, "FINISHED"); assert.match(JSON.stringify(ended), /돈가스/);
+  const ended = projectLiar(stored(next(vote(s, [3, 3, 3, 0]))), ids[3]!); assert.equal(ended.phase, "PLAYING"); assert.ok("stage" in ended && ended.stage === "ROUND_RESULT"); assert.match(JSON.stringify(ended), /돈가스/);
 });
 test("LIAR cancellation never awards points and stored adapter rejects invalid metadata/state", () => {
   const s = stage("CLUE"), cancelled = cancelLiar(s, s.startedAt + 20000); assert.equal(cancelled.result!.reason, "CANCELLED"); assert.deepEqual(cancelled.result!.winnerPlayerIds, []);
@@ -93,5 +93,90 @@ test("LIAR cancellation never awards points and stored adapter rejects invalid m
   for (const damaged of [{ ...s, liarPlayerId: "missing" }, { ...s, stage: "GUESS" }, { ...s, players: [s.players[0], s.players[0], s.players[2], s.players[3]] }, { ...s, result: cancelled.result }, { ...s, extraSecret: "x" }]) assert.throws(() => parseLiarState(damaged));
 });
 test("LIAR curated prompt source covers six categories and never requires a network", () => {
-  const source = new CuratedLiarPrompts(); for (const category of ["FOOD", "ANIMAL", "PLACE", "OBJECT", "JOB", "HOBBY"] as const) { const found = new Set<string>(); for (let i = 0; i < 20; i++) { const p = source.choose(category, { nextInt: () => i }); assert.equal(p.category, category); assert.ok(p.word.length > 0); found.add(p.word); } assert.equal(found.size, 20); }
+  const source = new CuratedLiarPrompts();
+  for (const category of ["FOOD", "ANIMAL", "PLACE", "OBJECT", "JOB", "HOBBY"] as const) {
+    const count = category === "FOOD" || category === "ANIMAL" ? 50 : 20;
+    const found = new Set<string>();
+    const answers = new Set<string>();
+    for (let i = 0; i < count; i++) {
+      const prompt = source.choose(category, { nextInt: (max) => { assert.equal(max, count); return i; } });
+      assert.equal(prompt.category, category);
+      assert.ok(prompt.word.trim().length > 0);
+      found.add(normalizeLiarAnswer(prompt.word));
+      for (const answer of [prompt.word, ...prompt.aliases]) {
+        const normalized = normalizeLiarAnswer(answer);
+        assert.ok(!answers.has(normalized), `Duplicate answer in ${category}: ${answer}`);
+        answers.add(normalized);
+      }
+    }
+    assert.equal(found.size, count);
+  }
+});
+
+test("LIAR prompt cycles exhaust each category, avoid boundary repeats and exclude current match", () => {
+  const source = new CuratedLiarPrompts(), random = { nextInt: () => 0 };
+  for (const category of ["FOOD", "ANIMAL", "PLACE", "OBJECT", "JOB", "HOBBY"] as const) {
+    let history: LiarPromptHistory = [];
+    const count = category === "FOOD" || category === "ANIMAL" ? 50 : 20, firstCycle = new Set<string>();
+    for (let i = 0; i < count; i++) {
+      const prompt = source.choose(category, random, history); firstCycle.add(prompt.word);
+      history = rememberLiarPrompt(history, prompt);
+    }
+    assert.equal(firstCycle.size, count);
+    const previous = history.at(-1)!.word;
+    const next = source.choose(category, random, history, history.slice(0, 9));
+    assert.notEqual(next.word, previous); assert.ok(!history.slice(0, 9).some(p => p.word === next.word));
+    history = rememberLiarPrompt(history, next); assert.equal(history.length, 1);
+    const baseline = structuredClone(history);
+    source.choose("RANDOM", random, history); assert.deepEqual(history, baseline);
+  }
+});
+
+test("LIAR ten rounds score once, reset private round data, and produce tied champions", () => {
+  let s = create(); const source = new CuratedLiarPrompts(), random = { nextInt: () => 0 };
+  for (let round = 1; round <= 10; round++) {
+    while (s.result === null) s = next(s); // abstentions award this round's liar 3 points
+    assert.equal(s.roundNumber, round); assert.equal(s.rounds.length, round);
+    assert.equal(liarScores(s).reduce((sum, p) => sum + p.points, 0), round * 3);
+    assert.equal(advanceLiar(s, 999999999, "stale"), null);
+    assert.equal(new LiarGameStateAdapter().inspectLifecycle(stored(s)).lifecycle, round === 10 ? "FINISHED" : "RUNNING");
+    if (round < 10) {
+      const baseline = structuredClone(s), roster = { playerIds: ids, liarPlayerId: ids[(round - 1) % ids.length]! };
+      const excluded = s.rounds.map(r => ({ category: r.category, word: r.result.word }));
+      const fresh = nextLiarRound(s, roster, source.choose("FOOD", random, excluded, excluded), s.startedAt + round * 300000, `round-${round + 1}`);
+      assert.ok(fresh); assert.deepEqual(s, baseline); s = fresh;
+      assert.equal(s.stage, "REVEAL"); assert.equal(s.clueIndex, 0); assert.deepEqual(s.messages, []); assert.deepEqual(s.voteRounds, []);
+      assert.ok(s.players.every(p => !p.clueDone && p.clue === null && p.votedFor === null && p.lastSaidAt === null));
+      const liar = projectLiar(stored(s), s.liarPlayerId); assert.ok(!JSON.stringify(liar).includes(`"word":"${s.word}"`));
+    }
+  }
+  assert.equal(s.phase, "FINISHED"); assert.equal(new Set(s.rounds.map(r => r.result.word)).size, 10);
+  const counts = ids.map(id => s.rounds.filter(r => r.result.liarPlayerId === id).length);
+  assert.equal(Math.max(...counts) - Math.min(...counts), 1);
+  assert.equal(liarMatchWinners(s).length, 2); assert.ok(liarScores(s).filter(p => liarMatchWinners(s).includes(p.playerId)).every(p => p.points === 9));
+  assert.equal(nextLiarRound(s, { playerIds: ids, liarPlayerId: ids[0]! }, { category: "FOOD", word: "새 단어", aliases: [] }, 99999999, "eleventh"), null);
+});
+
+test("LIAR citizen rewards, cancellation and corrupted round histories preserve scoring invariants", () => {
+  const won = next(vote(stage("VOTE"), [3, 3, 3, 0]));
+  assert.deepEqual(liarScores(won).map(p => p.points), [1, 1, 1, 0]);
+  const cancelled = cancelLiar(won, 999999); assert.deepEqual(liarScores(cancelled), liarScores(won));
+  assert.deepEqual(liarMatchWinners(cancelled), []); assert.equal(cancelled.rounds.length, 1);
+  assert.deepEqual(liarScores(cancelLiar(create(), 2000)).map(p => p.points), [0, 0, 0, 0]);
+  assert.throws(() => parseLiarState({ ...won, rounds: [] }));
+  assert.throws(() => parseLiarState({ ...won, roundNumber: 10 }));
+  assert.throws(() => parseLiarState({ ...won, rounds: [{ ...won.rounds[0], result: { ...won.result, winnerPlayerIds: [ids[3]] } }] }));
+  assert.throws(() => nextLiarRound(won, { playerIds: ids, liarPlayerId: ids[0]! }, { category: "FOOD", word: won.word, aliases: [] }, 999999, "duplicate"));
+});
+
+test("LIAR role weighting favors fewer prior assignments while every player remains eligible", () => {
+  const prior = next(stage("VOTE")); // d was the first liar
+  const drawn = new Map<string, number>();
+  for (let roll = 0; roll < 7; roll++) {
+    let first = true;
+    const roster = chooseLiarRoster(ids, prior.rounds, { nextInt(max) { if (first) { first = false; assert.equal(max, 7); return roll; } return 0; } });
+    drawn.set(roster.liarPlayerId, (drawn.get(roster.liarPlayerId) ?? 0) + 1);
+    assert.deepEqual([...roster.playerIds].sort(), [...ids].sort());
+  }
+  assert.deepEqual(ids.map(id => drawn.get(id)), [2, 2, 2, 1]);
 });

@@ -1,3 +1,4 @@
+import type { LiarPromptHistory } from "../games/liar-game/domain/prompts.js";
 import type { BurgundySettings } from "@hangul-rummikub/shared";
 import type { TrainStoredGame } from "../games/train/compatibility/adapter.js";
 import type { CenturyStoredGame } from "../games/century/compatibility/adapter.js";
@@ -70,6 +71,8 @@ export type PlayerRecord = Readonly<{
 }>;
 
 type RoomRecordBase = Readonly<{
+  /** Server-only LIAR draw history, retained across game selection. */
+  liarPromptHistory?: LiarPromptHistory;
   /** Present after selecting the next game; all members must prepare again. */
   readyPlayerIds?: readonly PlayerId[];
   /** Explicit departures stay separate from the completed game roster. */

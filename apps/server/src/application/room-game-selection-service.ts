@@ -50,8 +50,12 @@ export class RoomGameSelectionService {
           candidate = {
             roomId: room.roomId, roomCode: room.roomCode, gameType: command.payload.gameType,
             phase: "LOBBY", game: null, players, hostPlayerId: room.hostPlayerId,
+            ...(room.liarPromptHistory === undefined ? {} : { liarPromptHistory: room.liarPromptHistory }),
             readyPlayerIds: [], roomRevision, createdAt: room.createdAt, updatedAt: now,
           };
+          if (command.payload.gameType === "LIAR_GAME" && room.gameType === "LIAR_GAME") {
+            candidate = { ...candidate, gameType: "LIAR_GAME", game: null, settings: room.settings ?? { category: "RANDOM", discussionSeconds: 90 } };
+          }
           if(command.payload.gameType === "SPLENDOR" && room.gameType === "SPLENDOR") {
             candidate={...candidate,gameType:"SPLENDOR",game:null,settings:room.settings??{mode:"BASE"}};
           }

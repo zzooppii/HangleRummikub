@@ -4668,6 +4668,7 @@ test("runtime Socket.IO map은 Number events를 additive하게 제공하고 lega
     | "halli:flip" | "halli:bell" | "halli:rematch"
     | "spyfall:configure" | "spyfall:ask" | "spyfall:answer" | "spyfall:accuse" | "spyfall:vote" | "spyfall:skip" | "spyfall:reveal" | "spyfall:guess"
     | "liar:configure" | "liar:clue" | "liar:vote" | "liar:say" | "liar:guess"
+    | "liar:nextRound"
     | "wolf:configure" | "wolf:act" | "wolf:vote" | "wolf:say" | "wolf:rematch"
     | "sneaky:configure" | "sneaky:eat" | "sneaky:rematch"
   > = true;

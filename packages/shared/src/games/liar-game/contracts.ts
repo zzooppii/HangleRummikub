@@ -13,3 +13,5 @@ export const LiarStageSchema = v.picklist(["REVEAL", "CLUE", "DISCUSSION", "VOTE
 export type LiarStage = v.InferOutput<typeof LiarStageSchema>;
 export const LiarClueSchema = v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(40));
 export const LiarTextSchema = v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(200));
+
+export const LIAR_TOTAL_ROUNDS = 10;

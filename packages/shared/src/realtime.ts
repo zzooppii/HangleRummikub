@@ -601,6 +601,7 @@ export interface SnapshotWireClientToServerEvents {
   "liar:clue": (command: Extract<LiarClientCommand,{kind:"liar:clue"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "liar:vote": (command: Extract<LiarClientCommand,{kind:"liar:vote"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "liar:say": (command: Extract<LiarClientCommand,{kind:"liar:say"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
+  "liar:nextRound": (command: Extract<LiarClientCommand,{kind:"liar:nextRound"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "liar:guess": (command: Extract<LiarClientCommand,{kind:"liar:guess"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "wolf:configure": (command: Extract<WolfClientCommand,{kind:"wolf:configure"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;
   "wolf:act": (command: Extract<WolfClientCommand,{kind:"wolf:act"}>, acknowledge: SocketAcknowledgement<StateSyncWireAck>) => void;

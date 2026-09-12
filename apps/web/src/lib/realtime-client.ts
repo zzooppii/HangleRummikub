@@ -884,6 +884,7 @@ export class RealtimeClient {
                 case "liar:clue": this.#socket.emit("liar:clue", command, acknowledge); break;
         case "liar:vote": this.#socket.emit("liar:vote", command, acknowledge); break;
         case "liar:say": this.#socket.emit("liar:say", command, acknowledge); break;
+        case "liar:nextRound": this.#socket.emit("liar:nextRound", command, acknowledge); break;
         case "liar:guess": this.#socket.emit("liar:guess", command, acknowledge); break;
       }
     }, validateStateSyncWireAck, ack => hasConsistentSnapshotAcknowledgement(ack) && this.#acceptAcknowledgementSnapshotVersion(ack));

@@ -9,9 +9,9 @@ import type { IdempotencyRepository } from "../../../ports/idempotency-repositor
 import type { RoomPresencePolicyReader } from "../../../ports/room-presence-policy.js";
 import type { Clock, IdGenerator, RandomSource, TurnScheduler, ScheduledTurnDeadline } from "../../../ports/system.js";
 import type { LiarRoomRecord } from "../../../model/persistence.js";
-import { createLiarGame, commandLiar, advanceLiar, type LiarState } from "../domain/game.js";
+import { createLiarGame, commandLiar, advanceLiar, chooseLiarRoster, nextLiarRound, type LiarState } from "../domain/game.js";
 
-import type { LiarPromptSource } from "../domain/prompts.js";
+import { rememberLiarPrompt, type LiarPromptSource } from "../domain/prompts.js";
 
 export type LiarDependencies = Readonly<{ roomRepository: RoomRepository; roomUnitOfWork: RoomUnitOfWork; idempotencyRepository: IdempotencyRepository;
   roomMutationExecutor: RoomMutationSerialExecutor; presence: RoomPresencePolicyReader; clock: Clock; ids: IdGenerator; random: RandomSource; turnScheduler: TurnScheduler; prompts: LiarPromptSource }>;
@@ -64,14 +64,13 @@ export class LiarService {
         if (!lease.isCurrent() || !room.players.every(p => lease.connectionStatusByPlayerId.get(p.playerId) === "CONNECTED")) return failure("PLAYERS_NOT_CONNECTED");
         const now = d.clock.now(), gameId = d.ids.generateGameId(), turnId = d.ids.generateTurnId();
         const settings = room.settings ?? LIAR_DEFAULT_SETTINGS;
-        const playerIds = room.players.map(p => p.playerId);
-        const liarPlayerId = playerIds[d.random.nextInt(playerIds.length)]!;
-        for (let i = playerIds.length - 1; i > 0; i--) { const j = d.random.nextInt(i + 1); [playerIds[i], playerIds[j]] = [playerIds[j]!, playerIds[i]!]; }
-        const state = createLiarGame({ gameId, playerIds, liarPlayerId, settings,
-          prompt: d.prompts.choose(settings.category, d.random), now, transitionId: turnId });
+        const roster = chooseLiarRoster(room.players.map(p => p.playerId), [], d.random);
+        const prompt = d.prompts.choose(settings.category, d.random, room.liarPromptHistory ?? []);
+        const state = createLiarGame({ gameId, ...roster, settings, prompt, now, transitionId: turnId });
+        const liarPromptHistory = rememberLiarPrompt(room.liarPromptHistory ?? [], prompt);
         const roomRevision = v.parse(RoomRevisionSchema, room.roomRevision + 1), gameRevision = v.parse(GameRevisionSchema, 0);
         const data = v.parse(GameStartSuccessDataSchema, { roomId: room.roomId, roomRevision, gameId, gameRevision, turnId });
-        const committed = await d.roomUnitOfWork.commit({ roomMutation: { kind: "REPLACE", candidate: { ...room, phase: "PLAYING", roomRevision, updatedAt: now,
+        const committed = await d.roomUnitOfWork.commit({ roomMutation: { kind: "REPLACE", candidate: { ...room, liarPromptHistory, phase: "PLAYING", roomRevision, updatedAt: now,
           game: { gameId, gameRevision, startedAt: now, finishedAt: null, state } }, expectedRoomRevision: room.roomRevision, expectedStorageRevision: room.storageRevision },
           sessionMutation: { kind: "NONE" }, idempotency: { scopeKey, requestId: input.requestId, payloadFingerprint, terminalResult: data, createdAt: now } },
           { isSatisfied: () => input.authorization.isCurrent() && lease.isCurrent() });
@@ -104,10 +103,24 @@ export class LiarService {
           candidate = { ...room, settings: c.payload, roomRevision: v.parse(RoomRevisionSchema, room.roomRevision + 1), updatedAt: now }; outcome = "CONFIGURED";
         } else {
           if (!room.game || room.game.gameId !== c.gameId) return failure("STALE_GAME_REVISION");
-          if (room.phase !== "PLAYING" || room.game.state.transitionId !== c.phaseId || room.game.state.nextTransitionAt === null || now >= room.game.state.nextTransitionAt) return failure("STALE_GAME_REVISION");
-          const state = commandLiar(room.game.state, input.actorPlayerId, c, now, d.ids.generateTurnId());
-          if (!state) return failure("INVALID_PAYLOAD");
-          outcome = "ACCEPTED"; candidate = transitionLiar(room, state, now);
+          if (room.phase !== "PLAYING" || room.game.state.transitionId !== c.phaseId) return failure("STALE_GAME_REVISION");
+          const previous = room.game.state;
+          if (c.kind === "liar:nextRound") {
+            if (room.hostPlayerId !== input.actorPlayerId) return failure("HOST_ONLY");
+            if (previous.stage !== "ROUND_RESULT") return failure("INVALID_PHASE");
+            const roster = chooseLiarRoster(room.players.map(p => p.playerId), previous.rounds, d.random);
+            const prompt = d.prompts.choose(previous.settings.category, d.random, room.liarPromptHistory ?? [],
+              previous.rounds.map(r => ({ category: r.category, word: r.result.word })));
+            const state = nextLiarRound(previous, roster, prompt, now, d.ids.generateTurnId());
+            if (!state) return failure("INVALID_PHASE");
+            candidate = { ...transitionLiar(room, state, now), liarPromptHistory: rememberLiarPrompt(room.liarPromptHistory ?? [], prompt) };
+          } else {
+            if (previous.nextTransitionAt === null || now >= previous.nextTransitionAt) return failure("STALE_GAME_REVISION");
+            const state = commandLiar(previous, input.actorPlayerId, c, now, d.ids.generateTurnId());
+            if (!state) return failure("INVALID_PAYLOAD");
+            candidate = transitionLiar(room, state, now);
+          }
+          outcome = "ACCEPTED";
         }
         // The state and replay receipt commit atomically under the room lane.
         const committed = await d.roomUnitOfWork.commit({ roomMutation: { kind: "REPLACE", candidate,
@@ -115,7 +128,7 @@ export class LiarService {
           idempotency: { scopeKey, requestId: c.requestId, payloadFingerprint, terminalResult: { outcome }, createdAt: now } }, { isSatisfied: () => input.authorization.isCurrent() });
         if (committed.status !== "COMMITTED") return failure("STALE_GAME_REVISION");
         changed = candidate !== room;
-        if (room.game && (candidate.phase === "FINISHED" || candidate.game?.state.transitionId !== room.game.state.transitionId)) await this.cancelTimer(room.game.state.transitionId);
+        if (room.game && (candidate.game?.state.nextTransitionAt === null || candidate.game?.state.transitionId !== room.game.state.transitionId)) await this.cancelTimer(room.game.state.transitionId);
         return receiptResult({ outcome });
       });
       if (changed) { await this.schedule(input.roomId); await this.notify(input.roomId); }

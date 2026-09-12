@@ -600,7 +600,7 @@ const LiarLobbyRaw = v.pipe(v.strictObject({ ...LiarOuter, room: v.strictObject(
   players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)), settings: LiarSettingsSchema }), game: v.null() }),
   v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
 const LiarPlayingRaw = v.pipe(v.strictObject({ ...LiarOuter, room: v.strictObject({ ...LiarRoom, phase: v.literal("PLAYING"), players: LiarPlayers }), game: LiarPlayingProjectionSchema }),
-  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateView.playerId === s.self.playerId));
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.stage === "ROUND_RESULT" || s.game.privateView.playerId === s.self.playerId));
 const LiarFinishedRaw = v.pipe(v.strictObject({ ...LiarOuter, room: v.strictObject({ ...LiarRoom, phase: v.literal("FINISHED"), players: LiarPlayers }), game: LiarFinishedProjectionSchema }),
   v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)));
 export type LiarLobbyPlatformSnapshotV2 = v.InferOutput<typeof LiarLobbyRaw>;

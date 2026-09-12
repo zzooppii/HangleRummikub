@@ -6,6 +6,8 @@ import { LiarLobbyPlatformSnapshotV2Schema, LiarPlayingPlatformSnapshotV2Schema,
   StateSyncWireAckSchema, RoomLeaveAckSchema, ServerTimeSchema, TurnIdSchema } from "@hangul-rummikub/shared";
 import { createHttpServer } from "./server.js";
 type Client = Socket<Record<string,(value:unknown)=>void>,Record<string,(value:unknown,ack:(value:unknown)=>void)=>void>>;
+function active(input: unknown) { const s = parse(LiarPlayingPlatformSnapshotV2Schema, input); if (s.game.stage === "ROUND_RESULT") throw new Error("Expected active round"); return { ...s, game: s.game }; }
+function roundResult(input: unknown) { const s = parse(LiarPlayingPlatformSnapshotV2Schema, input); if (s.game.stage !== "ROUND_RESULT") throw new Error("Expected round result"); return { ...s, game: s.game }; }
 async function harness(t:TestContext,count=4,start=true){
  const server=createHttpServer({serveWeb:false}),clients:Client[]=[];
  t.after(async()=>{clients.forEach(c=>c.disconnect());await server.shutdown();});
@@ -29,37 +31,44 @@ async function harness(t:TestContext,count=4,start=true){
  function time(at:number){now=parse(ServerTimeSchema,at);}
  async function advance(){const room=await stored(),s=room.game!.state;time(s.nextTransitionAt!);const deadline={roomId:room.roomId,gameId:room.game!.gameId,expectedGameRevision:room.game!.gameRevision,turnId:parse(TurnIdSchema,s.transitionId),deadlineAt:now};
  assert.equal((await server.runtime.liarService!.timeout(deadline)).status,"APPLIED");assert.equal((await server.runtime.liarService!.timeout(deadline)).status,"NO_OP");return deadline;}
- async function stage(target:string){for(let i=0;i<15&&(await stored()).game!.state.stage!==target;i++)await advance();assert.equal((await stored()).game!.state.stage,target);}
+ async function stage(target:string){for(let i=0;i<200&&(await stored()).game!.state.stage!==target;i++) {
+   const state=(await stored()).game!.state;
+   if(state.stage==="ROUND_RESULT") success(await call(host,"liar:nextRound",{},{gameId:state.gameId,phaseId:state.transitionId})); else await advance();
+ }assert.equal((await stored()).game!.state.stage,target);}
 
  return{server,connect,bootstrap,request,send,call,success,failure,lobby,members,stored,sync,time,advance,stage};
 }
 for (const count of [4, 6, 8]) test(`LIAR ${count} clients: automatic phases, simultaneous votes, guess and same-room restart`, async t => {
-  const h = await harness(t, count), first = parse(LiarPlayingPlatformSnapshotV2Schema, await h.sync()); assert.equal(first.game.stage, "REVEAL");
+  const h = await harness(t, count), first = active(await h.sync()); assert.equal(first.game.stage, "REVEAL");
   assert.equal(h.server.runtime.turnScheduler.scheduledCount, 1);
   await h.stage("VOTE"); const room = await h.stored(), game = room.game!, liar = game.state.liarPlayerId, citizen = h.members.find(m => m.playerId !== liar)!;
   const replies = await Promise.all(h.members.map(m => h.call(m.client, "liar:vote", { playerId: m.playerId === liar ? citizen.playerId : liar }, { gameId: game.gameId, phaseId: game.state.transitionId })));
   replies.forEach(h.success);
-  const caught = parse(LiarPlayingPlatformSnapshotV2Schema, await h.sync()); assert.equal(caught.game.stage, "GUESS");
+  const caught = active(await h.sync()); assert.equal(caught.game.stage, "GUESS");
   const liarClient = h.members.find(m => m.playerId === liar)!;
   const guess = h.request("liar:guess", { text: game.state.word }, { gameId: game.gameId, phaseId: caught.game.phaseId });
-  const finished = parse(LiarFinishedPlatformSnapshotV2Schema, h.success(await h.send(liarClient.client, guess)));
-  assert.equal(finished.game.result.reason, "GUESS_CORRECT"); assert.equal(h.server.runtime.turnScheduler.scheduledCount, 0);
-  h.success(await h.send(liarClient.client, guess)); assert.equal((await h.stored()).game!.gameRevision, finished.game.gameRevision);
+  const result = roundResult(h.success(await h.send(liarClient.client, guess)));
+  assert.equal(result.game.result.reason, "GUESS_CORRECT"); assert.equal(h.server.runtime.turnScheduler.scheduledCount, 0);
+  h.success(await h.send(liarClient.client, guess)); assert.equal((await h.stored()).game!.gameRevision, result.game.gameRevision);
+  await h.stage("FINISHED");
+  const finished = parse(LiarFinishedPlatformSnapshotV2Schema, await h.sync());
+  assert.equal(finished.game.rounds.length, 10);
+  assert.equal(new Set(finished.game.rounds.map(r => r.result.word)).size, 10);
   const rematch = h.request("room:selectGame", { gameType: "LIAR_GAME", gameId: game.gameId }, { expectedRoomRevision: finished.versions.roomRevision, expectedGameRevision: finished.game.gameRevision });
   const lobby = parse(LiarLobbyPlatformSnapshotV2Schema, h.success(await h.send(h.members[0]!.client, rematch)));
   assert.equal(lobby.room.roomCode, first.room.roomCode); assert.deepEqual(lobby.room.players.map(p => p.playerId), first.room.players.map(p => p.playerId));
-  const fresh = parse(LiarPlayingPlatformSnapshotV2Schema, h.success(await h.call(h.members[0]!.client, "game:start", {}, { expectedRoomRevision: lobby.versions.roomRevision })));
+  const fresh = active(h.success(await h.call(h.members[0]!.client, "game:start", {}, { expectedRoomRevision: lobby.versions.roomRevision })));
   assert.notEqual(fresh.game.gameId, first.game.gameId); assert.equal(h.failure(await h.call(liarClient.client, "liar:guess", { text: game.state.word }, { gameId: game.gameId, phaseId: caught.game.phaseId })), "STALE_GAME_REVISION");
 });
 test("LIAR role, word and vote secrecy survives resume and primary replacement", async t => {
   const h = await harness(t), room = await h.stored(), liar = h.members.find(m => m.playerId === room.game!.state.liarPlayerId)!, citizen = h.members.find(m => m !== liar)!;
-  let own = parse(LiarPlayingPlatformSnapshotV2Schema, await h.sync(liar.client)); assert.equal(own.game.privateView.role, "LIAR");
+  let own = active(await h.sync(liar.client)); assert.equal(own.game.privateView.role, "LIAR");
   for (const secret of [room.game!.state.word, '"aliases"', '"liarPlayerId"', '"voteRounds"']) assert.ok(!JSON.stringify(own).includes(secret), secret);
-  const city = parse(LiarPlayingPlatformSnapshotV2Schema, await h.sync(citizen.client)); assert.equal(city.game.privateView.role, "CITIZEN");
-  await h.stage("VOTE"); own = parse(LiarPlayingPlatformSnapshotV2Schema, await h.sync(liar.client));
+  const city = active(await h.sync(citizen.client)); assert.equal(city.game.privateView.role, "CITIZEN");
+  await h.stage("VOTE"); own = active(await h.sync(liar.client));
   h.success(await h.call(liar.client, "liar:vote", { playerId: citizen.playerId }, { gameId: own.game.gameId, phaseId: own.game.phaseId }));
-  const before = parse(LiarPlayingPlatformSnapshotV2Schema, await h.sync(liar.client)); const other = parse(LiarPlayingPlatformSnapshotV2Schema, await h.sync(citizen.client)); assert.equal(other.game.privateView.votedFor, null);
-  const replacement = await h.connect(); const resumed = parse(LiarPlayingPlatformSnapshotV2Schema, h.success(await h.call(replacement, "session:resume", { credential: { ...liar.credential, roomCode: h.lobby.room.roomCode }, lastSeenVersions: null })));
+  const before = active(await h.sync(liar.client)); const other = active(await h.sync(citizen.client)); assert.equal(other.game.privateView.votedFor, null);
+  const replacement = await h.connect(); const resumed = active(h.success(await h.call(replacement, "session:resume", { credential: { ...liar.credential, roomCode: h.lobby.room.roomCode }, lastSeenVersions: null })));
   assert.deepEqual(resumed.game, before.game); assert.equal(resumed.self.playerId, liar.playerId);
   assert.equal(h.failure(await h.call(liar.client, "liar:vote", { playerId: citizen.playerId }, { gameId: own.game.gameId, phaseId: own.game.phaseId })), "UNAUTHENTICATED");
 });
@@ -75,12 +84,12 @@ test("LIAR scoped clues, replay/conflict and exact deadline reject invalid chang
   assert.equal((await h.stored()).game!.gameRevision, committed.gameRevision); await h.advance(); assert.equal((await h.stored()).game!.state.players[1]!.clueDone, true);
 });
 test("LIAR raw runoff restricts targets and simultaneous re-votes settle once", async t => {
-  const h = await harness(t); await h.stage("VOTE"); let s = parse(LiarPlayingPlatformSnapshotV2Schema, await h.sync());
+  const h = await harness(t); await h.stage("VOTE"); let s = active(await h.sync());
   for (const [i, target] of [1, 0, 1, 0].entries()) h.success(await h.call(h.members[i]!.client, "liar:vote", { playerId: h.members[target]!.playerId }, { gameId: s.game.gameId, phaseId: s.game.phaseId }));
-  s = parse(LiarPlayingPlatformSnapshotV2Schema, await h.sync()); assert.equal(s.game.stage, "REVOTE"); assert.equal(s.game.privateView.votedFor, null);
+  s = active(await h.sync()); assert.equal(s.game.stage, "REVOTE"); assert.equal(s.game.privateView.votedFor, null);
   assert.equal(h.failure(await h.call(h.members[0]!.client, "liar:vote", { playerId: h.members[2]!.playerId }, { gameId: s.game.gameId, phaseId: s.game.phaseId })), "INVALID_PAYLOAD");
   const results = await Promise.all([1, 0, 1, 0].map((target, i) => h.call(h.members[i]!.client, "liar:vote", { playerId: h.members[target]!.playerId }, { gameId: s.game.gameId, phaseId: s.game.phaseId })));
-  results.forEach(h.success); const finish = parse(LiarFinishedPlatformSnapshotV2Schema, await h.sync()); assert.equal(finish.game.result.reason, "TIE"); assert.equal(finish.game.result.voteRounds.length, 2);
+  results.forEach(h.success); const finish = roundResult(await h.sync()); assert.equal(finish.game.result.reason, "TIE"); assert.equal(finish.game.result.voteRounds.length, 2);
 });
 test("LIAR admission, configure authority, cross-game commands, chat and departure cancellation", async t => {
   const h = await harness(t, 3, false), host = h.members[0]!, other = h.members[1]!;
@@ -94,10 +103,10 @@ test("LIAR admission, configure authority, cross-game commands, chat and departu
   h.success(await h.call(host.client, "game:start", {}, { expectedRoomRevision: lobby.versions.roomRevision }));
   const intruder = await h.connect(), intruderCredential = await h.bootstrap(intruder);
   assert.equal(h.failure(await h.call(intruder, "room:join", { bootstrapCredential: intruderCredential, nickname: "late", roomCode: h.lobby.room.roomCode })), "ROOM_NOT_JOINABLE");
-  let s = parse(LiarPlayingPlatformSnapshotV2Schema, await h.sync());
+  let s = active(await h.sync());
   assert.equal(h.failure(await h.call(host.client, "wolf:say", { text: "wrong game" }, { gameId: s.game.gameId, phaseId: s.game.phaseId })), "INVALID_PHASE");
   assert.equal(h.failure(await h.call(host.client, "liar:say", { text: "early" }, { gameId: s.game.gameId, phaseId: s.game.phaseId })), "INVALID_PAYLOAD");
-  await h.stage("DISCUSSION"); s = parse(LiarPlayingPlatformSnapshotV2Schema, await h.sync());
+  await h.stage("DISCUSSION"); s = active(await h.sync());
   h.success(await h.call(host.client, "liar:say", { text: "<img src=x onerror=alert(1)>" }, { gameId: s.game.gameId, phaseId: s.game.phaseId }));
   assert.equal(h.failure(await h.call(host.client, "liar:say", { text: "spam" }, { gameId: s.game.gameId, phaseId: s.game.phaseId })), "INVALID_PAYLOAD");
   const room = await h.stored(); const leave = parse(RoomLeaveAckSchema, await h.call(newcomer, "room:leave", {}, { expectedRoomRevision: room.roomRevision, expectedGameRevision: room.game!.gameRevision })); assert.ok(leave.ok);
@@ -120,10 +129,10 @@ test("LIAR scheduling failure preserves commit and overdue sweeper recovers dead
   const h = await harness(t, 4, false), runtime = h.server.runtime;
   const diagnostics = t.mock.method(console, "error", () => undefined);
   const scheduler = t.mock.method(runtime.turnScheduler, "scheduleTimeout", async () => { throw new Error("test scheduler unavailable"); });
-  const start = parse(LiarPlayingPlatformSnapshotV2Schema, h.success(await h.call(h.members[0]!.client, "game:start", {}, { expectedRoomRevision: h.lobby.versions.roomRevision })));
+  const start = active(h.success(await h.call(h.members[0]!.client, "game:start", {}, { expectedRoomRevision: h.lobby.versions.roomRevision })));
   assert.equal(start.game.stage, "REVEAL"); assert.equal(diagnostics.mock.callCount(), 1); scheduler.mock.restore();
   h.time((await h.stored()).game!.state.nextTransitionAt!); assert.equal(await runtime.overdueTurnSweeper.sweepOnce(), 1);
-  assert.equal(parse(LiarPlayingPlatformSnapshotV2Schema, await h.sync()).game.stage, "CLUE");
+  assert.equal(active(await h.sync()).game.stage, "CLUE");
 });
 test("LIAR a ten-person existing lobby can switch in without losing participants, then blocks start", async t => {
   const h = await harness(t, 4, false), host = h.members[0]!;
@@ -145,5 +154,60 @@ test("LIAR early clue deadline callback and vote/timeout race cannot advance twi
   const late = h.call(h.members[0]!.client, "liar:vote", { playerId: h.members[1]!.playerId }, { gameId: current.game!.gameId, phaseId: state.transitionId });
   const timed = h.server.runtime.liarService!.timeout({ roomId: room.roomId, gameId: current.game!.gameId, expectedGameRevision: current.game!.gameRevision, turnId: parse(TurnIdSchema, state.transitionId), deadlineAt: parse(ServerTimeSchema, state.nextTransitionAt) });
   assert.equal(h.failure(await late), "STALE_GAME_REVISION"); assert.equal((await timed).status, "APPLIED");
-  const end = parse(LiarFinishedPlatformSnapshotV2Schema, await h.sync()); assert.equal(end.game.result.reason, "NO_VOTES"); assert.equal(end.game.gameRevision, current.game!.gameRevision + 1);
+  const end = roundResult(await h.sync()); assert.equal(end.game.result.reason, "NO_VOTES"); assert.equal(end.game.gameRevision, current.game!.gameRevision + 1);
+});
+
+test("LIAR next round is host-only, serialized, replay-safe and restores completed scores on reconnect", async t => {
+  const h = await harness(t), host = h.members[0]!, other = h.members[1]!;
+  const early = active(await h.sync());
+  assert.equal(h.failure(await h.call(host.client, "liar:nextRound", {}, { gameId: early.game.gameId, phaseId: early.game.phaseId })), "INVALID_PHASE");
+  await h.stage("ROUND_RESULT");
+  const result = roundResult(await h.sync()), before = await h.stored();
+  assert.equal(h.server.runtime.turnScheduler.scheduledCount, 0);
+  assert.equal(await h.server.runtime.overdueTurnSweeper.sweepOnce(), 0);
+  assert.equal(h.failure(await h.call(other.client, "liar:nextRound", {}, { gameId: result.game.gameId, phaseId: result.game.phaseId })), "HOST_ONLY");
+  assert.equal(h.failure(await h.call(host.client, "liar:nextRound", { points: 99 }, { gameId: result.game.gameId, phaseId: result.game.phaseId })), "INVALID_PAYLOAD");
+  assert.equal(h.failure(await h.call(host.client, "liar:nextRound", {}, { gameId: result.game.gameId, phaseId: early.game.phaseId })), "STALE_GAME_REVISION");
+  const resumedClient = await h.connect();
+  const resumed = roundResult(h.success(await h.call(resumedClient, "session:resume", { credential: { ...other.credential, roomCode: h.lobby.room.roomCode }, lastSeenVersions: null })));
+  assert.deepEqual(resumed.game, result.game);
+  const c = h.request("liar:nextRound", {}, { gameId: result.game.gameId, phaseId: result.game.phaseId });
+  (await Promise.all([h.send(host.client, c), h.send(host.client, c)])).forEach(h.success);
+  const after = await h.stored(), fresh = active(await h.sync());
+  assert.equal(fresh.game.roundNumber, 2); assert.equal(after.game!.gameRevision, before.game!.gameRevision + 1);
+  assert.deepEqual([...fresh.game.scores].sort((a,b)=>a.playerId.localeCompare(b.playerId)), [...result.game.scores].sort((a,b)=>a.playerId.localeCompare(b.playerId)));
+  assert.equal(after.liarPromptHistory!.length, 2); assert.notEqual(after.game!.state.word, before.game!.state.word);
+  assert.equal(h.server.runtime.turnScheduler.scheduledCount, 1);
+  h.success(await h.send(host.client, c)); assert.equal((await h.stored()).liarPromptHistory!.length, 2);
+  assert.equal(h.failure(await h.call(host.client, "liar:nextRound", {}, { gameId: result.game.gameId, phaseId: result.game.phaseId })), "STALE_GAME_REVISION");
+  assert.ok(!JSON.stringify(fresh).includes('"liarPromptHistory"'));
+});
+
+test("LIAR round-result host succession allows continuation and departure retains earned points without a champion", async t => {
+  const h = await harness(t); await h.stage("ROUND_RESULT");
+  const runtime = h.server.runtime, host = h.members[0]!, nextHost = h.members[1]!, before = roundResult(await h.sync());
+  const binding = runtime.connectionRegistry.listActiveBindings(h.lobby.room.roomId).find(b => b.playerId === host.playerId)!;
+  runtime.connectionRegistry.disconnect(binding.socketId, binding.connectionGeneration);
+  const at = runtime.clock.now(); runtime.liarHostSuccession!.disconnected(h.lobby.room.roomId, host.playerId, at); h.time(at + 60000);
+  assert.equal(await runtime.liarHostSuccession!.evaluate(h.lobby.room.roomId), true);
+  const after = roundResult(await h.sync(nextHost.client)); assert.deepEqual(after.game, before.game);
+  const leave = parse(RoomLeaveAckSchema, await h.call(h.members[2]!.client, "room:leave", {}, { expectedRoomRevision: after.versions.roomRevision, expectedGameRevision: after.game.gameRevision })); assert.ok(leave.ok);
+  const cancelled = parse(LiarFinishedPlatformSnapshotV2Schema, await h.sync(nextHost.client));
+  assert.deepEqual(cancelled.game.scores, before.game.scores); assert.equal(cancelled.game.rounds.length, 1);
+  assert.deepEqual(cancelled.game.matchWinnerPlayerIds, []); assert.equal(cancelled.game.result.reason, "CANCELLED");
+});
+
+test("LIAR draw history survives rematch, category changes and switching away and back", async t => {
+  const h = await harness(t); await h.stage("FINISHED");
+  const first = await h.stored(), host = h.members[0]!.client;
+  assert.equal(first.liarPromptHistory!.length, 10);
+  h.success(await h.call(host, "room:selectGame", { gameType: "WOLF_NIGHT", gameId: first.game!.gameId }, { expectedRoomRevision: first.roomRevision, expectedGameRevision: first.game!.gameRevision }));
+  const wolf = await h.server.runtime.persistence.findById(first.roomId); assert.ok(wolf);
+  assert.deepEqual(wolf.liarPromptHistory, first.liarPromptHistory);
+  const lobby = parse(LiarLobbyPlatformSnapshotV2Schema, h.success(await h.call(host, "room:selectGame", { gameType: "LIAR_GAME", gameId: null }, { expectedRoomRevision: wolf.roomRevision, expectedGameRevision: null })));
+  const configured = parse(LiarLobbyPlatformSnapshotV2Schema, h.success(await h.call(host, "liar:configure", { category: "FOOD", discussionSeconds: 60 }, { expectedRoomRevision: lobby.versions.roomRevision })));
+  const fresh = active(h.success(await h.call(host, "game:start", {}, { expectedRoomRevision: configured.versions.roomRevision })));
+  assert.ok(fresh.game.scores.every(p => p.points === 0));
+  const after = await h.stored(); assert.equal(after.liarPromptHistory!.length, 11);
+  assert.ok(!first.liarPromptHistory!.some(p => p.word === after.game!.state.word));
 });

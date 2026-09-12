@@ -3,7 +3,7 @@ import { parse } from "valibot";
 import { parseLiarState, type LiarState } from "../domain/game.js";
 export type LiarStoredGame = Readonly<{ gameId: GameId; gameRevision: GameRevision; startedAt: ServerTime; finishedAt: ServerTime | null; state: LiarState }>;
 export type LiarLifecycle =
-  | Readonly<{ lifecycle: "RUNNING"; gameId: GameId; gameRevision: GameRevision; activeTurn: Readonly<{ turnId: TurnId; deadlineAt: ServerTime }> }>
+  | Readonly<{ lifecycle: "RUNNING"; gameId: GameId; gameRevision: GameRevision; activeTurn: Readonly<{ turnId: TurnId; deadlineAt: ServerTime }> | null }>
   | Readonly<{ lifecycle: "FINISHED"; gameId: GameId; finishedAt: ServerTime }>;
 export class LiarGameStateAdapter {
   cloneAndValidate(game: LiarStoredGame): LiarStoredGame {
@@ -17,6 +17,6 @@ export class LiarGameStateAdapter {
       return { lifecycle: "FINISHED", gameId: game.gameId, finishedAt: game.finishedAt };
     }
     return { lifecycle: "RUNNING", gameId: game.gameId, gameRevision: game.gameRevision,
-      activeTurn: { turnId: parse(TurnIdSchema, game.state.transitionId), deadlineAt: parse(ServerTimeSchema, game.state.nextTransitionAt) } };
+      activeTurn: game.state.nextTransitionAt === null ? null : { turnId: parse(TurnIdSchema, game.state.transitionId), deadlineAt: parse(ServerTimeSchema, game.state.nextTransitionAt) } };
   }
 }

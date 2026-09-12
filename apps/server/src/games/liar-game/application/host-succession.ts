@@ -31,7 +31,7 @@ export class LiarHostSuccession {
       if (!room || room.gameType !== "LIAR_GAME") { this.offline.delete(roomId); return false; }
       const host = room.hostPlayerId, since = host === null ? undefined : this.offline.get(roomId)?.get(host);
       if (!host || since === undefined || d.clock.now() - since < 60_000 || !room.game ||
-        room.phase !== "FINISHED") return false;
+        room.phase !== "FINISHED" && room.game.state.stage !== "ROUND_RESULT") return false;
       const lease = await d.presence.acquireRoomPresenceLease(roomId);
       if (!lease.isCurrent() || lease.connectionStatusByPlayerId.get(host) === "CONNECTED") return false;
       const next = [...room.players].sort((a, b) => a.joinOrder - b.joinOrder).find(p => p.playerId !== host &&

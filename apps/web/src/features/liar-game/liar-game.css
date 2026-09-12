@@ -5,3 +5,15 @@
 @media(prefers-reduced-motion:no-preference){.liar-shell button{transition:background-color .15s,border-color .15s}}
 
 .liar-shell .liar-seat:disabled{opacity:1}
+
+.liar-scoreboard { text-align: left; }
+.liar-scoreboard ol { list-style: none; padding: 0; margin: 12px 0 0; }
+.liar-scoreboard li { display: flex; gap: 10px; align-items: center; border-top: 1px solid var(--liar-line, #ded9c8); padding: 12px 0; }
+.liar-scoreboard li b { flex: 1; overflow-wrap: anywhere; min-width: 0; }
+.liar-scoreboard li strong, .liar-scoreboard li small, .liar-rank { flex-shrink: 0; }
+.liar-scoreboard li small { color: #456d4c; }
+.liar-rank { color: #746e5e; font-size: .85rem; }
+.liar-champion { font-size: 1.25rem; font-weight: 800; color: #234e35; overflow-wrap: anywhere; }
+.liar-round-history { text-align: left; padding-left: 24px; }
+.liar-round-history li { padding: 8px 0; }
+.liar-round-history span { display: block; font-size: .85rem; margin-top: 4px; }

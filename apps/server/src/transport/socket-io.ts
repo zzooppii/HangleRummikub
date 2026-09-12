@@ -3095,7 +3095,7 @@ function registerSpyfallHandlers(socket: RealtimeSocket, runtime: ApplicationRun
 
 import { LiarClientCommandSchema } from "@hangul-rummikub/shared";
 function registerLiarHandlers(socket: RealtimeSocket, runtime: ApplicationRuntime): void {
-  for (const event of ["liar:configure", "liar:clue", "liar:vote", "liar:say", "liar:guess"] as const) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
+  for (const event of ["liar:configure", "liar:clue", "liar:vote", "liar:say", "liar:guess", "liar:nextRound"] as const) socket.on(event, (raw: unknown, acknowledge: (ack: StateSyncWireAck) => void) => {
     const receivedAt = runtime.clock.now(), command = parseNumberRematch(LiarClientCommandSchema, raw);
     if (!command.success || command.output.kind !== event) { acknowledgeIfPresent(acknowledge, failureAck(raw, INVALID_PAYLOAD_ERROR, receivedAt)); return; }
     void (async () => {

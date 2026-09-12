@@ -1,3 +1,4 @@
+import { LiarPromptHistorySchema } from "../games/liar-game/domain/prompts.js";
 import { BurgundySettingsSchema, BURGUNDY_DEFAULT_SETTINGS } from "@hangul-rummikub/shared";
 import { TrainGameStateAdapter, type TrainLifecycle } from "../games/train/compatibility/adapter.js";
 import { CenturyGameStateAdapter, type CenturyLifecycle } from "../games/century/compatibility/adapter.js";
@@ -250,6 +251,7 @@ function cloneRoomWriteCandidate(
   }
 
   const shell = {
+    ...(candidate.liarPromptHistory === undefined ? {} : { liarPromptHistory: v.parse(LiarPromptHistorySchema, candidate.liarPromptHistory) }),
     ...(candidate.readyPlayerIds === undefined ? {} : { readyPlayerIds: Object.freeze(candidate.readyPlayerIds.filter(id => candidate.players.some(player => player.playerId === id))) }),
     ...(candidate.departedPlayerIds === undefined ? {} : { departedPlayerIds: Object.freeze([...candidate.departedPlayerIds]) }),
     roomId: candidate.roomId,

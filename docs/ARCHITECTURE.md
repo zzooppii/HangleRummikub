@@ -1026,3 +1026,7 @@ Phase 18 deployment checkpoint에서 Codex는 public `/health`, Home/assets, dir
 로스트시티의 60초 턴은 같은 공통 scheduler·overdue sweeper와 방 mutation lane을 사용한다. 서버 마감 이후에는 손패 첫 카드 버리기와 덱 가져오기를 원자적으로 수행한다. PLAYING projection의 `deadlineAt`과 화면·효과음 경계는 [로스트시티 구현 경계](./LOST_CITIES_ARCHITECTURE.md)를 따른다.
 
 버건디의 성 추가 (2026-09-12): 기존 서버 권위형 방 경계에 `BURGUNDY`와 설정/행동 명령을 연결한다. [버건디 구현 경계](./BURGUNDY_ARCHITECTURE.md)를 따른다. 공개 배포는 포함하지 않는다.
+
+### 라이어게임 10라운드 확장 (2026-09-12)
+
+`LIAR_GAME`은 서버 권위의 10라운드 경기와 결과 대기(`PLAYING / ROUND_RESULT`, 타이머 없음)를 지원한다. 완료 라운드에서 점수를 계산하며 비공개 방 출제 이력은 재경기·게임 교체에도 보존한다. 이력은 서버 내부 room record에만 저장하고 공개 DTO에는 포함하지 않는다. 상세 계약은 [LIAR_GAME_ARCHITECTURE.md](LIAR_GAME_ARCHITECTURE.md)를 따른다.
