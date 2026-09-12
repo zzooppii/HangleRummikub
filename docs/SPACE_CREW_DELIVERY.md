@@ -11,7 +11,7 @@
 | P0 Rules Audit | 공식 규칙·50미션·토큰·구조 신호·5인·privacy·저장 범위 | PASS |
 | P1 Trick-taking Domain | 40장·3–5인 배분·사령관·follow suit·trump·보존 | PASS |
 | P2 Task/Mission primitives | 교신·task assignment·batch order·구조 신호·예외 primitive | PASS |
-| P3 Missions 1–10 | 조건/성공/실패/설정 테스트 | NOT_STARTED |
+| P3 Missions 1–10 | 조건/성공/실패/설정 테스트 | PASS |
 | P4 Missions 11–25 | 조건/성공/실패/설정 테스트 | NOT_STARTED |
 | P5 Missions 26–50 | 조건/성공/실패/5인 특칙 테스트 | NOT_STARTED |
 | P6 Server/Shared | 인증·직렬화·private projection·campaign persistence·플랫폼 연결 | NOT_STARTED |
@@ -65,3 +65,11 @@ P1 카드/트릭의 파일 경계·보존·원자성·3인 소진 테스트 설�
 - 전용59 tests PASS: communication13, distress8, primitives15, tasks23.
 - root typecheck PASS; test shared127 + web649 + server1951 = **2727 PASS**, fail/cancel/skip0; build PASS(기존500kB chunk 경고 유지).
 - 독립 검토에서 이력 위조 검증·조기 실패·배분 revision 하한을 보완했다. diff-check PASS. 새 dependency 없음. commit/push 후 P3 진행.
+
+### P3 미션1–10
+
+미션 번호별 확정 정의와 전체 revision을 가진 미션 실행 계층을 연결했다. 목표 선택·교신·구조 신호·지명 단계, 미션5 전량 진행, 미션9 및 목표 미션의 조기 종료, 실패 트릭을 보존하는 협동 결과를 검증했다. 조작된 상태와 terminal 이후 진행을 거절하며 하위 모듈 revision은 서버만 결정한다.
+
+- 전용28 tests PASS: definitions8, mission6, integration9, validation5. 통합 테스트는 미션1–10 × 3/4/5인 × 2개 seed의60시도를 포함한다.
+- root typecheck PASS; test shared127 + web649 + server1979 = **2755 PASS**, fail/cancel/skip0; build PASS(기존500kB chunk 경고 유지).
+- 독립 규칙/실행 계층 검토 및 diff-check PASS. commit/push 후 P4 진행. 플랫폼 연결·실제 브라우저 검증은 아직 P6 이후 작업이다.

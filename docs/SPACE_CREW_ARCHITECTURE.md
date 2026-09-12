@@ -1,6 +1,6 @@
 # SPACE_CREW 구현 설계
 
-2026-09-12. 상태: P0 감사 완료, P1 진입. [게임 규칙](SPACE_CREW_GAME_RULES.md), [단계 기록](SPACE_CREW_DELIVERY.md)을 따른다. 아래는 설계이며 아직 구현 완료를 뜻하지 않는다.
+2026-09-12. 상태: P0–P2 통과, P3 구현 중. [게임 규칙](SPACE_CREW_GAME_RULES.md), [단계 기록](SPACE_CREW_DELIVERY.md)을 따른다. 아래는 설계이며 아직 구현 완료를 뜻하지 않는다.
 
 ## 구조와 통합
 
@@ -88,3 +88,11 @@ P1 상태는 `BETWEEN_TRICKS / IN_TRICK / EXHAUSTED`로 구분하며 미션 SUCC
 - `mission-primitives.ts`: 실제50미션에서 확인한8개 조건을 판정한다. SATISFIED는 현재 조건 충족이며 미션 SUCCESS를 자동 의미하지 않는다. 전량 진행 미션의 종료는 별도 정책이다. 공개된 색상1 카드가 모두 소진되어 목표 승리 횟수가 불가능해진 경우에는 숨은 손패를 조회하지 않고 실패한다.
 
 교신/구조 신호는 카드 state revision을 증가시킨다. P3 이후 미션 wrapper가 모듈들을 연결하고 전체 명령의 revision을 소유한다. 목표가 READY가 아니거나 구조 신호가 VOTING/SELECTING인 동안에는 카드 제출·교신을 호출하지 않는다. `assignmentComplete` 같은 context는 서버가 계산하며 client command의 필드로 받지 않는다. 목표 batch에는 P1에서 검증한 완료 트릭만 전달한다. P6에서는 외부 전체 revision 검증·receipt와 이 후보 변경을 같은 room lane에서 commit한다.
+
+## P3 통합 경계
+
+`missions.ts`는 통과한 구간의 미션 번호로만 고정된 규칙을 반환한다. 요청에 임의 목표 수·통신 예외·성공 조건을 실어 규칙을 덮어쓸 수 없다. 목표 덱은 playing card와 별도 ID 생성·36면 검증·주입 난수 셔플을 거친다.
+
+`mission.ts`가 카드·목표·교신·구조 신호와 미션 특수 설정을 하나의 candidate로 묶는다. 외부 도메인 명령의 revision은 전체 미션 기준이며 하위 모듈 revision을 클라이언트가 선택하지 않는다. 재접속용 canonical 상태를 읽을 때 좌석·사령관·정의·설정·판정 이력의 일치 여부도 검증한다. 클라이언트 공개 projection은 별도로 P6에서 제공한다.
+
+미션5는 제한된 상태 응답 후 사령관이 0트릭 대상자를 지명한다. 본인도 선택할 수 있지만 필요한 응답 단계를 생략할 수 없다. 지명자의 첫 승리는 즉시 FAILURE, 성공은 마지막 트릭까지 보류한다. 미션9는 일반색1이 승리한 트릭에서 즉시 SUCCESS다. 목표 미션에서는 한 트릭에 든 목표를 함께 검증한 후 모두 완료되면 SUCCESS다. 합법적으로 낸 마지막 카드가 목표 실패를 확정해도 카드 제출 자체를 되돌리지 않고 완성된 트릭과 협동 FAILURE를 함께 반영한다.
