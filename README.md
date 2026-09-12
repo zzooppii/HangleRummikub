@@ -80,7 +80,6 @@ TurnDraft의 rack/Board 편집은 해당 tab 메모리에서만 동작한다. �
 - Codex in-app browser에서 1280×720 desktop, 390×844와 320×568 viewport의 Home/Lobby/Playing 흐름, tap-to-place, local-only draft, Draw, timeout, refresh discard와 presence-only draft 보존을 확인했다.
 - browser harness가 엔진/version을 공개하지 않아 Chromium/WebKit별 호환성을 따로 인증하지 않았다. Safari/WebKit과 실제 모바일 기기는 아직 별도 확인 대상이다.
 - 서버와 session은 single-process memory에만 존재하며 process restart 뒤 복구되지 않는다. 사전은 production 사전이 아닌 deterministic `test-dictionary-v1`이다.
-- production single-origin 정적 제공과 Railway public lifecycle은 <https://hanglerummikub-production.up.railway.app>에서 검증했다.
 
 ## 품질 gate
 
@@ -118,8 +117,6 @@ PORT=4100 npm start
 SPA fallback은 GET에만 적용하며 `/health`, `/api`, `/socket.io`, `/assets`와 file-like path를 가로채지 않는다. production web build 또는 `index.html`이 없으면 server는 API-only 상태로 조용히 시작하지 않고 fail-fast한다. browser Socket.IO client는 endpoint를 hard-code하지 않고 현재 origin의 `/socket.io`를 사용하며, invitation URL도 `window.location.origin + /room/{ROOM_CODE}`로 만든다.
 
 ## Railway production 배포
-
-Public URL: <https://hanglerummikub-production.up.railway.app>
 
 아래는 기존 배포 설정과 확인 이력이다. 최신 로컬/source 변경의 public 배포 여부는 별도로 확인해야 한다. README 제목 변경은 GitHub 저장소 이름이나 Railway service/domain을 자동으로 변경하지 않는다.
 
