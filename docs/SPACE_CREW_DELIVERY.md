@@ -8,7 +8,7 @@
 
 | 단계 | 작업 | 상태 |
 | --- | --- | --- |
-| P0 Rules Audit | 공식 규칙·50미션·토큰·구조 신호·5인·privacy·저장 범위 | WAITING_FOR_RULE_DECISION |
+| P0 Rules Audit | 공식 규칙·50미션·토큰·구조 신호·5인·privacy·저장 범위 | PASS |
 | P1 Trick-taking Domain | 40장·3–5인 배분·대장·follow suit·trump·보존 | NOT_STARTED |
 | P2 Task/Mission primitives | 교신·task assignment·batch order·구조 신호·예외 primitive | NOT_STARTED |
 | P3 Missions 1–10 | 조건/성공/실패/설정 테스트 | NOT_STARTED |
@@ -43,3 +43,9 @@ P1 카드/트릭의 파일 경계·보존·원자성·3인 소진 테스트 설�
 - root `npm test`: 로컬 포트 사용을 허용한 전체 실행, shared127 + web649 + server1864 = **2640 PASS**, fail/cancelled/skip0.
 - root `npm run build`: PASS. 기존 500kB chunk 경고 유지(1,460.75kB, gzip410.32kB).
 - 미션1–50의 V-K 행 중복/누락·로컬 문서 링크·`git diff --check`: PASS. P0는46의 결정 대기이며 이 감사 checkpoint의 commit/push를 단계 통과로 계산하지 않는다.
+
+### P0 최종 게이트
+
+2026-09-13 개발 계속 요청에 따라46의 최초 배분 기준 담당자 고정 해석을 채택했다. 별도 명시적 규칙 답변을 받았다고 기록하지 않는다. 50개 미션의 출판면 대조, 교신 예외, 종료 정책, 캠페인 저장 범위 및 P1 검증 설계가 완료됐다. 최종 root 검증 및 commit/push 후 P1에 진입한다.
+
+최종 검증: root typecheck PASS, test 2640 PASS(fail/cancel/skip0), build PASS(기존500kB chunk 경고 유지), 문서 링크 및 diff-check PASS. P0 통과; 해당 커밋 push 후 P1 구현을 시작한다.

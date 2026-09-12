@@ -1,6 +1,6 @@
 # SPACE_CREW 구현 설계
 
-2026-09-12. 상태: P0 진행 중. [게임 규칙](SPACE_CREW_GAME_RULES.md), [단계 기록](SPACE_CREW_DELIVERY.md)을 따른다. 아래는 설계이며 아직 구현 완료를 뜻하지 않는다.
+2026-09-12. 상태: P0 감사 완료, P1 진입. [게임 규칙](SPACE_CREW_GAME_RULES.md), [단계 기록](SPACE_CREW_DELIVERY.md)을 따른다. 아래는 설계이며 아직 구현 완료를 뜻하지 않는다.
 
 ## 구조와 통합
 
