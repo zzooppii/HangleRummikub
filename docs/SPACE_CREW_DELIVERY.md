@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | P0 Rules Audit | 공식 규칙·50미션·토큰·구조 신호·5인·privacy·저장 범위 | PASS |
 | P1 Trick-taking Domain | 40장·3–5인 배분·사령관·follow suit·trump·보존 | PASS |
-| P2 Task/Mission primitives | 교신·task assignment·batch order·구조 신호·예외 primitive | NOT_STARTED |
+| P2 Task/Mission primitives | 교신·task assignment·batch order·구조 신호·예외 primitive | PASS |
 | P3 Missions 1–10 | 조건/성공/실패/설정 테스트 | NOT_STARTED |
 | P4 Missions 11–25 | 조건/성공/실패/설정 테스트 | NOT_STARTED |
 | P5 Missions 26–50 | 조건/성공/실패/5인 특칙 테스트 | NOT_STARTED |
@@ -57,3 +57,11 @@ P1 카드/트릭의 파일 경계·보존·원자성·3인 소진 테스트 설�
 - 전용28 tests PASS: cards11, trick14, simulation3(3·4·5인 각각12개 seed).
 - root typecheck PASS; test shared127 + web649 + server1892 = **2668 PASS**, fail/cancel/skip0; build PASS(기존500kB chunk 경고 유지).
 - 독립 코드 검토 보완2건 반영, diff-check PASS. 새 dependency 없음. commit/push 후 P2 진행.
+
+### P2 목표·교신·조건 도메인
+
+기본/특수 목표 배분, 순서 토큰의 같은 트릭 일괄 판정, 5인 목표 이전, 교신 제약과 공개 수명, 구조 신호 투표·동시 교환·재시도 이력, 관찰된 미션 조건 8종을 구현했다. 교신·구조 신호 진행 중 카드 제출을 막는 통합 경계와 미션별 종료 정책은 P3 이후 mission wrapper에서 연결한다.
+
+- 전용59 tests PASS: communication13, distress8, primitives15, tasks23.
+- root typecheck PASS; test shared127 + web649 + server1951 = **2727 PASS**, fail/cancel/skip0; build PASS(기존500kB chunk 경고 유지).
+- 독립 검토에서 이력 위조 검증·조기 실패·배분 revision 하한을 보완했다. diff-check PASS. 새 dependency 없음. commit/push 후 P3 진행.
