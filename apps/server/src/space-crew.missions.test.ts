@@ -66,6 +66,99 @@ test("missions 11–25 match audited counts, token graphics, communication and a
   assert.deepEqual(actual, expected);
 });
 
+test("missions 26–50 match the remaining audited logbook matrix", () => {
+  // K pp.12–21. Ω is a task order marker; mission 48 adds a last-trick condition.
+  const expected = [
+    [26, 0, [], "NORMAL", "CHOOSE", "OBJECTIVES"],
+    [27, 3, [], "NORMAL", "COMMANDER_DECISION", "OBJECTIVES"],
+    [28, 6, ["1", "Ω"], "D3", "CHOOSE", "OBJECTIVES"],
+    [29, 0, [], "DEAD_ZONE", "CHOOSE", "EXHAUSTION"],
+    [30, 6, [">", ">>", ">>>"], "D2", "CHOOSE", "OBJECTIVES"],
+    [31, 6, ["1", "2", "3"], "NORMAL", "CHOOSE", "OBJECTIVES"],
+    [32, 7, [], "NORMAL", "COMMANDER_DISTRIBUTION", "OBJECTIVES"],
+    [33, 0, [], "NORMAL", "CHOOSE", "EXHAUSTION"],
+    [34, 0, [], "NORMAL", "CHOOSE", "EXHAUSTION"],
+    [35, 7, [">", ">>", ">>>"], "NORMAL", "CHOOSE", "OBJECTIVES"],
+    [36, 7, ["1", "2"], "NORMAL", "COMMANDER_DISTRIBUTION", "OBJECTIVES"],
+    [37, 4, [], "NORMAL", "COMMANDER_DECISION", "OBJECTIVES"],
+    [38, 8, [], "D3", "CHOOSE", "OBJECTIVES"],
+    [39, 8, [">", ">>", ">>>"], "DEAD_ZONE", "CHOOSE", "OBJECTIVES"],
+    [40, 8, ["1", "2", "3"], "NORMAL", "CHOOSE", "OBJECTIVES"],
+    [41, 0, [], "NORMAL", "CHOOSE", "EXHAUSTION"],
+    [42, 9, [], "NORMAL", "CHOOSE", "OBJECTIVES"],
+    [43, 9, [], "NORMAL", "COMMANDER_DISTRIBUTION", "OBJECTIVES"],
+    [44, 0, [], "NORMAL", "CHOOSE", "OBJECTIVES"],
+    [45, 9, [">", ">>", ">>>"], "NORMAL", "CHOOSE", "OBJECTIVES"],
+    [46, 0, [], "NORMAL", "CHOOSE", "OBJECTIVES"],
+    [47, 10, [], "NORMAL", "CHOOSE", "OBJECTIVES"],
+    [48, 3, ["Ω"], "NORMAL", "CHOOSE", "EXHAUSTION"],
+    [49, 10, [">", ">>", ">>>"], "NORMAL", "CHOOSE", "OBJECTIVES"],
+    [50, 0, [], "NORMAL", "CHOOSE", "EXHAUSTION"],
+  ];
+  const actual = Array.from({ length: 25 }, (_, index) => {
+    const definition = getSpaceCrewMission(index + 26);
+    return [definition.missionNumber, definition.taskCount,
+      definition.tokens.map(token => token.kind === "LAST" ? "Ω" : token.kind === "ABSOLUTE" ? String(token.position) : ">".repeat(token.position)),
+      definition.communicationRule.kind === "DISRUPTION" ? `D${definition.communicationRule.fromTrick}` : definition.communicationRule.kind,
+      definition.taskMode, definition.endPolicy];
+  });
+  assert.deepEqual(actual, expected);
+});
+
+test("missions 33 and 41 use readiness answers, exclude commander and prohibit rocket wins separately", () => {
+  for (const number of [33, 41]) {
+    const definition = getSpaceCrewMission(number);
+    assert.deepEqual(definition.setup, { kind: "SELECT_RESTRICTED_TRICKS_PLAYER", answers: ["YES", "NO"], allowCommander: false });
+    assert.equal(definition.endPolicy, "EXHAUSTION");
+    assert.equal(definition.taskCount, 0);
+    assert.ok(Object.isFrozen(definition.setup));
+    if (definition.setup.kind === "SELECT_RESTRICTED_TRICKS_PLAYER") assert.ok(Object.isFrozen(definition.setup.answers));
+  }
+  assert.deepEqual(getSpaceCrewMission(33).objective, { kind: "NOMINEE_SINGLE_TRICK_NO_ROCKET" });
+  assert.deepEqual(getSpaceCrewMission(41).objective, { kind: "NOMINEE_FIRST_LAST_NO_ROCKET" });
+});
+
+test("missions 26, 29, 34 and 44 preserve distinct wins, prefix balance and ascending rockets", () => {
+  assert.deepEqual(getSpaceCrewMission(26).objective, { kind: "COLOR_VALUE_WINS", value: 1, count: 2 });
+  assert.deepEqual(getSpaceCrewMission(29).objective, { kind: "BALANCED_WINS", maxDifference: 1 });
+  assert.deepEqual(getSpaceCrewMission(34).objective, { kind: "BALANCED_WITH_COMMANDER_FIRST_LAST", maxDifference: 1 });
+  assert.deepEqual(getSpaceCrewMission(44).objective, { kind: "ROCKET_WINS", ascending: true });
+});
+
+test("missions 46 and 50 expose only their concrete setup facts and allowed role preferences", () => {
+  const pink = getSpaceCrewMission(46);
+  assert.deepEqual(pink.setup, { kind: "REVEAL_PINK_NINE_HOLDER" });
+  assert.deepEqual(pink.objective, { kind: "FIXED_PLAYER_CAPTURE_PINK" });
+  assert.equal(pink.endPolicy, "OBJECTIVES");
+  const roles = getSpaceCrewMission(50);
+  assert.deepEqual(roles.setup, { kind: "ASSIGN_TRICK_ROLES", preferences: ["FIRST_FOUR", "MIDDLE", "LAST"] });
+  assert.deepEqual(roles.objective, { kind: "ASSIGNED_TRICK_ROLES" });
+  assert.equal(roles.endPolicy, "EXHAUSTION");
+  assert.ok(Object.isFrozen(roles.setup));
+  if (roles.setup.kind === "ASSIGN_TRICK_ROLES") assert.ok(Object.isFrozen(roles.setup.preferences));
+});
+
+test("mission 48 adds the final trick requirement rather than treating Omega as an ordinary last task", () => {
+  assert.deepEqual(getSpaceCrewMission(48).objective, { kind: "TASKS_LAST_TRICK_OMEGA" });
+  assert.equal(getSpaceCrewMission(48).endPolicy, "EXHAUSTION");
+  for (const number of [7, 12, 28]) {
+    assert.deepEqual(getSpaceCrewMission(number).objective, { kind: "TASKS" });
+    assert.equal(getSpaceCrewMission(number).endPolicy, "OBJECTIVES");
+  }
+});
+
+test("all fifty missions are present with the exact exhaustion and gold-framed task groups", () => {
+  const definitions = Array.from({ length: 50 }, (_, index) => getSpaceCrewMission(index + 1));
+  assert.deepEqual(definitions.map(definition => definition.missionNumber), Array.from({ length: 50 }, (_, index) => index + 1));
+  assert.deepEqual(definitions.filter(definition => definition.endPolicy === "EXHAUSTION").map(definition => definition.missionNumber), [5, 16, 29, 33, 34, 41, 48, 50]);
+  assert.deepEqual(definitions.filter(definition => definition.missionNumber >= 25 && definition.taskCount > 0).map(definition => definition.missionNumber),
+    [25, 27, 28, 30, 31, 32, 35, 36, 37, 38, 39, 40, 42, 43, 45, 47, 48, 49]);
+  for (const number of [27, 28, 30, 31, 32, 35, 36, 37, 38, 39, 40, 42, 43, 45, 47, 49]) {
+    assert.deepEqual(getSpaceCrewMission(number).objective, { kind: "TASKS" });
+    assert.deepEqual(getSpaceCrewMission(number).setup, { kind: "NONE" });
+  }
+});
+
 test("mission 11 appoints a crew member including the commander without inventing a response step", () => {
   const definition = getSpaceCrewMission(11);
   assert.deepEqual(definition.setup, { kind: "SELECT_NO_COMMUNICATION_PLAYER", allowCommander: true });
@@ -105,7 +198,7 @@ test("mission 9 requires a winning color one and can finish before exhaustion", 
 });
 
 test("mission lookup rejects unsupported groups and input coercion, returning detached frozen definitions", () => {
-  for (const invalid of [0, -1, 26, 50, 1.5, "1", NaN, Infinity, null, undefined, {}, { missionNumber: 1 }]) {
+  for (const invalid of [0, -1, 51, 100, 1.5, "1", NaN, Infinity, null, undefined, {}, { missionNumber: 1 }]) {
     assert.throws(() => getSpaceCrewMission(invalid));
   }
   const first = getSpaceCrewMission(3), second = getSpaceCrewMission(3);
@@ -182,7 +275,7 @@ test("each definition creates the audited task prefix with order tokens on the f
   const playerIds = ["mission-a", "mission-b", "mission-c"].map(id => v.parse(PlayerIdSchema, id));
   const commanderId = playerIds[0];
   assert.ok(commanderId);
-  for (let number = 1; number <= 25; number += 1) {
+  for (let number = 1; number <= 50; number += 1) {
     const definition = getSpaceCrewMission(number);
     const state = createSpaceCrewTaskState({ missionNumber: number, taskDeck, playerIds, commanderId,
       taskCount: definition.taskCount, tokens: definition.tokens, mode: definition.taskMode });

@@ -13,7 +13,7 @@
 | P2 Task/Mission primitives | 교신·task assignment·batch order·구조 신호·예외 primitive | PASS |
 | P3 Missions 1–10 | 조건/성공/실패/설정 테스트 | PASS |
 | P4 Missions 11–25 | 조건/성공/실패/설정 테스트 | PASS |
-| P5 Missions 26–50 | 조건/성공/실패/5인 특칙 테스트 | NOT_STARTED |
+| P5 Missions 26–50 | 조건/성공/실패/5인 특칙 테스트 | PASS |
 | P6 Server/Shared | 인증·직렬화·private projection·campaign persistence·플랫폼 연결 | NOT_STARTED |
 | P7 Web | PC/mobile·Game Guide·독립 삽화·카드 조작·효과음 | NOT_STARTED |
 | P8 E2E/Campaign | 실제3–5인·50미션 매핑·retry·reconnect·restart campaign·회귀 | NOT_STARTED |
@@ -81,3 +81,11 @@ P1 카드/트릭의 파일 경계·보존·원자성·3인 소진 테스트 설�
 - P3/P4 전용49 tests PASS(이 단계21개 추가). 미션11–25 × 3/4/5인45개 시뮬레이션 및 별도 교환5개 검증 포함.
 - root typecheck PASS; test shared127 + web649 + server2001 = **2777 PASS**, fail/cancel/skip0; build PASS(기존500kB chunk 경고 유지). 검증 당시 별도 LIAR 작업의 새 테스트1개가 포함되어 있으며 해당 파일들은 Space Crew 커밋 범위에서 제외했다.
 - 독립 규칙/교환/실행 계층 검토 및 diff-check PASS. commit/push 후 P5 진행.
+
+### P5 미션26–50
+
+50개 미션 정의와 실제 관찰된 조건 조합을 모두 연결했다. 후반 승수·로켓 순서·Ω 최종 트릭,33/41의 YES/NO와 사령관 제외,40 토큰 이동,전체 금색 양도,46 최초 담당자 고정,50 역할 선호와 공동 동의를 구현했다. 구조 신호 후46 담당자 유지·3인 분홍 잔여 실패·50 중간 담당자별 최소 승수 없음까지 수작업 전체 게임으로 검증했다.
+
+- 미션 계층 전용72 tests PASS(이 단계23개 추가). 미션26–50 × 3/4/5인75시도; 전체 구간 합계180시뮬레이션. P1–P5 Space Crew 전용 테스트 총159개.
+- root typecheck PASS; test shared127 + web649 + server2024 = **2800 PASS**, fail/cancel/skip0; build PASS(기존500kB chunk 경고 유지).
+- 독립 검토의50 선호 단계 revision 위조 검증을 보완했고 추가 finding 없음. diff-check PASS. commit/push 후 P6 진행. 현재 완료 범위는50미션 도메인이며, 방·브라우저·영구 저장 연결은 P6 이후다.

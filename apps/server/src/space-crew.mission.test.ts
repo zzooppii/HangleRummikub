@@ -211,3 +211,31 @@ test("Space Crew mission: later communication does not rewrite mission twelve's 
   assert.deepEqual(state.exchange?.protectedCardIds, []);
   assert.equal(state.communications.find(item => item.playerId === player(2))?.cardId, received.cardId);
 });
+
+test("Space Crew mission: final role consensus rejects duplicate votes, invalid nominees and premature readiness", () => {
+  let state = create(50);
+  assert.ok(state.special.kind === "FINAL_ROLES");
+  assert.throws(() => parseSpaceCrewMissionState({ ...state, revision: 1, special: { ...state.special, revision: 1 } }));
+  for (const actor of players) state = act(state, actor, { kind: "SPECIAL_PREFERENCE", preference: "MIDDLE" });
+  rejected(state, player(0), { kind: "SPECIAL_PROPOSE_ROLES", firstFourPlayerId: player(0), lastPlayerId: player(0) }, "INVALID_RECIPIENT");
+  rejected(state, player(0), { kind: "SPECIAL_PROPOSE_ROLES", firstFourPlayerId: player(0), lastPlayerId: v.parse(PlayerIdSchema, "outsider") }, "INVALID_RECIPIENT");
+  state = act(state, player(2), { kind: "SPECIAL_PROPOSE_ROLES", firstFourPlayerId: player(0), lastPlayerId: player(1) });
+  rejected(state, player(2), { kind: "SPECIAL_VOTE_ROLES", accept: true }, "ALREADY_RESPONDED");
+  state = act(state, player(0), { kind: "SPECIAL_VOTE_ROLES", accept: true });
+  rejected(state, player(0), { kind: "SPECIAL_VOTE_ROLES", accept: false }, "ALREADY_RESPONDED");
+  assert.ok(state.special.kind === "FINAL_ROLES");
+  assert.throws(() => parseSpaceCrewMissionState({ ...state, status: "ACTIVE", special: { ...state.special, phase: "READY" } }));
+  rejected(state, player(0), { kind: "PLAY", cardId: "absent" }, "INVALID_PHASE");
+});
+
+test("Space Crew mission: restricted nominees use boolean readiness and cannot be the commander", () => {
+  for (const mission of [33, 41]) {
+    let state = create(mission);
+    rejected(state, player(1), { kind: "SPECIAL_RESPOND", answer: "GOOD" }, "INVALID_ACTION");
+    for (const actor of players.slice(1)) state = act(state, actor, { kind: "SPECIAL_RESPOND", answer: false });
+    rejected(state, player(0), { kind: "SPECIAL_SELECT", playerId: player(0) }, "INVALID_RECIPIENT");
+    state = act(state, player(0), { kind: "SPECIAL_SELECT", playerId: player(1) });
+    assert.equal(state.status, "ACTIVE");
+    assert.throws(() => parseSpaceCrewMissionState({ ...state, special: { ...state.special, playerId: player(0) } }));
+  }
+});
