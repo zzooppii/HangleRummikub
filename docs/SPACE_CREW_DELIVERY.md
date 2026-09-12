@@ -8,7 +8,7 @@
 
 | 단계 | 작업 | 상태 |
 | --- | --- | --- |
-| P0 Rules Audit | 공식 규칙·50미션·토큰·구조 신호·5인·privacy·저장 범위 | WAITING_FOR_LOGBOOK_SOURCE |
+| P0 Rules Audit | 공식 규칙·50미션·토큰·구조 신호·5인·privacy·저장 범위 | WAITING_FOR_RULE_DECISION |
 | P1 Trick-taking Domain | 40장·3–5인 배분·대장·follow suit·trump·보존 | NOT_STARTED |
 | P2 Task/Mission primitives | 교신·task assignment·batch order·구조 신호·예외 primitive | NOT_STARTED |
 | P3 Missions 1–10 | 조건/성공/실패/설정 테스트 | NOT_STARTED |
@@ -35,4 +35,11 @@
 - 문서5개의 local links와 미션1–50 행 중복/누락 검사, `git diff --cached --check`: PASS. commit/push 식별자는 Git 이력과 원격 `codex/space-crew-planet-nine` 브랜치로 확인한다.
 - PDF 시각 확인에서 `Invalid Font Weight` 경고가 있었지만 토큰과 글자는 판독 가능했다. 원작 PDF/삽화는 저장소에 추가하지 않았다.
 
-다음 입력: 공식 영문 또는 한국어 제9행성 Logbook의 판본이 확인되는 원본/링크. 한국어 사진 후보는 확보했으나 동일 책자의 출판사·판권 면 확인이 필요하고, 그 다음 전체 미션을 정밀 대조해야 한다. 남은 규칙 해석은 기본/미션 감사 문서의 확인 항목에 명시했다.
+2026-09-13 사용자 추가 자료 후 감사 계속. 전체50미션이 든 `The_Crew_v_1.0.pdf`를 대조했고, 한국어 실물 업무일지 인쇄면4–21 전체에서50미션의 수량·기호·본문을 대조 완료했다. 추가 전체 Logbook 업로드 요청은 종료한다. 11번 지명자의 통신 금지, 33/41번 사령관 지명 제외, 12번 공개 교신 카드의 무작위 교환 제외를 기록했다. 46번은 구조 신호 이전에 최초 배분 기준으로 담당자를 고정하는 구현 해석을 사용자에게 질문했으며, 답변 전 확정하지 않는다.
+
+P1 카드/트릭의 파일 경계·보존·원자성·3인 소진 테스트 설계와 실제 미션에서 관찰된 반복 조건을 아키텍처 문서에 추가했다. **설계만 진행했으며 P1 구현은 아직 시작하지 않았다.**
+
+- root `npm run typecheck`: PASS.
+- root `npm test`: 로컬 포트 사용을 허용한 전체 실행, shared127 + web649 + server1864 = **2640 PASS**, fail/cancelled/skip0.
+- root `npm run build`: PASS. 기존 500kB chunk 경고 유지(1,460.75kB, gzip410.32kB).
+- 미션1–50의 V-K 행 중복/누락·로컬 문서 링크·`git diff --check`: PASS. P0는46의 결정 대기이며 이 감사 checkpoint의 commit/push를 단계 통과로 계산하지 않는다.
