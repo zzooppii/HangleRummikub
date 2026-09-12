@@ -6,7 +6,7 @@ import type {
   StartGameInput,
 } from "./game-start-service.js";
 
-type StartCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "WORD_DUET" | "TRAIN" | "CENTURY" | "JAIPUR" | "LOVE_LETTER" | "GURYONGTU" | "AZUL" | "VEGAS" | "BURGUNDY" | "CARCASSONNE" | "CLUE" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS"> =
+type StartCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "WORD_DUET" | "TRAIN" | "CENTURY" | "JAIPUR" | "SPACE_CREW" | "LOVE_LETTER" | "GURYONGTU" | "AZUL" | "VEGAS" | "BURGUNDY" | "CARCASSONNE" | "CLUE" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS"> =
   Readonly<{
     gameType: TGameType;
     start(input: StartGameInput): Promise<GameStartResult>;
@@ -28,6 +28,7 @@ export type GameStartRouterDependencies = Readonly<{
   train?: StartCapability<"TRAIN">;
   century?: StartCapability<"CENTURY">;
   jaipur?: StartCapability<"JAIPUR">;
+  spaceCrew?: StartCapability<"SPACE_CREW">;
   loveLetter?: StartCapability<"LOVE_LETTER">;
   guryongtu?: StartCapability<"GURYONGTU">;
   azul?: StartCapability<"AZUL">;
@@ -67,7 +68,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function isStartCapability<
-  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "WORD_DUET" | "TRAIN" | "CENTURY" | "JAIPUR" | "LOVE_LETTER" | "GURYONGTU" | "AZUL" | "VEGAS" | "BURGUNDY" | "CARCASSONNE" | "CLUE" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS",
+  TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "WORD_DUET" | "TRAIN" | "CENTURY" | "JAIPUR" | "SPACE_CREW" | "LOVE_LETTER" | "GURYONGTU" | "AZUL" | "VEGAS" | "BURGUNDY" | "CARCASSONNE" | "CLUE" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS",
 >(
   value: unknown,
   gameType: TGameType,
@@ -79,7 +80,7 @@ function isStartCapability<
   );
 }
 
-function requireCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "WORD_DUET" | "TRAIN" | "CENTURY" | "JAIPUR" | "LOVE_LETTER" | "GURYONGTU" | "AZUL" | "VEGAS" | "BURGUNDY" | "CARCASSONNE" | "CLUE" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS">(
+function requireCapability<TGameType extends "HANGUL_TILE" | "NUMBER_TILE" | "GEM_CARD" | "CITY_ROLE" | "DRAW_RELAY" | "SNEAKY_LUNCH" | "WOLF_NIGHT" | "LIAR_GAME" | "SPYFALL" | "SPLENDOR" | "WORD_DUET" | "TRAIN" | "CENTURY" | "JAIPUR" | "SPACE_CREW" | "LOVE_LETTER" | "GURYONGTU" | "AZUL" | "VEGAS" | "BURGUNDY" | "CARCASSONNE" | "CLUE" | "SABOTEUR" | "LOST_CITIES" | "HALLI_GALLI" | "ISLAND_SETTLERS">(
   value: unknown,
   gameType: TGameType,
 ): StartCapability<TGameType> {
@@ -105,6 +106,7 @@ export class GameStartRouter implements GameStartRouting {
   readonly #train: StartCapability<"TRAIN"> | undefined;
   readonly #century: StartCapability<"CENTURY"> | undefined;
   readonly #jaipur: StartCapability<"JAIPUR"> | undefined;
+  readonly #spaceCrew: StartCapability<"SPACE_CREW"> | undefined;
   readonly #loveLetter: StartCapability<"LOVE_LETTER"> | undefined;
   readonly #guryongtu: StartCapability<"GURYONGTU"> | undefined;
   readonly #azul: StartCapability<"AZUL"> | undefined;
@@ -129,6 +131,7 @@ export class GameStartRouter implements GameStartRouting {
     this.#train = dependencies.train;
     this.#century = dependencies.century;
     this.#jaipur = dependencies.jaipur;
+    this.#spaceCrew = dependencies.spaceCrew;
     this.#loveLetter = dependencies.loveLetter;
     this.#guryongtu = dependencies.guryongtu;
     this.#azul = dependencies.azul;
@@ -171,6 +174,7 @@ export class GameStartRouter implements GameStartRouting {
         case "SPLENDOR": return this.#splendor ? await this.#splendor.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "TRAIN": return this.#train ? await this.#train.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "CENTURY": return this.#century ? await this.#century.start(input) : {ok:false,error:INTERNAL_ERROR};
+        case "SPACE_CREW": return this.#spaceCrew ? await this.#spaceCrew.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "JAIPUR": return this.#jaipur ? await this.#jaipur.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "LOVE_LETTER": return this.#loveLetter ? await this.#loveLetter.start(input) : {ok:false,error:INTERNAL_ERROR};
         case "GURYONGTU": return this.#guryongtu ? await this.#guryongtu.start(input) : {ok:false,error:INTERNAL_ERROR};

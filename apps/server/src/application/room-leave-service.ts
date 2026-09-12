@@ -11,16 +11,19 @@ import {
   type RoomId,
   type RoomCode,
   type RoomRevision,
+  type ServerTime,
 } from "@hangul-rummikub/shared";
 import * as v from "valibot";
 
 import type {
   PlayerLifecycleActionRouting,
   PlayingLeaveAdvisory,
+  PlayingLeaveActionResult,
 } from "./player-lifecycle-router.js";
 import type {
   IdempotencyRecord,
   RoomWriteCandidate,
+  SpaceCrewRoomRecord,
 } from "../model/persistence.js";
 import type { IdempotencyRepository } from "../ports/idempotency-repository.js";
 import type { RoomPresencePolicyReader } from "../ports/room-presence-policy.js";
@@ -83,6 +86,8 @@ export type RoomLeaveServiceDependencies = Readonly<{
   presenceReader: RoomPresencePolicyReader;
   playerLifecycleActions: PlayerLifecycleActionRouting;
   clock: Clock;
+  prepareSpaceCrewLobbyLeave?: (room: SpaceCrewRoomRecord) => Promise<Readonly<{ finalize(committed: boolean): Promise<void> }>>;
+  prepareSpaceCrewLeave?: (input: Readonly<{ room: SpaceCrewRoomRecord; actorPlayerId: PlayerId; occurredAt: ServerTime; requestId: RequestId; authorization: CurrentActorAuthorization }>) => Promise<Readonly<{ result: PlayingLeaveActionResult; finalize(committed: boolean): Promise<void> }>>;
   resources?: RoomLeaveResources;
   turnScheduler?: TurnScheduler;
   onTurnSchedulingFailure?: TurnSchedulingFailureReporter;
@@ -206,75 +211,197 @@ export class RoomLeaveService {
 
           const now = this.#dependencies.clock.now();
           if (room.phase === "LOBBY") {
-            const remainingPlayers = room.players.filter(
-              (player) => player.playerId !== input.actorPlayerId,
-            );
-            if (remainingPlayers.length === 0) {
-              const cleaned = await this.#dependencies.roomCleanupUnitOfWork.cleanup(
+            const prepared = room.gameType === "SPACE_CREW"
+              ? await this.#dependencies.prepareSpaceCrewLobbyLeave?.(room) : undefined;
+            let committedLobbyLeave = false;
+            try {
+              const remainingPlayers = room.players.filter(
+                (player) => player.playerId !== input.actorPlayerId,
+              );
+              if (remainingPlayers.length === 0) {
+                const cleaned = await this.#dependencies.roomCleanupUnitOfWork.cleanup(
+                  {
+                    roomMutation: {
+                      kind: "DELETE",
+                      roomId: room.roomId,
+                      expectedRoomRevision: room.roomRevision,
+                      expectedStorageRevision: room.storageRevision,
+                    },
+                    sessionMutation: { kind: "DELETE_BY_ROOM", roomId: room.roomId },
+                  },
+                  { isSatisfied: () => input.authorization.isCurrent() },
+                );
+                committedLobbyLeave = cleaned.status === "COMMITTED";
+                if (cleaned.status !== "COMMITTED") {
+                  return failure(
+                    cleaned.reason === "COMMIT_PRECONDITION_FAILED"
+                      ? ERRORS.UNAUTHENTICATED
+                      : ERRORS.INTERNAL_ERROR,
+                  );
+                }
+                postCommit = {
+                  roomClosed: true,
+                  roomCode: room.roomCode,
+                  nextTurnIdentity: null,
+                  finishedGameId: null,
+                };
+                return success({
+                  roomId: room.roomId,
+                  phase: room.phase,
+                  roomClosed: true,
+                  roomRevision: null,
+                  gameRevision: null,
+                });
+              }
+
+              const presenceLease =
+                await this.#dependencies.presenceReader.acquireRoomPresenceLease(room.roomId);
+              let hostPlayerId = room.hostPlayerId;
+              if (hostPlayerId === input.actorPlayerId || hostPlayerId === null) {
+                hostPlayerId =
+                  [...remainingPlayers]
+                    .filter(
+                      (player) =>
+                        presenceLease.connectionStatusByPlayerId.get(player.playerId) === "CONNECTED",
+                    )
+                    .sort((left, right) => left.joinOrder - right.joinOrder)[0]?.playerId ?? null;
+              }
+              const roomRevision = incrementRoomRevision(room.roomRevision);
+              const terminalResult: RoomLeaveSuccessData = {
+                roomId: room.roomId,
+                phase: room.phase,
+                roomClosed: false,
+                roomRevision,
+                gameRevision: null,
+              };
+              const committed = await this.#dependencies.roomUnitOfWork.commit(
                 {
                   roomMutation: {
-                    kind: "DELETE",
-                    roomId: room.roomId,
+                    kind: "REPLACE",
+                    candidate: {
+                      ...room,
+                      hostPlayerId,
+                      players: remainingPlayers,
+                      roomRevision,
+                      updatedAt: now,
+                    },
                     expectedRoomRevision: room.roomRevision,
                     expectedStorageRevision: room.storageRevision,
                   },
-                  sessionMutation: { kind: "DELETE_BY_ROOM", roomId: room.roomId },
+                  sessionMutation: {
+                    kind: "DELETE_BOUND_PLAYER",
+                    roomId: room.roomId,
+                    playerId: input.actorPlayerId,
+                  },
+                  idempotency: {
+                    scopeKey,
+                    requestId: input.requestId,
+                    payloadFingerprint,
+                    terminalResult,
+                    createdAt: now,
+                  },
                 },
-                { isSatisfied: () => input.authorization.isCurrent() },
+                { isSatisfied: () => input.authorization.isCurrent() && presenceLease.isCurrent() },
               );
-              if (cleaned.status !== "COMMITTED") {
-                return failure(
-                  cleaned.reason === "COMMIT_PRECONDITION_FAILED"
-                    ? ERRORS.UNAUTHENTICATED
-                    : ERRORS.INTERNAL_ERROR,
-                );
+              committedLobbyLeave = committed.status === "COMMITTED";
+              const mapped = mapCommit(
+                committed,
+                input.authorization.isCurrent()
+                  ? ERRORS.STALE_ROOM_REVISION
+                  : ERRORS.UNAUTHENTICATED,
+              );
+              if (mapped.ok) {
+                postCommit = {
+                  roomClosed: false,
+                  roomCode: room.roomCode,
+                  nextTurnIdentity: null,
+                  finishedGameId: null,
+                };
               }
-              postCommit = {
-                roomClosed: true,
-                roomCode: room.roomCode,
-                nextTurnIdentity: null,
-                finishedGameId: null,
+              return mapped;
+            } finally {
+              await prepared?.finalize(committedLobbyLeave);
+            }
+          }
+
+          let finalizeSpaceCrew: ((committed: boolean) => Promise<void>) | undefined;
+          let candidate: RoomWriteCandidate;
+          let terminalResult: RoomLeaveSuccessData;
+          let nextTurnIdentity: CurrentTurnIdentity | null = null;
+          let finishedGameId: GameId | null = null;
+          let gameAdvisory: PlayingLeaveAdvisory = "NONE";
+          let spaceCrewRoomCommitted = false;
+          try {
+            if (room.gameType === "SPACE_CREW" && room.game !== null) {
+              const prepare = this.#dependencies.prepareSpaceCrewLeave;
+              if (!prepare) throw new Error("Space Crew durable leave capability is missing.");
+              const prepared = await prepare({ room, actorPlayerId: input.actorPlayerId, occurredAt: now,
+                requestId: input.requestId, authorization: input.authorization });
+              finalizeSpaceCrew = prepared.finalize;
+              const leaving = prepared.result;
+              candidate = leaving.candidate;
+              nextTurnIdentity = leaving.nextTurnIdentity;
+              finishedGameId = leaving.finishedGameId;
+              gameAdvisory = leaving.advisory;
+              terminalResult = { roomId: room.roomId, phase: candidate.phase, roomClosed: false,
+                roomRevision: candidate.roomRevision, gameRevision: candidate.game?.gameRevision ?? null };
+            } else if (room.phase === "PLAYING" && room.game !== null) {
+              const playing =
+                this.#dependencies.playerLifecycleActions.applyPlayingLeave({
+                  room,
+                  actorPlayerId: input.actorPlayerId,
+                  occurredAt: now,
+                });
+              candidate = playing.candidate;
+              nextTurnIdentity = playing.nextTurnIdentity;
+              finishedGameId = playing.finishedGameId;
+              gameAdvisory = playing.advisory;
+              terminalResult = {
+                roomId: room.roomId,
+                phase: candidate.phase,
+                roomClosed: false,
+                roomRevision: candidate.roomRevision,
+                gameRevision: candidate.game?.gameRevision ?? null,
               };
-              return success({
+            } else if (
+              room.phase === "FINISHED" &&
+              room.game !== null &&
+              ((room.gameType === "CITY_ROLE" || room.gameType === "DRAW_RELAY" || room.gameType === "SNEAKY_LUNCH" || room.gameType === "WOLF_NIGHT" || room.gameType === "LIAR_GAME" || room.gameType === "SPYFALL" || room.gameType === "WORD_DUET" || room.gameType === "TRAIN" || room.gameType === "CENTURY" || room.gameType === "JAIPUR" || room.gameType === "LOVE_LETTER" || room.gameType === "GURYONGTU" || room.gameType === "AZUL" || room.gameType === "VEGAS" || room.gameType === "CARCASSONNE" || room.gameType === "BURGUNDY" || room.gameType === "CLUE" || room.gameType === "SABOTEUR" || room.gameType === "LOST_CITIES" || room.gameType === "SPLENDOR" || room.gameType === "HALLI_GALLI" || room.gameType === "ISLAND_SETTLERS") ? room.game.finishedAt !== null : "result" in room.game && room.game.result !== null)
+            ) {
+              candidate = { ...room, updatedAt: now };
+              finishedGameId = room.game.gameId;
+              gameAdvisory =
+                room.gameType === "HANGUL_TILE" ? "GAME_FINISHED" : "NONE";
+              terminalResult = {
                 roomId: room.roomId,
                 phase: room.phase,
-                roomClosed: true,
-                roomRevision: null,
-                gameRevision: null,
-              });
+                roomClosed: false,
+                roomRevision: room.roomRevision,
+                gameRevision: room.game.gameRevision,
+              };
+            } else {
+              return failure(ERRORS.INTERNAL_ERROR);
             }
 
-            const presenceLease =
-              await this.#dependencies.presenceReader.acquireRoomPresenceLease(room.roomId);
-            let hostPlayerId = room.hostPlayerId;
-            if (hostPlayerId === input.actorPlayerId || hostPlayerId === null) {
-              hostPlayerId =
-                [...remainingPlayers]
-                  .filter(
-                    (player) =>
-                      presenceLease.connectionStatusByPlayerId.get(player.playerId) === "CONNECTED",
-                  )
-                  .sort((left, right) => left.joinOrder - right.joinOrder)[0]?.playerId ?? null;
+            {
+              const departedPlayerIds = Object.freeze([...new Set([...(room.departedPlayerIds ?? []), ...(candidate.departedPlayerIds ?? []), input.actorPlayerId])]);
+              const remaining = candidate.players.filter(p => !departedPlayerIds.includes(p.playerId));
+              const hostPlayerId = candidate.hostPlayerId === input.actorPlayerId
+                ? [...remaining].sort((a,b) => a.joinOrder - b.joinOrder)[0]?.playerId ?? candidate.hostPlayerId
+                : candidate.hostPlayerId;
+              // Room membership metadata changes, never the completed Game/result.
+              const roomRevision = candidate.gameType === "HANGUL_TILE" || candidate.gameType === "GEM_CARD" || candidate.gameType === "CITY_ROLE"
+                ? (candidate.roomRevision > room.roomRevision ? candidate.roomRevision : incrementRoomRevision(room.roomRevision))
+                : incrementRoomRevision(candidate.roomRevision);
+              candidate = { ...candidate, departedPlayerIds, hostPlayerId, roomRevision };
+              terminalResult = { ...terminalResult, roomRevision };
             }
-            const roomRevision = incrementRoomRevision(room.roomRevision);
-            const terminalResult: RoomLeaveSuccessData = {
-              roomId: room.roomId,
-              phase: room.phase,
-              roomClosed: false,
-              roomRevision,
-              gameRevision: null,
-            };
+
             const committed = await this.#dependencies.roomUnitOfWork.commit(
               {
                 roomMutation: {
                   kind: "REPLACE",
-                  candidate: {
-                    ...room,
-                    hostPlayerId,
-                    players: remainingPlayers,
-                    roomRevision,
-                    updatedAt: now,
-                  },
+                  candidate,
                   expectedRoomRevision: room.roomRevision,
                   expectedStorageRevision: room.storageRevision,
                 },
@@ -291,122 +418,29 @@ export class RoomLeaveService {
                   createdAt: now,
                 },
               },
-              { isSatisfied: () => input.authorization.isCurrent() && presenceLease.isCurrent() },
+              { isSatisfied: () => input.authorization.isCurrent() },
             );
+            spaceCrewRoomCommitted = committed.status === "COMMITTED";
             const mapped = mapCommit(
               committed,
-              input.authorization.isCurrent()
-                ? ERRORS.STALE_ROOM_REVISION
-                : ERRORS.UNAUTHENTICATED,
+              ERRORS.UNAUTHENTICATED,
+              gameAdvisory,
             );
             if (mapped.ok) {
               postCommit = {
                 roomClosed: false,
                 roomCode: room.roomCode,
-                nextTurnIdentity: null,
-                finishedGameId: null,
+                nextTurnIdentity,
+                finishedGameId,
+                ...(room.gameType === "CITY_ROLE" && room.game?.state.window !== null && room.game?.state.window !== undefined &&
+                  String(room.game.state.window.actionId) !== nextTurnIdentity?.turnId
+                  ? { cancelCityActionId: v.parse(TurnIdSchema, room.game.state.window.actionId) } : {}),
               };
             }
             return mapped;
+          } finally {
+            await finalizeSpaceCrew?.(spaceCrewRoomCommitted);
           }
-
-          let candidate: RoomWriteCandidate;
-          let terminalResult: RoomLeaveSuccessData;
-          let nextTurnIdentity: CurrentTurnIdentity | null = null;
-          let finishedGameId: GameId | null = null;
-          let gameAdvisory: PlayingLeaveAdvisory = "NONE";
-          if (room.phase === "PLAYING" && room.game !== null) {
-            const playing =
-              this.#dependencies.playerLifecycleActions.applyPlayingLeave({
-                room,
-                actorPlayerId: input.actorPlayerId,
-                occurredAt: now,
-              });
-            candidate = playing.candidate;
-            nextTurnIdentity = playing.nextTurnIdentity;
-            finishedGameId = playing.finishedGameId;
-            gameAdvisory = playing.advisory;
-            terminalResult = {
-              roomId: room.roomId,
-              phase: candidate.phase,
-              roomClosed: false,
-              roomRevision: candidate.roomRevision,
-              gameRevision: candidate.game?.gameRevision ?? null,
-            };
-          } else if (
-            room.phase === "FINISHED" &&
-            room.game !== null &&
-            ((room.gameType === "CITY_ROLE" || room.gameType === "DRAW_RELAY" || room.gameType === "SNEAKY_LUNCH" || room.gameType === "WOLF_NIGHT" || room.gameType === "LIAR_GAME" || room.gameType === "SPYFALL" || room.gameType === "WORD_DUET" || room.gameType === "TRAIN" || room.gameType === "CENTURY" || room.gameType === "JAIPUR" || room.gameType === "LOVE_LETTER" || room.gameType === "GURYONGTU" || room.gameType === "AZUL" || room.gameType === "VEGAS" || room.gameType === "CARCASSONNE" || room.gameType === "BURGUNDY" || room.gameType === "CLUE" || room.gameType === "SABOTEUR" || room.gameType === "LOST_CITIES" || room.gameType === "SPLENDOR" || room.gameType === "HALLI_GALLI" || room.gameType === "ISLAND_SETTLERS") ? room.game.finishedAt !== null : room.game.result !== null)
-          ) {
-            candidate = { ...room, updatedAt: now };
-            finishedGameId = room.game.gameId;
-            gameAdvisory =
-              room.gameType === "HANGUL_TILE" ? "GAME_FINISHED" : "NONE";
-            terminalResult = {
-              roomId: room.roomId,
-              phase: room.phase,
-              roomClosed: false,
-              roomRevision: room.roomRevision,
-              gameRevision: room.game.gameRevision,
-            };
-          } else {
-            return failure(ERRORS.INTERNAL_ERROR);
-          }
-
-          {
-            const departedPlayerIds = Object.freeze([...new Set([...(room.departedPlayerIds ?? []), ...(candidate.departedPlayerIds ?? []), input.actorPlayerId])]);
-            const remaining = candidate.players.filter(p => !departedPlayerIds.includes(p.playerId));
-            const hostPlayerId = candidate.hostPlayerId === input.actorPlayerId
-              ? [...remaining].sort((a,b) => a.joinOrder - b.joinOrder)[0]?.playerId ?? candidate.hostPlayerId
-              : candidate.hostPlayerId;
-            // Room membership metadata changes, never the completed Game/result.
-            const roomRevision = candidate.gameType === "HANGUL_TILE" || candidate.gameType === "GEM_CARD" || candidate.gameType === "CITY_ROLE"
-              ? (candidate.roomRevision > room.roomRevision ? candidate.roomRevision : incrementRoomRevision(room.roomRevision))
-              : incrementRoomRevision(candidate.roomRevision);
-            candidate = { ...candidate, departedPlayerIds, hostPlayerId, roomRevision };
-            terminalResult = { ...terminalResult, roomRevision };
-          }
-
-          const committed = await this.#dependencies.roomUnitOfWork.commit(
-            {
-              roomMutation: {
-                kind: "REPLACE",
-                candidate,
-                expectedRoomRevision: room.roomRevision,
-                expectedStorageRevision: room.storageRevision,
-              },
-              sessionMutation: {
-                kind: "DELETE_BOUND_PLAYER",
-                roomId: room.roomId,
-                playerId: input.actorPlayerId,
-              },
-              idempotency: {
-                scopeKey,
-                requestId: input.requestId,
-                payloadFingerprint,
-                terminalResult,
-                createdAt: now,
-              },
-            },
-            { isSatisfied: () => input.authorization.isCurrent() },
-          );
-          const mapped = mapCommit(
-            committed,
-            ERRORS.UNAUTHENTICATED,
-            gameAdvisory,
-          );
-          if (mapped.ok) {
-            postCommit = {
-              roomClosed: false,
-              roomCode: room.roomCode,
-              nextTurnIdentity,
-              finishedGameId,
-              ...(room.gameType === "CITY_ROLE" && room.game?.state.window !== null && room.game?.state.window !== undefined &&
-                String(room.game.state.window.actionId) !== nextTurnIdentity?.turnId
-                ? { cancelCityActionId: v.parse(TurnIdSchema, room.game.state.window.actionId) } : {}),
-            };
-          }
-          return mapped;
         },
       );
 

@@ -1,6 +1,6 @@
 # SPACE_CREW 구현 설계
 
-2026-09-12. 상태: P0–P4 통과, P5 구현 중. [게임 규칙](SPACE_CREW_GAME_RULES.md), [단계 기록](SPACE_CREW_DELIVERY.md)을 따른다. 아래는 설계이며 아직 구현 완료를 뜻하지 않는다.
+2026-09-12. 상태: P0–P6 통과, P7 대기. [게임 규칙](SPACE_CREW_GAME_RULES.md), [단계 기록](SPACE_CREW_DELIVERY.md)을 따른다. 아래는 설계이며 아직 구현 완료를 뜻하지 않는다.
 
 ## 구조와 통합
 
@@ -46,6 +46,18 @@
 - 임시 파일→flush→atomic rename과 디렉터리 flush, 제한된 파일 권한, 저장 schema 검증을 적용한다. 비밀 값·파일 경로를 public error에 넣지 않는다.
 - local 파일 경로와 배포 영구 volume 경로는 configuration 경계다. 재배포에도 보존하려면 실제 persistent volume이 필요하다. ephemeral filesystem에서 영구 저장이 보장된다고 표시하지 않는다. 기존 배포에 대한 변경은 구현 완료와 구분한다.
 - 종료된 미션의 결과 이력은 남기되 서버 재시작 후 진행 중 손패/옛 session resume는 제공하지 않는다. 중단된 시도는 중단으로 표시하고 새 방에서 새 셔플로 재시도한다.
+
+### P6 연결 계약
+
+`spaceCrew:start`는 방장이 새 캠페인·연습 미션·기존 캠페인 복구를 선택하는 전용 명령이다. 일반 `game:start`로 미션 1을 먼저 생성하지 않는다. 시작 응답도 viewer-specific state snapshot이며, 복구 비밀은 응답·broadcast·로그에 포함하지 않는다. 브라우저가 Web Crypto로 32바이트 비밀을 생성하고 요청 전에 저장하며, 서버는 검증용 해시만 보관한다. 캠페인 ID는 비밀과 다른 domain-separated hash로 생성한다. 생성 규약은 `crew_` + `SHA-256("space-crew-campaign-id-v1\0" + recoveryToken)`의 hex 앞 40자다. 브라우저도 같은 규약으로 ID와 비밀을 요청 전에 함께 보관해 시작 응답이 유실돼도 새 방 복구에 사용할 수 있게 한다.
+
+`spaceCrew:act / retry / next / practiceMission`은 `gameId`, `attemptId`, `expectedGameRevision`으로 대상 시도를 묶는다. 다음 시도에도 같은 game ID와 증가하는 game revision을 유지하고 attempt ID만 새로 만든다. 도메인의 mission revision과 transport game revision은 별개다. 재도전은 같은 참가자와 방을 유지한 채 손패·목표를 다시 섞는다. 연습 모드의 미션 재선택은 별도 run을 만들고 이전 run의 시도·구조 신호 이력을 남긴다.
+
+서버 기본 저장 위치는 실행 디렉터리의 `data/space-crew-campaigns`다. `SPACE_CREW_CAMPAIGN_DIR` 또는 runtime의 `spaceCrewCampaignDirectory`로 영구 볼륨 경로를 지정할 수 있다. 테스트·다른 저장 구현에는 `spaceCrewCampaignRepository` port를 주입한다. 파일 adapter는 **단일 서버 프로세스 writer** 전제다. 같은 프로세스의 같은 경로 adapter들은 캠페인 직렬화 lane을 공유하며, 여러 서버 프로세스가 동시에 같은 디렉터리를 쓰는 배포는 지원하지 않는다.
+
+방·세션 in-memory UOW와 캠페인 파일은 하나의 원자적 저장소가 아니다. 시도/구조 신호/결과 변경은 캠페인 저장 후 방을 반영하며, 저장 결과가 불확실한 요청은 같은 ID·같은 후보 손패를 유지하고 durable receipt로 재확인한다. 저장 재시도에서 새 셔플이나 이중 시도를 만들지 않는다. 이탈·정리에서는 `pendingInterruption`을 먼저 저장하고 lease를 유지한 뒤 방 commit의 성공 여부에 따라 중단 확정 또는 예약 취소를 한다. 예약 취소는 기존 완료 이력을 되돌리지 않는다. 방 commit 후 중단 확정 저장이 일시 실패하면 durable intent와 유지보수 재시도로 마무리한다. 서버 재시작 후 복구는 이전 ACTIVE 시도를 ABORTED로 보존한 뒤 새 시도를 생성한다.
+
+공개 projection은 자기 손패, 다른 사람의 장수, 현재 트릭과 직전 완료 트릭, 공개된 목표와 교신, 미션 설정 응답, 캠페인 요약만 포함한다. 서버 전체 트릭 이력·미션 12 교환 영수증·비공개 목표·다른 사람의 구조 신호 선택 카드·RNG를 포함하지 않는다. 이미 사용한 교신 카드는 손에서 나가면 표시에서 제거하고 사용된 토큰 상태만 남긴다. 현재 시도의 전체 완료 트릭은 서버 검증용 상태에 유지되므로 재접속이 이를 초기화하지 않는다.
 
 ## 화면·일러스트·상호작용·소리
 

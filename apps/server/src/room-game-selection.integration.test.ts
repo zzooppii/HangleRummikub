@@ -8,11 +8,13 @@ import {
   RoomRevisionSchema, TurnIdSchema,
 } from "@hangul-rummikub/shared";
 import { createHttpServer } from "./server.js";
+import { createApplicationRuntime } from "./composition-root.js";
+import { InMemorySpaceCrewCampaignRepository } from "./games/space-crew/infrastructure/campaign-repository.js";
 
 type Client = Socket<Record<string, (value: unknown) => void>, Record<string, (value: unknown, ack: (value: unknown) => void) => void>>;
 type Command = { kind: string; protocolVersion: number; requestId: string; payload: unknown; [key: string]: unknown };
 async function harness(t: TestContext, count = 3) {
-  const server = createHttpServer({ serveWeb: false }), clients: Client[] = [];
+  const server = createHttpServer({ serveWeb: false, runtime: createApplicationRuntime({ spaceCrewCampaignRepository: new InMemorySpaceCrewCampaignRepository() }) }), clients: Client[] = [];
   t.after(async () => { clients.forEach(c => c.disconnect()); await server.shutdown(); });
   await new Promise<void>(resolve => server.httpServer.listen(0, "127.0.0.1", resolve));
   const address = server.httpServer.address(); assert.ok(address && typeof address !== "string");
@@ -48,6 +50,11 @@ async function harness(t: TestContext, count = 3) {
       expectedRoomRevision: snapshot.versions.roomRevision, expectedGameRevision: game?.gameRevision ?? null,
     });
   }
+  function startCommand(snapshot: PlatformSnapshotV2): Command {
+    return snapshot.room.gameType === "SPACE_CREW"
+      ? request("spaceCrew:start", { kind: "NEW", mode: "CAMPAIGN", recoveryToken: Buffer.alloc(32, 17).toString("base64url") }, { expectedRoomRevision: snapshot.versions.roomRevision })
+      : request("game:start", {}, { expectedRoomRevision: snapshot.versions.roomRevision });
+  }
   async function readyAll() {
     for (const member of members) {
       const current = await sync(member.client);
@@ -55,10 +62,10 @@ async function harness(t: TestContext, count = 3) {
     }
     return sync();
   }
-  return { server, host, members, lobby, connect, bootstrap, request, send, call, success, failure, sync, selection, readyAll };
+  return { server, host, members, lobby, connect, bootstrap, request, send, call, success, failure, sync, selection, readyAll, startCommand };
 }
 
-test("same room: all fifteen games can be selected, host starts without any ready commands", async t => {
+test("same room: every supported game can be selected and started by its host without ready commands", async t => {
   for (const gameType of SUPPORTED_GAME_TYPES) {
     await t.test(gameType, async t => {
       const h = await harness(t, gameType === "LIAR_GAME" ? 4 : (gameType === "WORD_DUET" || gameType === "JAIPUR" || gameType === "GURYONGTU" || gameType === "LOST_CITIES") ? 2 : 3), before = await h.sync();
@@ -66,8 +73,8 @@ test("same room: all fifteen games can be selected, host starts without any read
       assert.equal(selected.room.roomId, before.room.roomId); assert.equal(selected.room.roomCode, before.room.roomCode);
       assert.deepEqual(selected.room.players.map(p => [p.playerId, p.nickname, p.isHost]), before.room.players.map(p => [p.playerId, p.nickname, p.isHost]));
       assert.ok(selected.room.players.every(p => p.isReady === false));
-      assert.equal(h.failure(await h.call(h.members[1]!.client, "game:start", {}, { expectedRoomRevision: selected.versions.roomRevision })), "HOST_ONLY");
-      const started = h.success(await h.call(h.host, "game:start", {}, { expectedRoomRevision: selected.versions.roomRevision }));
+      assert.equal(h.failure(await h.send(h.members[1]!.client, h.startCommand(selected))), "HOST_ONLY");
+      const started = h.success(await h.send(h.host, h.startCommand(selected)));
       assert.equal(started.room.gameType, gameType); assert.equal(started.room.phase, "PLAYING"); assert.ok(started.game);
       const old = await h.server.runtime.persistence.findById(started.room.roomId); assert.ok(old);
       assert.equal(h.failure(await h.send(h.host, h.selection(started, "SPLENDOR"))), "INVALID_PHASE");
@@ -116,7 +123,7 @@ test("finished -> lobby preserves credentials, removes explicit departures, igno
   const resumed = h.success(await h.call(replacement, "session:resume", { credential: { ...member.credential, roomCode: lobby.room.roomCode }, lastSeenVersions: null }));
   assert.equal(resumed.self.playerId, member.playerId); member.client = replacement;
   h.members.pop(); const prepared = await h.readyAll();
-  h.success(await h.call(h.host, "game:start", {}, { expectedRoomRevision: prepared.versions.roomRevision }));
+  h.success(await h.send(h.host, h.startCommand(prepared)));
   const fresh = await h.server.runtime.persistence.findById(running.roomId); assert.ok(fresh?.game);
   assert.notEqual(fresh.game.gameId, running.game.gameId);
   h.success(await h.send(h.host, command));
@@ -138,7 +145,7 @@ test("every game's finished roster returns only remaining members to the same ro
     const h = await harness(t, gameType === "LIAR_GAME" ? 4 : (gameType === "WORD_DUET" || gameType === "JAIPUR" || gameType === "GURYONGTU" || gameType === "LOST_CITIES") ? 2 : 3);
     h.success(await h.send(h.host, h.selection(await h.sync(), gameType)));
     const prepared = await h.readyAll();
-    h.success(await h.call(h.host, "game:start", {}, { expectedRoomRevision: prepared.versions.roomRevision }));
+    h.success(await h.send(h.host, h.startCommand(prepared)));
     for (const member of h.members.slice(1)) {
       const current = await h.server.runtime.persistence.findById(prepared.room.roomId); assert.ok(current?.game);
       const ack = v.parse(RoomLeaveAckSchema, await h.call(member.client, "room:leave", {}, { expectedRoomRevision: current.roomRevision, expectedGameRevision: current.game.gameRevision })); assert.ok(ack.ok, ack.ok ? "" : ack.error.code);

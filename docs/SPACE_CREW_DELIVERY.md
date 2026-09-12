@@ -14,7 +14,7 @@
 | P3 Missions 1–10 | 조건/성공/실패/설정 테스트 | PASS |
 | P4 Missions 11–25 | 조건/성공/실패/설정 테스트 | PASS |
 | P5 Missions 26–50 | 조건/성공/실패/5인 특칙 테스트 | PASS |
-| P6 Server/Shared | 인증·직렬화·private projection·campaign persistence·플랫폼 연결 | NOT_STARTED |
+| P6 Server/Shared | 인증·직렬화·private projection·campaign persistence·플랫폼 연결 | PASS |
 | P7 Web | PC/mobile·Game Guide·독립 삽화·카드 조작·효과음 | NOT_STARTED |
 | P8 E2E/Campaign | 실제3–5인·50미션 매핑·retry·reconnect·restart campaign·회귀 | NOT_STARTED |
 
@@ -89,3 +89,15 @@ P1 카드/트릭의 파일 경계·보존·원자성·3인 소진 테스트 설�
 - 미션 계층 전용72 tests PASS(이 단계23개 추가). 미션26–50 × 3/4/5인75시도; 전체 구간 합계180시뮬레이션. P1–P5 Space Crew 전용 테스트 총159개.
 - root typecheck PASS; test shared127 + web649 + server2024 = **2800 PASS**, fail/cancel/skip0; build PASS(기존500kB chunk 경고 유지).
 - 독립 검토의50 선호 단계 revision 위조 검증을 보완했고 추가 finding 없음. diff-check PASS. commit/push 후 P6 진행. 현재 완료 범위는50미션 도메인이며, 방·브라우저·영구 저장 연결은 P6 이후다.
+
+### P6 서버·공유 계약·캠페인
+
+전용 `spaceCrew:start`로 새 캠페인·연습·복구를 시작하고, 인증된 actor와 game/attempt/revision을 검증하는 실시간 명령을 연결했다. 같은 방 재도전·다음 미션은 참가자와 game ID를 유지하고 새 attempt ID와 셔플을 만든다. gameplay deadline은 없다.
+
+캠페인 전용 port와 파일/메모리 adapter에 진행도·성공/실패/중단·구조 신호 이력과 중복 방지 receipt를 저장한다. 브라우저 생성 복구 비밀은 검증 해시만 영구화한다. 파일 adapter는 단일 프로세스 writer와 영구 볼륨 전제다. 방·파일 두 저장소의 간극은 동일 후보 재전송과 중단 예약/확정/취소로 처리한다. 같은 캠페인의 동시 방 진행을 차단하며 재시작 복구에서는 옛 손패를 복원하지 않는다.
+
+실제 소켓에서 3/4/5인 시작, viewer privacy, 인증/경합/중복, 동일 방 retry/next/practice, 재접속, 이탈 결과 보존, 파일 저장소 재시작 후 새 방 복구를 검증했다. 화면 지원 전인 P6에서는 웹 카탈로그에 스페이스 크루를 노출하지 않는다. 브라우저 decoder·카탈로그·화면은 P7에서 함께 활성화한다.
+
+- 전용 shared 계약4, projection13, campaign15, service7, socket8 테스트를 추가했다.
+- 최종 root typecheck PASS; test shared131 + web649 + server2069 = **2849 PASS**, fail/cancel/skip0; build PASS(기존500kB chunk 경고 유지).
+- 기존 전체 게임 시작 회귀는 SPACE_CREW 전용 시작 명령을 사용하도록 갱신했으며 권한·실제 PLAYING·퇴장/같은 방 복귀 검증을 유지했다. root 연결과 캠페인/서비스 독립 검토에서 추가 finding 없음. diff-check PASS. commit/push 후 P7 진행.

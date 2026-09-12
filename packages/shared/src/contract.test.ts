@@ -1,3 +1,4 @@
+import "./space-crew-contract.test.js";
 import "./spyfall.test.js";
 import "./liar-game.test.js";
 import "./wolf-night.test.js";
@@ -1223,8 +1224,8 @@ test("Room phase와 session replacement notification은 exhaustive shape를 가�
   );
 });
 
-test("GameType runtime contract는 정확히 스물다섯 개의 구현된 게임을 지원한다", () => {
-  assert.deepEqual(SUPPORTED_GAME_TYPES, ["HANGUL_TILE", "NUMBER_TILE", "GEM_CARD", "CITY_ROLE", "DRAW_RELAY", "SNEAKY_LUNCH", "WOLF_NIGHT", "HALLI_GALLI", "ISLAND_SETTLERS", "SPLENDOR", "JAIPUR", "TRAIN", "CENTURY", "LOVE_LETTER", "GURYONGTU", "WORD_DUET", "LOST_CITIES", "SABOTEUR", "LIAR_GAME", "SPYFALL", "AZUL", "VEGAS", "BURGUNDY", "CARCASSONNE", "CLUE"]);
+test("GameType runtime contract는 정확히 스물여섯 개의 구현된 게임을 지원한다", () => {
+  assert.deepEqual(SUPPORTED_GAME_TYPES, ["HANGUL_TILE", "NUMBER_TILE", "GEM_CARD", "CITY_ROLE", "DRAW_RELAY", "SNEAKY_LUNCH", "WOLF_NIGHT", "HALLI_GALLI", "ISLAND_SETTLERS", "SPLENDOR", "JAIPUR", "SPACE_CREW", "TRAIN", "CENTURY", "LOVE_LETTER", "GURYONGTU", "WORD_DUET", "LOST_CITIES", "SABOTEUR", "LIAR_GAME", "SPYFALL", "AZUL", "VEGAS", "BURGUNDY", "CARCASSONNE", "CLUE"]);
   assert.equal(Object.isFrozen(SUPPORTED_GAME_TYPES), true);
 
   const hangul = v.safeParse(GameTypeSchema, "HANGUL_TILE");
@@ -4622,6 +4623,11 @@ test("runtime Socket.IO map은 Number events를 additive하게 제공하고 lega
   const runtimeEventNamesAreExact: SameUnion<
     keyof SnapshotWireClientToServerEvents,
     | (typeof LEGACY_HANGUL_V1_CLIENT_EVENT_NAMES)[number]
+    | "spaceCrew:start"
+    | "spaceCrew:act"
+    | "spaceCrew:retry"
+    | "spaceCrew:next"
+    | "spaceCrew:practiceMission"
     | "saboteur:act"
     | "saboteur:nextRound"
     | "saboteur:say"

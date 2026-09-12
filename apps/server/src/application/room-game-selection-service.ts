@@ -47,12 +47,15 @@ export class RoomGameSelectionService {
         if (command.kind === "room:selectGame") {
           if ((room.game?.gameId ?? null) !== command.payload.gameId || (room.game?.gameRevision ?? null) !== command.expectedGameRevision) return fail("STALE_GAME_REVISION");
           if (!input.canRepresentGame(command.payload.gameType)) return fail("INCOMPATIBLE_GAME_CAPABILITY", "참가자가 새로고침하여 선택한 게임을 지원하는 버전으로 접속해야 합니다.");
-          candidate = {
-            roomId: room.roomId, roomCode: room.roomCode, gameType: command.payload.gameType,
-            phase: "LOBBY", game: null, players, hostPlayerId: room.hostPlayerId,
+          const lobby = {
+            roomId: room.roomId, roomCode: room.roomCode,
+            phase: "LOBBY" as const, game: null, players, hostPlayerId: room.hostPlayerId,
             ...(room.liarPromptHistory === undefined ? {} : { liarPromptHistory: room.liarPromptHistory }),
             readyPlayerIds: [], roomRevision, createdAt: room.createdAt, updatedAt: now,
           };
+          candidate = command.payload.gameType === "SPACE_CREW"
+            ? { ...lobby, gameType: "SPACE_CREW" }
+            : { ...lobby, gameType: command.payload.gameType };
           if (command.payload.gameType === "LIAR_GAME" && room.gameType === "LIAR_GAME") {
             candidate = { ...candidate, gameType: "LIAR_GAME", game: null, settings: room.settings ?? { category: "RANDOM", discussionSeconds: 90 } };
           }

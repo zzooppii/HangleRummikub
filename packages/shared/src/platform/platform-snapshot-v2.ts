@@ -1,3 +1,4 @@
+import { SpaceCrewPlayingProjectionSchema, SpaceCrewFinishedProjectionSchema, spaceCrewProjectionIsConsistent } from "../games/space-crew/contracts.js";
 import { BurgundySettingsSchema } from "../games/burgundy/actions.js";
 import { BurgundyPlayingProjectionSchema, BurgundyFinishedProjectionSchema, burgundyProjectionIsConsistent } from "../games/burgundy/contracts.js";
 import { TrainPlayingProjectionSchema, TrainFinishedProjectionSchema, trainProjectionIsConsistent } from "../games/train/contracts.js";
@@ -375,6 +376,22 @@ export type CenturyFinishedPlatformSnapshotV2 = v.InferOutput<typeof CenturyFini
 export const CenturyLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, CenturyLobbyPlatformSnapshotV2> = CenturyLobbyRaw;
 export const CenturyPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, CenturyPlayingPlatformSnapshotV2> = CenturyPlayingRaw;
 export const CenturyFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, CenturyFinishedPlatformSnapshotV2> = CenturyFinishedRaw;
+const SpaceCrewOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
+const SpaceCrewRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("SPACE_CREW") };
+const SpaceCrewPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.minLength(3), v.maxLength(5));
+const SpaceCrewLobbyRaw = v.pipe(v.strictObject({ ...SpaceCrewOuter, room: v.strictObject({ ...SpaceCrewRoom, phase: v.literal("LOBBY"),
+  players: v.pipe(v.array(PlatformPlayerViewV2Schema), v.maxLength(10)) }), game: v.null() }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)));
+const SpaceCrewPlayingRaw = v.pipe(v.strictObject({ ...SpaceCrewOuter, room: v.strictObject({ ...SpaceCrewRoom, phase: v.literal("PLAYING"), players: SpaceCrewPlayers }), game: SpaceCrewPlayingProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.hand.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.handCount), v.check(s => spaceCrewProjectionIsConsistent(s.game)));
+const SpaceCrewFinishedRaw = v.pipe(v.strictObject({ ...SpaceCrewOuter, room: v.strictObject({ ...SpaceCrewRoom, phase: v.literal("FINISHED"), players: SpaceCrewPlayers }), game: SpaceCrewFinishedProjectionSchema }),
+  v.check(s => hasUniqueRoomPlayers(s)), v.check(s => containsSelfPlayer(s)), v.check(s => hasAtMostOneHost(s)), v.check(s => hasMatchingGamePlayers(s)), v.check(s => s.game.privateState.playerId === s.self.playerId), v.check(s => s.game.privateState.hand.length === s.game.playerStates.find(p => p.playerId === s.self.playerId)?.handCount), v.check(s => spaceCrewProjectionIsConsistent(s.game)));
+export type SpaceCrewLobbyPlatformSnapshotV2 = v.InferOutput<typeof SpaceCrewLobbyRaw>;
+export type SpaceCrewPlayingPlatformSnapshotV2 = v.InferOutput<typeof SpaceCrewPlayingRaw>;
+export type SpaceCrewFinishedPlatformSnapshotV2 = v.InferOutput<typeof SpaceCrewFinishedRaw>;
+export const SpaceCrewLobbyPlatformSnapshotV2Schema: v.GenericSchema<unknown, SpaceCrewLobbyPlatformSnapshotV2> = SpaceCrewLobbyRaw;
+export const SpaceCrewPlayingPlatformSnapshotV2Schema: v.GenericSchema<unknown, SpaceCrewPlayingPlatformSnapshotV2> = SpaceCrewPlayingRaw;
+export const SpaceCrewFinishedPlatformSnapshotV2Schema: v.GenericSchema<unknown, SpaceCrewFinishedPlatformSnapshotV2> = SpaceCrewFinishedRaw;
 const JaipurOuter = { snapshotVersion: PlatformSnapshotVersionSchema, versions: PlatformSnapshotVersionsV2Schema, serverTime: ServerTimeSchema, self: PlatformSelfViewV2Schema };
 const JaipurRoom = { roomId: RoomIdSchema, roomCode: RoomCodeSchema, gameType: v.literal("JAIPUR") };
 const JaipurPlayers = v.pipe(v.array(PlatformPlayerViewV2Schema), v.length(2));
@@ -632,6 +649,7 @@ export const LobbyPlatformSnapshotV2Schema = v.union([
   SplendorLobbyPlatformSnapshotV2Schema,
   TrainLobbyPlatformSnapshotV2Schema,
   CenturyLobbyPlatformSnapshotV2Schema,
+  SpaceCrewLobbyPlatformSnapshotV2Schema,
   JaipurLobbyPlatformSnapshotV2Schema,
   LoveLetterLobbyPlatformSnapshotV2Schema,
   GuryongtuLobbyPlatformSnapshotV2Schema,
@@ -791,6 +809,7 @@ export const PlayingPlatformSnapshotV2Schema = v.union([
   SplendorPlayingPlatformSnapshotV2Schema,
   TrainPlayingPlatformSnapshotV2Schema,
   CenturyPlayingPlatformSnapshotV2Schema,
+  SpaceCrewPlayingPlatformSnapshotV2Schema,
   JaipurPlayingPlatformSnapshotV2Schema,
   LoveLetterPlayingPlatformSnapshotV2Schema,
   GuryongtuPlayingPlatformSnapshotV2Schema,
@@ -950,6 +969,7 @@ export const FinishedPlatformSnapshotV2Schema = v.union([
   SplendorFinishedPlatformSnapshotV2Schema,
   TrainFinishedPlatformSnapshotV2Schema,
   CenturyFinishedPlatformSnapshotV2Schema,
+  SpaceCrewFinishedPlatformSnapshotV2Schema,
   JaipurFinishedPlatformSnapshotV2Schema,
   LoveLetterFinishedPlatformSnapshotV2Schema,
   GuryongtuFinishedPlatformSnapshotV2Schema,

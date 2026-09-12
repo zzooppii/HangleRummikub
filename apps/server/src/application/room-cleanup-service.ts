@@ -1,6 +1,6 @@
 import type { RoomCode, RoomId, RoomRevision } from "@hangul-rummikub/shared";
 
-import type { StorageRevision } from "../model/persistence.js";
+import type { SpaceCrewRoomRecord, StorageRevision } from "../model/persistence.js";
 import type { RoomRepository } from "../ports/room-repository.js";
 import type {
   RoomCleanupUnitOfWork,
@@ -45,6 +45,7 @@ export type RoomCleanupServiceDependencies = Readonly<{
   roomUnitOfWork: RoomCleanupUnitOfWork;
   roomMutationExecutor: RoomMutationSerialExecutor;
   resources?: RoomCleanupResources;
+  prepareSpaceCrewCleanup?: (room: SpaceCrewRoomRecord) => Promise<Readonly<{ finalize(committed: boolean): Promise<void> }>>;
 }>;
 
 export class RoomCleanupService {
@@ -52,12 +53,14 @@ export class RoomCleanupService {
   readonly #roomUnitOfWork: RoomCleanupUnitOfWork;
   readonly #roomMutationExecutor: RoomMutationSerialExecutor;
   readonly #resources: RoomCleanupResources | undefined;
+  readonly #prepareSpaceCrewCleanup: RoomCleanupServiceDependencies["prepareSpaceCrewCleanup"];
 
   constructor(dependencies: RoomCleanupServiceDependencies) {
     this.#roomRepository = dependencies.roomRepository;
     this.#roomUnitOfWork = dependencies.roomUnitOfWork;
     this.#roomMutationExecutor = dependencies.roomMutationExecutor;
     this.#resources = dependencies.resources;
+    this.#prepareSpaceCrewCleanup = dependencies.prepareSpaceCrewCleanup;
   }
 
   async cleanup(input: RoomCleanupInput): Promise<RoomCleanupResult> {
@@ -76,6 +79,11 @@ export class RoomCleanupService {
           return { status: "NO_OP", reason: "STALE_ROOM" } as const;
         }
 
+        const prepared = room.gameType === "SPACE_CREW"
+          ? await this.#prepareSpaceCrewCleanup?.(room) : undefined;
+        if (room.gameType === "SPACE_CREW" && room.game !== null && !prepared) {
+          throw new Error("Space Crew durable cleanup capability is missing.");
+        }
         const committed = await this.#roomUnitOfWork.cleanup(
           {
             roomMutation: {
@@ -87,7 +95,11 @@ export class RoomCleanupService {
             sessionMutation: { kind: "DELETE_BY_ROOM", roomId: room.roomId },
           },
           input.precondition,
-        );
+        ).catch(async (error: unknown) => {
+          await prepared?.finalize(false);
+          throw error;
+        });
+        await prepared?.finalize(committed.status === "COMMITTED");
         if (committed.status !== "COMMITTED") {
           return {
             status: "NO_OP",

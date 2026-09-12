@@ -88,3 +88,6 @@ export * from "./games/burgundy/contracts.js";
 export * from "./games/burgundy/expansion-contracts.js";
 
 export * from "./games/burgundy/expansion-data.js";
+
+export * from "./games/space-crew/actions.js";
+export * from "./games/space-crew/contracts.js";

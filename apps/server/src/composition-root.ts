@@ -1,3 +1,10 @@
+import { randomUUID } from "node:crypto";
+import { resolve } from "node:path";
+import { SpaceCrewService } from "./games/space-crew/application/service.js";
+import { SpaceCrewHostSuccession } from "./games/space-crew/application/host-succession.js";
+import { createSpaceCrewLifecycle } from "./games/space-crew/application/lifecycle.js";
+import { FileSpaceCrewCampaignRepository } from "./games/space-crew/infrastructure/campaign-repository.js";
+import type { SpaceCrewCampaignRepository } from "./games/space-crew/ports/campaign-repository.js";
 import { CuratedLiarPrompts } from "./games/liar-game/domain/prompts.js";
 import { IslandHostSuccession } from "./games/island/application/host-succession.js";
 import { SplendorHostSuccession } from "./games/splendor/application/host-succession.js";
@@ -174,6 +181,7 @@ export type ApplicationRuntime = Readonly<{
   trainService?: TrainService;
   centuryService?: CenturyService;
   jaipurService?: JaipurService;
+  spaceCrewService?: SpaceCrewService;
   loveLetterService?: LoveLetterService;
   guryongtuService?: GuryongtuService;
   azulService?: AzulService;
@@ -193,6 +201,7 @@ export type ApplicationRuntime = Readonly<{
   trainHostSuccession?: TrainHostSuccession;
   centuryHostSuccession?: CenturyHostSuccession;
   jaipurHostSuccession?: JaipurHostSuccession;
+  spaceCrewHostSuccession?: SpaceCrewHostSuccession;
   loveLetterHostSuccession?: LoveLetterHostSuccession;
   guryongtuHostSuccession?: GuryongtuHostSuccession;
   azulHostSuccession?: AzulHostSuccession;
@@ -260,6 +269,9 @@ export type ApplicationRuntime = Readonly<{
 
 export type ApplicationRuntimeOptions = Readonly<{
   gameRegistrations?: readonly GameRegistration[];
+  spaceCrewCampaignRepository?: SpaceCrewCampaignRepository;
+  spaceCrewCampaignDirectory?: string;
+  spaceCrewProcessId?: string;
 }>;
 
 function reportTurnSchedulingFailure(): void {
@@ -298,7 +310,7 @@ function reportRoomPolicyFailure(): void {
   );
 }
 
-/** Creates one isolated process-memory runtime; importing this module has no side effects. */
+/** Creates process-local rooms with a replaceable durable Space Crew campaign repository; importing this module has no side effects. */
 export function createApplicationRuntime(
   options: ApplicationRuntimeOptions = {},
 ): ApplicationRuntime {
@@ -315,6 +327,7 @@ export function createApplicationRuntime(
       { gameType: "TRAIN" },
       { gameType: "CENTURY" },
       { gameType: "JAIPUR" },
+      { gameType: "SPACE_CREW" },
       { gameType: "LOVE_LETTER" },
       { gameType: "GURYONGTU" },
       { gameType: "AZUL" },
@@ -362,6 +375,7 @@ export function createApplicationRuntime(
     train: createTrainLifecycle(),
     century: createCenturyLifecycle(),
     jaipur: createJaipurLifecycle(),
+    spaceCrew: createSpaceCrewLifecycle(),
     loveLetter: createLoveLetterLifecycle(),
     guryongtu: createGuryongtuLifecycle(),
     azul: createAzulLifecycle(),
@@ -499,6 +513,7 @@ export function createApplicationRuntime(
     onPlayerRemoved: notifyRoomPlayerRemoved,
   });
   const roomCleanupService = new RoomCleanupService({
+    prepareSpaceCrewCleanup: room => spaceCrewService.prepareRoomCleanup(room),
     roomRepository: persistence,
     roomUnitOfWork: persistence,
     roomMutationExecutor,
@@ -671,6 +686,19 @@ export function createApplicationRuntime(
   jaipurService.subscribe(async roomId => {
     const room = await persistence.findById(roomId);
     if (room?.gameType === "JAIPUR" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
+  });
+  const spaceCrewService = new SpaceCrewService({
+    roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
+    roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource,
+    campaigns: options.spaceCrewCampaignRepository ?? new FileSpaceCrewCampaignRepository({
+      directory: options.spaceCrewCampaignDirectory ?? process.env.SPACE_CREW_CAMPAIGN_DIR ?? resolve("data/space-crew-campaigns"),
+    }),
+    processId: options.spaceCrewProcessId ?? randomUUID(),
+  });
+  const spaceCrewHostSuccession = new SpaceCrewHostSuccession(spaceCrewService.deps, roomId => spaceCrewService.notify(roomId));
+  spaceCrewService.subscribe(async roomId => {
+    const room = await persistence.findById(roomId);
+    if (room?.gameType === "SPACE_CREW" && room.phase === "FINISHED" && room.game) await onGameFinished({ roomId, gameId: room.game.gameId });
   });
   const loveLetterService = new LoveLetterService({ roomRepository: persistence, roomUnitOfWork: persistence, idempotencyRepository: persistence,
     roomMutationExecutor, presence: presenceReader, clock, ids: idGenerator, random: randomSource });
@@ -848,6 +876,7 @@ export function createApplicationRuntime(
     train: { gameType: "TRAIN", start: input => trainService.start(input) },
     century: { gameType: "CENTURY", start: input => centuryService.start(input) },
     jaipur: { gameType: "JAIPUR", start: input => jaipurService.start(input) },
+    spaceCrew: { gameType: "SPACE_CREW", start: input => spaceCrewService.start(input) },
     loveLetter: { gameType: "LOVE_LETTER", start: input => loveLetterService.start(input) },
     guryongtu: { gameType: "GURYONGTU", start: input => guryongtuService.start(input) },
     azul: { gameType: "AZUL", start: input => azulService.start(input) },
@@ -1026,6 +1055,8 @@ export function createApplicationRuntime(
     cityRoleGameProjector: projectCityRoleV2Game,
   });
   const roomLeaveService = new RoomLeaveService({
+    prepareSpaceCrewLeave: input => spaceCrewService.preparePlayingLeave(input),
+    prepareSpaceCrewLobbyLeave: room => spaceCrewService.prepareRoomCleanup(room),
     roomRepository: persistence,
     idempotencyRepository: persistence,
     roomUnitOfWork: persistence,
@@ -1062,6 +1093,7 @@ export function createApplicationRuntime(
     trainService,
     centuryService,
     jaipurService,
+    spaceCrewService,
     loveLetterService,
     guryongtuService,
     azulService,
@@ -1081,6 +1113,7 @@ export function createApplicationRuntime(
     trainHostSuccession,
     centuryHostSuccession,
     jaipurHostSuccession,
+    spaceCrewHostSuccession,
     loveLetterHostSuccession,
     guryongtuHostSuccession,
     azulHostSuccession,
@@ -1149,6 +1182,8 @@ export function createApplicationRuntime(
       trainHostSuccession.start();
       centuryHostSuccession.start();
       jaipurHostSuccession.start();
+      spaceCrewHostSuccession.start();
+      spaceCrewService.startMaintenance();
       loveLetterHostSuccession.start();
       guryongtuHostSuccession.start();
       azulHostSuccession.start();
@@ -1185,6 +1220,8 @@ export function createApplicationRuntime(
       trainHostSuccession.stop();
       centuryHostSuccession.stop();
       jaipurHostSuccession.stop();
+      spaceCrewHostSuccession.stop();
+      spaceCrewService.stopMaintenance();
       loveLetterHostSuccession.stop();
       guryongtuHostSuccession.stop();
       azulHostSuccession.stop();

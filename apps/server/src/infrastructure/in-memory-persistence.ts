@@ -1,3 +1,4 @@
+import { SpaceCrewGameStateAdapter, type SpaceCrewLifecycle } from "../games/space-crew/compatibility/adapter.js";
 import { LiarPromptHistorySchema } from "../games/liar-game/domain/prompts.js";
 import { BurgundySettingsSchema, BURGUNDY_DEFAULT_SETTINGS } from "@hangul-rummikub/shared";
 import { TrainGameStateAdapter, type TrainLifecycle } from "../games/train/compatibility/adapter.js";
@@ -134,6 +135,7 @@ type RoomGameLifecycleInspection =
   | Readonly<{gameType:"TRAIN";inspection:TrainLifecycle}>
   | Readonly<{gameType:"CENTURY";inspection:CenturyLifecycle}>
   | Readonly<{gameType:"JAIPUR";inspection:JaipurLifecycle}>
+  | Readonly<{gameType:"SPACE_CREW";inspection:SpaceCrewLifecycle}>
   | Readonly<{gameType:"LOVE_LETTER";inspection:LoveLetterLifecycle}>
   | Readonly<{gameType:"GURYONGTU";inspection:GuryongtuLifecycle}>
   | Readonly<{gameType:"AZUL";inspection:AzulLifecycle}>
@@ -301,6 +303,13 @@ function cloneRoomWriteCandidate(
       const departedPlayerIds = Object.freeze([...(candidate.departedPlayerIds ?? [])]);
       if (new Set(departedPlayerIds).size !== departedPlayerIds.length || departedPlayerIds.some(id => !shell.players.some(p => p.playerId === id)) || shell.phase === "LOBBY" && departedPlayerIds.length > 0) throw new Error("Invalid departed CENTURY roster.");
       return Object.freeze({...shell, gameType:"CENTURY", game, departedPlayerIds});
+    }
+    case "SPACE_CREW": {
+      const adapter = new SpaceCrewGameStateAdapter(), game = candidate.game === null ? null : adapter.cloneAndValidate(candidate.game);
+      validateRoomGameCoherence(shell.phase, shell.players, game, () => game === null ? null : adapter.inspectLifecycle(game));
+      const departedPlayerIds = Object.freeze([...(candidate.departedPlayerIds ?? [])]);
+      if (new Set(departedPlayerIds).size !== departedPlayerIds.length || departedPlayerIds.some(id => !shell.players.some(p => p.playerId === id)) || shell.phase === "LOBBY" && departedPlayerIds.length > 0) throw new Error("Invalid departed SPACE_CREW roster.");
+      return Object.freeze({...shell, gameType:"SPACE_CREW", game, departedPlayerIds});
     }
     case "JAIPUR": {
       const adapter = new JaipurGameStateAdapter(), game = candidate.game === null ? null : adapter.cloneAndValidate(candidate.game);
@@ -523,7 +532,7 @@ function validateRoomGameCoherence(
   }
 
   const playerIds = players.map((player) => player.playerId);
-  const participantIds: readonly string[] = "state" in game ? ("seatOrder" in game.state ? game.state.seatOrder : game.state.rulesVersion === "duet-2025-ko-v1" ? game.state.players : game.state.players.map(p => p.playerId)) : game.turnOrder;
+  const participantIds: readonly string[] = "state" in game ? ("seatOrder" in game.state ? game.state.seatOrder : "mission" in game.state ? game.state.mission.trick.players.map(p => p.playerId) : game.state.rulesVersion === "duet-2025-ko-v1" ? game.state.players : game.state.players.map(p => p.playerId)) : game.turnOrder;
   if (
     playerIds.length !== participantIds.length ||
     new Set(playerIds).size !== playerIds.length ||
@@ -551,6 +560,7 @@ function persistRoom(
     case "SPLENDOR":
     case "TRAIN":
     case "CENTURY":
+    case "SPACE_CREW":
     case "JAIPUR":
     case "LOVE_LETTER":
     case "GURYONGTU":
@@ -590,6 +600,7 @@ function inspectRoomGame(
     case "SPLENDOR": return {gameType:"SPLENDOR",inspection:new SplendorGameStateAdapter().inspectLifecycle(room.game)};
     case "TRAIN": return {gameType:"TRAIN",inspection:new TrainGameStateAdapter().inspectLifecycle(room.game)};
     case "CENTURY": return {gameType:"CENTURY",inspection:new CenturyGameStateAdapter().inspectLifecycle(room.game)};
+    case "SPACE_CREW": return {gameType:"SPACE_CREW",inspection:new SpaceCrewGameStateAdapter().inspectLifecycle(room.game)};
     case "JAIPUR": return {gameType:"JAIPUR",inspection:new JaipurGameStateAdapter().inspectLifecycle(room.game)};
     case "LOVE_LETTER": return {gameType:"LOVE_LETTER",inspection:new LoveLetterGameStateAdapter().inspectLifecycle(room.game)};
     case "GURYONGTU": return {gameType:"GURYONGTU",inspection:new GuryongtuGameStateAdapter().inspectLifecycle(room.game)};
